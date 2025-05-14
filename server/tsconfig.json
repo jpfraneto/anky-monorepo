@@ -1,5 +1,6 @@
 {
   "extends": "../tsconfig.json",
+  "types": ["bun-types", "@cloudflare/workers-types"],
   "compilerOptions": {
     // Environment settings
     "lib": ["ESNext"],

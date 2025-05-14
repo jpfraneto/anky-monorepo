@@ -1,18 +1,26 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { ApiResponse } from "shared/dist";
-import openai from "../lib/openrouter";
+import { createOpenAIClient } from "../lib/openrouter";
+import { getEnv, type Env } from "../env/server-env";
 
-const app = new Hono();
+const app = new Hono<{
+  Bindings: Env;
+}>();
 
 app.use(cors());
 
 const routes = app
+
   .get("/", (c) => {
     return c.text("Hello Hono!");
   })
 
   .post("/writing-session", async (c) => {
+    const env = getEnv(c.env);
+
+    // Create OpenAI client with the environment
+    const openai = createOpenAIClient(env);
     console.log("📝 New writing session request received");
     const { writing, writingTime, targetTime } = await c.req.json();
     console.log(
@@ -31,11 +39,11 @@ const routes = app
         "Take a look at my journal entry below. I'd like you to analyze it and respond with deep insight that feels personal, not clinical. Imagine you're not just a friend, but a mentor who truly gets both my tech background and my psychological patterns. I want you to uncover the deeper meaning and emotional undercurrents behind my scattered thoughts. Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed. Use vivid metaphors and powerful imagery to help me see what I'm really building. Organize your thoughts with meaningful headings that create a narrative journey through my ideas. Don't just validate my thoughts - reframe them in a way that shows me what I'm really seeking beneath the surface. Go beyond the product concepts to the emotional core of what I'm trying to solve. Be willing to be profound and philosophical without sounding like you're giving therapy. I want someone who can see the patterns I can't see myself and articulate them in a way that feels like an epiphany. Start with 'hey, thanks for showing me this. my thoughts:' and then use markdown headings to structure your response. Here's my journal entry:";
     } else {
       console.log("⏳ Using incomplete session prompt");
-      prompt = `I notice you wrote for ${Math.floor(
+      prompt = `The user wrote for ${Math.floor(
         writingTime / 60
       )} minutes and ${
         writingTime % 60
-      } seconds, which is less than the target of 8 minutes. I'd like you to provide gentle encouragement and insight about the importance of maintaining continuous writing flow. Explain how the practice of uninterrupted writing helps bypass the conscious mind's filtering mechanisms and allows access to deeper layers of authentic being. Keep it supportive and inspiring, not critical. Format with markdown headings. Here's what they wrote:`;
+      } seconds, which is less than the 8-minute target. Please provide the user with gentle encouragement about stream of consciousness writing. Explain how this practice of continuous, unfiltered writing helps bypass our internal critic, allowing deeper thoughts and authentic insights to emerge. Highlight how consistency in reaching the full 8 minutes can lead to breakthrough moments and unexpected clarity. Be supportive and inspiring, not critical. Format with markdown headings to organize your thoughts. Here's what the user wrote:`;
     }
 
     console.log("🤖 Sending request to OpenRouter API");
@@ -73,6 +81,10 @@ const routes = app
   })
 
   .get("/hello", async (c) => {
+    const env = getEnv(c.env);
+
+    // Create OpenAI client with the environment
+    const openai = createOpenAIClient(env);
     const completion = await openai.chat.completions.create({
       model: "openai/gpt-4o",
       messages: [

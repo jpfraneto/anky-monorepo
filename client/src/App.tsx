@@ -3,9 +3,11 @@ import { Button } from "./components/ui/button";
 import type { AppType } from "server";
 import { hc } from "hono/client";
 import { Timer } from "lucide-react";
-import Markdown from "react-markdown";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+const SERVER_URL = import.meta.env.VITE_API_URL;
 const client = hc<AppType>(SERVER_URL);
 
 const DEFAULT_SESSION_TIME = 8 * 60; // 8 minutes in seconds
@@ -13,13 +15,14 @@ const PAUSE_THRESHOLD = 8; // 8 seconds pause threshold
 
 function App() {
   const [writing, setWriting] = useState("");
-  const [timeLeft, setTimeLeft] = useState(DEFAULT_SESSION_TIME);
   const [isWriting, setIsWriting] = useState(false);
   const [response, setResponse] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [pauseWarning, setPauseWarning] = useState(0);
   const [totalWritingTime, setTotalWritingTime] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
   const writingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,6 +43,45 @@ function App() {
   useEffect(() => {
     currentWritingRef.current = writing;
   }, [writing]);
+
+  // Handle viewport height changes (for mobile keyboard)
+  useEffect(() => {
+    const handleResize = () => {
+      const newHeight = window.innerHeight;
+      // If the height decreased significantly, keyboard is likely open
+      if (newHeight < viewportHeight * 0.75) {
+        setKeyboardOpen(true);
+      } else {
+        setKeyboardOpen(false);
+      }
+      setViewportHeight(newHeight);
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    // For iOS devices that don't trigger resize on keyboard
+    if (textareaRef.current) {
+      textareaRef.current.addEventListener("focus", () => {
+        // Small delay to ensure the keyboard is fully open
+        setTimeout(() => setKeyboardOpen(true), 100);
+      });
+      textareaRef.current.addEventListener("blur", () => {
+        setKeyboardOpen(false);
+      });
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (textareaRef.current) {
+        textareaRef.current.removeEventListener("focus", () =>
+          setKeyboardOpen(true)
+        );
+        textareaRef.current.removeEventListener("blur", () =>
+          setKeyboardOpen(false)
+        );
+      }
+    };
+  }, [viewportHeight]);
 
   useEffect(() => {
     if (isWriting) {
@@ -176,7 +218,7 @@ function App() {
     } catch (error) {
       console.error("Error:", error);
       setResponse(
-        "Sorry, there was an error processing your writing. Please try again."
+        "Sorry, there was an error processing your writing. Please try again. And make sure next time you write for more than 8 minutes."
       );
     } finally {
       setIsLoading(false);
@@ -189,7 +231,6 @@ function App() {
     setWriting("");
     currentWritingRef.current = "";
     setResponse(null);
-    setTimeLeft(DEFAULT_SESSION_TIME);
     setTotalWritingTime(0);
     setPauseWarning(0);
     setIsProcessing(false);
@@ -200,30 +241,40 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        {!isWriting && !response && !isProcessing && (
-          <div className="text-center mb-12">
-            <h1 className="text-5xl font-black text-gray-900 mb-4">Anky</h1>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+    <div className="grow flex flex-col h-full py-4 px-4 sm:py-12 sm:px-6 lg:px-8">
+      <div
+        className={`max-w-4xl mx-auto w-full ${
+          keyboardOpen ? "mb-0" : "mb-auto"
+        } flex-grow flex flex-col`}
+      >
+        {!isWriting && !response && !isProcessing && !keyboardOpen && (
+          <div className="text-center mb-6 sm:mb-12">
+            <h1 className="text-4xl sm:text-5xl font-black text-gray-900 mb-2 sm:mb-4">
+              Anky
+            </h1>
+            <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto">
               A transformative writing practice designed to catalyze spiritual
               awakening through uninterrupted creative expression.
             </p>
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-xl p-6 mb-8">
+        <div
+          className={`bg-white rounded-lg shadow-xl p-4 sm:p-6 mb-4 sm:mb-8 ${
+            keyboardOpen ? "flex-grow" : ""
+          }`}
+        >
           {isWriting && (
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Timer className="w-5 h-5 text-gray-500" />
-                  <span className="text-2xl font-mono">
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <Timer className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
+                  <span className="text-xl sm:text-2xl font-mono">
                     {formatTime(totalWritingTime)}
                   </span>
                 </div>
                 {pauseWarning > 0 && (
-                  <div className="text-red-500 font-medium animate-pulse">
+                  <div className="text-red-500 text-sm sm:text-base font-medium animate-pulse">
                     Keep writing! {pauseWarning}s left...
                   </div>
                 )}
@@ -231,44 +282,51 @@ function App() {
             </div>
           )}
 
-          {!response && !isProcessing && (
+          {!isProcessing && !response && (
             <textarea
               ref={textareaRef}
               value={writing}
               onChange={handleWriting}
+              disabled={isProcessing || !!response}
               placeholder="Just write, life will do the rest..."
-              className="w-full h-64 p-4 text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className={`w-full p-3 sm:p-4 text-base sm:text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                keyboardOpen ? "h-[50vh]" : "h-48 sm:h-64"
+              }`}
+              autoFocus
             />
           )}
 
-          {isProcessing && (
+          {(isProcessing || !!response) && (
             <div>
-              <div className="mb-4 flex items-center gap-2">
-                <svg
-                  className="animate-spin h-5 w-5 text-indigo-600"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span className="text-indigo-700 font-medium">
-                  Processing your writing...
-                </span>
-              </div>
-              <div className="bg-gray-50 border rounded p-4 text-gray-700 whitespace-pre-wrap max-h-64 overflow-y-auto">
+              {isProcessing && (
+                <div className="mb-4 flex items-center gap-2">
+                  <svg
+                    className="animate-spin h-5 w-5 text-indigo-600"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  <span className="text-indigo-700 font-medium">
+                    Processing your writing...
+                  </span>
+                </div>
+              )}
+
+              <div className="bg-gray-50 border rounded p-4 text-gray-700 whitespace-pre-wrap max-h-48 sm:max-h-64 overflow-y-auto">
                 {currentWritingRef.current}
               </div>
             </div>
@@ -286,10 +344,20 @@ function App() {
           )}
         </div>
 
-        {response && (
-          <div className="bg-white rounded-lg shadow-xl p-6">
-            <h2 className="text-2xl font-bold mb-4">Anky Insights</h2>
-            <Markdown className="prose max-w-none">{response}</Markdown>
+        {response && !keyboardOpen && (
+          <div className="bg-white rounded-lg shadow-xl p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-4">
+              Anky Insights
+            </h2>
+            <div className="prose max-w-none text-sm sm:text-base">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                className="markdown-content"
+              >
+                {response}
+              </ReactMarkdown>
+            </div>
           </div>
         )}
       </div>
