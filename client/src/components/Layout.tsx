@@ -65,12 +65,17 @@ const Layout = () => {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="h-screen">
       <nav className="bg-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex-shrink-0">
-              <h1 className="text-xl font-bold">Anky</h1>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="w-8 h-8"
+              ></svg>
             </div>
             <div>
               {ready && authenticated ? (
@@ -89,7 +94,7 @@ const Layout = () => {
                 </div>
               ) : (
                 <button
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                  className="cursor-pointer bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
                   onClick={handleUserLogin}
                   disabled={isLoading}
                 >

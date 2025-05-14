@@ -1,8 +1,10 @@
-import dotenv from "dotenv";
 import { z } from "zod";
+import dotenv from "dotenv";
 
+// Load environment variables from .env file
 dotenv.config();
 
+// Define the environment schema
 const envSchema = z.object({
   OPENROUTER_API_KEY: z.string({
     required_error: "OPENROUTER_API_KEY is required",
@@ -17,9 +19,13 @@ const envSchema = z.object({
     required_error: "SUPABASE_API_KEY is required",
   }),
 });
-export const {
-  OPENROUTER_API_KEY,
-  SUPABASE_PASSWORD,
-  SUPABASE_URL,
-  SUPABASE_API_KEY,
-} = envSchema.parse(process.env);
+
+// Function to get validated environment variables
+export function getEnv(env: Record<string, string>) {
+  // Merge process.env with provided env object to ensure .env values are used
+  const mergedEnv = { ...process.env, ...env };
+  return envSchema.parse(mergedEnv);
+}
+
+// Type for the environment
+export type Env = z.infer<typeof envSchema>;
