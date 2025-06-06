@@ -1,0 +1,26 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjE2MDk4LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4YUIyMERlOGY1QTRmOGUxNDdCYWFDOUQxZjZlMjM2ODYxNDg1NTE2QSJ9",
+    "payload": "eyJkb21haW4iOiJhbmt5LmJvdCJ9",
+    "signature": "MHhlNTRiYzhlM2FmN2MwNjM2N2EzZjRjNTdjZjBiNzhmMjc0NWVmYjE1ZjJhNzFkMGE0ZjVlMzQ1ODQxNjkyM2FiMzI4ZTllMjRmMDU2OTM0MzI5NDIzYTBjZTVmMTRmYzVmZmU2OGYxNzdjMzhiNmQ2MGNkMTI1MjJlMjExZTU2YTFj"
+  },
+  "frame": {
+    "version": "1",
+    "name": "anky",
+    "iconUrl": "https://anky.bot/icon.png",
+    "homeUrl": "https://anky.bot",
+    "imageUrl": "https://anky.bot/image.png",
+    "buttonTitle": "write 8 minutes",
+    "splashImageUrl": "https://anky.bot/splash.png",
+    "splashBackgroundColor": "#301733",
+    "subtitle": "Write daily for 8 minutes",
+    "description": "Meditation hidden behind stream of consciousness writing.",
+    "primaryCategory": "games",
+    "tags": ["farcaster", "identity", "guide", "learning", "growth"],
+    "heroImageUrl": "https://anky.bot/image.png",
+    "tagline": "Write daily for 8 minutes",
+    "ogTitle": "anky",
+    "ogDescription": "Meditation hidden behind stream of consciousness writing.",
+    "ogImageUrl": "https://anky.bot/image.png"
+  }
+}

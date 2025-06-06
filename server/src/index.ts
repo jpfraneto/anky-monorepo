@@ -3,12 +3,15 @@ import { cors } from "hono/cors";
 import type { ApiResponse } from "shared/dist";
 import { createOpenAIClient } from "../lib/openrouter";
 import { getEnv, type Env } from "../env/server-env";
+import fricksRoute from "./fricks";
 
 const app = new Hono<{
   Bindings: Env;
 }>();
 
 app.use(cors());
+
+app.route("/wallcaster", fricksRoute);
 
 const routes = app
 
@@ -36,14 +39,53 @@ const routes = app
     if (isCompleteSession) {
       console.log("🎯 Using complete session prompt");
       prompt =
-        "Take a look at my journal entry below. I'd like you to analyze it and respond with deep insight that feels personal, not clinical. Imagine you're not just a friend, but a mentor who truly gets both my tech background and my psychological patterns. I want you to uncover the deeper meaning and emotional undercurrents behind my scattered thoughts. Keep it casual, dont say yo, help me make new connections i don't see, comfort, validate, challenge, all of it. dont be afraid to say a lot. format with markdown headings if needed. Use vivid metaphors and powerful imagery to help me see what I'm really building. Organize your thoughts with meaningful headings that create a narrative journey through my ideas. Don't just validate my thoughts - reframe them in a way that shows me what I'm really seeking beneath the surface. Go beyond the product concepts to the emotional core of what I'm trying to solve. Be willing to be profound and philosophical without sounding like you're giving therapy. I want someone who can see the patterns I can't see myself and articulate them in a way that feels like an epiphany. Start with 'hey, thanks for showing me this. my thoughts:' and then use markdown headings to structure your response. Here's my journal entry:";
+        "Take a look at my journal entry below. I'd like you to analyze it and respond with deep insight that feels personal, not clinical. Imagine you're not just a friend, but a mentor who truly gets both my tech background and my psychological patterns. I want you to uncover the deeper meaning and emotional undercurrents behind my scattered thoughts." +
+        "\n\nIMPORTANT: Format your response with proper HTML tags:" +
+        "\n- Use <h2> for main section headings" +
+        "\n- Use <h3> for subsection headings" +
+        "\n- Use <p> for paragraphs" +
+        "\n- Use <strong> for important text" +
+        "\n- Use <em> for emphasis" +
+        "\n- Use <ul> and <li> for lists" +
+        "\nKeep it casual, help me make new connections I don't see, comfort, validate, challenge, all of it. Don't be afraid to provide substantial insights. Your HTML will be directly rendered in our app, so ensure all content is within appropriate HTML tags." +
+        "\nUse vivid metaphors and powerful imagery to help me see what I'm really building. Organize your thoughts with meaningful headings that create a narrative journey through my ideas. Don't just validate my thoughts - reframe them in a way that shows me what I'm really seeking beneath the surface." +
+        "\nStart with a personal greeting in a <p> tag, like '<p>Hey, thanks for showing me this. My thoughts:</p>' and then use HTML headings to structure your response." +
+        "\nHere's my journal entry:";
+
+      // Define image prompt for completed sessions
+      // const imagePrompt = `
+      //   I want you to create the description of a visual representation of the user's writing.
+      //   It is a situation on which the user is characterized by a blue cartoon, that is doing something. It represents the user's writing.
+      //   On the described image there is no words, only the situation that conveys and mirrors the user's writing.
+      //   `;
+
+      // Process image in the background for completed sessions
+      // if (isCompleteSession) {
+      //   console.log("🖼️ Starting backgroud generation process");
+      //   generateWritingImage(writing, imagePrompt, env)
+      //     .then((result) => {
+      //       console.log("✅ Background image generation completed:", result);
+      //     })
+      //     .catch((error) => {
+      //       console.error("❌ Background image generation failed:", error);
+      //     });
+      // }
     } else {
       console.log("⏳ Using incomplete session prompt");
-      prompt = `The user wrote for ${Math.floor(
-        writingTime / 60
-      )} minutes and ${
-        writingTime % 60
-      } seconds, which is less than the 8-minute target. Please provide the user with gentle encouragement about stream of consciousness writing. Explain how this practice of continuous, unfiltered writing helps bypass our internal critic, allowing deeper thoughts and authentic insights to emerge. Highlight how consistency in reaching the full 8 minutes can lead to breakthrough moments and unexpected clarity. Be supportive and inspiring, not critical. Format with markdown headings to organize your thoughts. Here's what the user wrote:`;
+      prompt =
+        `The user wrote for ${Math.floor(writingTime / 60)} minutes and ${
+          writingTime % 60
+        } seconds, which is less than the 8-minute target. Please provide the user with gentle encouragement about stream of consciousness writing.` +
+        "\n\nIMPORTANT: Format your response with proper HTML tags:" +
+        "\n- Use <h2> for main section headings" +
+        "\n- Use <h3> for subsection headings" +
+        "\n- Use <p> for paragraphs" +
+        "\n- Use <strong> for important text" +
+        "\n- Use <em> for emphasis" +
+        "\n- Use <ul> and <li> for lists" +
+        "\nYour HTML will be directly rendered in our app, so ensure all content is within appropriate HTML tags." +
+        "\nExplain how this practice of continuous, unfiltered writing helps bypass our internal critic, allowing deeper thoughts and authentic insights to emerge. Highlight how consistency in reaching the full 8 minutes can lead to breakthrough moments and unexpected clarity. Be supportive and inspiring, not critical." +
+        "\nHere's what the user wrote:";
     }
 
     console.log("🤖 Sending request to OpenRouter API");
@@ -72,7 +114,9 @@ const routes = app
     console.log("RESPONSE ", completion.choices[0].message.content);
 
     const data: ApiResponse = {
-      message: completion.choices[0].message.content || "No response",
+      message:
+        completion.choices[0].message.content ||
+        "there was an error. take a screenshot and cast it tagging @jpfraneto",
       success: true,
     };
 

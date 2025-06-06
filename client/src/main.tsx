@@ -4,7 +4,6 @@ import "./index.css";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import App from "./App";
 import Sessions from "./components/sessions";
-import Layout from "./components/Layout";
 
 import { PrivyProvider } from "@privy-io/react-auth";
 
@@ -22,10 +21,8 @@ createRoot(document.getElementById("root")!).render(
         }}
       >
         <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<App />} />
-            <Route path="/sessions" element={<Sessions />} />
-          </Route>
+          <Route path="/" element={<App />} />
+          <Route path="/sessions" element={<Sessions />} />
         </Routes>
       </PrivyProvider>
     </StrictMode>

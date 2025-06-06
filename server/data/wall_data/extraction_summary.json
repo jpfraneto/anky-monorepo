@@ -1,0 +1,31 @@
+{
+  "extraction_completed": "2025-06-04T21:52:37.358Z",
+  "total_walls": 432,
+  "wall_distribution": {
+    "active": 196,
+    "active_with_valid_casts": 184,
+    "inactive": 234,
+    "listed": 2
+  },
+  "unique_owners": 408,
+  "profiles_found": 408,
+  "files_generated": 7,
+  "output_files": {
+    "WALLS_BY_FID": "data/wall_data/walls_by_fid.json",
+    "WALLS_BY_SOLANA": "data/wall_data/walls_by_solana_address.json",
+    "WALLS_BY_CAST_HASH": "data/wall_data/walls_by_cast_hash.json",
+    "ACTIVE_WALLS": "data/wall_data/active_walls.json",
+    "INACTIVE_WALLS": "data/wall_data/inactive_walls.json",
+    "ALL_WALLS_DATA": "data/wall_data/all_walls_complete.json"
+  },
+  "sorting_logic": {
+    "description": "Walls for each FID are sorted by priority",
+    "priority_order": [
+      "1. Active walls with existing/valid casts",
+      "2. Other active walls",
+      "3. Listed walls",
+      "4. Inactive walls",
+      "5. Within same category: sorted by index (lower first)"
+    ]
+  }
+}

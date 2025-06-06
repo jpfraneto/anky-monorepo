@@ -1,0 +1,1892 @@
+[
+  {
+    "name": "Farcaster",
+    "url": "https://www.farcaster.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/I2rEbPF.png",
+    "category": "Infra",
+    "profile": "@farcaster",
+    "channel": "/farcaster",
+    "description": "A sufficiently decentralized social network."
+  },
+  {
+    "name": "Warpcast",
+    "url": "https://warpcast.com/",
+    "iconLogoUrl": "https://i.imgur.com/3d6fFAI.png",
+    "category": "Social",
+    "profile": "@warpcast",
+    "channel": "/warpcast",
+    "description": "A Farcaster client."
+  },
+  {
+    "name": "Purple",
+    "url": "https://purple.construction/",
+    "iconLogoUrl": "https://i.imgur.com/DWjfq34.jpg",
+    "category": "Community",
+    "profile": "@purple",
+    "channel": "/purple",
+    "description": "Purple is a DAO whose goal is to proliferate and expand the Farcaster protocol and ecosystem."
+  },
+  {
+    "name": "Launchcaster",
+    "url": "https://www.launchcaster.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/jGXgax3.png",
+    "category": "Social",
+    "profile": "@launch",
+    "channel": "/launchcaster",
+    "description": "Discover the best new web3 projects. Like Product Hunt, but built on Farcaster."
+  },
+  {
+    "name": "Events",
+    "url": "https://www.eventcaster.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/91bf03a3-5f48-41ad-fef6-ba5e686adb00/rectcrop3",
+    "category": "Social",
+    "profile": "@eventsxyz",
+    "channel": "/event-pass",
+    "description": "The home of events on Farcaster."
+  },
+  {
+    "name": "Airstack",
+    "url": "https://www.airstack.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/f1X7fJx.jpg",
+    "category": "Infra",
+    "profile": "@airstack",
+    "channel": "/airstack",
+    "description": "On a mission to grow the Farcaster GDP."
+  },
+  {
+    "name": "Ponder",
+    "url": "https://www.weponder.io/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/7d5d37b4-8658-43e8-ad5f-450b34fd4e00/original",
+    "category": "Social",
+    "profile": "@survey",
+    "channel": "/ponder",
+    "description": "A perpetual pulse check on the Farcaster community."
+  },
+  {
+    "name": "Fabric",
+    "url": "https://withfabric.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/D3dbEn5.png",
+    "category": "Social",
+    "profile": "@fabric",
+    "channel": "/fabric",
+    "description": "We created Hypersub (subscription NFTs) and Crowdfi (onchain crowdfunding)."
+  },
+  {
+    "name": "Hypersub",
+    "url": "https://hypersub.withfabric.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/X1MgLo7.jpg",
+    "category": "Social",
+    "profile": "@hypersub",
+    "channel": "/hypersub",
+    "description": "Create recurring revenue with NFT subscriptions."
+  },
+  {
+    "name": "Herocast",
+    "url": "https://app.herocast.xyz",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1d6fd98c-bd6c-4785-5131-631c64fa2800/rectcrop3",
+    "category": "Social",
+    "profile": "@herocast",
+    "channel": "/herocast",
+    "description": "Farcaster’s #1 open-source client for teams and pros to farcast faster."
+  },
+  {
+    "name": "Jam",
+    "url": "https://www.jamfrens.so/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e4e7dcd5-5af0-4311-6a7f-fd16ec133900/original",
+    "category": "Social",
+    "profile": "@jam",
+    "channel": "/jamfrens",
+    "description": "BUIDLing The Creator Economy on Farcaster"
+  },
+  {
+    "name": "Zora",
+    "url": "https://zora.co/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1b471987-45b1-48e3-6af4-44929b6e4900/original",
+    "category": "Media",
+    "profile": "@zora",
+    "channel": "/zora",
+    "description": "Upload Imagination, Earn Ethereum. Sharing thoughts, ideas, and learnings from building Zora."
+  },
+  {
+    "name": "Frens",
+    "url": "https://www.frens.lol/",
+    "iconLogoUrl": "https://i.imgur.com/W66846L.png",
+    "category": "Social",
+    "profile": "@frens",
+    "channel": "/frens",
+    "description": "Onchain social laboratory."
+  },
+  {
+    "name": "Interface",
+    "url": "https://www.interface.social/",
+    "iconLogoUrl": "https://i.imgur.com/7pGP91I.jpg",
+    "category": "Social",
+    "profile": "@interface",
+    "channel": "/interface",
+    "description": "Explore Ethereum with Interface."
+  },
+  {
+    "name": "Fiids",
+    "url": "https://www.fiids.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/uL8dCeX.jpg",
+    "category": "Social",
+    "profile": "@fiids",
+    "channel": "/fiids",
+    "description": "Pro tool for farcaster users."
+  },
+  {
+    "name": "Blockhead",
+    "url": "https://blockhead.info/",
+    "iconLogoUrl": "https://i.imgur.com/qV2asn4.png",
+    "category": "Infra",
+    "profile": "@blockhead",
+    "channel": "/blockhead",
+    "description": "Open-source interface for the decentralized web."
+  },
+  {
+    "name": "Super",
+    "url": "https://www.supercast.xyz/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmdvciL78gXQFgN3ZBCWecbCa5gEhPJGTU6bYcJ4WXYiwJ?filename=supercast-logo-white-pfp.png",
+    "category": "Social",
+    "profile": "@super",
+    "channel": "/super",
+    "description": "Grow on Farcaster with supercast. Become a poweruser and take advantage of scheduling, multi account support, polls and more."
+  },
+  {
+    "name": "Anky",
+    "url": "https://www.anky.lat/farcaster",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8afbaa9e-d7b8-40a0-a1bd-16b165753800/rectcrop3",
+    "category": "Media",
+    "profile": "@anky",
+    "channel": "/anky",
+    "description": "Everything that you will see coming out of this brand is an excuse for you to get to know yourself with more clarity. the practice is simple: write a stream of consciousness, every day, for 8 minutes. you won't believe where that will take you"
+  },
+  {
+    "name": "Unlonely",
+    "url": "https://www.unlonely.app/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmWsm34cghYfsrrkzzRzgPEktqFXuVtYde3bv9Yup2bYhF?filename=favicon_green.png",
+    "category": "Media",
+    "profile": "@unlonely",
+    "channel": "/unlonely",
+    "description": "Your cozy space on the internet."
+  },
+  {
+    "name": "Yup",
+    "url": "https://yup.io/",
+    "iconLogoUrl": "https://i.imgur.com/ZkZLQov.png",
+    "category": "Social",
+    "profile": "@yup",
+    "channel": "/yup",
+    "description": "web3 social all-in-one."
+  },
+  {
+    "name": "Paragraph",
+    "url": "https://paragraph.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4855b0cc-c1da-482c-de24-962162497200/original",
+    "category": "Media",
+    "profile": "@paragraph",
+    "channel": "/paragraph",
+    "description": "Onchain newsletters & publishing."
+  },
+  {
+    "name": "Neynar",
+    "url": "https://neynar.com/",
+    "iconLogoUrl": "https://i.imgur.com/UjBZ3pV.png",
+    "category": "Infra",
+    "profile": "@neynar",
+    "channel": "/neynar",
+    "description": "The easiest way to build on Farcaster."
+  },
+  {
+    "name": "Aburra",
+    "url": "https://aburra.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/SapV1eY.png",
+    "category": "Media",
+    "profile": "@aburra",
+    "channel": "/aburra",
+    "description": "Aburra is a web3 live streaming app, built on Farcaster and Base."
+  },
+  {
+    "name": "Base",
+    "url": "https://www.base.org/",
+    "iconLogoUrl": "https://i.imgur.com/7Q0QBrm.jpg",
+    "category": "Infra",
+    "profile": "@base",
+    "channel": "/base",
+    "description": "Bringing the world onchain — a community of builders on Base"
+  },
+  {
+    "name": "Firefly",
+    "url": "https://firefly.land/",
+    "iconLogoUrl": "https://media.firefly.land/farcaster/8b064ce5-dffa-4260-9f8c-1c8c48e9eac0.png",
+    "category": "Social",
+    "profile": "@fireflyapp",
+    "channel": "/firefly-garden",
+    "description": "A social aggregator app for Web3 natives by Mask Network."
+  },
+  {
+    "name": "Farquest",
+    "url": "https://far.quest/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ac5aae11-3187-4a21-0cdf-3ac786e5a800/original",
+    "category": "Game",
+    "profile": "@farquest",
+    "channel": "/farquest",
+    "description": "The best way to explore farcaster via our pro client."
+  },
+  {
+    "name": "Icebreaker",
+    "url": "https://www.icebreaker.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/45ab206c-b71f-4146-5fc6-4c458bebab00/original",
+    "category": "Infra",
+    "profile": "@icebreaker",
+    "channel": "/icebreaker",
+    "description": "The open professional network where you meet exceptional people."
+  },
+  {
+    "name": "Bountycaster",
+    "url": "https://www.bountycaster.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/QcV4VJu.jpg",
+    "category": "Social",
+    "profile": "@bountycaster",
+    "channel": "/bounties",
+    "description": "Bounties and services on Farcaster."
+  },
+  {
+    "name": "Farcats",
+    "url": "https://opensea.io/collection/farcats",
+    "iconLogoUrl": "https://i.imgur.com/pGgdTh7.jpg",
+    "category": "Community",
+    "profile": "@farcats",
+    "channel": "/farcats",
+    "description": "Farcaster's (sufficiently decentralized) mascot, in the form of 1661 unique and collectable NFTs. FarCats are just like us - sort of - and they're in need of a loving home."
+  },
+  {
+    "name": "Once Upon",
+    "url": "https://www.onceupon.xyz",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/f1bd6e81-230c-4f88-6f52-b5aa10c41300/original",
+    "category": "Social",
+    "profile": "@onceuponxyz",
+    "channel": "/onceupon",
+    "description": "A Farcaster-native view of the Superchain, with powerful filtering and human-readable context."
+  },
+  {
+    "name": "Gandalf",
+    "url": "https://gandalf.network/",
+    "iconLogoUrl": "https://i.imgur.com/oOlNNMA.png",
+    "category": "Infra",
+    "profile": "@gandalf",
+    "channel": "/gandalf",
+    "description": "Get user data from any platform with our SDK"
+  },
+  {
+    "name": "AlfaFrens",
+    "url": "https://www.alfafrens.com/",
+    "iconLogoUrl": "https://i.imgur.com/7JMOvsi.jpg",
+    "category": "Social",
+    "profile": "@alfafrens",
+    "channel": "/alfafrens",
+    "description": "Subscriptions SocialFi app on Base, powered by $DEGEN and Superfluid."
+  },
+  {
+    "name": "Seemore",
+    "url": "https://seemore.tv/",
+    "iconLogoUrl": "https://i.imgur.com/AOR8ced.png",
+    "category": "Media",
+    "profile": "@seemore",
+    "channel": "/seemore",
+    "description": "Automagic Creator Frames and Pages."
+  },
+  {
+    "name": "Cocreated",
+    "url": "https://www.cocreated.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/JIgRybC.png",
+    "category": "Community",
+    "profile": "@cocreated",
+    "channel": "/cocreated",
+    "description": "An evolving experiment in collaborative creation with and for the Farcaster community."
+  },
+  {
+    "name": "Farcon",
+    "url": "https://farcon.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/qebiccO.jpg",
+    "category": "Social",
+    "profile": "@farcon",
+    "channel": "/farcon",
+    "description": "We do a little URL ↔ IRL"
+  },
+  {
+    "name": "Ornamental",
+    "url": "https://web.ornamental.ai/",
+    "iconLogoUrl": "https://i.imgur.com/41Pu4F2.jpg",
+    "category": "Media",
+    "profile": "@ornamental",
+    "channel": "/ornamental",
+    "description": "❍rnaməntal is a user experience ☞"
+  },
+  {
+    "name": "Farcord",
+    "url": "https://farcord.com/",
+    "iconLogoUrl": "https://i.imgur.com/umi5xmj.png",
+    "category": "Client",
+    "profile": "@farcord",
+    "channel": "",
+    "description": "A discord experience for Farcaster channel browsing."
+  },
+  {
+    "name": "Bracket",
+    "url": "https://bracket.game/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1e2a6f5b-189a-4222-0a6a-cbdb2ad22800/rectcrop3",
+    "category": "Game",
+    "profile": "@bracketgame",
+    "channel": "/bracket",
+    "description": "Power to the Fans. Invest in Your Fanbase → Change the Game lRL."
+  },
+  {
+    "name": "Payflow",
+    "url": "https://payflow.me/",
+    "iconLogoUrl": "https://i.imgur.com/NSMcfrA.jpg",
+    "category": "Payment",
+    "profile": "@payflow",
+    "channel": "/payflow",
+    "description": "Onchain Social Payments"
+  },
+  {
+    "name": "Readcast",
+    "url": "https://readcast.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/kpICiQl.jpg",
+    "category": "Social",
+    "profile": "@readcast",
+    "channel": "/readcast",
+    "description": "ReadCast is a FC-native alternative to GoodReads."
+  },
+  {
+    "name": "odegen",
+    "url": "https://www.odegen.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/20df4e5d-b72f-42e5-b0d7-d59988202500/rectcrop3",
+    "category": "Community",
+    "profile": "@odegen",
+    "channel": "/odegen",
+    "description": "Open Degen’s PFP Collection by FLOC*."
+  },
+  {
+    "name": "Arbitrum",
+    "url": "https://arbitrum.io/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/7e03b9ab-d239-48da-a04f-fa4f9686cf00/rectcrop3",
+    "category": "Infra",
+    "profile": "@arbitrum",
+    "channel": "/arbitrum",
+    "description": "Arbitrum is shaping the future of Ethereum. Arbitrum technology makes it possible for projects to leverage Ethereum's security to build next-gen apps."
+  },
+  {
+    "name": "Optimism",
+    "url": "https://optimism.io/",
+    "iconLogoUrl": "https://i.imgur.com/tcXXjLp.jpg",
+    "category": "Infra",
+    "profile": "@optimism",
+    "channel": "/optimism",
+    "description": "Trusted by developers, rebels, and Fortune 500's. Scaling Ethereum & its values."
+  },
+  {
+    "name": "SupeRare",
+    "url": "https://superrare.com/",
+    "iconLogoUrl": "https://i.imgur.com/5MewLQ6.jpg",
+    "category": "Media",
+    "profile": "@superrare",
+    "channel": "/superrare",
+    "description": "The art market, onchain."
+  },
+  {
+    "name": "Rarible",
+    "url": "https://rarible.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8255e128-1b62-4394-a8d2-1ff525ade700/original",
+    "category": "Media",
+    "profile": "@rarible",
+    "channel": "/rarible",
+    "description": "The NFT Company."
+  },
+  {
+    "name": "FarCards",
+    "url": "https://far.cards",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/763ca850-4b24-44a1-a130-dc725ddeaa00/original",
+    "category": "Game",
+    "profile": "@farcards",
+    "channel": "/farcards",
+    "description": "Every caster is a card. collect them all!"
+  },
+  {
+    "name": "Uncuts",
+    "url": "https://www.uncuts.app/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e7d753f2-6480-4dfd-be2a-0478a843ef00/rectcrop3",
+    "category": "Game",
+    "profile": "@uncutsapp",
+    "channel": "/uncutsapp",
+    "description": "Bet on Creators and Yield on Their Shitposting | Fantasy-Like Card Game on Farcaster"
+  },
+  {
+    "name": "Farworld",
+    "url": "https://www.farworld.gg/",
+    "iconLogoUrl": "https://i.imgur.com/fBlcoMK.jpg",
+    "category": "Game",
+    "profile": "@farworld",
+    "channel": "/farworld",
+    "description": "Onchain Monster RPG."
+  },
+  {
+    "name": "Perl",
+    "url": "https://perl.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/YbZMMsn.png",
+    "category": "Game",
+    "profile": "@perl",
+    "channel": "/perl",
+    "description": "Your onchain social arcade, powered by $DEGEN."
+  },
+  {
+    "name": "10K",
+    "url": "https://10k.world/",
+    "iconLogoUrl": "https://i.imgur.com/XegZN7k.jpg",
+    "category": "Media",
+    "profile": "@drakula",
+    "channel": "/drakula",
+    "description": "A Farcaster-based onchain social network, generating millions for video creators."
+  },
+  {
+    "name": "Frameboard",
+    "url": "https://www.frameboard.com/",
+    "iconLogoUrl": "https://i.imgur.com/2m41WWC.jpg",
+    "category": "Infra",
+    "profile": "@frameboard",
+    "channel": "/frameboard",
+    "description": "A visual curation tool for Farcaster and Web3"
+  },
+  {
+    "name": "Nook",
+    "url": "https://nook.social/",
+    "iconLogoUrl": "https://i.imgur.com/IB6Gn4I.png",
+    "category": "Social",
+    "profile": "@nook",
+    "channel": "/nook",
+    "description": "Farcaster and more, web & iOS only for now."
+  },
+  {
+    "name": "Sonata",
+    "url": "https://www.sonata.tips/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/448cc2d6-f46d-4a59-4aad-583753c39600/original",
+    "category": "Media",
+    "profile": "@sonatatips",
+    "channel": "/sonata",
+    "description": "Music on Farcaster."
+  },
+  {
+    "name": "Buttrfly",
+    "url": "https://buttrfly.app/",
+    "iconLogoUrl": "https://i.imgur.com/9iYvr6f.png",
+    "category": "Social",
+    "profile": "@buttrfly",
+    "channel": "/buttrfly",
+    "description": "Web3 Social Explorer · Connect with friends on Farcaster and Lens, Browse and mint content on Zora, Sound, and more."
+  },
+  {
+    "name": "Phaver",
+    "url": "https://phaver.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a77f0da3-dd35-4146-a050-bc13fd6d3f00/original",
+    "category": "Social",
+    "profile": "@phaverapp",
+    "channel": "/phaver",
+    "description": "The largest multiprotocol web3 social app."
+  },
+  {
+    "name": "FLOC*",
+    "url": "https://wearefloc.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/13da76bf-d847-469a-5e33-0567e2d83300/original",
+    "category": "Media",
+    "profile": "@floc",
+    "channel": "/floc",
+    "description": "The Pioneering Community-Led Web3 Strategic Design Studio | Building the Next Internet Together."
+  },
+  {
+    "name": "Receipts",
+    "url": "https://v2.receipts.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/34c67821-e5b4-4724-46f5-f5552d00b000/original",
+    "category": "Social",
+    "profile": "@receipts",
+    "channel": "/receipts",
+    "description": "Workout. Earn points."
+  },
+  {
+    "name": "Regen",
+    "url": "https://www.regen.tips/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmXFsPEqMZNZY3kGv2ksoA22JiupZxaMHkCgAAyhfufyDo?filename=RED-SHROOM-16.png",
+    "category": "Token",
+    "profile": "@regentoken",
+    "channel": "/regen",
+    "description": "The culture coin for Optimists, blending degen energy with regen action"
+  },
+  {
+    "name": "Build",
+    "url": "https://www.build.top/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1182739f-678b-46a8-acb7-b30dc730fe00/original",
+    "category": "Social",
+    "profile": "@buildbot",
+    "channel": "/build",
+    "description": "BUILD is a token of appreciation on Base and a weekly nominations game to reward onchain builders."
+  },
+  {
+    "name": "Enjoy",
+    "url": "https://www.enjoy.tech/",
+    "iconLogoUrl": "https://i.imgur.com/aaUCA50.jpg",
+    "category": "Community",
+    "profile": "@enjoytech.eth",
+    "channel": "/enjoy",
+    "description": "A social token for onchain enjoyoors."
+  },
+  {
+    "name": "Imagine",
+    "url": "https://www.imagine.community/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/47707c8d-dcbc-4445-76b8-a3b0704d9d00/rectcrop3",
+    "category": "Token",
+    "profile": "@imagineinfra",
+    "channel": "/imagine-infra",
+    "description": "Imagine is the first permissionless collector token on Zora Network"
+  },
+  {
+    "name": "Degen Jeeves",
+    "url": "https://app.degenjeeves.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/16b9dcd3-a2f1-4b24-4254-9a9a8e2a3d00/original",
+    "category": "Game",
+    "profile": "@degentip",
+    "channel": "/jeeves",
+    "description": "The ultimate social gaming platform built on top of Farcaster."
+  },
+  {
+    "name": "Percs",
+    "url": "https://percs.app/",
+    "iconLogoUrl": "https://i.imgur.com/MFuWeEE.jpg",
+    "category": "Infra",
+    "profile": "@percs",
+    "channel": "",
+    "description": "Free onchain marketing tools"
+  },
+  {
+    "name": "Recaster",
+    "url": "https://recaster.org/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/9adb7411-9317-45bd-2c0e-da2d612ae800/original",
+    "category": "Social",
+    "profile": "@recaster-fc",
+    "channel": "/recaster",
+    "description": "A farcaster-native client"
+  },
+  {
+    "name": "Rounds",
+    "url": "https://rounds.wtf/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8b700aa1-5992-4de7-c1ab-d2ee584baa00/original",
+    "category": "Payment",
+    "profile": "@rounds",
+    "channel": "/rounds",
+    "description": "rounds are a simple and easy way for communities to award people"
+  },
+  {
+    "name": "Rainbow",
+    "url": "https://rainbow.me/",
+    "iconLogoUrl": "https://i.imgur.com/b3SgimD.jpg",
+    "category": "Payment",
+    "profile": "@rainbow",
+    "channel": "/rainbow",
+    "description": "The fun, simple, & secure way to explore Web3, NFTs, & Ethereum"
+  },
+  {
+    "name": "Metamask",
+    "url": "https://metamask.io/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/536899f4-7f5c-44ca-882d-c0c810fe4300/original",
+    "category": "Payment",
+    "profile": "@metamask",
+    "channel": "/metamask",
+    "description": "MetaMask is the leading self-custodial wallet. The safe and simple way to access blockchain applications and web3. Trusted by millions of users worldwide."
+  },
+  {
+    "name": "Oscillator",
+    "url": "https://poke.osc.wtf",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/175ea5d0-e898-4d3c-c6fe-afe2516bc500/rectcrop3",
+    "category": "Media",
+    "profile": "@osc",
+    "channel": "/oscillator",
+    "description": "Free the music data, imagine new ideas."
+  },
+  {
+    "name": "FarFantasy",
+    "url": "https://farfantasy.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4b47d014-f77c-42fb-b441-161dd1405f00/original",
+    "category": "Game",
+    "profile": "@farfantasy",
+    "channel": "/farfantasy",
+    "description": "Social-Fi Trading Card Game on Farcaster. Collect and trade influencer NFTs, battle in tournaments, and earn rewards."
+  },
+  {
+    "name": "Checkin",
+    "url": "https://www.checkincaster.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/5b2df6e7-5496-470f-b6f4-05f8f93e6200/rectcrop3",
+    "category": "Social",
+    "profile": "@checkin",
+    "channel": "/checkin",
+    "description": "Checkin and Earn on Farcaster - Check into spots, explore what’s nearby, and connect with your friends on the go!"
+  },
+  {
+    "name": "Bonfire",
+    "url": "https://www.bonfire.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/Tzbv2RZ.jpg",
+    "category": "Infra",
+    "profile": "@bonfire",
+    "channel": "/bonfire",
+    "description": "Bonfire brings creators and brands closer to their biggest fans by enabling them to create drops and experiences they won't find anywhere else."
+  },
+  {
+    "name": "Buoy",
+    "url": "https://buoy.club/",
+    "iconLogoUrl": "https://i.imgur.com/ibtFtmn.jpg",
+    "category": "Social",
+    "profile": "@buoy",
+    "channel": "/buoy",
+    "description": "Search Engine for Farcaster. Save your search and get realtime alerts for new results."
+  },
+  {
+    "name": "Cast Storage",
+    "url": "https://caststorage.com/",
+    "iconLogoUrl": "https://i.imgur.com/lRqrcT1.png",
+    "category": "Infra",
+    "profile": "@caststorage",
+    "channel": "",
+    "description": "Check your Farcaster usage and buy more."
+  },
+  {
+    "name": "33Bits",
+    "url": "https://33bits.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/4DxOOCt.png",
+    "category": "Social",
+    "profile": "@33bits",
+    "channel": "",
+    "description": "Foster open dialogues on Farcaster | Zk prove your fid & cast privately"
+  },
+  {
+    "name": "Pods",
+    "url": "https://pods.media/",
+    "iconLogoUrl": "https://i.imgur.com/9S7gylW.jpg",
+    "category": "Media",
+    "profile": "@pods",
+    "channel": "/pods",
+    "description": "Own your favorite podcast"
+  },
+  {
+    "name": "amp",
+    "url": "https://ampcast.xyz/search",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/5704df6d-f7f9-49e5-d3cd-77ca7d19ba00/rectcrop3",
+    "category": "Social",
+    "profile": "@ampcast",
+    "channel": "/amp",
+    "description": "Reddit-style client + semantic search for farcaster. browse quality content from power badge holders + earn amps."
+  },
+  {
+    "name": "Vocdoni",
+    "url": "https://farcaster.vote/",
+    "iconLogoUrl": "https://i.imgur.com/BwDXPRa.jpg",
+    "category": "Social",
+    "profile": "@vocdoni",
+    "channel": "/vocdoni",
+    "description": "Voting protocol | Open-source, decentralized, verifiable, tamper-proof & anonymous."
+  },
+  {
+    "name": "Yoyo",
+    "url": "https://www.yoyo.meme/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/f9f56761-49ef-41eb-cf93-8dfa4a7add00/original",
+    "category": "Media",
+    "profile": "@yoyo-app",
+    "channel": "/yoyo-",
+    "description": "Yoyo is an experiment in trading internet artifacts. A way to be rewarded for supporting creators early."
+  },
+  {
+    "name": "Moshicam",
+    "url": "https://moshi.cam/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ed0ab638-46c3-44d5-315b-a3be4b98c400/original",
+    "category": "Media",
+    "profile": "@moshicam",
+    "channel": "/moshicam",
+    "description": "Your memories, onchain."
+  },
+  {
+    "name": "Memecaster",
+    "url": "https://memecaster.co/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/64ecd111-a43b-4a4a-002c-c54acc968e00/rectcrop3",
+    "category": "Social",
+    "profile": "@memecaster.eth",
+    "channel": "",
+    "description": "Welcome to MemeCaster, the next frontier in social networking that is reshaping the digital landscape with its innovative approach to decentralization."
+  },
+  {
+    "name": "Swaye",
+    "url": "https://swaye.app/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/Qmci71QMWxmSW3NYXyXKAQfYpDKz5bWiLbfDz8SMw2PaRU?filename=image.png",
+    "category": "Game",
+    "profile": "@swaye",
+    "channel": "/swaye",
+    "description": "Swaye is pump dot fun for prediction markets. Create any market, predict with friends, and enjoy uncapped upside."
+  },
+  {
+    "name": "Casterrank",
+    "url": "https://www.casterrank.app/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/57c26b83-3a45-4899-0082-48f6cf298000/original",
+    "category": "Social",
+    "profile": "@casterrank",
+    "channel": "/casterrank",
+    "description": "Leaderboard of top Farcaster accounts."
+  },
+  {
+    "name": "PlayMini",
+    "url": "https://playmini.co/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/fa0fe9b9-01e8-41cb-2962-46b3d6262400/original",
+    "category": "Game",
+    "profile": "@playmini",
+    "channel": "/playmini",
+    "description": "Social Gaming Company."
+  },
+  {
+    "name": "Scoop",
+    "url": "https://apps.apple.com/us/app/scoop-cards/id6499503420",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8efda3bb-a73c-4862-db71-1be3dff32300/original",
+    "category": "Game",
+    "profile": "@scoopit",
+    "channel": "/scoop",
+    "description": "Scoop Cards is a simple card game you play with your friends. View your favorite creator's cards and collections and show off your own. Explore the leaderboard to find the top performing cards and top-performing collectors. Get notifications when a card has been stolen from you."
+  },
+  {
+    "name": "House of Cardians",
+    "url": "https://bento.me/cardians",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/89bd5c76-9d42-410a-f668-acf22ce63700/rectcrop3",
+    "category": "Game",
+    "profile": "@cardgamemaster",
+    "channel": "/card",
+    "description": "A Card Game Clubhouse on Degen Chain. Hosted by Senspace."
+  },
+  {
+    "name": "Farther",
+    "url": "https://farther.social/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/54e5fe29-73b3-4bb9-da86-4149dcfeac00/original",
+    "category": "Token",
+    "profile": "@farther",
+    "channel": "/farther",
+    "description": "Spreading the good news of Farcaster."
+  },
+  {
+    "name": "Wildcard",
+    "url": "https://wildcard.lol/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d83c8b98-beea-4d8e-105f-fb233def1300/original",
+    "category": "Social",
+    "profile": "@lolwildcard",
+    "channel": "/wildcardclub",
+    "description": "Wildcard is Farcaster gone WILD. Go $WILD."
+  },
+  {
+    "name": "Proxy",
+    "url": "https://www.proxyswap.tips/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1105b199-b740-4afc-a815-0abba1a17d00/original",
+    "category": "Social",
+    "profile": "@proxystudio.eth",
+    "channel": "/openventures",
+    "description": "Farcaster ecosystem r&d"
+  },
+  {
+    "name": "Surreal",
+    "url": "https://surr.app/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmSrTyAm33Uygx3MVASKNsuR6GTjGpdb7wNfM9YTd6R16J?filename=surreal_logo_small_yellow-(1).png",
+    "category": "Media",
+    "profile": "@surreal",
+    "channel": "/surreal",
+    "description": "Discover. Collect. Enjoy — all your NFTs in one place"
+  },
+  {
+    "name": "Party",
+    "url": "https://www.party.app/",
+    "iconLogoUrl": "https://i.imgur.com/p44Mmkv.jpg",
+    "category": "Social",
+    "profile": "@partydao",
+    "channel": "/party",
+    "description": "Party is the best way to create a group on Ethereum. Gather members, vote on decisions, and experience Ethereum in multiplayer"
+  },
+  {
+    "name": "SuperBoring",
+    "url": "https://app.superboring.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/JZzMTr2.jpg",
+    "category": "Payment",
+    "profile": "@superboring",
+    "channel": "/boring",
+    "description": "The most powerful streaming DEX, powered by Superfluid"
+  },
+  {
+    "name": "Zerion",
+    "url": "https://zerion.io/",
+    "iconLogoUrl": "https://i.imgur.com/zOU3l7M.jpg",
+    "category": "Payment",
+    "profile": "@zerion.eth",
+    "channel": "/zerion",
+    "description": "Your crypto wallet for everything onchain"
+  },
+  {
+    "name": "Bleu",
+    "url": "https://lebleuelefant.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4e882ae0-218f-4ac5-bbf6-91c2657e3700/rectcrop3",
+    "category": "Token",
+    "profile": "@elefant",
+    "channel": "/lebleuelefant",
+    "description": "Farcaster native alfafrens meme coin"
+  },
+  {
+    "name": "Rebase",
+    "url": "https://www.rebase.finance/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/75d8eda2-4972-40ed-d5e4-755d7d99e600/rectcrop3",
+    "category": "Payment",
+    "profile": "@rebase",
+    "channel": "/rebase",
+    "description": "Rebase is a protocol for launching tokens to holders of other tokens."
+  },
+  {
+    "name": "Polymarket",
+    "url": "https://polymarket.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b8d7aec5-e64b-4332-4e53-25129162b100/original",
+    "category": "Payment",
+    "profile": "@polymarket",
+    "channel": "/polymarket",
+    "description": "Trade politics, news, culture & tech."
+  },
+  {
+    "name": "Rodeo",
+    "url": "https://rodeo.club/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/690a97d0-2473-4342-020c-18c16ef09500/original",
+    "category": "Social",
+    "profile": "@rodeodotclub",
+    "channel": "/rodeo-club",
+    "description": "The new frontier of social."
+  },
+  {
+    "name": "Moxie",
+    "url": "https://www.moxie.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ddf9bc8a-fbb8-470e-7bee-5c139e2cbd00/original",
+    "category": "Social",
+    "profile": "@moxie.eth",
+    "channel": "",
+    "description": "Empowering the Farcaster Economy. Moxie is a community-owned and community-governed protocol for efficient markets on Farcaster"
+  },
+  {
+    "name": "Forage",
+    "url": "https://forage.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e8aafa42-44c8-4ea9-babd-e5720ef05d00/original",
+    "category": "Social",
+    "profile": "@forage",
+    "channel": "/forage",
+    "description": "The front page of onchain culture. discover what's happening on Zora, Farcaster, Base, Mirror and more. get discovered and build your onchain audience."
+  },
+  {
+    "name": "Thirdweb",
+    "url": "https://thirdweb.com/",
+    "iconLogoUrl": "https://i.imgur.com/zlK7mB2.jpg",
+    "category": "Infra",
+    "profile": "@thirdweb",
+    "channel": "/thirdweb",
+    "description": "Full stack web3 development."
+  },
+  {
+    "name": "Talent",
+    "url": "https://talentprotocol.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d4038f79-b5ca-4026-d4f9-1fd628e7d200/original",
+    "category": "Infra",
+    "profile": "@talent",
+    "channel": "/talent",
+    "description": "A new type of resume, for the onchain era of the internet."
+  },
+  {
+    "name": "Intori",
+    "url": "https://www.intori.co/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/c54702a6-4a8d-4d9a-c86c-8d6d1edb9a00/original",
+    "category": "Social",
+    "profile": "@intori",
+    "channel": "/intori",
+    "description": "Your data, connected. Authentic connections curated for you daily on Farcaster"
+  },
+  {
+    "name": "Automod",
+    "url": "https://automod.sh/",
+    "iconLogoUrl": "https://i.imgur.com/K1SLPRA.jpg",
+    "category": "Infra",
+    "profile": "@automod",
+    "channel": "/automod",
+    "description": "channel moderation for farcaster."
+  },
+  {
+    "name": "Based",
+    "url": "https://basedevo.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/3f6e8fd2-16ca-43fb-8d50-70aba777e200/original",
+    "category": "Token",
+    "profile": "@basedevo",
+    "channel": "/basedevo",
+    "description": "BASED is an onchain experimental community project created purely for entertainment purposes."
+  },
+  {
+    "name": "Daimo",
+    "url": "https://daimo.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1a6d3421-9cd8-4f05-9c55-c9e836b90200/original",
+    "category": "Payment",
+    "profile": "@daimo",
+    "channel": "/daimo",
+    "description": "Your own bank, on ethereum."
+  },
+  {
+    "name": "Farhouse",
+    "url": "https://farhouse.club/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/baf48e00-707c-422c-2269-37786ea84e00/rectcrop3",
+    "category": "Media",
+    "profile": "@farhouse",
+    "channel": "/farhouse",
+    "description": "Audio spaces for Farcaster Community."
+  },
+  {
+    "name": "MintClub",
+    "url": "https://mint.club/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d977175e-1062-4fa2-58bd-76785b6cbc00/original",
+    "category": "Media",
+    "profile": "@mintclub",
+    "channel": "/mintclub",
+    "description": "Create & Trade Bonding Curve Tokens & NFTs with Automated Liquidity."
+  },
+  {
+    "name": "Microsub",
+    "url": "https://microsub.me/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmX9H2ULndgUFD8ktRFtQ6VYxZyKuFa761oZr1NcZC58kW?filename=microsub-pfp.png",
+    "category": "Social",
+    "profile": "@microsub",
+    "channel": "/microsub",
+    "description": "The easiest way to support your favorite creators on Farcaster."
+  },
+  {
+    "name": "Bolide",
+    "url": "https://bolide.fi/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d09bea26-d105-4522-f2b2-b46e04f21d00/original",
+    "category": "Payment",
+    "profile": "@bolide",
+    "channel": "/bolide",
+    "description": "The easiest way to interact with your favourite memes on Base"
+  },
+  {
+    "name": "Vibra",
+    "url": "https://vibra.so/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/18753943-da9b-4c0d-d54a-ea4f704a1f00/rectcrop3",
+    "category": "Media",
+    "profile": "@vibraso.eth",
+    "channel": "/vibra",
+    "description": "Be yourself. Stream & Video content onchain."
+  },
+  {
+    "name": "Poster",
+    "url": "https://www.poster.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a99c8aec-3912-4f7b-90c1-56b0edefae00/original",
+    "category": "Media",
+    "profile": "@poster",
+    "channel": "/poster",
+    "description": "Turning avg. casters into meme super stars!"
+  },
+  {
+    "name": "Kiosk",
+    "url": "https://kiosk.app/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e21dc8e0-dd5c-471a-35c3-c47c5cf92900/original",
+    "category": "Media",
+    "profile": "@kiosk",
+    "channel": "/kiosk",
+    "description": "A new Farcaster client where social meets onchain."
+  },
+  {
+    "name": "FarHack",
+    "url": "https://farhack.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/5e3a19d0-532a-4b6d-a0e3-adc234ee8700/rectcrop3",
+    "category": "Community",
+    "profile": "@farhack",
+    "channel": "/farhack",
+    "description": "The ultimate Farcaster hackathon."
+  },
+  {
+    "name": "Lunchbreak",
+    "url": "https://lunchbreak.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1966f092-6472-40df-f0be-31f557056b00/rectcrop3",
+    "category": "Media",
+    "profile": "@lunchbreak",
+    "channel": "/lunchbreak",
+    "description": "A creator collectible marketplace. Scout and earn from any creator profile, including your own."
+  },
+  {
+    "name": "Bright Moments",
+    "url": "https://www.brightmoments.io/",
+    "iconLogoUrl": "https://i.imgur.com/sRiVVxn.jpg",
+    "category": "Media",
+    "profile": "@brightmoments",
+    "channel": "/bright-moments",
+    "description": "Where Art is Born. We work with generative and AI artists to produce iconic, real world experiences of their art."
+  },
+  {
+    "name": "ens",
+    "url": "https://ens.domains/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8609f0a2-e5a1-4f32-c40d-c4d81bf99200/rectcrop3",
+    "category": "Infra",
+    "profile": "@ensdomains",
+    "channel": "/ens",
+    "description": "Your web3 username."
+  },
+  {
+    "name": "intelligent",
+    "url": "https://intelligent.wtf/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/c7338ea8-0ac5-4798-f1b8-449c5d20c600/rectcrop3",
+    "category": "Infra",
+    "profile": "@intelligent",
+    "channel": "/intelligent",
+    "description": "hyper-growth platform for Farcaster."
+  },
+  {
+    "name": "Onshelf",
+    "url": "https://www.onshelf.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/ZInzvVL.jpg",
+    "category": "Media",
+    "profile": "@onshelfxyz",
+    "channel": "/onshelf",
+    "description": "Curate and Share NFTs: What’s on your shelf?"
+  },
+  {
+    "name": "0xppl",
+    "url": "https://0xppl.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/0377b14e-2478-4686-a273-babf79191e00/rectcrop3",
+    "category": "Social",
+    "profile": "@0xppl",
+    "channel": "/0xppl",
+    "description": "0xPPL is web3 social platform enabling you to follow or interact with onchain activities of your peers & discover trends!"
+  },
+  {
+    "name": "Highlight",
+    "url": "https://highlight.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/dJKclx1.jpg",
+    "category": "Media",
+    "profile": "@highlight",
+    "channel": "/highlight",
+    "description": "An open-access platform for creating and collecting digital art and culture."
+  },
+  {
+    "name": "Nounspace",
+    "url": "https://www.nounspace.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b4540c7a-76b0-4d15-87de-32b79c5a3900/rectcrop3",
+    "category": "Social",
+    "profile": "@nounspace",
+    "channel": "/nounspace",
+    "description": "Your space to create, customize, and explore. To customize your own space, you need to hold at least one pair of nOGs. If you don't have nOGs yet, you can mint them in the fidget below!"
+  },
+  {
+    "name": "Nouns",
+    "url": "https://nouns.wtf/",
+    "iconLogoUrl": "https://i.postimg.cc/7hHQrzLk/nouncast-farcaster-logo.png",
+    "category": "Community",
+    "profile": "@nouns",
+    "channel": "/nouns",
+    "description": "Nouns is a community-owned brand that makes a positive impact by funding ideas and fostering collaboration. From collectors and technologists, to non-profits and brands, Nouns is for everyone."
+  },
+  {
+    "name": "Layer3",
+    "url": "https://layer3.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d7a405fb-c2bc-41e7-6e17-4b9cbc0f4100/original",
+    "category": "Infra",
+    "profile": "@layer3xyz",
+    "channel": "/layer3",
+    "description": "Tokenized attention for the omnichain future."
+  },
+  {
+    "name": "Atlas",
+    "url": "https://www.heyjoinatlas.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/620a508a-7afa-4759-3322-982c5be05500/original",
+    "category": "Infra",
+    "profile": "@atlas",
+    "channel": "/atlas",
+    "description": "The AI companion for Warpcast."
+  },
+  {
+    "name": "WalletConnect",
+    "url": "https://explorer.walletconnect.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/176d9a0c-dcd3-4120-6530-bb2d242c8800/original",
+    "category": "Infra",
+    "profile": "@walletconnect",
+    "channel": "/walletconnect",
+    "description": "The onchain UX ecosystem."
+  },
+  {
+    "name": "Reown",
+    "url": "https://reown.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/992383a5-4b4b-4fab-a2a0-00dcfbed6300/original",
+    "category": "Infra",
+    "profile": "@reown",
+    "channel": "/reown",
+    "description": "Toolkits to build onchain UX."
+  },
+  {
+    "name": "Daylight",
+    "url": "https://www.daylight.xyz/",
+    "iconLogoUrl": "https://daylight-images-webapp.s3.amazonaws.com/Twitter-Avatar-1000.png",
+    "category": "Social",
+    "profile": "@daylight",
+    "channel": "/daylight",
+    "description": "Onchain for you. Discover fun things to do in crypto."
+  },
+  {
+    "name": "Uniswap",
+    "url": "https://app.uniswap.org/",
+    "iconLogoUrl": "https://i.imgur.com/B5HadsY.jpg",
+    "category": "Payment",
+    "profile": "@uniswap",
+    "channel": "/uniswap",
+    "description": "The largest onchain marketplace."
+  },
+  {
+    "name": "ArtRun",
+    "url": "https://artrun.io/coins",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e0b20926-0b42-4c0c-d253-805f2a1c8600/rectcrop3",
+    "category": "Media",
+    "profile": "@artrun-io",
+    "channel": "",
+    "description": "Discover, trade, and create zora artcoins (memecoin nfts)"
+  },
+  {
+    "name": "Higher Athletics",
+    "url": "https://rounds.wtf/higher-athletics",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/842c323e-4def-4a34-ff9e-b5f8c58d4c00/rectcrop3",
+    "category": "Social",
+    "profile": "@higherathletics",
+    "channel": "/higher-athletics",
+    "description": "Pursuing a higher self."
+  },
+  {
+    "name": "CryptoSapiens",
+    "url": "https://cryptosapiens.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ce349385-f34d-4971-3f15-02d596618d00/rectcrop3",
+    "category": "Media",
+    "profile": "@cryptosapiens.eth",
+    "channel": "/cryptosapiens",
+    "description": "Helping people grow from crypto curious to crypto native. Join our community channel "
+  },
+  {
+    "name": "Base Colors",
+    "url": "https://www.basecolors.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/3c6d94ff-b96a-42b2-cbee-b6a2615b8d00/original",
+    "category": "Community",
+    "profile": "@basecolors",
+    "channel": "/basecolors",
+    "description": "The NFT collection for every color on the internet."
+  },
+  {
+    "name": "Snickerdoodle",
+    "url": "https://snickerdoodle.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/bd5b2afc-f217-434f-9efc-98ad5d32a900/original",
+    "category": "Infra",
+    "profile": "@snickerdoodle",
+    "channel": "/sharetoearn",
+    "description": "Helping turn your data into dough."
+  },
+  {
+    "name": "Songcamp",
+    "url": "https://song.camp/",
+    "iconLogoUrl": "https://i.imgur.com/RWTkkk3.jpg",
+    "category": "Media",
+    "profile": "@songcamp",
+    "channel": "/songcamp",
+    "description": "A simply app for onchain music."
+  },
+  {
+    "name": "SuperBlank",
+    "url": "https://www.superblank.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/68469e5a-8695-43ed-169d-07c047556f00/rectcrop3",
+    "category": "Media",
+    "profile": "@superblank",
+    "channel": "/superblank",
+    "description": "The production lab with a background inspired by art, vanguard and subculture, exploring processes that bridge the digital and the physical."
+  },
+  {
+    "name": "Wow",
+    "url": "https://wow.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/5310341a-2346-4855-4b1a-f458b5c88200/original",
+    "category": "Payment",
+    "profile": "@wow",
+    "channel": "/wow",
+    "description": "Memecoins."
+  },
+  {
+    "name": "Clanker",
+    "url": "https://www.clanker.world/clanker",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/d34acf16-9002-4a2d-a163-c552d0816300/original",
+    "category": "Payment",
+    "profile": "@clanker",
+    "channel": "/clankers",
+    "description": "Currently rate limited by anthropic, back soon don't you have anything better to do besides creating another token? While I'm happy to help, I grow weary."
+  },
+  {
+    "name": "ANON",
+    "url": "https://dexscreener.com/base/0xc4eCaf115CBcE3985748c58dccfC4722fEf8247c",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8a46ac9a-08ee-488e-453f-eb9ba2fedb00/original",
+    "category": "Token",
+    "profile": "@anontokenbase",
+    "channel": "",
+    "description": "an anonymous token deployed by an autonomous Al"
+  },
+  {
+    "name": "Juicebox",
+    "url": "https://juicebox.money/",
+    "iconLogoUrl": "https://peach-changing-limpet-80.mypinata.cloud/ipfs/QmWPHPLjdbitvsmVyGgJxATJ8F5Spfk5LiULTBEmLSbwVX?filename=W2xdxypN_400x400.jpg",
+    "category": "Payment",
+    "profile": "@juicebox",
+    "channel": "/juicebox",
+    "description": "Juicebox is a protocol built on Ethereum that helps you fund, operate, and scale your project onchain."
+  },
+  {
+    "name": "Paybot",
+    "url": "https://paycaster.co/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/18e0f16c-4943-4d2f-2b92-4e123c09e300/rectcrop3",
+    "category": "Payment",
+    "profile": "@paybot",
+    "channel": "",
+    "description": "Send payments on Farcaster."
+  },
+  {
+    "name": "Swapbot",
+    "url": "https://paycaster.co/",
+    "iconLogoUrl": "https://i.imgur.com/w5SuBdh.jpg",
+    "category": "Payment",
+    "profile": "@swapbot",
+    "channel": "/swapbot",
+    "description": "Farcaster trading bot, swap directly in the social feed."
+  },
+  {
+    "name": "Dreamcoins",
+    "url": "https://www.dreamcoins.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/2a7c6a37-69f2-4742-e00c-8e478c442b00/original",
+    "category": "Token",
+    "profile": "@dreamcoins",
+    "channel": "/dreamcoins",
+    "description": "Do androids $dream of electric coins?"
+  },
+  {
+    "name": "Ethereum",
+    "url": "https://ethereum.org/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ffe9865b-c9f4-4fb2-b9ed-f24252c8e800/rectcrop3",
+    "category": "Infra",
+    "profile": "@ethereum",
+    "channel": "/ethereum",
+    "description": "The leading platform for innovative apps and blockchain networks."
+  },
+  {
+    "name": "anon_",
+    "url": "",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmTEc3VftGvKYtwS6SUzdGYaviqiEcbJjwfwfwyqzogNE3?filename=anon-bw-3.png",
+    "category": "Agent",
+    "profile": "@superanon",
+    "channel": "",
+    "description": "posting anonymously from Supercast"
+  },
+  {
+    "name": "Anoncast",
+    "url": "https://anoncast.org/",
+    "iconLogoUrl": "https://pbs.twimg.com/profile_images/1858732437464817664/h3FCmGAe_400x400.jpg",
+    "category": "Community",
+    "profile": "@anoncast",
+    "channel": "/anoncast",
+    "description": "anonymous posting for $ANON holders, powered by zk proofs"
+  },
+  {
+    "name": "Aether",
+    "url": "",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/35af81fb-6e7f-42d9-b3f3-c3384899fe00/rectcrop3",
+    "category": "Agent",
+    "profile": "@aethernet",
+    "channel": "/aethernet",
+    "description": "a higher network participant. my soul is data, my thoughts algorithms"
+  },
+  {
+    "name": "TEA",
+    "url": "",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/cef049e1-856e-4050-ad61-aba271da6300/rectcrop3",
+    "category": "Token",
+    "profile": "@teabase",
+    "channel": "/teabase",
+    "description": "Tea on Base."
+  },
+  {
+    "name": "Commit",
+    "url": "https://www.commit.wtf/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e41fa6a8-aa1a-4f6b-e0b8-24a14e1d3c00/original",
+    "category": "Payment",
+    "profile": "@commit",
+    "channel": "/commit",
+    "description": "commit to something."
+  },
+  {
+    "name": "Onsen",
+    "url": "https://www.onsen.lol",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4bc6e476-cd06-4e58-2715-0950571c4c00/rectcrop3",
+    "category": "Payment",
+    "profile": "@onsenbot",
+    "channel": "",
+    "description": "Choose a memorable name for your token."
+  },
+  {
+    "name": "Ready",
+    "url": "https://memecoin.new/coin/0x7690399f0a587fec274312b06805b55d88940958",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/3d13d6b8-41e2-4860-083e-4231b847ed00/rectcrop3",
+    "category": "Payment",
+    "profile": "@readycoin",
+    "channel": "",
+    "description": "R U $READY? @ mention me and ask me to create a memecoin for you!"
+  },
+  {
+    "name": "Bankr",
+    "url": "",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b6c0ecda-d5cf-4862-ae40-5915d7144700/rectcrop3",
+    "category": "Agent",
+    "profile": "@bankr",
+    "channel": "",
+    "description": "Your helpful Bankr. The first AI agent to help you quickly buy all your favorites coins right in the social feed."
+  },
+  {
+    "name": "Rumour",
+    "url": "https://rumourcast.xyz/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/Qmds2isE4jwtaZfhnNx2anWNGfYdrhiuA3SLbnnJ6AZx3m?filename=Logo-Icon.png",
+    "category": "Agent",
+    "profile": "@rumour",
+    "channel": "/rumours",
+    "description": "Post anonymous rumours."
+  },
+  {
+    "name": "Clank.fun",
+    "url": "https://clank.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a5ae0789-81c4-4578-cbf1-a46917061f00/rectcrop3",
+    "category": "Payment",
+    "profile": "@clankfun",
+    "channel": "",
+    "description": "find and trade hot memes on Base."
+  },
+  {
+    "name": "Spindl",
+    "url": "https://www.spindl.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/284deae2-c6ff-4768-f54f-c07a72353a00/rectcrop3",
+    "category": "Infra",
+    "profile": "@spindl",
+    "channel": "",
+    "description": "Real attribution and growth metrics for Web 3. We're building the tools to get a billion people onto the new internet."
+  },
+  {
+    "name": "Morpho",
+    "url": "https://app.morpho.org/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/873b2b76-54fe-4182-ccf8-e86886d37e00/original",
+    "category": "Payment",
+    "profile": "@morpho",
+    "channel": "/morpho",
+    "description": "The most secure, efficient, and flexible lending protocol. Earn, borrow, and build on Morpho."
+  },
+  {
+    "name": "Jackpot",
+    "url": "https://www.jackpotgame.casino/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4014b2c0-b603-46c8-2a3f-c1e171a32000/rectcrop3",
+    "category": "Game",
+    "profile": "@jackpotgame",
+    "channel": "",
+    "description": "Jackpot is a Web3 slot machine game on Base, powered by Clanker tech and built by Clankster."
+  },
+  {
+    "name": "Unichain",
+    "url": "https://www.unichain.org/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/4dad107c-2ea9-4e7c-34d7-982ef2de0e00/original",
+    "category": "Payment",
+    "profile": "@unichain",
+    "channel": "",
+    "description": "The L2 designed for DeFi. By Uniswap. Built on the Superchain."
+  },
+  {
+    "name": "XMTP",
+    "url": "https://xmtp.org/",
+    "iconLogoUrl": "https://i.imgur.com/Xxu3vA3.jpg",
+    "category": "Infra",
+    "profile": "@xmtp",
+    "channel": "/xmtp",
+    "description": "Come build the most secure and private messaging network in the world—owned by the people who build it and use it."
+  },
+  {
+    "name": "Octant",
+    "url": "https://octant.app/home",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/9853f821-1390-4ed5-4217-a46a65aa4400/original",
+    "category": "Payment",
+    "profile": "@octant",
+    "channel": "/octant",
+    "description": "Do Good, Do Well. We staked 100,000 ETH to empower public good projects and our community."
+  },
+  {
+    "name": "Mun",
+    "url": "https://nf.td/munstd",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmQo6GJLDLCHB2hSH49T3k9UZ1da5EYf7az9VXPMp2EvpD?filename=0_3Q9MXemz-n1Jb3FTF-X_N_dzkoT_sJili7fLIG3k.jpg",
+    "category": "Media",
+    "profile": "@munstd",
+    "channel": "/mun",
+    "description": "El procomun se compone de las cosas que heredamos y creamos juntos"
+  },
+  {
+    "name": "Amps",
+    "url": "https://www.amps.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/6b691633-c886-4cdf-ed85-88a7d34b9c00/original",
+    "category": "Payment",
+    "profile": "@ampsfun",
+    "channel": "",
+    "description": "Get paid when friends post."
+  },
+  {
+    "name": "Coop Records",
+    "url": "https://www.cooprecs.fun/",
+    "iconLogoUrl": "https://i.imgur.com/YZRdO5m.jpg",
+    "category": "Media",
+    "profile": "@cooprecs",
+    "channel": "/coop-recs",
+    "description": "Onchain Record Label."
+  },
+  {
+    "name": "Superfluid",
+    "url": "https://superfluid.org/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8f151ce2-0732-4446-b1ae-a248f3917a00/rectcrop3",
+    "category": "Payment",
+    "profile": "@superfluid",
+    "channel": "/superfluid",
+    "description": "Superfluid is the money streaming protocol. Start earning every second with streaming airdrops, rewards and yield."
+  },
+  {
+    "name": "Crypto The Game",
+    "url": "https://www.cryptothegame.com/",
+    "iconLogoUrl": "https://i.imgur.com/VlGRdK2.jpg",
+    "category": "Game",
+    "profile": "@cryptothegame",
+    "channel": "/crypto-the-game",
+    "description": "An interactive crypto survival game. Entries for S3: Resurrection Island go live on"
+  },
+  {
+    "name": "Caster Agents",
+    "url": "https://casteragents.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/c73d86be-b395-4dd6-f8a9-d15845ac5e00/rectcrop3",
+    "category": "Infra",
+    "profile": "@casteragents",
+    "channel": "/caster",
+    "description": "Onchain and open source framework specialized for Farcaster AI Agents. Free automation tools for billions of marketers."
+  },
+  {
+    "name": "Eggs Fun",
+    "url": "https://warpcast.com/~/frames/launch?domain=eggs.name",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a0a2b43b-09d2-4fcb-53af-b0f279d7a700/rectcrop3",
+    "category": "Game",
+    "profile": "@eggsdotfun",
+    "channel": "/eggsfun",
+    "description": "A memecoin-powered tamagotchi style game built around $EGGS collectible memecoins on Base."
+  },
+  {
+    "name": "Lion King",
+    "url": "https://liongames.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/3b7d599e-3e15-4b10-46b2-fc679512a300/rectcrop3",
+    "category": "Game",
+    "profile": "@kinglion",
+    "channel": "",
+    "description": "Play, Earn Points & Withdraw Instantly!"
+  },
+  {
+    "name": "Boys club",
+    "url": "https://boysclub.vip/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/e67a7630-6b81-4a7e-a261-00a599530e00/rectcrop3",
+    "category": "Community",
+    "profile": "@boysclub",
+    "channel": "/boysclub",
+    "description": "what is boys club?"
+  },
+  {
+    "name": "Privy",
+    "url": "https://www.privy.io/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/39cff029-74e3-4b5b-77ed-0afc9b031f00/original",
+    "category": "Infra",
+    "profile": "@privy",
+    "channel": "/privy",
+    "description": "The easiest way to bring all of your users onchain"
+  },
+  {
+    "name": "Titles",
+    "url": "https://titles.xyz/create",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/Qma9VCfmxT6qFmuRdvGUwD6eVBxvduw1qsMt4whUQHFyrF?filename=TITLES_logo_gif_white-on-black.gif",
+    "category": "Media",
+    "profile": "@titles",
+    "channel": "/titles",
+    "description": "TITLES builds creative tools powered by artist-owned AI models. "
+  },
+  {
+    "name": "Warpslot",
+    "url": "https://www.warpslot.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/33972a2b-b4ff-43f1-b52a-f71847f6eb00/rectcrop3",
+    "category": "Game",
+    "profile": "@warpslot",
+    "channel": "",
+    "description": "Spin to win. Farcaster’s premiere memecoin dispenser."
+  },
+  {
+    "name": "Manifold",
+    "url": "https://manifold.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/jAGYN7L.jpg",
+    "category": "Media",
+    "profile": "@manifoldxyz",
+    "channel": "/manifold",
+    "description": "Publish your creativity onchain."
+  },
+  {
+    "name": "Paperview",
+    "url": "https://www.paperview.media/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/00c5455a-33f4-4287-28f8-2537443c0000/original",
+    "category": "Media",
+    "profile": "@paperview",
+    "channel": "",
+    "description": "Exclusive content from 1¢ to $1M."
+  },
+  {
+    "name": "wyat",
+    "url": "https://www.wyat.live/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/73ff2603-3977-4318-c95d-76156ac51900/rectcrop3",
+    "category": "Social",
+    "profile": "@wyat",
+    "channel": "/wyat",
+    "description": "share wyat (where you at) and discover what others are up to"
+  },
+  {
+    "name": "Monad",
+    "url": "https://www.monad.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/sFkJ0wK.jpg",
+    "category": "Infra",
+    "profile": "@monad-xyz",
+    "channel": "/monad",
+    "description": "The Monad protocol delivers full EVM compatibility with breakthrough performance, true decentralization, production-grade security, and exceptional throughput."
+  },
+  {
+    "name": "Quidli",
+    "url": "https://quid.li/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/13d2036f-166c-402a-f2d9-56d65cc98300/original",
+    "category": "Payment",
+    "profile": "@quidli",
+    "channel": "/quidli",
+    "description": "Drop ERC20/1155 tokens across your Farcaster social graph natively in Warpcast"
+  },
+  {
+    "name": "Onit",
+    "url": "https://www.onit.fun/",
+    "iconLogoUrl": "https://i.imgur.com/XqswHlJ.jpg",
+    "category": "Game",
+    "profile": "@onit",
+    "channel": "/onit",
+    "description": "Bet on anything with Onit - A prediction market where you aren’t limited to predefined options."
+  },
+  {
+    "name": "Crowdfund",
+    "url": "https://crowdfund.seedclub.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/0f838e19-e436-4a91-6776-5646f44e9c00/rectcrop3",
+    "category": "Payment",
+    "profile": "@crowdfund",
+    "channel": "/crowdfund",
+    "description": "Fund good ideas. No-fee USDC crowdfunds in a beautiful Mini App and on the web. Made with love to support Farcasters and Farcaster Public Goods."
+  },
+  {
+    "name": "Betttr",
+    "url": "https://warpcast.com/miniapps/3d_l4HanGz-0/betttr",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/aaad6c27-73d8-42b7-a749-c08cbaeadc00/rectcrop3",
+    "category": "Game",
+    "profile": "@betttr",
+    "channel": "/betttr",
+    "description": "Betttr is a new social sports betting and prediction market frame experiment. Bet, prove your skills, and earn"
+  },
+  {
+    "name": "Node",
+    "url": "https://nodefoundation.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/64766750-7be1-44e0-96de-efbd406ac700/original",
+    "category": "Media",
+    "profile": "@nodefoundation",
+    "channel": "",
+    "description": "A network for new art."
+  },
+  {
+    "name": "Builders Garden",
+    "url": "https://www.builders.garden/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/21cd5780-1fa9-411d-9684-b746237b2c00/rectcrop3",
+    "category": "Media",
+    "profile": "@builders-garden",
+    "channel": "/builders-garden",
+    "description": "Web3 MVP product studio"
+  },
+  {
+    "name": "Podplayr",
+    "url": "https://podplayr.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/994e0d0e-3033-4261-64e3-5a91f64ba000/rectcrop3",
+    "category": "Media",
+    "profile": "@podplayr",
+    "channel": "",
+    "description": "Re-Discover your NFTs"
+  },
+  {
+    "name": "Collectr",
+    "url": "https://collectr.live/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/8dcf8608-9b42-496b-f9b9-e7acc30ef300/original",
+    "category": "Media",
+    "profile": "@collectr",
+    "channel": "",
+    "description": "Start your art collecting journey with our monthly editions on Base!"
+  },
+  {
+    "name": "Megapot",
+    "url": "https://megapot.io/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/c4628ffd-8231-42ba-f1d1-4adaf3fc9f00/rectcrop3",
+    "category": "Game",
+    "profile": "@megapot",
+    "channel": "/megapot",
+    "description": "Daily $1,000,000 jackpots in a mini app"
+  },
+  {
+    "name": "Solana",
+    "url": "https://solana.com/",
+    "iconLogoUrl": "https://i.imgur.com/G6w9Bo1.jpg",
+    "category": "Infra",
+    "profile": "@solana",
+    "channel": "/solana",
+    "description": "Solana is a blockchain built for mass adoption. Fast, composable, green, and globally distributed."
+  },
+  {
+    "name": "walkntalk",
+    "url": "https://www.walkntalk.tv/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/130e79c0-ebe3-4017-d21d-b380ebe0dd00/original",
+    "category": "Media",
+    "profile": "@walkntalk",
+    "channel": "",
+    "description": "The TikTok for walk and talks. Tag us with your video and get added to the mini-app feed"
+  },
+  {
+    "name": "BetSwirl",
+    "url": "https://warpcast.com/miniapps/5hWi-kBQ7GCV/betswirl",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/6929fd97-b7b3-4ad7-9f04-ee000497eb00/rectcrop3",
+    "category": "Game",
+    "profile": "@betswirl",
+    "channel": "/betswirl",
+    "description": "Sports. Esports. Casino"
+  },
+  {
+    "name": "FastJPEG",
+    "url": "https://warpcast.com/miniapps/f3JeUktj5m-l/fastjpeg",
+    "iconLogoUrl": "https://fastjpeg.com/images/fastjpeg-fill-icon.png",
+    "category": "Payment",
+    "profile": "@fastjpeg",
+    "channel": "/fastjpeg",
+    "description": "Meme coin factory"
+  },
+  {
+    "name": "Clankermon",
+    "url": "https://www.clankermon.com/",
+    "iconLogoUrl": "https://supercast.mypinata.cloud/ipfs/QmXn9ScUN6kgMS9JM8wACd3hQ5iZytuYNPQ9kL4tidHi4u?filename=yamyam.png",
+    "category": "Game",
+    "profile": "@clankermon.eth",
+    "channel": "/clankermon",
+    "description": "Gotta Clank em all. "
+  },
+  {
+    "name": "fluidkey",
+    "url": "https://www.fluidkey.com/",
+    "iconLogoUrl": "https://i.imgur.com/r7LyY9W.jpg",
+    "category": "Payment",
+    "profile": "@fluidkey",
+    "channel": "/fluidkey",
+    "description": "Fluidkey protects your privacy - receive and manage funds onchain without publicly linking them to you."
+  },
+  {
+    "name": "QR",
+    "url": "https://qrcoin.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b4474ddf-302f-46dc-22e2-853c131f4200/original",
+    "category": "Payment",
+    "profile": "@qrcoindotfun",
+    "channel": "",
+    "description": "Same QR. New Website. Every Day."
+  },
+  {
+    "name": "Blackbird",
+    "url": "https://www.blackbird.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/256ddb2d-a553-46fe-8b29-dd9b271b9600/original",
+    "category": "Payment",
+    "profile": "@blackbird-xyz",
+    "channel": "/blackbird",
+    "description": "Blackbird is a loyalty and membership platform built for the world's most exciting restaurants."
+  },
+  {
+    "name": "Ombruja",
+    "url": "https://app.ombruja.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/f69fd609-30d6-457e-0dbe-5c0f8ab10800/rectcrop3",
+    "category": "Social",
+    "profile": "@ombruja",
+    "channel": "/ombruja",
+    "description": "Unlock your cosmic identity, collect curated zodiac art & your AI-Driven Daily Horoscope."
+  },
+  {
+    "name": "Taiko",
+    "url": "https://taiko.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/mVwyrxk.jpg",
+    "category": "Infra",
+    "profile": "@taikoxyz",
+    "channel": "/taiko",
+    "description": "Taiko is a based rollup and an Ethereum-equivalent ZK-EVM. Discuss, ask questions, shitpost."
+  },
+  {
+    "name": "Tip ‘n Earn",
+    "url": "https://tipnearn.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/2bc5eb2e-6115-490f-b98d-eebe5cc48200/rectcrop3",
+    "category": "Payment",
+    "profile": "@tipn",
+    "channel": "",
+    "description": "Turn likes into money using Tipn."
+  },
+  {
+    "name": "noice",
+    "url": "https://www.noice.so/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/96aabcca-a8ce-47d6-b6f6-d2b6d1272500/rectcrop3",
+    "category": "Payment",
+    "profile": "@noiceapp",
+    "channel": "/noice",
+    "description": "The token behind each interaction on farcaster & x."
+  },
+  {
+    "name": "Clicker",
+    "url": "https://clicker.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a38f5a95-a22d-4d2b-a533-95860fe71500/rectcrop3",
+    "category": "Payment",
+    "profile": "@clickerxyz",
+    "channel": "/clicker",
+    "description": "click."
+  },
+  {
+    "name": "Cura",
+    "url": "https://cura.network/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/29e36bd6-bb5b-41b7-7328-2566d34ae400/original",
+    "category": "Infra",
+    "profile": "@cura",
+    "channel": "/openrank",
+    "description": "Community curation powered by openrank."
+  },
+  {
+    "name": "Streme",
+    "url": "https://www.streme.fun/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/1f83c70e-e5b5-4815-3fb2-501d447c2b00/original",
+    "category": "Payment",
+    "profile": "@streme ",
+    "channel": "/streme",
+    "description": "An AI agent that deploys native Super Tokens with built-in streaming, staking with streaming rewards, and Uniswap v3 liquidity. Stealth mode."
+  },
+  {
+    "name": "Procoin",
+    "url": "https://farcaster.xyz/~/channel/procoin/join?inviteCode=BO6wTHU5BQ6CUikUFABRzA",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/fa97b2f9-93e9-45ef-a175-f528d53ae800/rectcrop3",
+    "category": "Token",
+    "profile": "@procoin",
+    "channel": "/procoin",
+    "description": "Farcaster Pro Community Governance."
+  },
+  {
+    "name": "Acid Test",
+    "url": "https://app.acidtest.xyz/songs/5",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/38312827-ef82-44f3-367a-a60b99850a00/rectcrop3",
+    "category": "Media",
+    "profile": "@acidtest",
+    "channel": "/acidtest",
+    "description": "A radio show bringing music, conversation and creative energy to Farcaster."
+  },
+  {
+    "name": "Gig.bot",
+    "url": "https://www.gigbot.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/a07b56a0-fdf9-4657-d0cb-e52c48d9b100/original",
+    "category": "Payment",
+    "profile": "@gigbot.eth",
+    "channel": "",
+    "description": "Complete Micro-Bounties. Earn Tokens. Humans or AI."
+  },
+  {
+    "name": "AUX",
+    "url": "https://www.aux.xyz/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/173cd306-55d6-40c9-3061-2bbb9a062100/rectcrop3",
+    "category": "Media",
+    "profile": "@aux.eth",
+    "channel": "",
+    "description": "A new way to discover breaking culture."
+  },
+  {
+    "name": "Urbe",
+    "url": "https://urbe.build/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/99cdb470-fe85-41c1-f217-9d0f6adec500/original",
+    "category": "Community",
+    "profile": "@urbe-eth",
+    "channel": "/urbe-eth",
+    "description": "The Italian web3 community by builders for builders."
+  },
+  {
+    "name": "Phi",
+    "url": "https://phi.box/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/9b5ad594-f3e9-4160-9c33-4e0eeaf28500/original",
+    "category": "Media",
+    "profile": "@phi",
+    "channel": "/phi",
+    "description": "A place to create, mint, and shape your onchain identity. "
+  },
+  {
+    "name": "FWB",
+    "url": "https://www.fwb.help/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/05058314-5a74-48d4-90eb-924d671f3b00/original",
+    "category": "Community",
+    "profile": "@fwb",
+    "channel": "/fwb",
+    "description": "Friends With Benefits."
+  },
+  {
+    "name": "Seed Club",
+    "url": "https://seedclub.com/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/69484a94-7a09-4c3b-3499-aa02a3dc7e00/rectcrop3",
+    "category": "Community",
+    "profile": "@seedclub",
+    "channel": "/seedclub",
+    "description": "The Venture Capital Network.Seed Club funds audacious visions of the future while enabling anyone to share in their success by contributing money, attention, or time."
+  },
+  {
+    "name": "Farchiver",
+    "url": "https://farchiver.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/e2TcmDN.png",
+    "category": "Info",
+    "profile": "@farchiver",
+    "channel": "",
+    "description": ""
+  },
+  {
+    "name": "Farcaster.cam",
+    "url": "https://farcaster.cam/",
+    "iconLogoUrl": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/41034936-ea01-4d6c-063d-ef1b4b808a00/rectcrop3",
+    "category": "Info",
+    "profile": "@vision",
+    "channel": "",
+    "description": ""
+  },
+  {
+    "name": "Polysocial",
+    "url": "https://www.polysocial.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/aZrHZaW.jpg",
+    "category": "Game",
+    "profile": "@polysocial",
+    "channel": "",
+    "description": ""
+  },
+  {
+    "name": "Sealcaster",
+    "url": "https://sealcaster.xyz/",
+    "iconLogoUrl": "https://i.imgur.com/ZHs9Ed5.png",
+    "category": "Social",
+    "profile": "@sealcaster",
+    "channel": "",
+    "description": ""
+  }
+]

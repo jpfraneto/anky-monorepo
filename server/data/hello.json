@@ -1,0 +1,317 @@
+{
+  "conversation": {
+    "cast": {
+      "object": "cast",
+      "hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+      "author": {
+        "object": "user",
+        "fid": 13874,
+        "username": "thedude",
+        "display_name": "The Dude Bart🐘🌳 ⌐◨-◨",
+        "pfp_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b5248c55-ad8f-47e8-d5ca-e6bb2e13ac00/original",
+        "custody_address": "0x35b532e3d91a43325433c445c5881e944ff12221",
+        "profile": {
+          "bio": {
+            "text": "Digital Media Producer. I like particles and waves too. I like art."
+          }
+        },
+        "follower_count": 19962,
+        "following_count": 4866,
+        "verifications": [
+          "0xdd8a40a15f0fe67d4ec52adf0ee24489e8d8a58a",
+          "0x9ffaab6c24d4fb58d61b26b08c8795e9e323f28b",
+          "0x2a15b70605812d5b97ac7de7d116256fdf0e58aa"
+        ],
+        "verified_addresses": {
+          "eth_addresses": [
+            "0xdd8a40a15f0fe67d4ec52adf0ee24489e8d8a58a",
+            "0x9ffaab6c24d4fb58d61b26b08c8795e9e323f28b",
+            "0x2a15b70605812d5b97ac7de7d116256fdf0e58aa"
+          ],
+          "sol_addresses": [
+            "zYn4eWZPv7JkRWLqzenBxFU5t1RjRuQh34p4eroK4zY",
+            "C9wSCceL6Ee8YXfHerH7yLCqtBnMMqK7Sk8Kim8wGBGV"
+          ],
+          "primary": {
+            "eth_address": "0xdd8a40a15f0fe67d4ec52adf0ee24489e8d8a58a",
+            "sol_address": "C9wSCceL6Ee8YXfHerH7yLCqtBnMMqK7Sk8Kim8wGBGV"
+          }
+        },
+        "verified_accounts": [{ "platform": "x", "username": "thedudea" }],
+        "power_badge": true,
+        "viewer_context": {
+          "following": false,
+          "followed_by": true,
+          "blocking": false,
+          "blocked_by": false
+        },
+        "experimental": {
+          "neynar_user_score": 1,
+          "deprecation_notice": "The `neynar_user_score` field under `experimental` will be deprecated after June 1, 2025, as it will be formally promoted to a stable field named `score` within the user object."
+        },
+        "score": 1
+      },
+      "app": {
+        "object": "user_dehydrated",
+        "fid": 9152,
+        "username": "warpcast",
+        "display_name": "Warpcast",
+        "pfp_url": "https://i.imgur.com/3d6fFAI.png",
+        "custody_address": "0x02ef790dd7993a35fd847c053eddae940d055596"
+      },
+      "thread_hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+      "parent_hash": null,
+      "parent_url": "https://warpcast.com/~/channel/itookaphoto",
+      "root_parent_url": "https://warpcast.com/~/channel/itookaphoto",
+      "parent_author": { "fid": null },
+      "text": "I stood amongst the trees  and sent gratitude and love to all of you who chose to build, and create and share art here.\n\nThank you so much for existing and sharing the breath my friends. Keep on what you’re doing (except for scammers, you guys can eat a bag of dicks) \n\nLots of love and reverence to all.",
+      "timestamp": "2025-06-03T16:00:37.000Z",
+      "embeds": [
+        {
+          "url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/b10c90b8-0403-433b-e8db-abec4e026f00/original",
+          "metadata": {
+            "content_type": "image/jpeg",
+            "content_length": 1003015,
+            "farcaster_domain_updated_at": null,
+            "_status": "RESOLVED",
+            "image": { "width_px": 1500, "height_px": 2000 }
+          }
+        }
+      ],
+      "channel": {
+        "object": "channel_dehydrated",
+        "id": "itookaphoto",
+        "name": "I Took a Photo!",
+        "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/95377fde-4d5c-48e1-bca9-3fb1d5ff2200/original",
+        "viewer_context": { "following": false }
+      },
+      "reactions": {
+        "likes_count": 9,
+        "recasts_count": 1,
+        "likes": [
+          { "fid": 1091837, "fname": "stark999" },
+          { "fid": 1097357, "fname": "iamlily" },
+          { "fid": 336323, "fname": "nataaa" },
+          { "fid": 533404, "fname": "wajeking" },
+          { "fid": 698423, "fname": "kelprime" }
+        ],
+        "recasts": [{ "fid": 354795, "fname": "aaronv.eth" }]
+      },
+      "replies": { "count": 3 },
+      "mentioned_profiles": [],
+      "mentioned_profiles_ranges": [],
+      "mentioned_channels": [],
+      "mentioned_channels_ranges": [],
+      "viewer_context": { "liked": false, "recasted": false },
+      "author_channel_context": { "role": "member", "following": true },
+      "direct_replies": [
+        {
+          "object": "cast",
+          "hash": "0xb396989a351bbcbc78b0c50cdf9e1efea34659c4",
+          "author": {
+            "object": "user",
+            "fid": 435501,
+            "username": "dianacutie.eth",
+            "display_name": "Diana🎩",
+            "pfp_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/592adcef-1fe1-423a-41f9-a63ec942cc00/original",
+            "custody_address": "0x17b9d08a7132ae4a7db1adc00cedc5620af738d3",
+            "profile": {
+              "bio": {
+                "text": "l Video editor that's kinda good and also KIND l I believe in /success l /fan-token-tavern and a mod l Here to make frens l OG of /success since day 1",
+                "mentioned_channels": [
+                  {
+                    "object": "channel_dehydrated",
+                    "id": "success",
+                    "name": "The Success Syndicate",
+                    "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/9b8476f4-0809-4f5f-c629-97dc8745c700/original"
+                  },
+                  {
+                    "object": "channel_dehydrated",
+                    "id": "fan-token-tavern",
+                    "name": "Neural Network Tavern 🤖",
+                    "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/ba9b4647-bb71-42ad-94f9-cc8a503f0900/rectcrop3"
+                  },
+                  {
+                    "object": "channel_dehydrated",
+                    "id": "success",
+                    "name": "The Success Syndicate",
+                    "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/9b8476f4-0809-4f5f-c629-97dc8745c700/original"
+                  }
+                ],
+                "mentioned_channels_ranges": [
+                  { "start": 62, "end": 70 },
+                  { "start": 73, "end": 90 },
+                  { "start": 130, "end": 138 }
+                ]
+              },
+              "location": {
+                "latitude": 7.01,
+                "longitude": 125.09,
+                "address": {
+                  "city": "Kidapawan",
+                  "state": "North Cotabato",
+                  "country": "Philippines",
+                  "country_code": "ph"
+                }
+              }
+            },
+            "follower_count": 5455,
+            "following_count": 718,
+            "verifications": [
+              "0x305ec3f869c719a6821ed8b83a595fb5db406df0",
+              "0x6286b9dbc84230e782eaf03a581706b218d5ec5d"
+            ],
+            "verified_addresses": {
+              "eth_addresses": [
+                "0x305ec3f869c719a6821ed8b83a595fb5db406df0",
+                "0x6286b9dbc84230e782eaf03a581706b218d5ec5d"
+              ],
+              "sol_addresses": ["AYL8KHpRwWhtPPNqqahsLqJKvpxYV298hbtvXhgVe61K"],
+              "primary": {
+                "eth_address": "0x6286b9dbc84230e782eaf03a581706b218d5ec5d",
+                "sol_address": "AYL8KHpRwWhtPPNqqahsLqJKvpxYV298hbtvXhgVe61K"
+              }
+            },
+            "verified_accounts": [
+              { "platform": "x", "username": "diana083102" }
+            ],
+            "power_badge": true,
+            "viewer_context": {
+              "following": false,
+              "followed_by": true,
+              "blocking": false,
+              "blocked_by": false
+            },
+            "experimental": {
+              "neynar_user_score": 0.92,
+              "deprecation_notice": "The `neynar_user_score` field under `experimental` will be deprecated after June 1, 2025, as it will be formally promoted to a stable field named `score` within the user object."
+            },
+            "score": 0.92
+          },
+          "app": {
+            "object": "user_dehydrated",
+            "fid": 9152,
+            "username": "warpcast",
+            "display_name": "Warpcast",
+            "pfp_url": "https://i.imgur.com/3d6fFAI.png",
+            "custody_address": "0x02ef790dd7993a35fd847c053eddae940d055596"
+          },
+          "thread_hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+          "parent_hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+          "parent_url": null,
+          "root_parent_url": "https://warpcast.com/~/channel/itookaphoto",
+          "parent_author": { "fid": 13874 },
+          "text": "Nature always makes you calm",
+          "timestamp": "2025-06-03T16:02:57.000Z",
+          "embeds": [],
+          "channel": {
+            "object": "channel_dehydrated",
+            "id": "itookaphoto",
+            "name": "I Took a Photo!",
+            "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/95377fde-4d5c-48e1-bca9-3fb1d5ff2200/original",
+            "viewer_context": { "following": false }
+          },
+          "reactions": {
+            "likes_count": 1,
+            "recasts_count": 0,
+            "likes": [{ "fid": 13874, "fname": "thedude" }],
+            "recasts": []
+          },
+          "replies": { "count": 1 },
+          "mentioned_profiles": [],
+          "mentioned_profiles_ranges": [],
+          "mentioned_channels": [],
+          "mentioned_channels_ranges": [],
+          "viewer_context": { "liked": false, "recasted": false },
+          "author_channel_context": { "role": "member", "following": true },
+          "direct_replies": []
+        },
+        {
+          "object": "cast",
+          "hash": "0xc4661eccdb5d8bb7f04fbe67a456c99641a0632e",
+          "author": {
+            "object": "user",
+            "fid": 533404,
+            "username": "wajeking",
+            "display_name": "WajeKing",
+            "pfp_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/7f7cf21d-8ecf-48a9-9b75-f651d9993400/original",
+            "custody_address": "0xf6884b45ab334ef98d6de4c29d3cf9a1297d5228",
+            "profile": { "bio": { "text": "Resistance is futile." } },
+            "follower_count": 863,
+            "following_count": 554,
+            "verifications": [
+              "0xf99cf3847d374e38fae34ac08ac9dffb652c0388",
+              "0xfb3037c412ee6a27aa8d4345b4f38751416afe4f"
+            ],
+            "verified_addresses": {
+              "eth_addresses": [
+                "0xf99cf3847d374e38fae34ac08ac9dffb652c0388",
+                "0xfb3037c412ee6a27aa8d4345b4f38751416afe4f"
+              ],
+              "sol_addresses": [
+                "EY9EqRhQAXxgrBGsrXB3n51FPXE6U2PkgdeM1E3rgvCk",
+                "3SUA3RGrx6TJC7CebMS3FUk1LtK8kK8zAYv4S86vPSHU"
+              ],
+              "primary": {
+                "eth_address": "0xfb3037c412ee6a27aa8d4345b4f38751416afe4f",
+                "sol_address": "3SUA3RGrx6TJC7CebMS3FUk1LtK8kK8zAYv4S86vPSHU"
+              }
+            },
+            "verified_accounts": [{ "platform": "x", "username": "waje_king" }],
+            "power_badge": false,
+            "viewer_context": {
+              "following": false,
+              "followed_by": true,
+              "blocking": false,
+              "blocked_by": false
+            },
+            "experimental": {
+              "neynar_user_score": 0.79,
+              "deprecation_notice": "The `neynar_user_score` field under `experimental` will be deprecated after June 1, 2025, as it will be formally promoted to a stable field named `score` within the user object."
+            },
+            "score": 0.79
+          },
+          "app": {
+            "object": "user_dehydrated",
+            "fid": 9152,
+            "username": "warpcast",
+            "display_name": "Warpcast",
+            "pfp_url": "https://i.imgur.com/3d6fFAI.png",
+            "custody_address": "0x02ef790dd7993a35fd847c053eddae940d055596"
+          },
+          "thread_hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+          "parent_hash": "0x1861eb2fc231627eafcee31e9c9bba6f4cdbdd9b",
+          "parent_url": null,
+          "root_parent_url": "https://warpcast.com/~/channel/itookaphoto",
+          "parent_author": { "fid": 13874 },
+          "text": "That’s a beautiful piece nature picture",
+          "timestamp": "2025-06-03T16:06:51.000Z",
+          "embeds": [],
+          "channel": {
+            "object": "channel_dehydrated",
+            "id": "itookaphoto",
+            "name": "I Took a Photo!",
+            "image_url": "https://imagedelivery.net/BXluQx4ige9GuW0Ia56BHw/95377fde-4d5c-48e1-bca9-3fb1d5ff2200/original",
+            "viewer_context": { "following": false }
+          },
+          "reactions": {
+            "likes_count": 0,
+            "recasts_count": 0,
+            "likes": [],
+            "recasts": []
+          },
+          "replies": { "count": 0 },
+          "mentioned_profiles": [],
+          "mentioned_profiles_ranges": [],
+          "mentioned_channels": [],
+          "mentioned_channels_ranges": [],
+          "viewer_context": { "liked": false, "recasted": false },
+          "author_channel_context": { "role": "member", "following": true },
+          "direct_replies": []
+        }
+      ]
+    },
+    "chronological_parent_casts": []
+  },
+  "next": { "cursor": null }
+}

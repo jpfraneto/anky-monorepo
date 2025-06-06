@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250509.0",
+    "@farcaster/quick-auth": "^0.0.6",
     "@supabase/supabase-js": "^2.49.4",
+    "csv-parser": "^3.2.0",
     "dotenv": "^16.5.0",
     "hono": "^4.7.7",
     "openai": "^4.97.0",
+    "pinata": "^2.4.3",
     "shared": "workspace:*",
     "zod": "^3.24.4"
   },

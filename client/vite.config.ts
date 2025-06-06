@@ -6,7 +6,12 @@ import path from "path";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    allowedHosts: ["all", "gentle-otters-carry.loca.lt", "poiesis.anky.bot"],
+    allowedHosts: [
+      "all",
+      "gentle-otters-carry.loca.lt",
+      "poiesis.anky.bot",
+      "anky.bot",
+    ],
   },
   resolve: {
     alias: {

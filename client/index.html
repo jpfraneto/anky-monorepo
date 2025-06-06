@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>anky</title>
+    <meta
+      name="fc:frame"
+      content='{"version":"next","imageUrl":"https://anky.bot/image.png","button":{"title":"Write 8 minutes","action":{"type":"launch_frame","name":"anky","url":"https://anky.bot","splashImageUrl":"https://anky.bot/splash.png","splashBackgroundColor":"#301733"}}}'
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Handlee&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Righteous&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Check if user is on mobile
+      const isMobile =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+
+      // Make isMobile available globally
+      window.isMobile = isMobile;
+    </script>
   </head>
   <body>
     <div id="root"></div>
