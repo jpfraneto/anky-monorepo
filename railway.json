@@ -1,8 +1,7 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "bun install && bun run build:web"
+    "builder": "NIXPACKS"
   },
   "deploy": {
     "startCommand": "cd apps/api && bun run start",
