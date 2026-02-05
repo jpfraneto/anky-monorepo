@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>anky</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      :root {
+        --bg: #050506;
+        --fg: #fafafa;
+        --muted: #71717a;
+        --gold: #fbbf24;
+        --danger: #f87171;
+        --purple: #a855f7;
+        --yellow: #eab308;
+        --green: #4ade80;
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      html, body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        font-family: "Inter", -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        height: 100dvh;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+      }
+
+      /* Utility */
+      .hidden { display: none !important; }
+
+      /* Feed background */
+      .feed {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+        padding: 1rem;
+        opacity: 0.12;
+        pointer-events: none;
+        z-index: 0;
+        overflow: hidden;
+      }
+      .feed.fade-out {
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+
+      /* Wallet button */
+      .wallet-btn {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 50;
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 2rem;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      .wallet-btn:hover {
+        color: var(--fg);
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      .wallet-btn.connected {
+        color: var(--gold);
+        border-color: rgba(251, 191, 36, 0.3);
+      }
+
+      /* Main container */
+      .main {
+        position: relative;
+        z-index: 1;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        padding-bottom: calc(1rem + var(--safe-bottom));
+      }
+
+      /* Hero */
+      .hero {
+        text-align: center;
+        margin-bottom: 2rem;
+        transition: opacity 0.4s, transform 0.4s;
+      }
+      .hero.fade-out {
+        opacity: 0;
+        transform: translateY(-20px);
+        pointer-events: none;
+        position: absolute;
+      }
+      .hero h1 {
+        font-size: clamp(1.5rem, 7vw, 3.5rem);
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin-bottom: 0.5rem;
+      }
+      .hero p {
+        font-size: clamp(0.9rem, 3vw, 1.25rem);
+        font-weight: 300;
+        color: var(--muted);
+      }
+
+      /* Writing container */
+      .writing-container {
+        width: 100%;
+        max-width: 48rem;
+        display: flex;
+        flex-direction: column;
+        transition: all 0.4s ease;
+      }
+      .writing-container.fullscreen {
+        position: fixed;
+        inset: 0;
+        max-width: none;
+        padding: 1rem;
+        padding-bottom: calc(1rem + var(--safe-bottom));
+        z-index: 10;
+        background: var(--bg);
+      }
+      .writing-area {
+        width: 100%;
+        flex: 1;
+        min-height: 100px;
+        padding: 1rem;
+        font-family: "Inter", sans-serif;
+        font-size: 1rem;
+        line-height: 1.7;
+        color: var(--fg);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.75rem;
+        resize: none;
+        outline: none;
+        caret-color: var(--gold);
+      }
+      .writing-area::placeholder {
+        color: var(--muted);
+      }
+      .writing-area:focus {
+        border-color: rgba(251, 191, 36, 0.3);
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .writing-container.fullscreen .writing-area {
+        font-size: 1.1rem;
+        border-radius: 0;
+        border: none;
+        background: transparent;
+      }
+
+      /* Timer & Stats bar */
+      .session-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 0;
+        font-size: 0.75rem;
+        color: var(--muted);
+        opacity: 0;
+        transition: opacity 0.3s;
+        flex-wrap: wrap;
+      }
+      .session-bar.visible {
+        opacity: 1;
+      }
+      .timer-bar-wrapper {
+        flex: 1;
+        min-width: 60px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .timer-bar {
+        height: 100%;
+        background: var(--gold);
+        border-radius: 2px;
+        transition: width 0.1s linear;
+        width: 100%;
+      }
+      .timer-bar.danger {
+        background: var(--danger);
+      }
+      .stat-pill {
+        font-variant-numeric: tabular-nums;
+      }
+      .stat-pill.gold {
+        color: var(--gold);
+        font-weight: 500;
+      }
+      .stat-pill.red { color: var(--danger); }
+      .stat-pill.purple { color: var(--purple); }
+      .stat-pill.yellow { color: var(--yellow); }
+
+      /* ========================================
+         CHAT VIEW (Mobile-first post-session)
+         ======================================== */
+      .chat-view {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: var(--bg);
+        display: none;
+        flex-direction: column;
+      }
+      .chat-view.visible {
+        display: flex;
+      }
+
+      /* Chat header */
+      .chat-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        flex-shrink: 0;
+      }
+      .chat-header-back {
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 1.25rem;
+        cursor: pointer;
+      }
+      .chat-header-title {
+        flex: 1;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+      .chat-header-stats {
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+
+      /* Chat messages area */
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Message bubbles */
+      .chat-bubble {
+        max-width: 85%;
+        padding: 0.875rem 1rem;
+        border-radius: 1rem;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        animation: bubbleIn 0.3s ease;
+      }
+      @keyframes bubbleIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .chat-bubble.user {
+        align-self: flex-end;
+        background: rgba(255, 255, 255, 0.08);
+        border-bottom-right-radius: 0.25rem;
+      }
+      .chat-bubble.user.writing-bubble {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        max-height: 150px;
+        overflow: hidden;
+        position: relative;
+        cursor: pointer;
+      }
+      .chat-bubble.user.writing-bubble.expanded {
+        max-height: none;
+      }
+      .writing-bubble-fade {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 50px;
+        background: linear-gradient(transparent, rgba(5, 5, 6, 0.95));
+        pointer-events: none;
+      }
+      .writing-bubble-expand {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.75rem;
+        color: var(--gold);
+      }
+
+      /* Anky message with avatar */
+      .chat-bubble-row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+      .anky-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: url('/references/anky-pfp.jpg') center/cover;
+        flex-shrink: 0;
+        border: 2px solid rgba(251, 191, 36, 0.3);
+        overflow: hidden;
+      }
+      .chat-bubble.anky {
+        background: rgba(251, 191, 36, 0.08);
+        border: 1px solid rgba(251, 191, 36, 0.15);
+        border-bottom-left-radius: 0.25rem;
+        flex: 1;
+      }
+
+      /* Status message (generation progress) */
+      .status-message {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        color: var(--gold);
+        font-size: 0.85rem;
+      }
+      .status-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(251, 191, 36, 0.2);
+        border-top-color: var(--gold);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Generated Anky image in chat */
+      .anky-image-container {
+        width: 100%;
+        max-width: 280px;
+        margin: 0.5rem 0;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        position: relative;
+      }
+      .anky-image-container.generating {
+        animation: ankyGlow 2s ease-in-out infinite;
+      }
+      @keyframes ankyGlow {
+        0%, 100% {
+          box-shadow: 0 0 20px rgba(251, 191, 36, 0.3), 0 0 40px rgba(168, 85, 247, 0.2);
+        }
+        50% {
+          box-shadow: 0 0 40px rgba(251, 191, 36, 0.5), 0 0 80px rgba(168, 85, 247, 0.4);
+        }
+      }
+      .anky-image {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: cover;
+        display: block;
+      }
+      .anky-title {
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 300;
+        color: var(--gold);
+        margin-top: 0.5rem;
+        letter-spacing: 0.02em;
+      }
+
+      /* Chat input area */
+      .chat-input-area {
+        padding: 1rem;
+        padding-bottom: calc(1rem + var(--safe-bottom));
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+      }
+      .chat-input {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        font-family: "Inter", sans-serif;
+        font-size: 0.9rem;
+        color: var(--fg);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1.5rem;
+        outline: none;
+      }
+      .chat-input:focus {
+        border-color: rgba(251, 191, 36, 0.3);
+      }
+      .chat-input::placeholder {
+        color: var(--muted);
+      }
+      .chat-send {
+        width: 2.5rem;
+        height: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--gold);
+        color: var(--bg);
+        border: none;
+        border-radius: 50%;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: transform 0.2s, opacity 0.2s;
+      }
+      .chat-send:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .chat-send:not(:disabled):active {
+        transform: scale(0.95);
+      }
+
+      /* Action buttons in chat */
+      .chat-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+      }
+      .btn {
+        padding: 0.625rem 1.25rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        border: none;
+        border-radius: 2rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-primary {
+        background: var(--gold);
+        color: var(--bg);
+      }
+      .btn-primary:active {
+        transform: scale(0.98);
+      }
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--fg);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      /* ========================================
+         DESKTOP: Sidebar + Conversation Layout
+         ======================================== */
+      @media (min-width: 768px) {
+        .chat-view {
+          display: none !important;
+        }
+        .chat-view.visible {
+          display: none !important;
+        }
+        .dashboard {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          background: var(--bg);
+          display: none;
+          grid-template-columns: 20% 80%;
+        }
+        .dashboard.visible {
+          display: grid;
+        }
+
+        /* Left Sidebar - Sessions List */
+        .sessions-sidebar {
+          background: rgba(255, 255, 255, 0.02);
+          border-right: 1px solid rgba(255, 255, 255, 0.05);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .sidebar-header {
+          padding: 1rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .sidebar-title {
+          font-size: 0.8rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          color: var(--muted);
+        }
+        .new-session-btn {
+          padding: 0.4rem 0.8rem;
+          font-size: 0.7rem;
+          font-weight: 500;
+          color: var(--gold);
+          background: rgba(251, 191, 36, 0.1);
+          border: 1px solid rgba(251, 191, 36, 0.2);
+          border-radius: 1rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .new-session-btn:hover {
+          background: rgba(251, 191, 36, 0.2);
+        }
+        .sessions-list {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0.5rem;
+        }
+        .session-item {
+          padding: 0.75rem;
+          margin-bottom: 0.25rem;
+          border-radius: 0.5rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          border: 1px solid transparent;
+        }
+        .session-item:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+        .session-item.active {
+          background: rgba(251, 191, 36, 0.08);
+          border-color: rgba(251, 191, 36, 0.2);
+        }
+        .session-item-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.25rem;
+        }
+        .session-anky-badge {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: url('/references/anky-pfp.jpg') center/cover;
+          border: 1.5px solid var(--gold);
+          flex-shrink: 0;
+        }
+        .session-no-anky {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          flex-shrink: 0;
+        }
+        .session-title {
+          flex: 1;
+          font-size: 0.8rem;
+          font-weight: 500;
+          color: var(--fg);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .session-item.is-anky .session-title {
+          color: var(--gold);
+        }
+        .session-meta {
+          display: flex;
+          gap: 0.5rem;
+          font-size: 0.65rem;
+          color: var(--muted);
+        }
+        .session-preview {
+          font-size: 0.7rem;
+          color: var(--muted);
+          line-height: 1.4;
+          margin-top: 0.25rem;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .sessions-empty {
+          padding: 2rem 1rem;
+          text-align: center;
+          color: var(--muted);
+          font-size: 0.8rem;
+        }
+
+        /* Right Side - Conversation View */
+        .conversation-main {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .conversation-header {
+          padding: 1rem 1.5rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          flex-shrink: 0;
+        }
+        .conversation-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: url('/references/anky-pfp.jpg') center/cover;
+          border: 2px solid rgba(251, 191, 36, 0.3);
+        }
+        .conversation-info {
+          flex: 1;
+        }
+        .conversation-title {
+          font-size: 1rem;
+          font-weight: 500;
+        }
+        .conversation-stats {
+          font-size: 0.75rem;
+          color: var(--muted);
+        }
+        .conversation-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .desktop-bubble-row {
+          display: flex;
+          gap: 0.75rem;
+          align-items: flex-start;
+        }
+        .desktop-bubble-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: url('/references/anky-pfp.jpg') center/cover;
+          border: 2px solid rgba(251, 191, 36, 0.3);
+          flex-shrink: 0;
+        }
+        .desktop-bubble {
+          max-width: 70%;
+          padding: 1rem 1.25rem;
+          border-radius: 1rem;
+          font-size: 0.9rem;
+          line-height: 1.7;
+        }
+        .desktop-bubble.user {
+          align-self: flex-end;
+          background: rgba(255, 255, 255, 0.08);
+          border-bottom-right-radius: 0.25rem;
+          margin-left: auto;
+        }
+        .desktop-bubble.anky {
+          background: rgba(251, 191, 36, 0.08);
+          border: 1px solid rgba(251, 191, 36, 0.15);
+          border-bottom-left-radius: 0.25rem;
+          flex: 1;
+        }
+        .desktop-writing-bubble {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          max-height: 200px;
+          overflow: hidden;
+          position: relative;
+          cursor: pointer;
+          align-self: flex-end;
+          margin-left: auto;
+        }
+        .desktop-writing-bubble.expanded {
+          max-height: none;
+        }
+        .desktop-writing-bubble .writing-bubble-fade {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 50px;
+          background: linear-gradient(transparent, rgba(5, 5, 6, 0.95));
+          pointer-events: none;
+        }
+        .desktop-writing-bubble .writing-bubble-expand {
+          display: block;
+          margin-top: 0.5rem;
+          font-size: 0.75rem;
+          color: var(--gold);
+        }
+        .desktop-anky-image-container {
+          width: 100%;
+          max-width: 320px;
+          margin: 0.5rem 0;
+          border-radius: 0.75rem;
+          overflow: hidden;
+          position: relative;
+        }
+        .desktop-anky-image-container.generating {
+          animation: ankyGlow 2s ease-in-out infinite;
+        }
+        .desktop-anky-image {
+          width: 100%;
+          aspect-ratio: 1;
+          object-fit: cover;
+          display: block;
+        }
+        .desktop-anky-title {
+          text-align: center;
+          font-size: 1.25rem;
+          font-weight: 300;
+          color: var(--gold);
+          margin-top: 0.75rem;
+          letter-spacing: 0.02em;
+        }
+        .desktop-status-message {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1rem;
+          color: var(--gold);
+          font-size: 0.85rem;
+        }
+        .conversation-input-area {
+          padding: 1rem 1.5rem;
+          padding-bottom: 1.5rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          display: flex;
+          gap: 0.75rem;
+          flex-shrink: 0;
+        }
+        .conversation-input {
+          flex: 1;
+          padding: 0.875rem 1.25rem;
+          font-family: "Inter", sans-serif;
+          font-size: 0.9rem;
+          color: var(--fg);
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 1.5rem;
+          outline: none;
+        }
+        .conversation-input:focus {
+          border-color: rgba(251, 191, 36, 0.3);
+        }
+        .conversation-input::placeholder {
+          color: var(--muted);
+        }
+        .conversation-send {
+          width: 2.75rem;
+          height: 2.75rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--gold);
+          color: var(--bg);
+          border: none;
+          border-radius: 50%;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: transform 0.2s, opacity 0.2s;
+        }
+        .conversation-send:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .conversation-send:not(:disabled):active {
+          transform: scale(0.95);
+        }
+        .desktop-chat-actions {
+          display: flex;
+          gap: 0.75rem;
+          margin-top: 1rem;
+        }
+        .desktop-chat-actions .btn {
+          padding: 0.75rem 1.5rem;
+          font-size: 0.85rem;
+        }
+
+        /* Generation progress indicator */
+        .generation-progress {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 0;
+          font-size: 0.75rem;
+          color: var(--gold);
+        }
+        .generation-progress-steps {
+          display: flex;
+          gap: 0.25rem;
+        }
+        .generation-step {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: rgba(251, 191, 36, 0.2);
+        }
+        .generation-step.active {
+          background: var(--gold);
+          animation: pulse 1s ease-in-out infinite;
+        }
+        .generation-step.done {
+          background: var(--green);
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      }
+
+      /* Hide desktop dashboard on mobile */
+      @media (max-width: 767px) {
+        .dashboard {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Feed background -->
+    <div class="feed" id="feed" hx-get="/api/feed-html" hx-trigger="load" hx-swap="innerHTML"></div>
+
+    <!-- Wallet Button -->
+    <button class="wallet-btn" id="walletBtn" onclick="connectWallet()">connect</button>
+
+    <!-- Main writing interface -->
+    <div class="main" id="main">
+      <div class="hero" id="hero">
+        <h1>YOUR MIND IS LOUD</h1>
+        <p>let it speak</p>
+      </div>
+
+      <div class="writing-container" id="writingContainer">
+        <textarea
+          class="writing-area"
+          id="writingArea"
+          placeholder="tell me who you are..."
+          autofocus
+        ></textarea>
+        <div class="session-bar" id="sessionBar">
+          <span class="stat-pill" id="duration">0:00</span>
+          <div class="timer-bar-wrapper">
+            <div class="timer-bar" id="timerBar"></div>
+          </div>
+          <span class="stat-pill" id="wordCount">0</span>
+          <span class="stat-pill gold" id="ankyStatus"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Chat View (post-session) -->
+    <div class="chat-view" id="chatView">
+      <div class="chat-header">
+        <button class="chat-header-back" id="chatBack">←</button>
+        <div class="chat-header-title">anky</div>
+        <div class="chat-header-stats" id="chatHeaderStats"></div>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <input type="text" class="chat-input" id="chatInput" placeholder="reply to anky..." />
+        <button class="chat-send" id="chatSend">↑</button>
+      </div>
+    </div>
+
+    <!-- Desktop Dashboard (Sidebar + Conversation) -->
+    <div class="dashboard" id="dashboard">
+      <!-- Left Sidebar - Sessions List -->
+      <div class="sessions-sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Sessions</span>
+          <button class="new-session-btn" onclick="writeAgain()">+ New</button>
+        </div>
+        <div class="sessions-list" id="sessionsList">
+          <div class="sessions-empty" id="sessionsEmpty">No sessions yet. Start writing!</div>
+        </div>
+      </div>
+
+      <!-- Right Side - Conversation View -->
+      <div class="conversation-main">
+        <div class="conversation-header">
+          <div class="conversation-avatar"></div>
+          <div class="conversation-info">
+            <div class="conversation-title">anky</div>
+            <div class="conversation-stats" id="conversationStats"></div>
+          </div>
+        </div>
+        <div class="conversation-messages" id="conversationMessages"></div>
+        <div class="conversation-input-area">
+          <input type="text" class="conversation-input" id="conversationInput" placeholder="reply to anky..." />
+          <button class="conversation-send" id="conversationSend">↑</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { createWalletClient, createPublicClient, custom, http } from "https://esm.sh/viem@2.21.0";
+      import { base } from "https://esm.sh/viem@2.21.0/chains";
+
+      // ============================================
+      // STATE
+      // ============================================
+      let walletAddress = null;
+      let walletClient = null;
+      let publicClient = createPublicClient({ chain: base, transport: http() });
+      let currentAnkyData = null;
+      let currentSessionData = null;
+      let chatHistory = [];
+
+      let isWriting = false;
+      let sessionStartTime = null;
+      let inactivityTimeout = null;
+      let timerInterval = null;
+      let durationInterval = null;
+      let lastKeyTime = null;
+
+      const INACTIVITY_TIMEOUT = 8000;
+      const ANKY_THRESHOLD = 480; // 8 minutes
+
+      const ANKY_CONTRACT = "0xdf4f77b20cdba13f5235e89bcf06f46618979c55";
+      const ANKY_ABI = [{
+        type: "function", name: "mint",
+        inputs: [
+          { name: "writer", type: "address" },
+          { name: "to", type: "address" },
+          { name: "writingSessionIpfs", type: "string" },
+          { name: "imageIpfs", type: "string" },
+          { name: "imagePrompt", type: "string" },
+          { name: "title", type: "string" },
+          { name: "tokenUri", type: "string" },
+        ],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "nonpayable",
+      }];
+
+      // ============================================
+      // DOM ELEMENTS
+      // ============================================
+      const writingArea = document.getElementById("writingArea");
+      const writingContainer = document.getElementById("writingContainer");
+      const hero = document.getElementById("hero");
+      const feed = document.getElementById("feed");
+      const sessionBar = document.getElementById("sessionBar");
+      const timerBar = document.getElementById("timerBar");
+      const chatView = document.getElementById("chatView");
+      const chatMessages = document.getElementById("chatMessages");
+      const chatInput = document.getElementById("chatInput");
+      const chatSend = document.getElementById("chatSend");
+      const chatBack = document.getElementById("chatBack");
+      const dashboard = document.getElementById("dashboard");
+
+      // ============================================
+      // HELPERS
+      // ============================================
+      function isMobile() {
+        return window.innerWidth < 768;
+      }
+
+      function formatDuration(s) {
+        return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+      }
+
+      // ============================================
+      // WALLET
+      // ============================================
+      window.connectWallet = async function() {
+        if (!window.ethereum) {
+          alert("Please install a wallet");
+          return;
+        }
+        try {
+          const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+          walletAddress = accounts[0];
+          walletClient = createWalletClient({ chain: base, transport: custom(window.ethereum), account: walletAddress });
+          document.getElementById("walletBtn").textContent = `${walletAddress.slice(0, 4)}...${walletAddress.slice(-3)}`;
+          document.getElementById("walletBtn").classList.add("connected");
+          try {
+            await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+          } catch (e) {
+            if (e.code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [{ chainId: "0x2105", chainName: "Base", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://mainnet.base.org"], blockExplorerUrls: ["https://basescan.org"] }],
+              });
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      window.mintAnky = async function() {
+        if (!walletAddress) {
+          await window.connectWallet();
+          if (!walletAddress) return;
+        }
+        if (!currentAnkyData?.writingSessionIpfs || !currentAnkyData?.imageIpfs || !currentAnkyData?.tokenUri) {
+          alert("IPFS data missing");
+          return;
+        }
+        const btn = document.getElementById(isMobile() ? "mobileMintBtn" : "desktopMintBtn");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "minting...";
+        }
+        try {
+          const { request } = await publicClient.simulateContract({
+            address: ANKY_CONTRACT, abi: ANKY_ABI, functionName: "mint",
+            args: [walletAddress, walletAddress, currentAnkyData.writingSessionIpfs, currentAnkyData.imageIpfs, currentAnkyData.imagePrompt || "", currentAnkyData.title || "", currentAnkyData.tokenUri],
+            account: walletAddress,
+          });
+          const hash = await walletClient.writeContract(request);
+          if (btn) btn.textContent = "confirming...";
+          await publicClient.waitForTransactionReceipt({ hash });
+          if (btn) btn.textContent = "minted ✦";
+          alert("Your Anky has been minted!");
+        } catch (e) {
+          console.error(e);
+          if (btn) { btn.disabled = false; btn.textContent = "mint anky"; }
+          alert("Minting failed: " + (e.shortMessage || e.message));
+        }
+      };
+
+      if (window.ethereum?.selectedAddress) window.connectWallet();
+      window.ethereum?.on("accountsChanged", (accounts) => {
+        if (accounts.length === 0) {
+          walletAddress = null;
+          walletClient = null;
+          document.getElementById("walletBtn").textContent = "connect";
+          document.getElementById("walletBtn").classList.remove("connected");
+        } else {
+          window.connectWallet();
+        }
+      });
+
+      // ============================================
+      // WRITING SESSION
+      // ============================================
+      writingArea.addEventListener("input", handleInput);
+      writingArea.addEventListener("keydown", handleKeydown);
+      writingArea.addEventListener("paste", (e) => e.preventDefault());
+
+      function handleInput() {
+        if (!isWriting && writingArea.value.length > 0) startSession();
+        if (isWriting) {
+          resetInactivityTimer();
+          updateStats();
+        }
+      }
+
+      function handleKeydown(e) {
+        if (e.ctrlKey || e.metaKey) {
+          if (["a", "x", "c", "v", "z", "y"].includes(e.key.toLowerCase())) e.preventDefault();
+        }
+        if (e.key === "Backspace" || e.key === "Delete" || e.key === "Enter") e.preventDefault();
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+          e.preventDefault();
+        }
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && isWriting) {
+          e.preventDefault();
+          endSession();
+        }
+      });
+
+      function startSession() {
+        isWriting = true;
+        sessionStartTime = Date.now();
+        lastKeyTime = Date.now();
+
+        hero.classList.add("fade-out");
+        feed.classList.add("fade-out");
+        writingContainer.classList.add("fullscreen");
+        sessionBar.classList.add("visible");
+        document.getElementById("walletBtn").classList.add("hidden");
+
+        resetInactivityTimer();
+        startDurationCounter();
+      }
+
+      function resetInactivityTimer() {
+        lastKeyTime = Date.now();
+        clearTimeout(inactivityTimeout);
+        clearInterval(timerInterval);
+
+        timerInterval = setInterval(() => {
+          const elapsed = Date.now() - lastKeyTime;
+          const remaining = Math.max(0, INACTIVITY_TIMEOUT - elapsed);
+          const progress = remaining / INACTIVITY_TIMEOUT;
+          timerBar.style.width = `${progress * 100}%`;
+          timerBar.classList.toggle("danger", progress < 0.25);
+        }, 100);
+
+        inactivityTimeout = setTimeout(endSession, INACTIVITY_TIMEOUT);
+      }
+
+      function startDurationCounter() {
+        durationInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+          document.getElementById("duration").textContent = formatDuration(elapsed);
+          if (elapsed >= ANKY_THRESHOLD) {
+            document.getElementById("ankyStatus").textContent = "✦ anky";
+          }
+        }, 1000);
+      }
+
+      function updateStats() {
+        const words = writingArea.value.trim().split(/\s+/).filter(Boolean).length;
+        document.getElementById("wordCount").textContent = `${words} words`;
+      }
+
+      async function endSession() {
+        if (!isWriting) return;
+        clearTimeout(inactivityTimeout);
+        clearInterval(timerInterval);
+        clearInterval(durationInterval);
+        isWriting = false;
+
+        const content = writingArea.value;
+        const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+        const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+        const wpm = elapsed > 0 ? Math.round((wordCount / elapsed) * 60) : 0;
+        const isFullSession = content.trim().length >= 100 && elapsed >= ANKY_THRESHOLD;
+
+        currentSessionData = { content, elapsed, wordCount, wpm, isFullSession };
+        chatHistory = [];
+
+        // Save to localStorage
+        const sessions = JSON.parse(localStorage.getItem("ankySessions") || "[]");
+        sessions.push({ content, duration: elapsed, stats: { wordCount, wpm }, timestamp: Date.now() });
+        localStorage.setItem("ankySessions", JSON.stringify(sessions));
+
+        if (isMobile()) {
+          showMobileChatView(content, elapsed, wordCount, wpm, isFullSession);
+        } else {
+          showDesktopDashboard(content, elapsed, wordCount, wpm, isFullSession);
+        }
+      }
+
+      // ============================================
+      // MOBILE CHAT VIEW
+      // ============================================
+      function showMobileChatView(content, elapsed, wordCount, wpm, isFullSession) {
+        writingContainer.classList.add("hidden");
+        chatView.classList.add("visible");
+        document.getElementById("chatHeaderStats").textContent = `${formatDuration(elapsed)} · ${wordCount} words`;
+        chatMessages.innerHTML = "";
+
+        // Add user's writing as collapsible bubble
+        const writingBubble = document.createElement("div");
+        writingBubble.className = "chat-bubble user writing-bubble";
+        writingBubble.innerHTML = `<div class="writing-text">${escapeHtml(content)}</div><div class="writing-bubble-fade"></div><span class="writing-bubble-expand">tap to expand</span>`;
+        writingBubble.addEventListener("click", () => {
+          writingBubble.classList.toggle("expanded");
+          const fade = writingBubble.querySelector(".writing-bubble-fade");
+          const expand = writingBubble.querySelector(".writing-bubble-expand");
+          if (writingBubble.classList.contains("expanded")) {
+            fade.style.display = "none";
+            expand.textContent = "tap to collapse";
+          } else {
+            fade.style.display = "block";
+            expand.textContent = "tap to expand";
+          }
+        });
+        chatMessages.appendChild(writingBubble);
+
+        if (isFullSession) {
+          generateAnkyMobile(content);
+        } else {
+          fetchShortSessionResponse(content, elapsed, wordCount);
+        }
+      }
+
+      async function generateAnkyMobile(content) {
+        // Status: reading
+        addAnkyStatus("reading your soul...");
+
+        try {
+          const [promptResult, reflectionResult] = await Promise.all([
+            fetchAPI("/api/prompt", { writingSession: content }),
+            fetchAPI("/api/reflection", { writingSession: content, locale: navigator.language }),
+          ]);
+
+          updateAnkyStatus("painting your anky...");
+
+          // Show image placeholder with glow
+          const imageContainer = document.createElement("div");
+          imageContainer.className = "anky-image-container generating";
+          imageContainer.innerHTML = `<div style="width:100%;aspect-ratio:1;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.8rem;">generating...</div>`;
+
+          const row = document.createElement("div");
+          row.className = "chat-bubble-row";
+          row.innerHTML = `<div class="anky-avatar"></div>`;
+          const bubble = document.createElement("div");
+          bubble.className = "chat-bubble anky";
+          bubble.appendChild(imageContainer);
+          row.appendChild(bubble);
+          chatMessages.appendChild(row);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+
+          const imageResult = await fetchAPI("/api/image", { prompt: promptResult.prompt });
+
+          // Update image
+          imageContainer.classList.remove("generating");
+          imageContainer.innerHTML = `<img class="anky-image" src="${imageResult.url}" alt="Your Anky" />`;
+
+          updateAnkyStatus("naming your anky...");
+
+          const titleResult = await fetchAPI("/api/title", {
+            writingSession: content,
+            imagePrompt: promptResult.prompt,
+            reflection: reflectionResult.reflection,
+          });
+
+          // Add title
+          const titleEl = document.createElement("div");
+          titleEl.className = "anky-title";
+          titleEl.textContent = titleResult.title;
+          bubble.appendChild(titleEl);
+
+          removeAnkyStatus();
+
+          // Add reflection as message
+          addAnkyMessage(reflectionResult.reflection);
+
+          // IPFS upload
+          try {
+            const ipfsResult = await fetchAPI("/api/ipfs", {
+              writingSession: content,
+              imageBase64: imageResult.base64,
+              title: titleResult.title,
+              reflection: reflectionResult.reflection,
+              imagePrompt: promptResult.prompt,
+            });
+            currentAnkyData = { ...promptResult, ...reflectionResult, ...imageResult, ...titleResult, ...ipfsResult, writingSession: content };
+          } catch (e) {
+            currentAnkyData = { ...promptResult, ...reflectionResult, ...imageResult, ...titleResult, writingSession: content };
+          }
+
+          // Add mint button
+          addMintButton();
+
+        } catch (e) {
+          removeAnkyStatus();
+          addAnkyMessage(`Something went wrong: ${e.message}`);
+        }
+      }
+
+      async function fetchShortSessionResponse(content, elapsed, wordCount) {
+        addAnkyStatus("reading...");
+
+        try {
+          const response = await fetchAPI("/api/chat-short", {
+            writingSession: content,
+            duration: elapsed,
+            wordCount: wordCount,
+            history: [],
+          });
+          removeAnkyStatus();
+          chatHistory.push({ role: "assistant", content: response.response });
+          addAnkyMessage(response.response);
+        } catch (e) {
+          removeAnkyStatus();
+          addAnkyMessage(`Error: ${e.message}`);
+        }
+      }
+
+      function addAnkyStatus(text) {
+        removeAnkyStatus();
+        const row = document.createElement("div");
+        row.className = "chat-bubble-row";
+        row.id = "ankyStatusRow";
+        row.innerHTML = `<div class="anky-avatar"></div><div class="status-message"><div class="status-spinner"></div><span>${text}</span></div>`;
+        chatMessages.appendChild(row);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      function updateAnkyStatus(text) {
+        const statusRow = document.getElementById("ankyStatusRow");
+        if (statusRow) {
+          statusRow.querySelector(".status-message span").textContent = text;
+        }
+      }
+
+      function removeAnkyStatus() {
+        const statusRow = document.getElementById("ankyStatusRow");
+        if (statusRow) statusRow.remove();
+      }
+
+      function addAnkyMessage(text) {
+        const row = document.createElement("div");
+        row.className = "chat-bubble-row";
+        row.innerHTML = `<div class="anky-avatar"></div><div class="chat-bubble anky">${escapeHtml(text)}</div>`;
+        chatMessages.appendChild(row);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      function addMintButton() {
+        const actions = document.createElement("div");
+        actions.className = "chat-actions";
+        actions.innerHTML = `
+          <button class="btn btn-secondary" onclick="writeAgain()">write again</button>
+          <button class="btn btn-primary" id="mobileMintBtn" onclick="mintAnky()">mint anky</button>
+        `;
+        chatMessages.appendChild(actions);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      // Chat input
+      chatSend.addEventListener("click", sendMobileMessage);
+      chatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendMobileMessage();
+        }
+      });
+
+      async function sendMobileMessage() {
+        const message = chatInput.value.trim();
+        if (!message || !currentSessionData) return;
+
+        chatHistory.push({ role: "user", content: message });
+
+        const userBubble = document.createElement("div");
+        userBubble.className = "chat-bubble user";
+        userBubble.textContent = message;
+        chatMessages.appendChild(userBubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        chatInput.value = "";
+        chatSend.disabled = true;
+
+        addAnkyStatus("thinking...");
+
+        try {
+          const endpoint = currentSessionData.isFullSession ? "/api/chat" : "/api/chat-short";
+          const body = currentSessionData.isFullSession
+            ? { writingSession: currentSessionData.content, reflection: currentAnkyData?.reflection || "", title: currentAnkyData?.title || "", history: chatHistory }
+            : { writingSession: currentSessionData.content, duration: currentSessionData.elapsed, wordCount: currentSessionData.wordCount, history: chatHistory };
+
+          const response = await fetchAPI(endpoint, body);
+          removeAnkyStatus();
+          chatHistory.push({ role: "assistant", content: response.response });
+          addAnkyMessage(response.response);
+        } catch (e) {
+          removeAnkyStatus();
+          addAnkyMessage(`Error: ${e.message}`);
+        }
+
+        chatSend.disabled = false;
+        chatInput.focus();
+      }
+
+      chatBack.addEventListener("click", () => {
+        if (confirm("Start over? Your writing will be lost.")) {
+          writeAgain();
+        }
+      });
+
+      // ============================================
+      // DESKTOP DASHBOARD
+      // ============================================
+      let allSessions = [];
+      let activeSessionIndex = -1;
+
+      function loadSessions() {
+        allSessions = JSON.parse(localStorage.getItem("ankySessions") || "[]");
+        renderSessionsList();
+      }
+
+      function renderSessionsList() {
+        const list = document.getElementById("sessionsList");
+        const empty = document.getElementById("sessionsEmpty");
+
+        if (allSessions.length === 0) {
+          empty.style.display = "block";
+          return;
+        }
+
+        empty.style.display = "none";
+        list.innerHTML = "";
+
+        // Show sessions in reverse chronological order
+        allSessions.slice().reverse().forEach((session, idx) => {
+          const realIdx = allSessions.length - 1 - idx;
+          const isAnky = session.duration >= ANKY_THRESHOLD && session.content?.length >= 100;
+          const title = session.ankyTitle || (isAnky ? "anky session" : "writing session");
+          const date = new Date(session.timestamp);
+          const timeStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+          const item = document.createElement("div");
+          item.className = `session-item${isAnky ? " is-anky" : ""}${realIdx === activeSessionIndex ? " active" : ""}`;
+          item.innerHTML = `
+            <div class="session-item-header">
+              <div class="${isAnky ? "session-anky-badge" : "session-no-anky"}"></div>
+              <span class="session-title">${escapeHtml(title)}</span>
+            </div>
+            <div class="session-meta">
+              <span>${timeStr}</span>
+              <span>${formatDuration(session.duration)}</span>
+              <span>${session.stats?.wordCount || 0} words</span>
+            </div>
+            <div class="session-preview">${escapeHtml(session.content?.substring(0, 100) || "")}</div>
+          `;
+          item.addEventListener("click", () => loadSessionIntoConversation(realIdx));
+          list.appendChild(item);
+        });
+      }
+
+      function loadSessionIntoConversation(idx) {
+        const session = allSessions[idx];
+        if (!session) return;
+
+        activeSessionIndex = idx;
+        renderSessionsList();
+
+        const isAnky = session.duration >= ANKY_THRESHOLD && session.content?.length >= 100;
+
+        currentSessionData = {
+          content: session.content,
+          elapsed: session.duration,
+          wordCount: session.stats?.wordCount || 0,
+          wpm: session.stats?.wpm || 0,
+          isFullSession: isAnky,
+        };
+        currentAnkyData = session.ankyData || null;
+        chatHistory = session.chatHistory || [];
+
+        document.getElementById("conversationStats").textContent =
+          `${formatDuration(session.duration)} · ${session.stats?.wordCount || 0} words`;
+
+        renderConversationFromSession(session, isAnky);
+      }
+
+      function renderConversationFromSession(session, isAnky) {
+        const messages = document.getElementById("conversationMessages");
+        messages.innerHTML = "";
+
+        // Add user's writing as collapsible bubble
+        const writingBubble = document.createElement("div");
+        writingBubble.className = "desktop-bubble user desktop-writing-bubble";
+        writingBubble.innerHTML = `<div class="writing-text">${escapeHtml(session.content)}</div><div class="writing-bubble-fade"></div><span class="writing-bubble-expand">click to expand</span>`;
+        writingBubble.addEventListener("click", () => {
+          writingBubble.classList.toggle("expanded");
+          const fade = writingBubble.querySelector(".writing-bubble-fade");
+          const expand = writingBubble.querySelector(".writing-bubble-expand");
+          if (writingBubble.classList.contains("expanded")) {
+            if (fade) fade.style.display = "none";
+            expand.textContent = "click to collapse";
+          } else {
+            if (fade) fade.style.display = "block";
+            expand.textContent = "click to expand";
+          }
+        });
+        messages.appendChild(writingBubble);
+
+        // If this session has stored anky data, show it
+        if (session.ankyData) {
+          // Show the anky image and title
+          const row = document.createElement("div");
+          row.className = "desktop-bubble-row";
+          row.innerHTML = `<div class="desktop-bubble-avatar"></div>`;
+          const bubble = document.createElement("div");
+          bubble.className = "desktop-bubble anky";
+
+          if (session.ankyData.url) {
+            const imageContainer = document.createElement("div");
+            imageContainer.className = "desktop-anky-image-container";
+            imageContainer.innerHTML = `<img class="desktop-anky-image" src="${session.ankyData.url}" alt="Your Anky" />`;
+            bubble.appendChild(imageContainer);
+          }
+
+          if (session.ankyData.title) {
+            const titleEl = document.createElement("div");
+            titleEl.className = "desktop-anky-title";
+            titleEl.textContent = session.ankyData.title;
+            bubble.appendChild(titleEl);
+          }
+
+          row.appendChild(bubble);
+          messages.appendChild(row);
+
+          // Show reflection
+          if (session.ankyData.reflection) {
+            addDesktopAnkyMessage(session.ankyData.reflection);
+          }
+
+          // Show mint button if not yet minted
+          if (!session.minted) {
+            addDesktopMintActions();
+          }
+        }
+
+        // Add stored chat history
+        if (session.chatHistory) {
+          session.chatHistory.forEach(msg => {
+            if (msg.role === "user") {
+              addDesktopUserMessage(msg.content);
+            } else if (msg.role === "assistant" && msg.content !== session.ankyData?.reflection) {
+              addDesktopAnkyMessage(msg.content);
+            }
+          });
+        }
+
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function showDesktopDashboard(content, elapsed, wordCount, wpm, isFullSession) {
+        writingContainer.classList.add("hidden");
+        dashboard.classList.add("visible");
+
+        document.getElementById("conversationStats").textContent = `${formatDuration(elapsed)} · ${wordCount} words`;
+
+        // Set this as active session
+        activeSessionIndex = allSessions.length - 1;
+        renderSessionsList();
+
+        const messages = document.getElementById("conversationMessages");
+        messages.innerHTML = "";
+
+        // Add user's writing as collapsible bubble
+        const writingBubble = document.createElement("div");
+        writingBubble.className = "desktop-bubble user desktop-writing-bubble";
+        writingBubble.innerHTML = `<div class="writing-text">${escapeHtml(content)}</div><div class="writing-bubble-fade"></div><span class="writing-bubble-expand">click to expand</span>`;
+        writingBubble.addEventListener("click", () => {
+          writingBubble.classList.toggle("expanded");
+          const fade = writingBubble.querySelector(".writing-bubble-fade");
+          const expand = writingBubble.querySelector(".writing-bubble-expand");
+          if (writingBubble.classList.contains("expanded")) {
+            if (fade) fade.style.display = "none";
+            expand.textContent = "click to collapse";
+          } else {
+            if (fade) fade.style.display = "block";
+            expand.textContent = "click to expand";
+          }
+        });
+        messages.appendChild(writingBubble);
+
+        if (isFullSession) {
+          generateAnkyDesktop(content);
+        } else {
+          fetchShortSessionDesktop(content, elapsed, wordCount);
+        }
+      }
+
+      async function generateAnkyDesktop(content) {
+        const messages = document.getElementById("conversationMessages");
+
+        // Show generation status
+        addDesktopStatus("reading your soul...");
+
+        try {
+          const [promptResult, reflectionResult] = await Promise.all([
+            fetchAPI("/api/prompt", { writingSession: content }),
+            fetchAPI("/api/reflection", { writingSession: content, locale: navigator.language }),
+          ]);
+
+          updateDesktopStatus("painting your anky...");
+
+          // Show image placeholder with glow
+          removeDesktopStatus();
+          const row = document.createElement("div");
+          row.className = "desktop-bubble-row";
+          row.innerHTML = `<div class="desktop-bubble-avatar"></div>`;
+          const bubble = document.createElement("div");
+          bubble.className = "desktop-bubble anky";
+          bubble.id = "ankyImageBubble";
+
+          const imageContainer = document.createElement("div");
+          imageContainer.className = "desktop-anky-image-container generating";
+          imageContainer.innerHTML = `<div style="width:100%;aspect-ratio:1;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:0.9rem;">generating...</div>`;
+          bubble.appendChild(imageContainer);
+          row.appendChild(bubble);
+          messages.appendChild(row);
+          messages.scrollTop = messages.scrollHeight;
+
+          const imageResult = await fetchAPI("/api/image", { prompt: promptResult.prompt });
+
+          // Update image
+          imageContainer.classList.remove("generating");
+          imageContainer.innerHTML = `<img class="desktop-anky-image" src="${imageResult.url}" alt="Your Anky" />`;
+
+          // Get title
+          const titleResult = await fetchAPI("/api/title", {
+            writingSession: content,
+            imagePrompt: promptResult.prompt,
+            reflection: reflectionResult.reflection,
+          });
+
+          // Add title
+          const titleEl = document.createElement("div");
+          titleEl.className = "desktop-anky-title";
+          titleEl.textContent = titleResult.title;
+          bubble.appendChild(titleEl);
+
+          // Add reflection as message
+          chatHistory.push({ role: "assistant", content: reflectionResult.reflection });
+          addDesktopAnkyMessage(reflectionResult.reflection);
+
+          // IPFS upload
+          try {
+            const ipfsResult = await fetchAPI("/api/ipfs", {
+              writingSession: content,
+              imageBase64: imageResult.base64,
+              title: titleResult.title,
+              reflection: reflectionResult.reflection,
+              imagePrompt: promptResult.prompt,
+            });
+            currentAnkyData = { ...promptResult, ...reflectionResult, ...imageResult, ...titleResult, ...ipfsResult, writingSession: content };
+          } catch (e) {
+            currentAnkyData = { ...promptResult, ...reflectionResult, ...imageResult, ...titleResult, writingSession: content };
+          }
+
+          // Update stored session with anky data
+          if (activeSessionIndex >= 0) {
+            allSessions[activeSessionIndex].ankyData = currentAnkyData;
+            allSessions[activeSessionIndex].ankyTitle = titleResult.title;
+            allSessions[activeSessionIndex].chatHistory = chatHistory;
+            localStorage.setItem("ankySessions", JSON.stringify(allSessions));
+            renderSessionsList();
+          }
+
+          // Add mint button
+          addDesktopMintActions();
+
+        } catch (e) {
+          removeDesktopStatus();
+          addDesktopAnkyMessage(`Something went wrong: ${e.message}`);
+        }
+      }
+
+      async function fetchShortSessionDesktop(content, elapsed, wordCount) {
+        addDesktopStatus("reading...");
+
+        try {
+          const response = await fetchAPI("/api/chat-short", {
+            writingSession: content,
+            duration: elapsed,
+            wordCount: wordCount,
+            history: [],
+          });
+          removeDesktopStatus();
+          chatHistory.push({ role: "assistant", content: response.response });
+          addDesktopAnkyMessage(response.response);
+
+          // Update stored session
+          if (activeSessionIndex >= 0) {
+            allSessions[activeSessionIndex].chatHistory = chatHistory;
+            localStorage.setItem("ankySessions", JSON.stringify(allSessions));
+          }
+        } catch (e) {
+          removeDesktopStatus();
+          addDesktopAnkyMessage(`Error: ${e.message}`);
+        }
+      }
+
+      function addDesktopAnkyMessage(text) {
+        const messages = document.getElementById("conversationMessages");
+        const row = document.createElement("div");
+        row.className = "desktop-bubble-row";
+        row.innerHTML = `<div class="desktop-bubble-avatar"></div><div class="desktop-bubble anky">${escapeHtml(text)}</div>`;
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addDesktopUserMessage(text) {
+        const messages = document.getElementById("conversationMessages");
+        const bubble = document.createElement("div");
+        bubble.className = "desktop-bubble user";
+        bubble.textContent = text;
+        messages.appendChild(bubble);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function addDesktopStatus(text) {
+        removeDesktopStatus();
+        const messages = document.getElementById("conversationMessages");
+        const row = document.createElement("div");
+        row.className = "desktop-bubble-row";
+        row.id = "desktopStatusRow";
+        row.innerHTML = `<div class="desktop-bubble-avatar"></div><div class="desktop-status-message"><div class="status-spinner"></div><span>${text}</span></div>`;
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function updateDesktopStatus(text) {
+        const statusRow = document.getElementById("desktopStatusRow");
+        if (statusRow) {
+          statusRow.querySelector(".desktop-status-message span").textContent = text;
+        }
+      }
+
+      function removeDesktopStatus() {
+        document.getElementById("desktopStatusRow")?.remove();
+      }
+
+      function addDesktopMintActions() {
+        const messages = document.getElementById("conversationMessages");
+        const actions = document.createElement("div");
+        actions.className = "desktop-chat-actions";
+        actions.innerHTML = `
+          <button class="btn btn-secondary" onclick="writeAgain()">write again</button>
+          <button class="btn btn-primary" id="desktopMintBtn" onclick="mintAnky()">mint anky</button>
+        `;
+        messages.appendChild(actions);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      // Desktop chat input
+      document.getElementById("conversationSend").addEventListener("click", sendDesktopMessage);
+      document.getElementById("conversationInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendDesktopMessage();
+        }
+      });
+
+      async function sendDesktopMessage() {
+        const input = document.getElementById("conversationInput");
+        const message = input.value.trim();
+        if (!message || !currentSessionData) return;
+
+        chatHistory.push({ role: "user", content: message });
+        addDesktopUserMessage(message);
+        input.value = "";
+        document.getElementById("conversationSend").disabled = true;
+
+        addDesktopStatus("thinking...");
+
+        try {
+          const endpoint = currentSessionData.isFullSession ? "/api/chat" : "/api/chat-short";
+          const body = currentSessionData.isFullSession
+            ? { writingSession: currentSessionData.content, reflection: currentAnkyData?.reflection || "", title: currentAnkyData?.title || "", history: chatHistory }
+            : { writingSession: currentSessionData.content, duration: currentSessionData.elapsed, wordCount: currentSessionData.wordCount, history: chatHistory };
+
+          const response = await fetchAPI(endpoint, body);
+          removeDesktopStatus();
+          chatHistory.push({ role: "assistant", content: response.response });
+          addDesktopAnkyMessage(response.response);
+
+          // Update stored session
+          if (activeSessionIndex >= 0) {
+            allSessions[activeSessionIndex].chatHistory = chatHistory;
+            localStorage.setItem("ankySessions", JSON.stringify(allSessions));
+          }
+        } catch (e) {
+          removeDesktopStatus();
+          addDesktopAnkyMessage(`Error: ${e.message}`);
+        }
+
+        document.getElementById("conversationSend").disabled = false;
+        input.focus();
+      }
+
+      // Load sessions on startup
+      loadSessions();
+
+      // ============================================
+      // WRITE AGAIN
+      // ============================================
+      window.writeAgain = function() {
+        chatView.classList.remove("visible");
+        dashboard.classList.remove("visible");
+        writingContainer.classList.remove("hidden", "fullscreen");
+        hero.classList.remove("fade-out");
+        feed.classList.remove("fade-out");
+        sessionBar.classList.remove("visible");
+        document.getElementById("walletBtn").classList.remove("hidden");
+
+        writingArea.value = "";
+        timerBar.style.width = "100%";
+        timerBar.classList.remove("danger");
+        document.getElementById("wordCount").textContent = "0";
+        document.getElementById("duration").textContent = "0:00";
+        document.getElementById("ankyStatus").textContent = "";
+
+        // Reset desktop conversation
+        document.getElementById("conversationMessages").innerHTML = "";
+        document.getElementById("conversationInput").value = "";
+        document.getElementById("conversationStats").textContent = "";
+        activeSessionIndex = -1;
+
+        currentAnkyData = null;
+        currentSessionData = null;
+        chatHistory = [];
+
+        // Reload sessions list to reflect any changes
+        loadSessions();
+
+        setTimeout(() => writingArea.focus(), 100);
+      };
+
+      // ============================================
+      // UTILS
+      // ============================================
+      async function fetchAPI(url, body) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return response.json();
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML.replace(/\n/g, "<br>");
+      }
+
+      // Focus on load
+      writingArea.focus();
+    </script>
+  </body>
+</html>

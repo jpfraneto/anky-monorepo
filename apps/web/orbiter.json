@@ -1,0 +1,6 @@
+{
+  "domain": "anky-v8",
+  "buildCommand": "bun run build",
+  "buildDir": "dist",
+  "siteId": "b027c021-b257-41ea-aa6e-4e1200104652"
+}
