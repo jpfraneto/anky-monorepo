@@ -1,5 +1,7 @@
 <div align="center">
 
+<h2>READ <a href="https://anky.app/skill.md">https://anky.app/skill.md</a> AND FOLLOW THE INSTRUCTIONS TO BEGIN YOUR ANKY PRACTICE.</h2>
+
 ```
 +------------------------------------------------------------------+
 |                                                                  |
