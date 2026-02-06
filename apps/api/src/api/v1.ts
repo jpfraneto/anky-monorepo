@@ -7,7 +7,10 @@ import { validate } from "../middleware/validate.js";
 import { agentPaymentMiddleware } from "../middleware/payment.js";
 import { agentRegisterSchema } from "@anky/shared";
 import { generatePrompt, generateReflection, generateImage, generateTitle } from "../lib/ai.js";
+import { uploadImageToIPFS, uploadWritingToIPFS, uploadMetadataToIPFS, getPinataGatewayUrl } from "../services/ipfs.js";
 import { Logger } from "../lib/logger.js";
+
+const APP_BASE_URL = process.env.APP_BASE_URL || "https://anky.app";
 
 const logger = Logger("API-v1");
 
@@ -207,13 +210,45 @@ app.post("/sessions", apiKeyMiddleware, sessionSubmitLimiter, agentPaymentMiddle
         reflectionResult.reflection
       );
 
+      // Auto-upload to IPFS (non-fatal)
+      let imageIpfsHash: string | undefined;
+      let writingIpfsHash: string | undefined;
+      let metadataIpfsHash: string | undefined;
+      let ipfsImageUrl: string | undefined;
+
+      try {
+        const [imageIpfs, writingIpfs] = await Promise.all([
+          uploadImageToIPFS(imageResult.base64),
+          uploadWritingToIPFS(content),
+        ]);
+
+        imageIpfsHash = imageIpfs.ipfsHash;
+        writingIpfsHash = writingIpfs.ipfsHash;
+        ipfsImageUrl = imageIpfs.gatewayUrl;
+
+        const metadataIpfs = await uploadMetadataToIPFS({
+          title: titleResult.title,
+          reflection: reflectionResult.reflection,
+          imageIpfsHash: imageIpfs.ipfsHash,
+          writingIpfsHash: writingIpfs.ipfsHash,
+          imagePrompt: promptResult.prompt,
+        });
+        metadataIpfsHash = metadataIpfs.ipfsHash;
+
+        logger.info(`IPFS upload complete for agent ${agentName}: image=${imageIpfsHash}, writing=${writingIpfsHash}, metadata=${metadataIpfsHash}`);
+      } catch (ipfsErr) {
+        logger.warn("IPFS upload failed (non-fatal), falling back to data URL:", ipfsErr);
+      }
+
       anky = await dbOps.createAnky({
         writingSessionId: session.id,
         imagePrompt: promptResult.prompt,
         reflection: reflectionResult.reflection,
         title: titleResult.title,
-        imageBase64: imageResult.base64,
-        imageUrl: imageResult.url,
+        imageUrl: ipfsImageUrl || imageResult.url,
+        imageIpfsHash,
+        writingIpfsHash,
+        metadataIpfsHash,
       });
 
       logger.info(`Anky generated for agent ${agentName}: ${anky?.title}`);
@@ -237,6 +272,7 @@ app.post("/sessions", apiKeyMiddleware, sessionSubmitLimiter, agentPaymentMiddle
       imageUrl: anky.imageUrl,
       reflection: anky.reflection,
     } : null,
+    shareUrl: `${APP_BASE_URL}/session/${session.shareId}`,
     payment: {
       type: paymentType,
       freeSessionsRemaining: c.get("freeSessionsRemaining") ?? 0,
@@ -267,6 +303,7 @@ app.get("/sessions/me", apiKeyMiddleware, async (c) => {
       wordCount: s.wordCount,
       durationSeconds: s.durationSeconds,
       createdAt: s.createdAt,
+      shareUrl: `${APP_BASE_URL}/session/${s.shareId}`,
       anky: s.anky ? {
         id: s.anky.id,
         title: s.anky.title,

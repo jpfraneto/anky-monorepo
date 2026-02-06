@@ -142,6 +142,7 @@ export interface ReflectionResponse {
 export interface ImageResponse {
   url: string;
   base64?: string;
+  id?: string;
 }
 
 export interface TitleResponse {
@@ -151,6 +152,7 @@ export interface TitleResponse {
 export interface IpfsResponse {
   writingSessionIpfs: string;
   imageIpfs: string;
+  imageUrl: string;
   tokenUri: string;
 }
 
@@ -192,7 +194,6 @@ export interface RecentSessionAnky {
   id: string;
   title: string | null;
   imageUrl: string | null;
-  imageBase64: string | null;
   reflection: string | null;
   imagePrompt: string | null;
   writingIpfsHash: string | null;
@@ -252,7 +253,6 @@ export interface Anky {
   imagePrompt?: string;
   reflection?: string;
   title?: string;
-  imageBase64?: string;
   imageUrl?: string;
   writingIpfsHash?: string;
   imageIpfsHash?: string;
@@ -323,7 +323,7 @@ export async function createSession(data: {
 }
 
 export async function getSessionByShareId(shareId: string): Promise<Session> {
-  const response = await fetchGet<SessionResponse>(`/s/${shareId}`);
+  const response = await fetchGet<SessionResponse>(`/api/s/${shareId}`);
   return response.session;
 }
 
@@ -343,11 +343,11 @@ export async function createAnky(data: {
   imagePrompt?: string;
   reflection?: string;
   title?: string;
-  imageBase64?: string;
   imageUrl?: string;
   writingIpfsHash?: string;
   imageIpfsHash?: string;
   metadataIpfsHash?: string;
+  generatedImageId?: string;
 }): Promise<Anky> {
   const response = await fetchAPI<AnkyResponse>("/api/ankys", data);
   return response.anky;

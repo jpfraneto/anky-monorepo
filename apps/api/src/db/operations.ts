@@ -166,7 +166,6 @@ export async function createAnky(params: {
   imagePrompt?: string;
   reflection?: string;
   title?: string;
-  imageBase64?: string;
   imageUrl?: string;
   writingIpfsHash?: string;
   imageIpfsHash?: string;
@@ -183,7 +182,6 @@ export async function updateAnky(ankyId: string, updates: {
   imagePrompt?: string;
   reflection?: string;
   title?: string;
-  imageBase64?: string | null;
   imageUrl?: string;
   writingIpfsHash?: string;
   imageIpfsHash?: string;
@@ -232,6 +230,16 @@ export async function getPublicAnkyFeed(limit = 50, offset = 0) {
   if (!db) return [];
 
   return db.query.ankys.findMany({
+    columns: {
+      id: true,
+      title: true,
+      imageUrl: true,
+      reflection: true,
+      imagePrompt: true,
+      createdAt: true,
+      writingSessionId: true,
+      userId: true,
+    },
     orderBy: [desc(ankys.createdAt)],
     limit,
     offset,
@@ -254,6 +262,17 @@ export async function getPublicAnkyFeed(limit = 50, offset = 0) {
   });
 }
 
+// Gallery-specific column selection
+const galleryAnkyColumns = {
+  id: true,
+  title: true,
+  imageUrl: true,
+  reflection: true,
+  createdAt: true,
+  writingSessionId: true,
+  userId: true,
+} as const;
+
 export async function getAnkysForGallery(limit = 50, offset = 0, writerType?: 'human' | 'agent' | 'all') {
   if (!db) return { ankys: [], total: 0 };
 
@@ -264,6 +283,7 @@ export async function getAnkysForGallery(limit = 50, offset = 0, writerType?: 'h
     // Run data and count queries in parallel for speed
     const [results, countResult] = await Promise.all([
       db.query.ankys.findMany({
+        columns: galleryAnkyColumns,
         where: baseCondition,
         orderBy: [desc(ankys.createdAt)],
         limit,
@@ -291,6 +311,7 @@ export async function getAnkysForGallery(limit = 50, offset = 0, writerType?: 'h
   // For filtered queries, use efficient JOIN instead of subquery
   // Fetch more than needed and filter in app (faster than subquery for small datasets)
   const results = await db.query.ankys.findMany({
+    columns: galleryAnkyColumns,
     where: baseCondition,
     orderBy: [desc(ankys.createdAt)],
     limit: limit * 3, // Fetch more to account for filtering
@@ -589,6 +610,22 @@ export async function getGeneratedImageById(id: string) {
   });
 }
 
+export async function getAnkyById(ankyId: string) {
+  if (!db) return null;
+
+  return db.query.ankys.findFirst({
+    where: eq(ankys.id, ankyId),
+  });
+}
+
+export async function getGeneratedImageByAnkyId(ankyId: string) {
+  if (!db) return null;
+
+  return db.query.generatedImages.findFirst({
+    where: eq(generatedImages.ankyId, ankyId),
+  });
+}
+
 export async function linkImageToAnky(imageId: string, ankyId: string) {
   if (!db) return null;
 
@@ -649,7 +686,15 @@ export async function getAgentSessions(agentId: string, limit = 50) {
     orderBy: [desc(writingSessions.createdAt)],
     limit,
     with: {
-      anky: true,
+      anky: {
+        columns: {
+          id: true,
+          title: true,
+          imageUrl: true,
+          reflection: true,
+          createdAt: true,
+        },
+      },
     },
   });
 }

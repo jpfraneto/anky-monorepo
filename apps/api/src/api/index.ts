@@ -14,6 +14,7 @@ import { publicReadLimiter, aiGenerationLimiter } from "../middleware/rateLimit.
 import { getLogicalDate, isSameDay } from "../db/streak-utils.js";
 import { Logger } from "../lib/logger.js";
 import { createCheckout } from "../services/polar.js";
+import { uploadImageToIPFS, uploadWritingToIPFS, uploadMetadataToIPFS } from "../services/ipfs.js";
 import { Webhooks } from "@polar-sh/hono";
 import { HUMAN_SUBSCRIPTION_DURATION_DAYS } from "@anky/shared";
 
@@ -387,83 +388,35 @@ app.post("/ipfs", async (c) => {
   const { writingSession, imageBase64, title, reflection, imagePrompt } =
     await c.req.json();
 
-  const pinataJwt = process.env.PINATA_JWT;
-  if (!pinataJwt) {
-    logger.error("IPFS upload failed: Pinata JWT not configured");
-    return c.json({ error: "IPFS not configured" }, 400);
+  try {
+    // Upload writing and image in parallel
+    const [writingResult, imageResult] = await Promise.all([
+      uploadWritingToIPFS(writingSession),
+      uploadImageToIPFS(imageBase64),
+    ]);
+
+    // Upload metadata (depends on writing + image hashes)
+    const metadataResult = await uploadMetadataToIPFS({
+      title,
+      reflection,
+      imageIpfsHash: imageResult.ipfsHash,
+      writingIpfsHash: writingResult.ipfsHash,
+      imagePrompt,
+    });
+
+    logger.info(
+      `IPFS upload complete: writing=${writingResult.ipfsHash}, image=${imageResult.ipfsHash}, metadata=${metadataResult.ipfsHash}`,
+    );
+    return c.json({
+      writingSessionIpfs: writingResult.ipfsHash,
+      imageIpfs: imageResult.ipfsHash,
+      imageUrl: imageResult.gatewayUrl,
+      tokenUri: metadataResult.ipfsHash,
+    });
+  } catch (err) {
+    logger.error("IPFS upload failed:", err);
+    return c.json({ error: "IPFS upload failed" }, 500);
   }
-
-  // Upload writing session
-  const writingResponse = await fetch(
-    "https://api.pinata.cloud/pinning/pinJSONToIPFS",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${pinataJwt}`,
-      },
-      body: JSON.stringify({
-        pinataMetadata: { name: `anky-writing-${Date.now()}` },
-        pinataContent: {
-          writingSession,
-          createdAt: new Date().toISOString(),
-        },
-      }),
-    },
-  );
-  const writingData = (await writingResponse.json()) as { IpfsHash: string };
-  const writingSessionIpfs = writingData.IpfsHash;
-
-  // Upload image
-  const imageBuffer = Buffer.from(imageBase64, "base64");
-  const imageBlob = new Blob([imageBuffer], { type: "image/png" });
-  const formData = new FormData();
-  formData.append("file", imageBlob, `anky-image-${Date.now()}.png`);
-  formData.append(
-    "pinataMetadata",
-    JSON.stringify({ name: `anky-image-${Date.now()}` }),
-  );
-
-  const imageResponse = await fetch(
-    "https://api.pinata.cloud/pinning/pinFileToIPFS",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${pinataJwt}` },
-      body: formData,
-    },
-  );
-  const imageData = (await imageResponse.json()) as { IpfsHash: string };
-  const imageIpfs = imageData.IpfsHash;
-
-  // Upload metadata
-  const metadataResponse = await fetch(
-    "https://api.pinata.cloud/pinning/pinJSONToIPFS",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${pinataJwt}`,
-      },
-      body: JSON.stringify({
-        pinataMetadata: { name: `anky-metadata-${Date.now()}` },
-        pinataContent: {
-          name: title,
-          description: reflection,
-          image: `ipfs://${imageIpfs}`,
-          external_url: "https://anky.bot",
-          attributes: [{ trait_type: "image_prompt", value: imagePrompt }],
-          properties: { writing_session: `ipfs://${writingSessionIpfs}` },
-        },
-      }),
-    },
-  );
-  const metadataData = (await metadataResponse.json()) as { IpfsHash: string };
-  const tokenUri = metadataData.IpfsHash;
-
-  logger.info(
-    `IPFS upload complete: writing=${writingSessionIpfs}, image=${imageIpfs}, metadata=${tokenUri}`,
-  );
-  return c.json({ writingSessionIpfs, imageIpfs, tokenUri });
 });
 
 // Chat for short sessions (< 8 minutes)
@@ -697,7 +650,6 @@ app.get("/me", authMiddleware, async (c) => {
           id: s.anky.id,
           title: s.anky.title,
           imageUrl: s.anky.imageUrl,
-          imageBase64: s.anky.imageBase64,
           reflection: s.anky.reflection,
           imagePrompt: s.anky.imagePrompt,
           writingIpfsHash: s.anky.writingIpfsHash,
@@ -1051,6 +1003,17 @@ app.post("/ankys", optionalAuthMiddleware, async (c) => {
   logger.info(
     `Anky created: ${anky?.id} for session ${params.writingSessionId}`,
   );
+
+  // Link generated image to anky for IPFS retry support
+  if (params.generatedImageId && anky?.id) {
+    try {
+      await dbOps.linkImageToAnky(params.generatedImageId, anky.id);
+      logger.debug(`Linked image ${params.generatedImageId} to anky ${anky.id}`);
+    } catch (e) {
+      logger.error("Failed to link image to anky:", e);
+    }
+  }
+
   return c.json({ anky });
 });
 
@@ -1130,6 +1093,59 @@ app.get("/sessions/:sessionId/anky", async (c) => {
   }
 
   return c.json({ anky });
+});
+
+// Retry IPFS upload for an anky (requires auth)
+app.post("/ankys/:ankyId/retry-ipfs", authMiddleware, async (c) => {
+  logger.info("Retrying IPFS upload for anky");
+  if (!isDatabaseAvailable()) {
+    return c.json({ error: "Database not available" }, 503);
+  }
+
+  const ankyId = c.req.param("ankyId");
+
+  const ankyRecord = await dbOps.getAnkyById(ankyId);
+  if (!ankyRecord) {
+    return c.json({ error: "Anky not found" }, 404);
+  }
+
+  const linkedImage = await dbOps.getGeneratedImageByAnkyId(ankyId);
+  if (!linkedImage) {
+    return c.json({ error: "No linked image found for this anky" }, 404);
+  }
+
+  const session = await dbOps.getWritingSession(ankyRecord.writingSessionId);
+  if (!session) {
+    return c.json({ error: "Writing session not found" }, 404);
+  }
+
+  try {
+    const [imageIpfsResult, writingIpfsResult] = await Promise.all([
+      uploadImageToIPFS(linkedImage.imageBase64),
+      uploadWritingToIPFS(session.content),
+    ]);
+
+    const metadataResult = await uploadMetadataToIPFS({
+      title: ankyRecord.title || "",
+      reflection: ankyRecord.reflection || "",
+      imageIpfsHash: imageIpfsResult.ipfsHash,
+      writingIpfsHash: writingIpfsResult.ipfsHash,
+      imagePrompt: ankyRecord.imagePrompt || "",
+    });
+
+    const updatedAnky = await dbOps.updateAnky(ankyId, {
+      writingIpfsHash: writingIpfsResult.ipfsHash,
+      imageIpfsHash: imageIpfsResult.ipfsHash,
+      metadataIpfsHash: metadataResult.ipfsHash,
+      imageUrl: imageIpfsResult.gatewayUrl,
+    });
+
+    logger.info(`IPFS retry successful for anky ${ankyId}`);
+    return c.json({ anky: updatedAnky });
+  } catch (err) {
+    logger.error("IPFS retry failed:", err);
+    return c.json({ error: "IPFS upload failed" }, 500);
+  }
 });
 
 // Record mint (requires auth)

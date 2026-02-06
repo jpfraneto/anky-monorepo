@@ -104,8 +104,7 @@ export const ankys = pgTable('ankys', {
   reflection: text('reflection'),
   title: text('title'),
 
-  // Image storage
-  imageBase64: text('image_base64'),
+  // Image storage (IPFS gateway URL)
   imageUrl: text('image_url'),
 
   // IPFS hashes

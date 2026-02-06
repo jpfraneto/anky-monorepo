@@ -25,7 +25,6 @@ export interface AnkyData {
   prompt?: string;
   reflection?: string;
   url?: string;
-  base64?: string;
   title?: string;
   writingSessionIpfs?: string;
   imageIpfs?: string;

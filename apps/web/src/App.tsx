@@ -29,7 +29,6 @@ function toWritingSession(session: RecentSession): WritingSession {
       ? {
           reflection: session.anky.reflection || undefined,
           url: session.anky.imageUrl || undefined,
-          base64: session.anky.imageBase64 || undefined,
           title: session.anky.title || undefined,
           imagePrompt: session.anky.imagePrompt || undefined,
           writingSessionIpfs: session.anky.writingIpfsHash || undefined,

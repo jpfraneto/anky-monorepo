@@ -12,6 +12,7 @@ import {
 } from "../api";
 import type { SessionData, AnkyData, ChatMessage } from "../types";
 import { formatDuration, escapeHtml } from "../utils/helpers";
+import { TextMandala } from "./TextMandala";
 
 interface MobileChatViewProps {
   visible: boolean;
@@ -110,6 +111,9 @@ export function MobileChatView({
             // IPFS upload failed, continue without it
           }
 
+          // Use IPFS gateway URL if available, otherwise fall back to generated URL
+          const finalImageUrl = ipfsResult?.imageUrl || imageResult.url;
+
           // Create Anky record in backend with IPFS hashes
           let ankyId: string | undefined;
           if (backendSessionId) {
@@ -120,11 +124,11 @@ export function MobileChatView({
                 imagePrompt: promptResult.prompt,
                 reflection: reflectionResult.reflection,
                 title: titleResult.title,
-                imageBase64: imageResult.base64,
-                imageUrl: imageResult.url,
+                imageUrl: finalImageUrl,
                 writingIpfsHash: ipfsResult?.writingSessionIpfs,
                 imageIpfsHash: ipfsResult?.imageIpfs,
                 metadataIpfsHash: ipfsResult?.tokenUri,
+                generatedImageId: imageResult.id,
               });
               ankyId = anky.id;
             } catch (e) {
@@ -275,20 +279,52 @@ export function MobileChatView({
           </div>
         )}
 
-        {generatedImage && (
+        {sessionData?.isFullSession && (isLoading || generatedImage) && (
           <div className="chat-bubble-row">
             <div className="anky-avatar" />
             <div className="chat-bubble anky">
-              <div className="anky-image-container">
-                <img
-                  className="anky-image"
-                  src={generatedImage}
-                  alt="Your Anky"
-                />
-              </div>
-              {generatedTitle && (
-                <div className="anky-title">{generatedTitle}</div>
+              {generatedImage ? (
+                <div className="anky-image-container">
+                  <img
+                    className="anky-image"
+                    src={generatedImage}
+                    alt="Your Anky"
+                  />
+                </div>
+              ) : (
+                <TextMandala text={sessionData.content} />
               )}
+              {generatedTitle ? (
+                <div className="anky-title">{generatedTitle}</div>
+              ) : (
+                <>
+                  <div className="skeleton-title">
+                    <div className="skeleton-title-word" />
+                    <div className="skeleton-title-word" />
+                    <div className="skeleton-title-word" />
+                  </div>
+                  {isLoading && statusText && (
+                    <div className="skeleton-status">
+                      <div className="typing-dots"><span/><span/><span/></div>
+                      <span>{statusText}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isLoading && sessionData?.isFullSession && chatHistory.length === 0 && (
+          <div className="chat-bubble-row">
+            <div className="anky-avatar" />
+            <div className="chat-bubble anky">
+              <div className="skeleton-reflection">
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line" />
+              </div>
             </div>
           </div>
         )}
@@ -308,11 +344,11 @@ export function MobileChatView({
           </div>
         ))}
 
-        {isLoading && statusText && (
+        {isLoading && statusText && !sessionData?.isFullSession && (
           <div className="chat-bubble-row">
             <div className="anky-avatar" />
             <div className="status-message">
-              <div className="status-spinner" />
+              <div className="typing-dots"><span/><span/><span/></div>
               <span>{statusText}</span>
             </div>
           </div>

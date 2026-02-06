@@ -17,7 +17,6 @@ import type { SessionData, AnkyData, ChatMessage } from "../types";
 import { formatDuration, isMobile, ANKY_THRESHOLD } from "../utils/helpers";
 import { MobileChatView } from "./MobileChatView";
 import { DesktopDashboard } from "./DesktopDashboard";
-import { SacredReveal } from "./SacredReveal";
 
 const ANKY_CONTRACT = "0xdf4f77b20cdba13f5235e89bcf06f46618979c55";
 const ANKY_ABI = [
@@ -66,7 +65,7 @@ export function HomePage({
 
   const [showChatView, setShowChatView] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
-  const [showSacredReveal, setShowSacredReveal] = useState(false);
+  const [mainTransitioning, setMainTransitioning] = useState(false);
   const [currentSessionData, setCurrentSessionData] =
     useState<SessionData | null>(null);
   const [currentAnkyData, setCurrentAnkyData] = useState<AnkyData | null>(null);
@@ -115,17 +114,16 @@ export function HomePage({
         setActiveSessionIndex(-1);
       }
 
-      // For full Anky sessions, show Sacred Reveal first
-      if (data.isFullSession) {
-        setShowSacredReveal(true);
-      } else {
-        // For short sessions, show chat view directly
+      // Smooth crossfade: fade out writing, then show chat/dashboard
+      setMainTransitioning(true);
+      setTimeout(() => {
         if (isMobile()) {
           setShowChatView(true);
         } else {
           setShowDashboard(true);
         }
-      }
+        setMainTransitioning(false);
+      }, 400);
     },
     [addSession, backendUser?.id, onSessionsChange]
   );
@@ -193,7 +191,6 @@ export function HomePage({
   const handleWriteAgain = useCallback(() => {
     setShowChatView(false);
     setShowDashboard(false);
-    setShowSacredReveal(false);
     setCurrentSessionData(null);
     setCurrentAnkyData(null);
     setChatHistory([]);
@@ -201,34 +198,6 @@ export function HomePage({
     resetSession();
     setTimeout(() => textareaRef.current?.focus(), 100);
   }, [resetSession]);
-
-  const handleSacredRevealComplete = useCallback(
-    async (data: AnkyData, ankyId?: string) => {
-      setCurrentAnkyData(data);
-      if (ankyId) setBackendAnkyId(ankyId);
-
-      // Update local state
-      if (activeSessionIndex >= 0) {
-        updateSessionAnkyData(activeSessionIndex, data, ankyId, data.title);
-      }
-    },
-    [activeSessionIndex, updateSessionAnkyData]
-  );
-
-  const handleTalkToAnky = useCallback(() => {
-    // Transition from Sacred Reveal to chat view
-    setShowSacredReveal(false);
-    if (currentAnkyData) {
-      setChatHistory([
-        { role: "assistant" as const, content: currentAnkyData.reflection || "" },
-      ]);
-    }
-    if (isMobile()) {
-      setShowChatView(true);
-    } else {
-      setShowDashboard(true);
-    }
-  }, [currentAnkyData]);
 
   const handleAnkyDataUpdate = useCallback(
     async (data: AnkyData, ankyId?: string) => {
@@ -289,7 +258,6 @@ export function HomePage({
       try {
         const ipfsResult = await fetchAPI<IpfsResponse>("/api/ipfs", {
           writingSession: currentSessionData.content,
-          imageBase64: currentAnkyData.base64,
           title: currentAnkyData.title || "",
           reflection: currentAnkyData.reflection || "",
           imagePrompt: currentAnkyData.prompt || currentAnkyData.imagePrompt || "",
@@ -426,21 +394,7 @@ export function HomePage({
 
   return (
     <>
-      {/* Sacred Reveal for full Anky sessions */}
-      {showSacredReveal && currentSessionData?.isFullSession && (
-        <SacredReveal
-          sessionData={currentSessionData}
-          backendSessionId={backendSessionId}
-          backendUserId={backendUser?.id}
-          onComplete={handleSacredRevealComplete}
-          onWriteAgain={handleWriteAgain}
-          onMint={handleMint}
-          onTalkToAnky={handleTalkToAnky}
-          isMinting={isMinting}
-        />
-      )}
-
-      <div className={`main ${showChatView || showDashboard || showSacredReveal ? "hidden" : ""}`}>
+      <div className={`main ${showChatView || showDashboard ? "hidden" : ""} ${mainTransitioning ? "fade-to-chat" : ""}`}>
         <div className={`hero ${isWriting ? "fade-out" : ""}`}>
           <h1>YOUR MIND IS LOUD</h1>
           <p>let it speak</p>

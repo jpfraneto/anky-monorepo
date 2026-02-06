@@ -6,6 +6,7 @@ export { DesktopDashboard } from "./DesktopDashboard";
 export { GeneratePage } from "./GeneratePage";
 export { ImageModal } from "./ImageModal";
 export { PublicSessionView } from "./PublicSessionView";
-export { SacredReveal } from "./SacredReveal";
+
 export { LandingPage } from "./LandingPage";
 export { PricingModal } from "./PricingModal";
+export { TextMandala } from "./TextMandala";
