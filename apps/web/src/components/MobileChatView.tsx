@@ -65,7 +65,7 @@ export function MobileChatView({
 
       if (sessionData.isFullSession) {
         try {
-          setStatusText("reading your soul...");
+          setStatusText("mapping your psyche...");
           const [promptResult, reflectionResult] = await Promise.all([
             fetchAPI<PromptResponse>("/api/prompt", {
               writingSession: sessionData.content,
