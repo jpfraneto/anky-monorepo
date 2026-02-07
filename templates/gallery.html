@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}anky - gallery{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>gallery</h2>
+  <p class="subtitle">ankys born from consciousness streams</p>
+</div>
+
+<div class="gallery-grid">
+  {% for anky in ankys %}
+  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}">
+    {% if anky.image_path and anky.status == 'complete' %}
+    <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
+    {% else %}
+    <div class="placeholder">
+      <div class="processing">generating...</div>
+    </div>
+    {% endif %}
+    <div class="gallery-caption">
+      <span class="gallery-title">{{ anky.title }}</span>
+      {% if anky.thinker_name %}
+      <span class="gallery-thinker">{{ anky.thinker_name }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if ankys | length == 0 %}
+  <div class="empty-state">
+    <p>no ankys yet. go write for 8 minutes to create your first.</p>
+    <a href="/" class="new-session-btn">start writing</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

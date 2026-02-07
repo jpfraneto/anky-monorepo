@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}anky - poiesis{% endblock %}
+
+{% block content %}
+<div class="poiesis-dashboard">
+  <div class="poiesis-header">
+    <h2>poiesis</h2>
+    <div class="poiesis-stats">
+      <span class="stat">GPU: <strong>{{ gpu_status }}</strong></span>
+      <span class="stat">Cost: <strong>${{ total_cost }}</strong></span>
+    </div>
+  </div>
+
+  <div class="console" id="console"
+       hx-ext="sse"
+       sse-connect="/poiesis/stream"
+       sse-swap="log"
+       hx-swap="beforeend">
+    <div class="console-line dim">[waiting for events...]</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const consoleEl = document.getElementById('console');
+
+  // Auto-scroll to bottom on new content
+  const observer = new MutationObserver(() => {
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  });
+  observer.observe(consoleEl, { childList: true });
+</script>
+{% endblock %}

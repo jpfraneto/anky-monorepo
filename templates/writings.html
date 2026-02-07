@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}anky - your writings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>your writings</h2>
+  <p class="subtitle">{{ writings | length }} session{{ writings | length | pluralize }}</p>
+</div>
+
+<div class="writings-list" id="writings-list">
+  {% for w in writings %}
+  <div class="writing-item" data-index="{{ loop.index0 }}">
+    <div class="writing-meta">
+      {{ w.created_at }} &middot; {{ w.duration_display }}
+      {% if w.is_anky %} &middot; <span class="anky-badge">anky</span>{% endif %}
+      &middot; {{ w.word_count }} words
+    </div>
+    <div class="writing-preview">{{ w.content | truncate(length=200) }}</div>
+    {% if w.response %}
+    <div class="writing-response">{{ w.response }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if writings | length == 0 %}
+  <div class="empty-state">
+    <p>no writings yet. go create your first.</p>
+    <a href="/" class="new-session-btn">start writing</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const items = Array.from(document.querySelectorAll('.writing-item'));
+  let current = 0;
+
+  if (items.length > 0) items[0].classList.add('selected');
+
+  document.addEventListener('keydown', (e) => {
+    if (items.length === 0) return;
+    if (e.key === 'ArrowDown' && current < items.length - 1) {
+      e.preventDefault();
+      items[current].classList.remove('selected');
+      current++;
+      items[current].classList.add('selected');
+      items[current].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (e.key === 'ArrowUp' && current > 0) {
+      e.preventDefault();
+      items[current].classList.remove('selected');
+      current--;
+      items[current].classList.add('selected');
+      items[current].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (e.key === 'Escape') window.location.href = '/';
+  });
+</script>
+{% endblock %}

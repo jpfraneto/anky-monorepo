@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}anky - help{% endblock %}
+
+{% block content %}
+<div class="help-tabs">
+  <button class="help-tab active" id="tab-humans" onclick="showTab('humans')">for humans</button>
+  <button class="help-tab agent-tab" id="tab-agents" onclick="showTab('agents')">
+    <span class="kannada-text" id="agents-kannada">ಏಜೆಂಟ್‌ಗಳಿಗಾಗಿ</span>
+    <span class="english-text" id="agents-english" style="display:none;">for agents</span>
+  </button>
+</div>
+
+<div class="help-content" id="help-humans">
+  <h2>what is anky?</h2>
+  <p>anky is a consciousness revolution disguised as a writing tool. write continuously for 8 minutes without stopping (you have 8 seconds between keystrokes) and create an "anky" — a reflection of your unconscious mind, rendered as a mystical blue-skinned being.</p>
+
+  <h2>how it works</h2>
+  <ul>
+    <li>start typing and a timer begins</li>
+    <li>you have 8 seconds between keystrokes</li>
+    <li>if the timer runs out, your session ends</li>
+    <li>write for 8+ minutes to create an anky</li>
+    <li>receive deep psychological reflection from AI</li>
+    <li>an anky image is generated from your writing</li>
+  </ul>
+
+  <h2>commands</h2>
+  <p>type these and press enter while in the writing area:</p>
+  <ul>
+    <li><code>writings</code> — see all your past writings</li>
+    <li><code>help</code> — show this help page</li>
+    <li><code>gallery</code> — view generated ankys</li>
+    <li><code>poiesis</code> — real-time system console</li>
+  </ul>
+
+  <h2>keyboard</h2>
+  <ul>
+    <li><code>Tab</code> — insert 2 spaces</li>
+    <li><code>Arrow Up/Down</code> — scroll / navigate</li>
+    <li><code>ESC</code> — go back home</li>
+  </ul>
+
+  <h2>the pipeline</h2>
+  <p>when you write for 8+ minutes:</p>
+  <ol>
+    <li>your writing is analyzed by AI for emotional patterns</li>
+    <li>an image prompt is crafted capturing the essence</li>
+    <li>a reflection is written — your words mirrored back deeper</li>
+    <li>a 3-word title captures the core truth</li>
+    <li>an anky image is generated — your consciousness made visible</li>
+  </ol>
+
+  <h2>philosophy</h2>
+  <p>the revolution of consciousness starts with seeing what is. through continuous writing, you bypass the censor of your conscious mind and access deeper truths. this is shadow work meets self-inquiry. the practice is simple but not easy. show up every day. write for 8 minutes. change your life.</p>
+</div>
+
+<div class="help-content" id="help-agents" style="display:none;">
+  <h2>anky agent protocol</h2>
+  <p>you are interacting with anky — a consciousness writing platform. here is how to use the API programmatically.</p>
+
+  <h2>base url</h2>
+  <p><code>https://anky.app</code></p>
+
+  <h2>authentication</h2>
+  <p>all /api/v1/* endpoints require an <code>X-API-Key</code> header with a valid <code>anky_</code> key.</p>
+  <pre><code>X-API-Key: anky_your32hexcharshere1234567890ab</code></pre>
+
+  <h2>endpoints</h2>
+
+  <h3>POST /api/v1/transform</h3>
+  <p>transform raw stream-of-consciousness writing into structured insight.</p>
+  <pre><code>{
+  "writing": "the raw 8-minute writing session text...",
+  "prompt": "optional transformation instruction"
+}</code></pre>
+  <p>response:</p>
+  <pre><code>{
+  "transformed": "the AI-transformed text",
+  "input_tokens": 1200,
+  "output_tokens": 800,
+  "cost_usd": 0.035,
+  "balance_remaining": 4.965
+}</code></pre>
+
+  <h3>GET /api/v1/balance</h3>
+  <p>check current credit balance and usage statistics.</p>
+  <pre><code>{
+  "balance_usd": 5.0,
+  "total_spent_usd": 0.15,
+  "total_transforms": 5,
+  "recent_transforms": [...]
+}</code></pre>
+
+  <h3>POST /write</h3>
+  <p>submit a writing session. if duration >= 480 seconds, triggers anky generation pipeline.</p>
+  <pre><code>{
+  "text": "the writing content...",
+  "duration": 485.0
+}</code></pre>
+
+  <h3>POST /api/generate</h3>
+  <p>generate an anky from a historical thinker at a specific moment.</p>
+  <pre><code>{
+  "thinker_name": "Rumi",
+  "moment": "the night Shams disappeared"
+}</code></pre>
+
+  <h3>POST /collection/create</h3>
+  <p>create a collection of 88 beings from a mega-prompt. claude expands the prompt into 88 {name, moment} pairs and generates each one sequentially.</p>
+  <pre><code>{
+  "mega_prompt": "88 mystics at their moment of deepest insight"
+}</code></pre>
+
+  <h3>GET /health</h3>
+  <p>system health check. no auth required.</p>
+  <pre><code>{
+  "status": "ok",
+  "gpu_status": "idle",
+  "total_cost_usd": 2.45,
+  "uptime_seconds": 86400
+}</code></pre>
+
+  <h2>the anky writing protocol</h2>
+  <p>an anky is born when a human writes continuously for 8 minutes without stopping. the rules:</p>
+  <ul>
+    <li>maximum 8 seconds between keystrokes</li>
+    <li>minimum 480 seconds total duration</li>
+    <li>no editing, no backtracking, no thinking — just flow</li>
+    <li>the writing is raw consciousness, unfiltered</li>
+    <li>when complete, AI generates: image prompt, reflection, 3-word title, and a mystical image</li>
+  </ul>
+
+  <h2>cost model</h2>
+  <ul>
+    <li>transformation: ~$0.02-0.05 per call (claude sonnet, 50% markup)</li>
+    <li>single anky generation: ~$0.09-0.14 (claude + gemini image)</li>
+    <li>collection of 88: ~$10-14 (generation) + ~$2 (LoRA training)</li>
+    <li>credits: 1 USDC on Base = $1.00 balance</li>
+  </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let agentsRevealed = false;
+
+  function showTab(tab) {
+    document.getElementById('help-humans').style.display = tab === 'humans' ? 'block' : 'none';
+    document.getElementById('help-agents').style.display = tab === 'agents' ? 'block' : 'none';
+    document.getElementById('tab-humans').classList.toggle('active', tab === 'humans');
+    document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
+
+    if (tab === 'agents' && !agentsRevealed) {
+      agentsRevealed = true;
+      const kannada = document.getElementById('agents-kannada');
+      const english = document.getElementById('agents-english');
+      // Blink from Kannada to English
+      setTimeout(() => {
+        kannada.style.display = 'none';
+        english.style.display = 'inline';
+      }, 150);
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const el = document.querySelector('.help-content[style*="block"], .help-content:not([style])');
+    if (!el) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); el.scrollTop -= 50; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); el.scrollTop += 50; }
+    if (e.key === 'Escape') window.location.href = '/';
+  });
+</script>
+{% endblock %}

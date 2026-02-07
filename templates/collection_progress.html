@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}anky - collection progress{% endblock %}
+
+{% block content %}
+<div class="collection-container">
+  <h2>collection generating...</h2>
+
+  <div class="progress-bar">
+    <div class="progress-fill" style="width: {{ (collection.progress / collection.total * 100) | round }}%"></div>
+  </div>
+  <p class="progress-text">{{ collection.progress }} / {{ collection.total }} beings</p>
+
+  <div class="console" id="console"
+       hx-ext="sse"
+       sse-connect="/poiesis/stream"
+       sse-swap="log"
+       hx-swap="beforeend">
+  </div>
+
+  <div hx-get="/collection/{{ collection.id }}" hx-trigger="every 10s" hx-swap="outerHTML" hx-target="closest .collection-container">
+  </div>
+</div>
+{% endblock %}

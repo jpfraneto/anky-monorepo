@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}anky - write yourself into existence{% endblock %}
+
+{% block content %}
+<div class="timer-bar">
+  <div class="timer-fill" id="timer-fill"></div>
+</div>
+
+<div class="writing-container">
+  <textarea
+    id="writing-area"
+    placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
+    autofocus
+  ></textarea>
+  <div id="response-area"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let timerInterval = null;
+  let timeRemaining = 8000;
+  let sessionStartTime = null;
+  let sessionActive = false;
+  let lastKeystrokeTime = null;
+
+  const textarea = document.getElementById('writing-area');
+  const timerFill = document.getElementById('timer-fill');
+  const responseArea = document.getElementById('response-area');
+
+  function startTimer() {
+    if (sessionActive) return;
+    sessionActive = true;
+    sessionStartTime = Date.now();
+    lastKeystrokeTime = Date.now();
+
+    timerInterval = setInterval(() => {
+      const elapsed = Date.now() - lastKeystrokeTime;
+      timeRemaining = Math.max(0, 8000 - elapsed);
+      timerFill.style.width = (timeRemaining / 8000 * 100) + '%';
+
+      if (timeRemaining === 0) {
+        endSession();
+      }
+    }, 100);
+  }
+
+  function resetTimer() {
+    lastKeystrokeTime = Date.now();
+    timeRemaining = 8000;
+  }
+
+  function endSession() {
+    if (!sessionActive) return;
+    clearInterval(timerInterval);
+    sessionActive = false;
+
+    const duration = (Date.now() - sessionStartTime) / 1000;
+    const text = textarea.value;
+
+    textarea.disabled = true;
+    responseArea.innerHTML = '<div class="processing">processing your consciousness stream...</div>';
+    responseArea.classList.add('visible');
+
+    fetch('/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, duration }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        let html = '<div class="response-text">' + data.response + '</div>';
+        if (data.is_anky) {
+          html += '<div class="anky-notice">this is an anky. image generation has begun.</div>';
+        }
+        responseArea.innerHTML = html;
+
+        setTimeout(() => {
+          const btn = document.createElement('button');
+          btn.textContent = 'start new session';
+          btn.className = 'new-session-btn';
+          btn.onclick = startNewSession;
+          responseArea.appendChild(btn);
+        }, 3000);
+      })
+      .catch(() => {
+        responseArea.innerHTML = '<div class="response-text">the consciousness stream encountered turbulence. try again?</div>';
+      });
+  }
+
+  function startNewSession() {
+    textarea.value = '';
+    textarea.disabled = false;
+    textarea.focus();
+    responseArea.classList.remove('visible');
+    responseArea.innerHTML = '';
+    timeRemaining = 8000;
+    timerFill.style.width = '100%';
+  }
+
+  textarea.addEventListener('input', (e) => {
+    const text = e.target.value;
+    if (text.endsWith('\n')) {
+      const trimmed = text.trim().toLowerCase();
+      if (trimmed === 'writings') { window.location.href = '/writings'; return; }
+      if (trimmed === 'help') { window.location.href = '/help'; return; }
+      if (trimmed === 'gallery') { window.location.href = '/gallery'; return; }
+      if (trimmed === 'poiesis') { window.location.href = '/poiesis'; return; }
+    }
+    if (!sessionActive) { startTimer(); } else { resetTimer(); }
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+      textarea.selectionStart = textarea.selectionEnd = start + 2;
+    }
+    if (responseArea.classList.contains('visible') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      responseArea.scrollTop += (e.key === 'ArrowDown' ? 50 : -50);
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!responseArea.contains(e.target) && !textarea.disabled) {
+      textarea.focus();
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}credits — anky{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>api credits</h1>
+  <p>transform your stream-of-consciousness writing into insight. write for 8 minutes without stopping, see what you couldn't see.</p>
+
+  <div id="logged-in-banner" style="display:none;" class="credits-banner">
+    <span id="banner-key-display"></span>
+    <button onclick="logout()" class="btn-small">logout</button>
+  </div>
+
+  <section class="credits-section" id="create-section">
+    <h2>1. create an api key</h2>
+    <div class="key-create">
+      <input type="text" id="key-label" placeholder="label (optional)" />
+      <button id="create-key-btn" onclick="createKey()">create key</button>
+    </div>
+    <div id="key-result" style="display:none;" class="key-display">
+      <p>your key: <code id="new-key"></code></p>
+      <p class="warning">save this — it won't be shown again.</p>
+    </div>
+    <div class="key-login">
+      <p>already have a key?</p>
+      <input type="text" id="login-key" placeholder="anky_..." />
+      <button onclick="loginWithKey()">log in</button>
+    </div>
+  </section>
+
+  <section class="credits-section">
+    <h2>2. add credits (USDC on Base)</h2>
+    <p>send USDC on the Base network to:</p>
+    <code class="treasury-address">{{ treasury_address }}</code>
+    <p>1 USDC = $1.00 in credits. credits are used for writing transformations (~$0.02-0.05 each).</p>
+    <div class="verify-payment">
+      <input type="text" id="verify-key" placeholder="your anky_ api key" />
+      <input type="text" id="verify-tx" placeholder="transaction hash (0x...)" />
+      <input type="number" id="verify-amount" placeholder="USDC amount" step="0.01" />
+      <button onclick="verifyPayment()">verify payment</button>
+    </div>
+    <div id="payment-result" style="display:none;"></div>
+  </section>
+
+  <section class="credits-section">
+    <h2>3. balance & usage</h2>
+    <div id="auto-usage" style="display:none;"></div>
+    <div class="usage-check" id="manual-usage-check">
+      <input type="text" id="usage-key" placeholder="your anky_ api key" />
+      <button onclick="checkUsage()">check</button>
+    </div>
+    <div id="usage-result" style="display:none;"></div>
+  </section>
+
+  <!-- chrome extension section — coming soon
+  <section class="credits-section">
+    <h2>chrome extension</h2>
+    <p>install the anky extension, paste your api key in the popup, and start writing in any textarea. after 8 seconds of continuous typing, anky mode activates — write for 8 minutes without stopping.</p>
+    <p>when you finish, transform your raw writing into something meaningful.</p>
+  </section>
+  -->
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getSavedKey() {
+  return localStorage.getItem('anky_api_key');
+}
+
+function saveKey(key) {
+  localStorage.setItem('anky_api_key', key);
+  updateUI();
+}
+
+function logout() {
+  localStorage.removeItem('anky_api_key');
+  location.reload();
+}
+
+function maskKey(key) {
+  return key.substring(0, 9) + '...' + key.substring(key.length - 4);
+}
+
+function updateUI() {
+  const key = getSavedKey();
+  if (key) {
+    document.getElementById('logged-in-banner').style.display = 'flex';
+    document.getElementById('banner-key-display').textContent = 'logged in — ' + maskKey(key);
+    document.getElementById('verify-key').value = key;
+    document.getElementById('usage-key').value = key;
+    // Update nav
+    const navAuth = document.getElementById('nav-auth');
+    if (navAuth) {
+      navAuth.innerHTML = '<span class="nav-key-badge" title="' + key + '">logged in — ' + maskKey(key) + '</span>';
+    }
+    // Auto-fetch balance
+    fetchBalance(key);
+  }
+}
+
+async function createKey() {
+  const label = document.getElementById('key-label').value;
+  const resp = await fetch('/credits/create-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label: label || null })
+  });
+  const data = await resp.json();
+  document.getElementById('new-key').textContent = data.key;
+  document.getElementById('key-result').style.display = 'block';
+  saveKey(data.key);
+}
+
+function loginWithKey() {
+  const key = document.getElementById('login-key').value.trim();
+  if (!key.startsWith('anky_') || key.length !== 37) {
+    alert('invalid key format — should be anky_ followed by 32 hex characters');
+    return;
+  }
+  saveKey(key);
+}
+
+async function fetchBalance(key) {
+  try {
+    const resp = await fetch(`/credits/usage?key=${encodeURIComponent(key)}`);
+    const data = await resp.json();
+    const el = document.getElementById('auto-usage');
+    if (resp.ok) {
+      el.style.display = 'block';
+      let html = `<p>balance: <strong>$${data.balance_usd.toFixed(4)}</strong></p>`;
+      html += `<p>total spent: $${data.total_spent_usd.toFixed(4)} | transforms: ${data.total_transforms}</p>`;
+      if (data.recent_transforms && data.recent_transforms.length > 0) {
+        html += '<h3>recent</h3><ul>';
+        data.recent_transforms.forEach(t => {
+          html += `<li>${t.created_at} — $${t.cost_usd.toFixed(4)}</li>`;
+        });
+        html += '</ul>';
+      }
+      el.innerHTML = html;
+    }
+  } catch(e) {}
+}
+
+async function verifyPayment() {
+  const key = document.getElementById('verify-key').value;
+  const tx = document.getElementById('verify-tx').value;
+  const amount = parseFloat(document.getElementById('verify-amount').value);
+  const resp = await fetch('/credits/verify-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: key, tx_hash: tx, amount_usdc: amount })
+  });
+  const data = await resp.json();
+  const el = document.getElementById('payment-result');
+  el.style.display = 'block';
+  if (resp.ok) {
+    el.innerHTML = `<p class="success">credited $${data.credited.toFixed(2)} — new balance: $${data.new_balance.toFixed(2)}</p>`;
+    if (getSavedKey()) fetchBalance(getSavedKey());
+  } else {
+    el.innerHTML = `<p class="error">${data.error || data}</p>`;
+  }
+}
+
+async function checkUsage() {
+  const key = document.getElementById('usage-key').value;
+  const resp = await fetch(`/credits/usage?key=${encodeURIComponent(key)}`);
+  const data = await resp.json();
+  const el = document.getElementById('usage-result');
+  el.style.display = 'block';
+  if (resp.ok) {
+    let html = `<p>balance: <strong>$${data.balance_usd.toFixed(4)}</strong></p>`;
+    html += `<p>total spent: $${data.total_spent_usd.toFixed(4)} | transforms: ${data.total_transforms}</p>`;
+    if (data.recent_transforms && data.recent_transforms.length > 0) {
+      html += '<h3>recent</h3><ul>';
+      data.recent_transforms.forEach(t => {
+        html += `<li>${t.created_at} — $${t.cost_usd.toFixed(4)}</li>`;
+      });
+      html += '</ul>';
+    }
+    el.innerHTML = html;
+  } else {
+    el.innerHTML = `<p class="error">${data.error || 'not found'}</p>`;
+  }
+}
+
+// On page load, check for saved key
+updateUI();
+</script>
+{% endblock %}

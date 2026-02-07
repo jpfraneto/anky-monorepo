@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}anky - collection{% endblock %}
+
+{% block content %}
+<div class="collection-container">
+  <h2>collection</h2>
+
+  {% if collection.status == "pending" %}
+  <div class="collection-info">
+    <p>88 beings will be generated from your vision.</p>
+    <p class="cost-estimate">Estimated cost: <strong>${{ collection.cost_estimate_usd | round(method="ceil", precision=2) }}</strong> USDC</p>
+    <p>Pay to start generation. Your collection will be generated sequentially with real-time progress.</p>
+
+    <div class="payment-section">
+      <p>Send USDC on Base to the treasury address, then verify:</p>
+      <form hx-post="/payment/verify" hx-swap="innerHTML" hx-target="#payment-result">
+        <input type="hidden" name="collection_id" value="{{ collection.id }}">
+        <input type="hidden" name="expected_amount" value="{{ (collection.cost_estimate_usd * 1000000) | round }}">
+        <input type="text" name="tx_hash" placeholder="0x... transaction hash" class="tx-input">
+        <button type="submit" class="notify-btn">verify payment</button>
+      </form>
+      <div id="payment-result"></div>
+    </div>
+  </div>
+
+  {% elif collection.status == "complete" %}
+  <div class="collection-complete">
+    <p>Collection complete! {{ collection.progress }}/{{ collection.total }} beings generated.</p>
+    <a href="/gallery" class="new-session-btn">view in gallery</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

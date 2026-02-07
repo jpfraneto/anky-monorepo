@@ -1,0 +1,165 @@
+/* Anky Life Bar */
+.anky-lifebar {
+  height: 3px;
+  z-index: 10001;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.anky-lifebar-fill {
+  height: 100%;
+  width: 0%;
+  background-color: #7c4dff;
+  transition: width 0.3s linear, background-color 0.5s;
+  border-radius: 0;
+}
+
+/* Modal Overlay */
+.anky-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.anky-modal {
+  background: #0a0a12;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  color: #e0dfe6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.anky-modal-title {
+  font-size: 20px;
+  color: #b380ff;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.anky-modal-stats {
+  font-size: 13px;
+  color: #8a88a0;
+  margin-bottom: 16px;
+}
+
+.anky-modal-writing {
+  background: #14141f;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c0bfd0;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.anky-modal-prompt-section {
+  margin-bottom: 16px;
+}
+
+.anky-modal-label {
+  display: block;
+  font-size: 11px;
+  color: #8a88a0;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.anky-modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #2a2a3a;
+  border-radius: 6px;
+  background: #14141f;
+  color: #e0dfe6;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.anky-modal-input:focus {
+  outline: none;
+  border-color: #7c4dff;
+}
+
+.anky-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.anky-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.anky-btn-primary {
+  background: #7c4dff;
+  color: white;
+  flex: 1;
+}
+
+.anky-btn-primary:hover { background: #6a3de8; }
+.anky-btn-primary:disabled { background: #3a3a4a; cursor: not-allowed; }
+
+.anky-btn-secondary {
+  background: #1a1a2a;
+  color: #8a88a0;
+  border: 1px solid #2a2a3a;
+}
+
+.anky-btn-secondary:hover { background: #2a2a3a; }
+
+.anky-modal-result {
+  margin-top: 12px;
+}
+
+.anky-transformed {
+  background: #14141f;
+  border: 1px solid #3a2a6a;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #e0dfe6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.anky-error {
+  background: #1a0a0a;
+  border: 1px solid #4a1a1a;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: #ef5350;
+}
+
+.anky-modal-cost {
+  font-size: 11px;
+  color: #8a88a0;
+  text-align: right;
+  margin-top: 8px;
+}

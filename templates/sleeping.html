@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}anky - evolving{% endblock %}
+
+{% block content %}
+<div class="sleeping-container">
+  <div class="sleeping-icon">
+    <div class="pulse-ring"></div>
+    <div class="sleeping-text">evolving</div>
+  </div>
+
+  <h2>anky is training</h2>
+  <p class="subtitle">status: {{ gpu_status }}</p>
+  <p>anky is absorbing new consciousness patterns. this takes a few hours.</p>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+
+  <div class="notify-signup">
+    <h3>get notified when anky wakes up</h3>
+    <form hx-post="/notify/signup" hx-swap="outerHTML">
+      <input type="email" name="email" placeholder="your email" class="notify-input">
+      <button type="submit" class="notify-btn">notify me</button>
+    </form>
+  </div>
+
+  <p class="poiesis-link"><a href="/poiesis">watch the training in real-time →</a></p>
+</div>
+{% endblock %}

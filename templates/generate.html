@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}generate — anky{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>generate</h1>
+
+  <section class="credits-section">
+    <h2>single anky</h2>
+    <p>generate an anky from a thinker at a specific moment in their life. claude writes a stream of consciousness as that person, then the full pipeline runs — image prompt, reflection, title, image.</p>
+    <div class="key-create">
+      <input type="text" id="thinker-name" placeholder="thinker name (e.g. Rumi)" />
+      <input type="text" id="thinker-moment" placeholder="moment (e.g. the night Shams disappeared)" style="flex: 2" />
+      <button onclick="generateAnky()">generate</button>
+    </div>
+    <div id="generate-result" style="display:none;"></div>
+  </section>
+
+  <section class="credits-section">
+    <h2>collection of 88</h2>
+    <p>describe a theme — 88 beings will be generated, each at a pivotal moment. claude expands your vision into 88 thinkers, then generates the full pipeline for each one sequentially. watch it happen in real-time on <a href="/poiesis">poiesis</a>.</p>
+    <p>estimated cost: ~$10-14 USDC (generation) + ~$2 (training).</p>
+    <div class="key-create">
+      <textarea id="mega-prompt" placeholder="describe your collection... e.g. '88 mystics, philosophers, and artists at the exact moment of their deepest insight — from Rumi whirling alone to Frida painting in pain to Buddha under the bodhi tree'" style="width:100%;min-height:100px;background:#111;border:1px solid #333;color:#e0e0e0;font-family:inherit;font-size:13px;padding:10px;resize:vertical;outline:none;"></textarea>
+    </div>
+    <button onclick="createCollection()" style="margin-top:8px;padding:8px 16px;background:#7b2ff7;color:#fff;border:none;font-family:inherit;font-size:13px;cursor:pointer;">create collection</button>
+    <div id="collection-result" style="display:none;"></div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function generateAnky() {
+  const name = document.getElementById('thinker-name').value;
+  const moment = document.getElementById('thinker-moment').value;
+  if (!name || !moment) return;
+  const el = document.getElementById('generate-result');
+  el.style.display = 'block';
+  el.innerHTML = '<p class="processing">generating... watch progress on <a href="/poiesis">poiesis</a></p>';
+  try {
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thinker_name: name, moment: moment })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      el.innerHTML = '<p class="success">anky generation started. watch it on <a href="/poiesis">poiesis</a>.</p>';
+    } else {
+      el.innerHTML = '<p class="error">' + (data.error || JSON.stringify(data)) + '</p>';
+    }
+  } catch(e) {
+    el.innerHTML = '<p class="error">' + e.message + '</p>';
+  }
+}
+
+async function createCollection() {
+  const prompt = document.getElementById('mega-prompt').value;
+  if (!prompt) return;
+  const el = document.getElementById('collection-result');
+  el.style.display = 'block';
+  el.innerHTML = '<p class="processing">creating collection...</p>';
+  try {
+    const resp = await fetch('/collection/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mega_prompt: prompt })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      el.innerHTML = `<p class="success">collection created! ${data.num_beings} beings, estimated $${data.cost_estimate_usd.toFixed(2)}.</p><p><a href="/collection/${data.id}">view collection</a> | <a href="/poiesis">watch progress</a></p>`;
+    } else {
+      el.innerHTML = '<p class="error">' + (data.error || JSON.stringify(data)) + '</p>';
+    }
+  } catch(e) {
+    el.innerHTML = '<p class="error">' + e.message + '</p>';
+  }
+}
+</script>
+{% endblock %}

@@ -1,11 +1,7 @@
-node_modules
-dist
+/target
 .env
-.env.local
-.env*.local
+.env.*
+data/
 *.log
 .DS_Store
-.vscode
 .idea
-bun.lock
-package-lock.json

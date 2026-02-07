@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a12;
+      color: #e0dfe6;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 18px;
+      color: #b380ff;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .section {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      color: #8a88a0;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      background: #14141f;
+      color: #e0dfe6;
+      font-size: 13px;
+      font-family: monospace;
+    }
+    input:focus {
+      outline: none;
+      border-color: #7c4dff;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 6px;
+      background: #7c4dff;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+      font-weight: 500;
+    }
+    button:hover { background: #6a3de8; }
+    .status {
+      font-size: 12px;
+      padding: 6px 0;
+      color: #8a88a0;
+    }
+    .status.ok { color: #66bb6a; }
+    .status.error { color: #ef5350; }
+    .balance {
+      background: #14141f;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 8px;
+    }
+    .balance-amount {
+      font-size: 24px;
+      font-weight: 700;
+      color: #b380ff;
+    }
+    .balance-label {
+      font-size: 11px;
+      color: #8a88a0;
+    }
+    .stats {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .stat { font-size: 11px; color: #8a88a0; }
+    .stat span { color: #e0dfe6; font-weight: 600; }
+    a {
+      color: #7c4dff;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    a:hover { text-decoration: underline; }
+    .footer {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 11px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>anky</h1>
+
+  <div class="section">
+    <label>api key</label>
+    <input type="text" id="apiKey" placeholder="anky_..." />
+    <button id="saveBtn">save key</button>
+    <div id="keyStatus" class="status"></div>
+  </div>
+
+  <div id="balanceSection" class="balance" style="display:none;">
+    <div class="balance-label">balance</div>
+    <div class="balance-amount" id="balanceAmount">$0.00</div>
+    <div class="stats">
+      <div class="stat">spent: <span id="totalSpent">$0.00</span></div>
+      <div class="stat">transforms: <span id="totalTransforms">0</span></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="https://anky.app/credits" target="_blank">get credits</a>
+    &nbsp;·&nbsp;
+    <a href="https://anky.app" target="_blank">anky.app</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
