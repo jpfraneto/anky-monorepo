@@ -33,8 +33,29 @@ pub async fn process_writing(
         jar
     };
 
-    let is_anky = req.duration >= 480.0;
     let word_count = req.text.split_whitespace().count() as i32;
+
+    // Reject submissions with fewer than 10 words — no DB save, no Ollama call
+    if word_count < 10 {
+        return Ok((
+            jar,
+            Json(WriteResponse {
+                response: String::new(),
+                duration: req.duration,
+                is_anky: false,
+                anky_id: None,
+                error: Some("write more. stream-of-consciousness means letting words flow — at least a few sentences.".into()),
+            }),
+        ));
+    }
+
+    let mut is_anky = req.duration >= 480.0;
+
+    // Downgrade: 8+ minutes but fewer than 300 words is not a real anky
+    if is_anky && word_count < 300 {
+        is_anky = false;
+    }
+
     let session_id = uuid::Uuid::new_v4().to_string();
 
     let mins = (req.duration / 60.0) as u32;
@@ -130,7 +151,10 @@ pub async fn process_writing(
             .await
             {
                 tracing::error!("Anky generation failed: {}", e);
-                state_clone.emit_log("ERROR", "image_gen", &format!("Generation failed: {}", e));
+                state_clone.emit_log("ERROR", "image_gen", &format!("Generation failed for {}: {}. will retry later.", &aid[..8], e));
+                // Mark as failed so retry can pick it up
+                let db = state_clone.db.lock().await;
+                let _ = crate::db::queries::mark_anky_failed(&db, &aid);
             }
         });
     }

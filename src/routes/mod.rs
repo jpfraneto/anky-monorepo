@@ -1,6 +1,7 @@
 pub mod api;
 pub mod collection;
 pub mod credits;
+pub mod dashboard;
 pub mod extension_api;
 pub mod health;
 pub mod notification;
@@ -25,6 +26,10 @@ async fn skills() -> ([(axum::http::HeaderName, &'static str); 1], &'static str)
     )
 }
 
+async fn skills_redirect() -> axum::response::Redirect {
+    axum::response::Redirect::permanent("/skills")
+}
+
 pub fn build_router(state: AppState) -> Router {
     // CORS configuration
     let cors = CorsLayer::new()
@@ -33,8 +38,27 @@ pub fn build_router(state: AppState) -> Router {
             "https://www.anky.app".parse::<HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, "x-api-key".parse().unwrap()])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::AUTHORIZATION,
+            "x-api-key".parse().unwrap(),
+            "payment-signature".parse().unwrap(),
+            "x-payment".parse().unwrap(),
+            "x-wallet".parse().unwrap(),
+        ])
+        .expose_headers([
+            "payment-required".parse::<header::HeaderName>().unwrap(),
+            "payment-response".parse::<header::HeaderName>().unwrap(),
+        ])
         .allow_credentials(false);
+
+    // Paid generate route (optional API key — payment handled in handler)
+    let generate_routes = Router::new()
+        .route("/api/v1/generate", axum::routing::post(api::generate_anky_paid))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::api_auth::optional_api_key,
+        ));
 
     // Extension API routes (behind API key auth)
     let extension_routes = Router::new()
@@ -52,6 +76,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/help", axum::routing::get(pages::help))
         .route("/generate", axum::routing::get(pages::generate))
         .route("/sleeping", axum::routing::get(pages::sleeping))
+        .route("/feedback", axum::routing::get(pages::feedback))
+        .route("/anky/{id}", axum::routing::get(pages::anky_detail))
         // Writing
         .route("/write", axum::routing::post(writing::process_writing))
         .route("/writings", axum::routing::get(writing::get_writings))
@@ -68,6 +94,12 @@ pub fn build_router(state: AppState) -> Router {
         // API
         .route("/api/ankys", axum::routing::get(api::list_ankys))
         .route("/api/generate", axum::routing::post(api::generate_anky))
+        .route("/api/v1/anky/{id}", axum::routing::get(api::get_anky))
+        .route("/api/checkpoint", axum::routing::post(api::save_checkpoint))
+        .route("/api/cost-estimate", axum::routing::get(api::cost_estimate))
+        .route("/api/treasury", axum::routing::get(api::treasury_address))
+        .route("/api/feedback", axum::routing::post(api::submit_feedback))
+        .route("/api/retry-failed", axum::routing::post(api::retry_failed))
         // Agent registration (no auth required)
         .route("/api/v1/register", axum::routing::post(extension_api::register))
         // Credits
@@ -77,17 +109,25 @@ pub fn build_router(state: AppState) -> Router {
         .route("/credits/usage", axum::routing::get(credits::usage_stats))
         // Skills (for agents)
         .route("/skills", axum::routing::get(skills))
+        .route("/skill", axum::routing::get(skills_redirect))
+        .route("/skill.md", axum::routing::get(skills_redirect))
+        .route("/skills.md", axum::routing::get(skills_redirect))
+        // Dashboard
+        .route("/dashboard", axum::routing::get(dashboard::dashboard))
+        .route("/dashboard/logs", axum::routing::get(dashboard::dashboard_logs))
         // Health
         .route("/health", axum::routing::get(health::health_check))
         // Extension API (authed)
         .merge(extension_routes)
+        // Paid generate API (optional auth)
+        .merge(generate_routes)
         // Static files
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/data/images", ServeDir::new("data/images"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())
         .layer(cors)
-        .layer(RequestBodyLimitLayer::new(64 * 1024)) // 64KB body limit
+        .layer(RequestBodyLimitLayer::new(256 * 1024)) // 256KB body limit
         .layer(axum::middleware::from_fn(
             middleware::security_headers::security_headers,
         ))

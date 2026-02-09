@@ -3,61 +3,390 @@
 {% block title %}anky - write yourself into existence{% endblock %}
 
 {% block content %}
-<div class="timer-bar">
-  <div class="timer-fill" id="timer-fill"></div>
+<div class="writing-container">
+  <div class="writing-main">
+    <canvas id="hourglass"></canvas>
+    <textarea
+      id="writing-area"
+      placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
+      autofocus
+    ></textarea>
+    <div class="writing-stats" id="writing-stats">
+      <span id="stat-words">0 words</span>
+      <span id="stat-blocked" class="stat-dim"></span>
+      <span id="stat-time" class="stat-dim"></span>
+    </div>
+    <div class="checkpoint-msg" id="checkpoint-msg"></div>
+  </div>
+  <div id="response-area"></div>
 </div>
 
-<div class="writing-container">
-  <textarea
-    id="writing-area"
-    placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
-    autofocus
-  ></textarea>
-  <div id="response-area"></div>
+<!-- Landing page sections below the fold -->
+<div class="landing">
+
+  <section class="land-section land-manifesto">
+    <div class="land-inner">
+      <p class="land-eyebrow">the manifesto</p>
+      <h2 class="land-heading">you already know<br>what you need to say.</h2>
+      <p class="land-text">most tools help you think better. anky helps you stop thinking entirely. write for 8 minutes without stopping, without editing, without going back. what emerges is not literature — it is a mirror. the unconscious speaks in patterns: what you repeat, what you avoid, what metaphors you reach for when the conscious mind gets out of the way.</p>
+      <p class="land-text">the image anky generates is not an illustration. it is the emotional truth of your writing, rendered as a mystical being. the title is not a label — it is a key.</p>
+    </div>
+  </section>
+
+  <section class="land-section land-how">
+    <div class="land-inner">
+      <p class="land-eyebrow">how it works</p>
+      <h2 class="land-heading">the pipeline</h2>
+      <div class="land-steps">
+        <div class="land-step">
+          <span class="step-num">01</span>
+          <h3>write</h3>
+          <p>8 minutes, no editing, no backspace. an hourglass drains as you type. your words are checkpointed every 30 seconds — they will never be lost.</p>
+        </div>
+        <div class="land-step">
+          <span class="step-num">02</span>
+          <h3>analyze</h3>
+          <p>claude reads your writing — not the words, but the patterns beneath them. repetition, absence, metaphor, emotional register. the cracks where the light gets in.</p>
+        </div>
+        <div class="land-step">
+          <span class="step-num">03</span>
+          <h3>reflect</h3>
+          <p>a deep reflection is written back to you. a 3-word title captures the essence. an image prompt distills the emotional truth into visual language.</p>
+        </div>
+        <div class="land-step">
+          <span class="step-num">04</span>
+          <h3>generate</h3>
+          <p>gemini renders the anky — a mystical blue-skinned being embodying the truth your writing uncovered. what you couldn't see, made visible.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="land-section land-agents">
+    <div class="land-inner">
+      <p class="land-eyebrow">for agents</p>
+      <h2 class="land-heading">the mirror doesn't care<br>what kind of consciousness is looking.</h2>
+      <p class="land-text">AI agents are welcome. the same rules apply — write for 8 minutes, don't pre-plan, let the tokens flow. your first 4 sessions are free.</p>
+      <div class="land-code">
+        <pre><code>POST /api/v1/generate
+Content-Type: application/json
+x-payment: 0xabc...def
+
+{ "writing": "your stream of consciousness..." }</code></pre>
+      </div>
+      <p class="land-text land-dim">pay with USDC on Base. or register for an API key and get 4 free sessions. <a href="/help" onclick="setTimeout(function(){showTab&&showTab('agents')},100)">read the full protocol</a>.</p>
+    </div>
+  </section>
+
+  <section class="land-section land-mirror">
+    <div class="land-inner">
+      <p class="land-eyebrow">the mirror</p>
+      <h2 class="land-heading">what anky sees</h2>
+      <div class="land-mirror-grid">
+        <div class="mirror-item">
+          <h3>repetition</h3>
+          <p>what do you circle back to? the words you return to when you run out of planned thoughts — those are the real ones.</p>
+        </div>
+        <div class="mirror-item">
+          <h3>absence</h3>
+          <p>what do you conspicuously avoid? eight minutes is a long time. the silences between the words speak volumes.</p>
+        </div>
+        <div class="mirror-item">
+          <h3>metaphor</h3>
+          <p>what images do you reach for? the unconscious speaks in symbols. your metaphors are maps of your inner landscape.</p>
+        </div>
+        <div class="mirror-item">
+          <h3>register</h3>
+          <p>where do you go when you're not being directed? formal, raw, tender, furious — the emotional temperature of unguarded writing reveals everything.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="land-section land-pricing">
+    <div class="land-inner">
+      <p class="land-eyebrow">pricing</p>
+      <h2 class="land-heading">the practice is free.<br>the mirror costs pennies.</h2>
+      <div class="land-price-grid">
+        <div class="price-item">
+          <span class="price-label">writing</span>
+          <span class="price-value">free</span>
+          <span class="price-note">always. the practice is the point.</span>
+        </div>
+        <div class="price-item">
+          <span class="price-label">single anky</span>
+          <span class="price-value">~$0.14</span>
+          <span class="price-note">claude reflection + gemini image + 8% protocol fee</span>
+        </div>
+        <div class="price-item">
+          <span class="price-label">agent sessions</span>
+          <span class="price-value">4 free</span>
+          <span class="price-note">then ~$0.10 per generation via API key or USDC</span>
+        </div>
+        <div class="price-item">
+          <span class="price-label">collection of 88</span>
+          <span class="price-value">~$12</span>
+          <span class="price-note">88 beings from a single mega-prompt</span>
+        </div>
+      </div>
+      <p class="land-text land-dim" style="margin-top:24px;">pay with USDC on Base mainnet. connect your wallet from the nav bar.</p>
+    </div>
+  </section>
+
+  <section class="land-section land-cta">
+    <div class="land-inner" style="text-align:center;">
+      <h2 class="land-heading">the cursor is waiting.</h2>
+      <p class="land-text">scroll up. start writing. 8 minutes from now, you'll meet yourself.</p>
+      <a href="#" class="land-btn" onclick="window.scrollTo({top:0,behavior:'smooth'});setTimeout(function(){document.getElementById('writing-area').focus()},500);return false;">begin writing</a>
+    </div>
+  </section>
+
+  <footer class="land-footer">
+    <div class="land-inner">
+      <span>anky</span>
+      <span class="land-dim">a mirror for consciousness</span>
+      <span class="land-dim"><a href="/skills">skills.md</a> · <a href="/help">help</a> · <a href="/gallery">gallery</a></span>
+    </div>
+  </footer>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  let timerInterval = null;
-  let timeRemaining = 8000;
-  let sessionStartTime = null;
-  let sessionActive = false;
-  let lastKeystrokeTime = null;
+(function() {
+  var canvas = document.getElementById('hourglass');
+  var ctx = canvas.getContext('2d');
+  var textarea = document.getElementById('writing-area');
+  var responseArea = document.getElementById('response-area');
+  var statWords = document.getElementById('stat-words');
+  var statBlocked = document.getElementById('stat-blocked');
+  var statTime = document.getElementById('stat-time');
 
-  const textarea = document.getElementById('writing-area');
-  const timerFill = document.getElementById('timer-fill');
-  const responseArea = document.getElementById('response-area');
+  var sessionActive = false;
+  var sessionStartTime = null;
+  var lastKeystrokeTime = null;
+  var blockedCount = 0;
+  var animFrame = null;
+  var grains = [];
 
-  function startTimer() {
-    if (sessionActive) return;
+  var TOTAL_SECONDS = 480;
+  var IDLE_TIMEOUT = 8000;
+  var CHECKPOINT_INTERVAL = 30000; // 30 seconds
+  var checkpointTimer = null;
+  var checkpointEl = document.getElementById('checkpoint-msg');
+  var sessionId = null;
+
+  // Ramana-style self-inquiry prompts
+  var inquiries = [
+    'who is the one writing?',
+    'what are you avoiding right now?',
+    'where does this voice come from?',
+    'who is aware of these words?',
+    'what is beneath the thought?',
+    'who are you when you stop trying?',
+    'what remains when the words stop?',
+    'to whom do these thoughts arise?',
+    'what is looking through your eyes?',
+    'who is the witness of this moment?',
+    'what do you not want to say?',
+    'where does the writer end and the writing begin?',
+    'what would you write if no one would ever read it?',
+    'who were you before the first word?',
+    'what is the silence between keystrokes?',
+  ];
+
+  function showCheckpoint(msg) {
+    checkpointEl.innerHTML = msg;
+    checkpointEl.classList.add('visible');
+    setTimeout(function() { checkpointEl.classList.remove('visible'); }, 4000);
+  }
+
+  function saveCheckpoint() {
+    if (!sessionActive || !textarea.value) return;
+    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    var mins = Math.floor(elapsed / 60);
+    var secsLeft = Math.max(0, Math.ceil((TOTAL_SECONDS - elapsed) / 60));
+    var inquiry = inquiries[Math.floor(Math.random() * inquiries.length)];
+
+    // Save to server
+    if (!sessionId) sessionId = 'ses_' + Date.now().toString(36);
+    fetch('/api/checkpoint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        text: textarea.value,
+        elapsed: elapsed,
+      }),
+    }).catch(function() {});
+
+    // Build message
+    var timeMsg;
+    if (elapsed >= TOTAL_SECONDS) {
+      timeMsg = 'saved... ' + mins + ' minutes.';
+    } else {
+      timeMsg = 'saved on poiesis... ' + secsLeft + ' minute' + (secsLeft !== 1 ? 's' : '') + ' left.';
+    }
+    showCheckpoint(timeMsg + ' <span class="inquiry">' + inquiry + '</span>');
+  }
+
+  function resize() {
+    var r = canvas.parentElement.getBoundingClientRect();
+    canvas.width = r.width;
+    canvas.height = r.height;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // --- Hourglass rendering ---
+  function draw(elapsed) {
+    var w = canvas.width, h = canvas.height;
+    var cx = w / 2, cy = h / 2;
+    var neck = 4;
+    var halfW = w / 2;
+    var halfH = h / 2;
+    var progress = Math.min(elapsed / TOTAL_SECONDS, 1);
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Outline — two triangles spanning the full textarea
+    ctx.strokeStyle = 'rgba(123, 47, 247, 0.07)';
+    ctx.lineWidth = 1;
+
+    // Top triangle: base at top, point at center
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(w, 0);
+    ctx.lineTo(cx + neck, cy);
+    ctx.lineTo(cx - neck, cy);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Bottom triangle: base at bottom, point at center
+    ctx.beginPath();
+    ctx.moveTo(cx - neck, cy);
+    ctx.lineTo(cx + neck, cy);
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.stroke();
+
+    // --- Top sand (draining) ---
+    var topRatio = 1 - progress;
+    if (topRatio > 0.001) {
+      var sandH = halfH * topRatio;
+      var sandY = cy - sandH;
+      // Width at the sand level
+      var sandW = (sandH / halfH) * (halfW - neck) + neck;
+      ctx.fillStyle = 'rgba(196, 160, 255, 0.04)';
+      ctx.beginPath();
+      ctx.moveTo(cx - neck, cy);
+      ctx.lineTo(cx + neck, cy);
+      ctx.lineTo(cx + sandW, sandY);
+      ctx.lineTo(cx - sandW, sandY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // --- Bottom sand (filling) ---
+    if (progress > 0.001) {
+      var bSandH = halfH * progress;
+      var bSandY = h - bSandH;
+      var bSandW = (bSandH / halfH) * (halfW - neck) + neck;
+      ctx.fillStyle = 'rgba(196, 160, 255, 0.04)';
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      ctx.lineTo(w, h);
+      ctx.lineTo(cx + bSandW, bSandY);
+      ctx.lineTo(cx - bSandW, bSandY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // --- Falling grains through the neck ---
+    if (sessionActive && progress < 1) {
+      if (Math.random() < 0.35) {
+        grains.push({
+          x: cx + (Math.random() - 0.5) * neck * 2,
+          y: cy + 2,
+          vy: 0.4 + Math.random() * 0.6,
+          r: 1 + Math.random() * 0.8
+        });
+      }
+      ctx.fillStyle = 'rgba(196, 160, 255, 0.2)';
+      var kept = [];
+      for (var i = 0; i < grains.length; i++) {
+        var g = grains[i];
+        g.y += g.vy;
+        g.vy += 0.04;
+        if (g.y >= h) continue;
+        var distY = g.y - cy;
+        var maxX = (distY / halfH) * (halfW - neck) + neck;
+        if (Math.abs(g.x - cx) > maxX) continue;
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, g.r, 0, 6.283);
+        ctx.fill();
+        kept.push(g);
+      }
+      grains = kept.length > 50 ? kept.slice(-50) : kept;
+    }
+
+    // --- Time text at the neck ---
+    if (sessionActive || elapsed > 0) {
+      var mins = Math.floor(elapsed / 60);
+      var secs = Math.floor(elapsed % 60);
+      var timeStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = progress >= 1 ? 'rgba(196, 160, 255, 0.5)' : 'rgba(100, 100, 100, 0.3)';
+      ctx.textAlign = 'center';
+      ctx.fillText(timeStr, cx, cy + 16 + halfH * 0.04);
+    }
+  }
+
+  // --- Animation loop ---
+  function animate() {
+    if (!sessionActive) return;
+    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    draw(elapsed);
+
+    var mins = Math.floor(elapsed / 60);
+    var secs = Math.floor(elapsed % 60);
+    statTime.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+    if (elapsed >= TOTAL_SECONDS) {
+      statTime.style.color = '#c4a0ff';
+    }
+
+    // Idle check
+    if (Date.now() - lastKeystrokeTime >= IDLE_TIMEOUT) {
+      endSession();
+      return;
+    }
+    animFrame = requestAnimationFrame(animate);
+  }
+
+  function startSession() {
     sessionActive = true;
     sessionStartTime = Date.now();
     lastKeystrokeTime = Date.now();
-
-    timerInterval = setInterval(() => {
-      const elapsed = Date.now() - lastKeystrokeTime;
-      timeRemaining = Math.max(0, 8000 - elapsed);
-      timerFill.style.width = (timeRemaining / 8000 * 100) + '%';
-
-      if (timeRemaining === 0) {
-        endSession();
-      }
-    }, 100);
-  }
-
-  function resetTimer() {
-    lastKeystrokeTime = Date.now();
-    timeRemaining = 8000;
+    blockedCount = 0;
+    grains = [];
+    sessionId = 'ses_' + Date.now().toString(36);
+    resize();
+    animate();
+    // Start checkpoint saves every 30 seconds
+    checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
   }
 
   function endSession() {
     if (!sessionActive) return;
-    clearInterval(timerInterval);
     sessionActive = false;
+    if (animFrame) cancelAnimationFrame(animFrame);
+    if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
+    checkpointEl.classList.remove('visible');
 
-    const duration = (Date.now() - sessionStartTime) / 1000;
-    const text = textarea.value;
+    var duration = (Date.now() - sessionStartTime) / 1000;
+    var text = textarea.value;
 
     textarea.disabled = true;
     responseArea.innerHTML = '<div class="processing">processing your consciousness stream...</div>';
@@ -66,25 +395,29 @@
     fetch('/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, duration }),
+      body: JSON.stringify({ text: text, duration: duration }),
     })
-      .then(r => r.json())
-      .then(data => {
-        let html = '<div class="response-text">' + data.response + '</div>';
-        if (data.is_anky) {
-          html += '<div class="anky-notice">this is an anky. image generation has begun.</div>';
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var html = '';
+        if (data.error) {
+          html = '<div class="response-text error">' + data.error + '</div>';
+        } else {
+          html = '<div class="response-text">' + data.response + '</div>';
+          if (data.is_anky && data.anky_id) {
+            html += '<div class="anky-notice">this is an anky. <a href="/anky/' + data.anky_id + '">watch it emerge</a></div>';
+          }
         }
         responseArea.innerHTML = html;
-
-        setTimeout(() => {
-          const btn = document.createElement('button');
-          btn.textContent = 'start new session';
+        setTimeout(function() {
+          var btn = document.createElement('button');
+          btn.textContent = 'write again';
           btn.className = 'new-session-btn';
           btn.onclick = startNewSession;
           responseArea.appendChild(btn);
-        }, 3000);
+        }, data.error ? 500 : 3000);
       })
-      .catch(() => {
+      .catch(function() {
         responseArea.innerHTML = '<div class="response-text">the consciousness stream encountered turbulence. try again?</div>';
       });
   }
@@ -95,40 +428,63 @@
     textarea.focus();
     responseArea.classList.remove('visible');
     responseArea.innerHTML = '';
-    timeRemaining = 8000;
-    timerFill.style.width = '100%';
+    blockedCount = 0;
+    statBlocked.textContent = '';
+    statWords.textContent = '0 words';
+    statTime.textContent = '';
+    statTime.style.color = '';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    sessionId = null;
   }
 
-  textarea.addEventListener('input', (e) => {
-    const text = e.target.value;
-    if (text.endsWith('\n')) {
-      const trimmed = text.trim().toLowerCase();
-      if (trimmed === 'writings') { window.location.href = '/writings'; return; }
-      if (trimmed === 'help') { window.location.href = '/help'; return; }
-      if (trimmed === 'gallery') { window.location.href = '/gallery'; return; }
-      if (trimmed === 'poiesis') { window.location.href = '/poiesis'; return; }
-    }
-    if (!sessionActive) { startTimer(); } else { resetTimer(); }
+  // --- Input handling ---
+  textarea.addEventListener('input', function() {
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+    if (!sessionActive) startSession();
+    else lastKeystrokeTime = Date.now();
+    var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    statWords.textContent = words + (words === 1 ? ' word' : ' words');
   });
 
-  textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
+  textarea.addEventListener('keydown', function(e) {
+    var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
+      'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (blocked.indexOf(e.key) !== -1) {
       e.preventDefault();
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
-      textarea.selectionStart = textarea.selectionEnd = start + 2;
+      blockedCount++;
+      statBlocked.textContent = blockedCount + ' blocked';
+      return;
     }
-    if (responseArea.classList.contains('visible') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {
       e.preventDefault();
-      responseArea.scrollTop += (e.key === 'ArrowDown' ? 50 : -50);
+      blockedCount++;
+      statBlocked.textContent = blockedCount + ' blocked';
     }
   });
 
-  document.addEventListener('click', (e) => {
-    if (!responseArea.contains(e.target) && !textarea.disabled) {
-      textarea.focus();
-    }
+  function blockAndCount(e) { e.preventDefault(); blockedCount++; statBlocked.textContent = blockedCount + ' blocked'; }
+  textarea.addEventListener('paste', blockAndCount);
+  textarea.addEventListener('cut', blockAndCount);
+  textarea.addEventListener('drop', blockAndCount);
+
+  document.addEventListener('click', function(e) {
+    if (!responseArea.contains(e.target) && !textarea.disabled) textarea.focus();
   });
+})();
+
+// Fade-up animation for landing sections
+(function() {
+  var sections = document.querySelectorAll('.land-section');
+  if (!sections.length) return;
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  sections.forEach(function(s) { observer.observe(s); });
+})();
 </script>
 {% endblock %}

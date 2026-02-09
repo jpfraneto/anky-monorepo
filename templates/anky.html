@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - anky{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="{{ title }} - anky">
+<meta property="og:description" content="{{ reflection | truncate(length=160) }}">
+{% if image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}
+
+{% block content %}
+<div class="anky-detail">
+  {% if status == "complete" and image_path %}
+  <div class="anky-image">
+    <img src="/data/images/{{ image_path }}" alt="{{ title }}">
+  </div>
+  {% elif status == "generating" %}
+  <div class="anky-image">
+    <div class="anky-generating">
+      <div class="processing">generating...</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="anky-content">
+    <h1 class="anky-title">{{ title }}</h1>
+
+    {% if thinker_name %}
+    <div class="anky-meta">
+      <span class="anky-thinker">{{ thinker_name }}</span>
+      {% if thinker_moment %}<span class="anky-moment">{{ thinker_moment }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="anky-created">{{ created_at }}</div>
+
+    {% if writing %}
+    <div class="anky-section">
+      <h2>the writing</h2>
+      <div class="anky-writing">{{ writing }}</div>
+    </div>
+    {% endif %}
+
+    {% if reflection %}
+    <div class="anky-section">
+      <h2>reflection</h2>
+      <div class="anky-reflection" id="reflection-content">{{ reflection }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if status == "generating" %}
+<script>
+  setTimeout(function() { location.reload(); }, 15000);
+</script>
+{% endif %}
+<script>
+(function() {
+  var el = document.getElementById('reflection-content');
+  if (!el) return;
+  var raw = el.textContent;
+
+  // Simple markdown to HTML
+  var html = raw
+    // Escape any existing HTML
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // Headers: ### h3, ## h2, # h1
+    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+    // Bold + italic: ***text*** or ___text___
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr>')
+    // Unordered lists: - item
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Blockquotes: > text
+    .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+    // Paragraphs: double newlines
+    .replace(/\n\n+/g, '</p><p>')
+    // Single newlines within paragraphs
+    .replace(/\n/g, '<br>');
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>.*?<\/li>)(?:\s*<br>)*/g, '$1');
+  html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
+
+  // Merge consecutive blockquotes
+  html = html.replace(/<\/blockquote>\s*(?:<br>)?\s*<blockquote>/g, '<br>');
+
+  // Wrap in paragraph
+  html = '<p>' + html + '</p>';
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  // Don't wrap block elements in <p>
+  html = html.replace(/<p>(<h[34]>)/g, '$1');
+  html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote>)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+
+  el.innerHTML = html;
+})();
+</script>
+{% endblock %}

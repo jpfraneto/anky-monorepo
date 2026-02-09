@@ -132,6 +132,36 @@ pub fn run(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (api_key) REFERENCES api_keys(key)
         );
+
+        CREATE TABLE IF NOT EXISTS generation_records (
+            id TEXT PRIMARY KEY,
+            anky_id TEXT NOT NULL,
+            api_key TEXT,
+            agent_id TEXT,
+            payment_method TEXT NOT NULL,
+            amount_usd REAL NOT NULL DEFAULT 0,
+            tx_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS writing_checkpoints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            elapsed_seconds REAL NOT NULL,
+            word_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS feedback (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL,
+            author TEXT,
+            content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         ",
     )?;
     Ok(())

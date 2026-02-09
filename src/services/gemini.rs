@@ -152,7 +152,7 @@ STYLE:
         },
     };
 
-    let model = "gemini-2.5-flash-preview-native-audio-dialog";
+    let model = "gemini-2.5-flash-image";
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
         model, api_key

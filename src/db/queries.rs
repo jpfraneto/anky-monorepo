@@ -150,6 +150,45 @@ pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+pub struct AnkyDetail {
+    pub id: String,
+    pub title: Option<String>,
+    pub image_path: Option<String>,
+    pub reflection: Option<String>,
+    pub image_prompt: Option<String>,
+    pub caption: Option<String>,
+    pub thinker_name: Option<String>,
+    pub thinker_moment: Option<String>,
+    pub status: String,
+    pub writing_text: Option<String>,
+    pub created_at: String,
+}
+
+pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.title, a.image_path, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at
+         FROM ankys a
+         LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
+         WHERE a.id = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        Ok(AnkyDetail {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            image_path: row.get(2)?,
+            reflection: row.get(3)?,
+            image_prompt: row.get(4)?,
+            caption: row.get(5)?,
+            thinker_name: row.get(6)?,
+            thinker_moment: row.get(7)?,
+            status: row.get(8)?,
+            writing_text: row.get(9)?,
+            created_at: row.get(10)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 // --- Collections ---
 pub fn insert_collection(
     conn: &Connection,
@@ -485,6 +524,129 @@ pub fn increment_agent_sessions(conn: &Connection, agent_id: &str) -> Result<()>
     conn.execute(
         "UPDATE agents SET total_sessions = total_sessions + 1 WHERE id = ?1",
         params![agent_id],
+    )?;
+    Ok(())
+}
+
+// --- Writing Checkpoints ---
+pub fn insert_checkpoint(
+    conn: &Connection,
+    session_id: &str,
+    content: &str,
+    elapsed: f64,
+    word_count: i32,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO writing_checkpoints (session_id, content, elapsed_seconds, word_count) VALUES (?1, ?2, ?3, ?4)",
+        params![session_id, content, elapsed, word_count],
+    )?;
+    Ok(())
+}
+
+// --- Cost Estimates ---
+/// Average total cost per anky from cost_records (grouped by related_id).
+pub fn get_average_anky_cost(conn: &Connection) -> Result<f64> {
+    let avg: f64 = conn.query_row(
+        "SELECT COALESCE(AVG(total_cost), 0) FROM (
+            SELECT SUM(cost_usd) as total_cost
+            FROM cost_records
+            WHERE related_id IS NOT NULL
+            GROUP BY related_id
+        )",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(avg)
+}
+
+/// Get failed ankys (status = 'pending' or 'failed' with a writing session).
+pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.writing_session_id, w.content
+         FROM ankys a
+         JOIN writing_sessions w ON w.id = a.writing_session_id
+         WHERE a.status IN ('pending', 'failed')
+         AND a.created_at < datetime('now', '-2 minutes')
+         ORDER BY a.created_at ASC
+         LIMIT 10"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+pub fn mark_anky_failed(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET status = 'failed' WHERE id = ?1 AND status = 'pending'",
+        params![id],
+    )?;
+    Ok(())
+}
+
+// --- Feedback ---
+pub struct FeedbackRecord {
+    pub id: String,
+    pub source: String,
+    pub author: Option<String>,
+    pub content: String,
+    pub status: String,
+    pub created_at: String,
+}
+
+pub fn insert_feedback(
+    conn: &Connection,
+    id: &str,
+    source: &str,
+    author: Option<&str>,
+    content: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO feedback (id, source, author, content) VALUES (?1, ?2, ?3, ?4)",
+        params![id, source, author, content],
+    )?;
+    Ok(())
+}
+
+pub fn get_all_feedback(conn: &Connection) -> Result<Vec<FeedbackRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source, author, content, status, created_at FROM feedback ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(FeedbackRecord {
+            id: row.get(0)?,
+            source: row.get(1)?,
+            author: row.get(2)?,
+            content: row.get(3)?,
+            status: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// --- Generation Records ---
+pub fn insert_generation_record(
+    conn: &Connection,
+    id: &str,
+    anky_id: &str,
+    api_key: Option<&str>,
+    agent_id: Option<&str>,
+    payment_method: &str,
+    amount_usd: f64,
+    tx_hash: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO generation_records (id, anky_id, api_key, agent_id, payment_method, amount_usd, tx_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, anky_id, api_key, agent_id, payment_method, amount_usd, tx_hash],
     )?;
     Ok(())
 }

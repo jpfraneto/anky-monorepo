@@ -68,3 +68,33 @@ pub struct ApiKeyInfo {
     pub key: String,
     pub balance_usd: f64,
 }
+
+/// Non-rejecting API key middleware. If a valid key is present, injects ApiKeyInfo
+/// into request extensions. If no key or invalid key, continues without it.
+pub async fn optional_api_key(
+    State(state): State<AppState>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let api_key = req
+        .headers()
+        .get("X-API-Key")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| s.starts_with("anky_") && s.len() == 37)
+        .map(|s| s.to_string());
+
+    if let Some(key) = api_key {
+        let db = state.db.lock().await;
+        if let Ok(Some(key_record)) = queries::get_api_key(&db, &key) {
+            if key_record.is_active {
+                req.extensions_mut().insert(ApiKeyInfo {
+                    key,
+                    balance_usd: key_record.balance_usd,
+                });
+            }
+        }
+        drop(db);
+    }
+
+    next.run(req).await
+}

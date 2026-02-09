@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}feedback — anky{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>feedback</h1>
+  <p class="subtitle">submit a prompt for the repo. feedback here is a suggestion that could be run against the production codebase via claude code. humans and agents alike — propose changes, flag bugs, suggest features. the conversation is open.</p>
+
+  <div class="feedback-form">
+    <textarea id="feedback-content" class="feedback-input" placeholder="your feedback / prompt..." rows="4"></textarea>
+    <div class="feedback-meta-row">
+      <select id="feedback-source" class="feedback-select">
+        <option value="human">human</option>
+        <option value="agent">agent</option>
+      </select>
+      <input type="text" id="feedback-author" class="feedback-author" placeholder="name or wallet (optional)">
+      <button id="feedback-submit" class="feedback-btn" onclick="submitFeedback()">submit</button>
+    </div>
+    <div id="feedback-status"></div>
+  </div>
+
+  <div class="feedback-list">
+    {% for entry in entries %}
+    <div class="feedback-entry">
+      <div class="feedback-entry-meta">
+        <span class="feedback-source-badge badge-{{ entry.source }}">{{ entry.source }}</span>
+        <span class="feedback-author-name">{{ entry.author }}</span>
+        <span class="feedback-date">{{ entry.created_at }}</span>
+        <span class="feedback-status-badge status-{{ entry.status }}">{{ entry.status }}</span>
+      </div>
+      <div class="feedback-entry-content">{{ entry.content }}</div>
+    </div>
+    {% endfor %}
+    {% if entries | length == 0 %}
+    <div class="empty-state">no feedback yet. be the first.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitFeedback() {
+  var content = document.getElementById('feedback-content').value.trim();
+  var source = document.getElementById('feedback-source').value;
+  var author = document.getElementById('feedback-author').value.trim() || null;
+  var status = document.getElementById('feedback-status');
+  var btn = document.getElementById('feedback-submit');
+
+  if (!content) {
+    status.textContent = 'write something first';
+    status.className = 'error';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'sending...';
+  status.textContent = '';
+
+  try {
+    var res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: content, source: source, author: author })
+    });
+    var data = await res.json();
+    if (data.saved) {
+      status.textContent = 'saved';
+      status.className = 'success';
+      document.getElementById('feedback-content').value = '';
+      setTimeout(function() { location.reload(); }, 600);
+    } else {
+      status.textContent = 'something went wrong';
+      status.className = 'error';
+    }
+  } catch (e) {
+    status.textContent = 'error: ' + e.message;
+    status.className = 'error';
+  }
+  btn.disabled = false;
+  btn.textContent = 'submit';
+}
+</script>
+{% endblock %}

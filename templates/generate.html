@@ -5,78 +5,247 @@
 {% block content %}
 <div class="container">
   <h1>generate</h1>
+  <p class="subtitle">create ankys from a prompt. connect your wallet to pay with USDC on Base.</p>
 
-  <section class="credits-section">
-    <h2>single anky</h2>
-    <p>generate an anky from a thinker at a specific moment in their life. claude writes a stream of consciousness as that person, then the full pipeline runs — image prompt, reflection, title, image.</p>
-    <div class="key-create">
-      <input type="text" id="thinker-name" placeholder="thinker name (e.g. Rumi)" />
-      <input type="text" id="thinker-moment" placeholder="moment (e.g. the night Shams disappeared)" style="flex: 2" />
-      <button onclick="generateAnky()">generate</button>
+  <div class="gen-section">
+    <label class="gen-label">mode</label>
+    <div class="gen-modes" id="gen-modes">
+      <button class="mode-btn active" data-mode="prompt" onclick="setMode('prompt')">from prompt</button>
+      <button class="mode-btn" data-mode="thinker" onclick="setMode('thinker')">thinker portrait</button>
     </div>
-    <div id="generate-result" style="display:none;"></div>
-  </section>
+  </div>
 
-  <section class="credits-section">
-    <h2>collection of 88</h2>
-    <p>describe a theme — 88 beings will be generated, each at a pivotal moment. claude expands your vision into 88 thinkers, then generates the full pipeline for each one sequentially. watch it happen in real-time on <a href="/poiesis">poiesis</a>.</p>
-    <p>estimated cost: ~$10-14 USDC (generation) + ~$2 (training).</p>
-    <div class="key-create">
-      <textarea id="mega-prompt" placeholder="describe your collection... e.g. '88 mystics, philosophers, and artists at the exact moment of their deepest insight — from Rumi whirling alone to Frida painting in pain to Buddha under the bodhi tree'" style="width:100%;min-height:100px;background:#111;border:1px solid #333;color:#e0e0e0;font-family:inherit;font-size:13px;padding:10px;resize:vertical;outline:none;"></textarea>
+  <div class="gen-section" id="prompt-section">
+    <label class="gen-label">prompt</label>
+    <textarea id="gen-prompt" class="gen-input" rows="3" placeholder="a one-line spark or a full paragraph — whatever you want anky to become"></textarea>
+  </div>
+
+  <div class="gen-section" id="thinker-section" style="display:none;">
+    <label class="gen-label">thinker</label>
+    <input type="text" id="thinker-name" class="gen-input" placeholder="bad bunny" />
+    <label class="gen-label" style="margin-top:8px;">moment</label>
+    <input type="text" id="thinker-moment" class="gen-input" placeholder="backstage at the super bowl, alone with his thoughts" />
+  </div>
+
+  <div class="gen-section">
+    <label class="gen-label">how many</label>
+    <div class="gen-counts">
+      <button class="count-btn active" onclick="setCount(1)">1</button>
+      <button class="count-btn" onclick="setCount(8)">8</button>
+      <button class="count-btn" onclick="setCount(16)">16</button>
+      <button class="count-btn" onclick="setCount(44)">44</button>
+      <button class="count-btn" onclick="setCount(88)">88</button>
+      <input type="number" id="custom-count" class="gen-input-sm" min="1" max="200" placeholder="#" onchange="setCount(parseInt(this.value)||1)" />
     </div>
-    <button onclick="createCollection()" style="margin-top:8px;padding:8px 16px;background:#7b2ff7;color:#fff;border:none;font-family:inherit;font-size:13px;cursor:pointer;">create collection</button>
-    <div id="collection-result" style="display:none;"></div>
-  </section>
+  </div>
+
+  <div class="gen-cost" id="gen-cost">
+    <span>estimated cost: <strong id="cost-display">$0.14</strong></span>
+    <span class="cost-detail" id="cost-detail">$0.13 generation + $0.01 protocol (8%)</span>
+  </div>
+
+  <div class="gen-balance" id="gen-balance"></div>
+
+  <button class="gen-btn" id="gen-btn" onclick="generate()">generate</button>
+
+  <div id="gen-status" class="gen-status"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-async function generateAnky() {
-  const name = document.getElementById('thinker-name').value;
-  const moment = document.getElementById('thinker-moment').value;
-  if (!name || !moment) return;
-  const el = document.getElementById('generate-result');
-  el.style.display = 'block';
-  el.innerHTML = '<p class="processing">generating... watch progress on <a href="/poiesis">poiesis</a></p>';
-  try {
-    const resp = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ thinker_name: name, moment: moment })
-    });
-    const data = await resp.json();
-    if (resp.ok) {
-      el.innerHTML = '<p class="success">anky generation started. watch it on <a href="/poiesis">poiesis</a>.</p>';
-    } else {
-      el.innerHTML = '<p class="error">' + (data.error || JSON.stringify(data)) + '</p>';
-    }
-  } catch(e) {
-    el.innerHTML = '<p class="error">' + e.message + '</p>';
-  }
-}
+(function() {
+  var mode = 'prompt';
+  var count = 1;
+  var costPerAnky = 0.13;
+  var userBalance = null;
+  var balanceEl = document.getElementById('gen-balance');
 
-async function createCollection() {
-  const prompt = document.getElementById('mega-prompt').value;
-  if (!prompt) return;
-  const el = document.getElementById('collection-result');
-  el.style.display = 'block';
-  el.innerHTML = '<p class="processing">creating collection...</p>';
-  try {
-    const resp = await fetch('/collection/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mega_prompt: prompt })
-    });
-    const data = await resp.json();
-    if (resp.ok) {
-      el.innerHTML = `<p class="success">collection created! ${data.num_beings} beings, estimated $${data.cost_estimate_usd.toFixed(2)}.</p><p><a href="/collection/${data.id}">view collection</a> | <a href="/poiesis">watch progress</a></p>`;
-    } else {
-      el.innerHTML = '<p class="error">' + (data.error || JSON.stringify(data)) + '</p>';
+  fetch('/api/cost-estimate')
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.cost_per_anky) costPerAnky = d.cost_per_anky; updateCost(); })
+    .catch(function() {});
+
+  // --- USDC balance check ---
+  var USDC_ADDR = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+
+  async function checkBalance() {
+    var wallet = localStorage.getItem('wallet_address');
+    if (!wallet || !window.ethereum) {
+      balanceEl.innerHTML = '<span class="balance-hint">connect your wallet to pay</span>';
+      userBalance = null;
+      updateCost();
+      return;
     }
-  } catch(e) {
-    el.innerHTML = '<p class="error">' + e.message + '</p>';
+    try {
+      var addrHex = wallet.slice(2).toLowerCase().padStart(64, '0');
+      var data = '0x70a08231' + addrHex;
+      var result = await window.ethereum.request({
+        method: 'eth_call',
+        params: [{ to: USDC_ADDR, data: data }, 'latest'],
+      });
+      userBalance = parseInt(result, 16) / 1e6;
+      balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
+        userBalance.toFixed(2) + '</strong></span>';
+      updateCost();
+    } catch(e) {
+      balanceEl.innerHTML = '<span class="balance-hint">could not read balance</span>';
+      userBalance = null;
+    }
   }
-}
+
+  // Check balance on load and when wallet changes
+  checkBalance();
+  var origConnect = window.ankyWallet.connect;
+  window.ankyWallet.connect = async function() {
+    var result = await origConnect();
+    checkBalance();
+    return result;
+  };
+  // Re-check periodically (wallet might change)
+  setInterval(checkBalance, 30000);
+
+  window.setMode = function(m) {
+    mode = m;
+    document.querySelectorAll('.mode-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.mode === m);
+    });
+    document.getElementById('prompt-section').style.display = m === 'prompt' ? '' : 'none';
+    document.getElementById('thinker-section').style.display = m === 'thinker' ? '' : 'none';
+  };
+
+  window.setCount = function(n) {
+    count = Math.max(1, Math.min(200, n));
+    document.querySelectorAll('.count-btn').forEach(function(b) {
+      b.classList.toggle('active', parseInt(b.textContent) === count);
+    });
+    updateCost();
+  };
+
+  function updateCost() {
+    var base = costPerAnky * count;
+    var fee = base * 0.08;
+    var total = base + fee;
+    document.getElementById('cost-display').textContent = '$' + total.toFixed(2);
+    document.getElementById('cost-detail').textContent =
+      '$' + base.toFixed(2) + ' generation + $' + fee.toFixed(2) + ' protocol (8%)';
+
+    // Show warning if insufficient balance
+    var btn = document.getElementById('gen-btn');
+    if (userBalance !== null && userBalance < total) {
+      balanceEl.innerHTML = '<span class="balance-low">your USDC balance: <strong>$' +
+        userBalance.toFixed(2) + '</strong> — not enough for this generation ($' +
+        total.toFixed(2) + '). add USDC on Base to your wallet.</span>';
+      btn.disabled = true;
+    } else if (userBalance !== null) {
+      balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
+        userBalance.toFixed(2) + '</strong></span>';
+      btn.disabled = false;
+    } else {
+      btn.disabled = false;
+    }
+  }
+
+  window.generate = async function() {
+    var btn = document.getElementById('gen-btn');
+    var status = document.getElementById('gen-status');
+    var wallet = localStorage.getItem('wallet_address');
+
+    var payload;
+    if (mode === 'thinker') {
+      var name = document.getElementById('thinker-name').value.trim();
+      var moment = document.getElementById('thinker-moment').value.trim();
+      if (!name) { status.innerHTML = '<span class="error">enter a thinker name</span>'; return; }
+      payload = { thinker_name: name, moment: moment || 'a quiet moment of deep thought' };
+    } else {
+      var prompt = document.getElementById('gen-prompt').value.trim();
+      if (!prompt) { status.innerHTML = '<span class="error">enter a prompt</span>'; return; }
+      payload = { writing: prompt };
+    }
+
+    // Pre-flight balance check
+    var base = costPerAnky * count;
+    var fee = base * 0.08;
+    var total = base + fee;
+
+    if (!wallet) {
+      status.innerHTML = '<span class="balance-low">connect your wallet first — you need USDC on Base to generate</span>';
+      return;
+    }
+
+    await checkBalance();
+    if (userBalance !== null && userBalance < total) {
+      status.innerHTML = '<span class="balance-low">you need $' + total.toFixed(2) +
+        ' USDC but you have $' + userBalance.toFixed(2) +
+        '. add USDC on Base to continue.</span>';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'preparing...';
+    status.innerHTML = '';
+
+    try {
+      var headers = { 'Content-Type': 'application/json' };
+
+      // Get treasury address first
+      var treasury = await fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) { return d.address; });
+
+      // Pay first, then send with proof
+      btn.textContent = 'approve in wallet...';
+      var txHash = await window.ankyWallet.sendUSDC(treasury, total);
+      btn.textContent = 'confirming...';
+
+      // Wait for tx to propagate
+      await new Promise(function(resolve) { setTimeout(resolve, 4000); });
+
+      headers['x-payment'] = txHash;
+      var resp = await fetch('/api/v1/generate', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        var errText = await resp.text();
+        status.innerHTML = '<span class="error">generation failed: ' + errText +
+          '</span><br><span class="stat-dim">your tx: ' + txHash + '</span>';
+        btn.disabled = false;
+        btn.textContent = 'generate';
+        return;
+      }
+
+      var data = await resp.json();
+      status.innerHTML = '<span class="success">generating!</span> ' +
+        '<a href="/anky/' + data.anky_id + '">view anky</a>' +
+        ' · <a href="/poiesis">watch progress</a>';
+
+      // For packs, queue remaining with same payment proof
+      if (count > 1) {
+        status.innerHTML += '<br><span class="stat-dim">queuing ' + (count - 1) + ' more...</span>';
+        for (var i = 1; i < count; i++) {
+          fetch('/api/v1/generate', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload),
+          }).catch(function() {});
+          await new Promise(function(resolve) { setTimeout(resolve, 500); });
+        }
+        status.innerHTML += '<br><span class="success">all ' + count + ' queued. <a href="/poiesis">watch on poiesis</a></span>';
+      }
+
+      // Refresh balance
+      setTimeout(checkBalance, 5000);
+
+    } catch (e) {
+      status.innerHTML = '<span class="error">' + (e.message || 'something went wrong') + '</span>';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'generate';
+  };
+
+  updateCost();
+})();
 </script>
 {% endblock %}

@@ -74,7 +74,7 @@ pub async fn generate_anky_from_writing(
 
     // Step 4: Generate image with Gemini
     state.emit_log("INFO", "gemini", "Generating Anky image...");
-    let references = gemini::load_references(std::path::Path::new("static/references"));
+    let references = gemini::load_references(std::path::Path::new("src/public"));
     let image_result = gemini::generate_image(gemini_key, &image_prompt, &references).await?;
 
     // Save image to disk

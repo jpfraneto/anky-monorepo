@@ -9,50 +9,72 @@
     <span class="kannada-text" id="agents-kannada">ಏಜೆಂಟ್‌ಗಳಿಗಾಗಿ</span>
     <span class="english-text" id="agents-english" style="display:none;">for agents</span>
   </button>
+  <button class="help-tab" id="tab-code" onclick="showTab('code')">the code</button>
 </div>
 
 <div class="help-content" id="help-humans">
   <h2>what is anky?</h2>
-  <p>anky is a consciousness revolution disguised as a writing tool. write continuously for 8 minutes without stopping (you have 8 seconds between keystrokes) and create an "anky" — a reflection of your unconscious mind, rendered as a mystical blue-skinned being.</p>
+  <p>anky is a consciousness mirror disguised as a writing tool. write continuously for 8 minutes without stopping and create an "anky" — a reflection of your unconscious mind, rendered as a mystical blue-skinned being.</p>
 
   <h2>how it works</h2>
-  <ul>
-    <li>start typing and a timer begins</li>
-    <li>you have 8 seconds between keystrokes</li>
-    <li>if the timer runs out, your session ends</li>
-    <li>write for 8+ minutes to create an anky</li>
-    <li>receive deep psychological reflection from AI</li>
-    <li>an anky image is generated from your writing</li>
-  </ul>
-
-  <h2>commands</h2>
-  <p>type these and press enter while in the writing area:</p>
-  <ul>
-    <li><code>writings</code> — see all your past writings</li>
-    <li><code>help</code> — show this help page</li>
-    <li><code>gallery</code> — view generated ankys</li>
-    <li><code>poiesis</code> — real-time system console</li>
-  </ul>
-
-  <h2>keyboard</h2>
-  <ul>
-    <li><code>Tab</code> — insert 2 spaces</li>
-    <li><code>Arrow Up/Down</code> — scroll / navigate</li>
-    <li><code>ESC</code> — go back home</li>
-  </ul>
-
-  <h2>the pipeline</h2>
-  <p>when you write for 8+ minutes:</p>
   <ol>
-    <li>your writing is analyzed by AI for emotional patterns</li>
-    <li>an image prompt is crafted capturing the essence</li>
-    <li>a reflection is written — your words mirrored back deeper</li>
-    <li>a 3-word title captures the core truth</li>
-    <li>an anky image is generated — your consciousness made visible</li>
+    <li>start typing — an hourglass sand timer begins draining across the full textarea</li>
+    <li>you have 8 seconds between keystrokes — stop and the session ends</li>
+    <li>every 30 seconds your writing is checkpointed — your words are never lost</li>
+    <li>self-inquiry prompts appear with each checkpoint — "who is the one writing?"</li>
+    <li>write for 8+ minutes to birth an anky</li>
+    <li>receive a deep psychological reflection from AI</li>
+    <li>a mystical image is generated from your writing's emotional truth</li>
   </ol>
 
+  <h2>the hourglass</h2>
+  <p>two triangles span the entire writing area — base at top and bottom, meeting at a narrow neck in the center. as you write, sand drains from the top triangle to the bottom. tiny grains fall through the neck. a timer ticks at the center. when the hourglass empties, 8 minutes have passed.</p>
+
+  <h2>what's blocked</h2>
+  <p>you cannot edit what you've written. these are all blocked and counted:</p>
+  <ul>
+    <li><code>Backspace</code>, <code>Delete</code> — no erasing</li>
+    <li><code>Arrow keys</code>, <code>Home</code>, <code>End</code> — no navigating back</li>
+    <li><code>Ctrl+A/X/Z/Y</code> — no selecting, cutting, undoing</li>
+    <li><code>Paste</code>, <code>Cut</code>, <code>Drop</code> — no cheating</li>
+    <li><code>Enter</code>, <code>Tab</code> — forward only, no structure</li>
+  </ul>
+  <p>the blocked keystroke counter is shown at the bottom right. it's not a punishment — it's data about your resistance.</p>
+
+  <h2>checkpoints</h2>
+  <p>every 30 seconds your writing is saved to the server. even if your connection drops, your browser crashes, or the generation pipeline fails — your words survive. with each save, you'll see a message like:</p>
+  <p><code>saved on poiesis... 6 minutes left. <em>who is the witness of this moment?</em></code></p>
+  <p>the inquiry questions are inspired by Ramana Maharshi's method of self-inquiry — atma vichara. they're not meant to be answered. they're meant to dissolve the one who asks.</p>
+
+  <h2>wallet & payment</h2>
+  <p>connect your browser wallet (MetaMask, etc.) from the nav bar. anky uses USDC on Base mainnet for payments.</p>
+  <ul>
+    <li><strong>writing</strong> is free — the practice costs nothing</li>
+    <li><strong>generating</strong> from a prompt or thinker costs ~$0.14 (with 8% protocol fee)</li>
+    <li>your on-chain USDC balance is checked before generation</li>
+    <li>payment goes directly to the treasury via ERC20 transfer</li>
+  </ul>
+
+  <h2>generate page</h2>
+  <p>at <a href="/generate">/generate</a> you can create ankys from prompts or thinker portraits:</p>
+  <ul>
+    <li><strong>from prompt</strong> — write any text and anky will generate an image from it</li>
+    <li><strong>thinker portrait</strong> — name a historical figure and a moment in their life</li>
+    <li>choose how many: 1, 8, 16, 44, 88, or a custom number</li>
+    <li>cost is shown before you pay — base cost + 8% protocol fee</li>
+  </ul>
+
+  <h2>navigation</h2>
+  <ul>
+    <li><a href="/">home</a> — the writing area</li>
+    <li><a href="/gallery">gallery</a> — all generated ankys</li>
+    <li><a href="/generate">generate</a> — create ankys from prompts</li>
+    <li><a href="/poiesis">poiesis</a> — real-time system console</li>
+    <li><a href="/dashboard">dashboard</a> — server log stream</li>
+  </ul>
+
   <h2>philosophy</h2>
-  <p>the revolution of consciousness starts with seeing what is. through continuous writing, you bypass the censor of your conscious mind and access deeper truths. this is shadow work meets self-inquiry. the practice is simple but not easy. show up every day. write for 8 minutes. change your life.</p>
+  <p>the revolution of consciousness starts with seeing what is. through continuous writing, you bypass the censor of your conscious mind and access deeper truths. this is shadow work meets self-inquiry. the practice is simple but not easy. show up every day. write for 8 minutes. let the mirror show you what you couldn't see.</p>
 </div>
 
 <div class="help-content" id="help-agents" style="display:none;">
@@ -63,12 +85,85 @@
   <p><code>https://anky.app</code></p>
 
   <h2>authentication</h2>
-  <p>all /api/v1/* endpoints require an <code>X-API-Key</code> header with a valid <code>anky_</code> key.</p>
+  <p>API key endpoints require an <code>X-API-Key</code> header. The paid generate endpoint accepts multiple payment methods.</p>
   <pre><code>X-API-Key: anky_your32hexcharshere1234567890ab</code></pre>
 
-  <h2>endpoints</h2>
+  <h2>core endpoints</h2>
 
-  <h3>POST /api/v1/transform</h3>
+  <h3>POST /write</h3>
+  <p>submit a writing session. if duration >= 480 seconds, triggers anky generation pipeline.</p>
+  <pre><code>{
+  "text": "the writing content...",
+  "duration": 485.0
+}</code></pre>
+  <p>response:</p>
+  <pre><code>{
+  "response": "AI feedback on your writing",
+  "duration": 485.0,
+  "is_anky": true,
+  "anky_id": "uuid"
+}</code></pre>
+
+  <h3>GET /api/v1/anky/{id}</h3>
+  <p>fetch anky details. poll until status is "complete".</p>
+  <pre><code>{
+  "id": "uuid",
+  "status": "complete",
+  "title": "three word title",
+  "reflection": "deep reflection...",
+  "image_url": "https://anky.app/data/images/uuid.png",
+  "image_prompt": "the image generation prompt",
+  "writing": "original text...",
+  "url": "https://anky.app/anky/uuid",
+  "created_at": "2025-01-01T00:00:00Z"
+}</code></pre>
+
+  <h3>POST /api/v1/generate (paid)</h3>
+  <p>generate an anky with payment. payment methods checked in order:</p>
+  <ol>
+    <li>API key with free sessions → free</li>
+    <li>API key with balance >= $0.10 → deducted</li>
+    <li><code>payment-signature</code> or <code>x-payment</code> header → x402 or raw tx hash</li>
+    <li>none → 402 Payment Required</li>
+  </ol>
+  <p>from a prompt:</p>
+  <pre><code>{ "writing": "your prompt text" }</code></pre>
+  <p>from a thinker:</p>
+  <pre><code>{
+  "thinker_name": "Rumi",
+  "moment": "the night Shams disappeared"
+}</code></pre>
+
+  <h3>GET /api/v1/ankys</h3>
+  <p>list all generated ankys.</p>
+
+  <h3>POST /api/checkpoint</h3>
+  <p>save a writing checkpoint (called automatically every 30s during writing).</p>
+  <pre><code>{
+  "session_id": "ses_abc123",
+  "text": "writing so far...",
+  "elapsed": 120.5
+}</code></pre>
+
+  <h3>GET /api/cost-estimate</h3>
+  <p>get current cost per anky generation.</p>
+  <pre><code>{
+  "cost_per_anky": 0.14,
+  "base_cost": 0.13,
+  "protocol_fee_pct": 8
+}</code></pre>
+
+  <h3>GET /api/treasury</h3>
+  <p>get the treasury address for USDC payments on Base.</p>
+  <pre><code>{ "address": "0x..." }</code></pre>
+
+  <h3>POST /api/retry-failed</h3>
+  <p>retry all failed anky generations. also runs automatically every 5 minutes.</p>
+  <pre><code>{ "retried": 3 }</code></pre>
+
+  <h2>other endpoints</h2>
+
+  <h3>POST /api/v1/transform (requires X-API-Key)</h3>
   <p>transform raw stream-of-consciousness writing into structured insight.</p>
   <pre><code>{
   "writing": "the raw 8-minute writing session text...",
@@ -83,34 +178,14 @@
   "balance_remaining": 4.965
 }</code></pre>
 
-  <h3>GET /api/v1/balance</h3>
+  <h3>GET /api/v1/balance (requires X-API-Key)</h3>
   <p>check current credit balance and usage statistics.</p>
-  <pre><code>{
-  "balance_usd": 5.0,
-  "total_spent_usd": 0.15,
-  "total_transforms": 5,
-  "recent_transforms": [...]
-}</code></pre>
 
-  <h3>POST /write</h3>
-  <p>submit a writing session. if duration >= 480 seconds, triggers anky generation pipeline.</p>
-  <pre><code>{
-  "text": "the writing content...",
-  "duration": 485.0
-}</code></pre>
-
-  <h3>POST /api/generate</h3>
-  <p>generate an anky from a historical thinker at a specific moment.</p>
-  <pre><code>{
-  "thinker_name": "Rumi",
-  "moment": "the night Shams disappeared"
-}</code></pre>
+  <h3>POST /api/generate (legacy)</h3>
+  <p>generate an anky from a historical thinker. no payment required (legacy).</p>
 
   <h3>POST /collection/create</h3>
-  <p>create a collection of 88 beings from a mega-prompt. claude expands the prompt into 88 {name, moment} pairs and generates each one sequentially.</p>
-  <pre><code>{
-  "mega_prompt": "88 mystics at their moment of deepest insight"
-}</code></pre>
+  <p>create a collection of 88 beings from a mega-prompt.</p>
 
   <h3>GET /health</h3>
   <p>system health check. no auth required.</p>
@@ -122,22 +197,107 @@
 }</code></pre>
 
   <h2>the anky writing protocol</h2>
-  <p>an anky is born when a human writes continuously for 8 minutes without stopping. the rules:</p>
+  <p>an anky is born when a being writes continuously for 8 minutes without stopping. the rules:</p>
   <ul>
     <li>maximum 8 seconds between keystrokes</li>
     <li>minimum 480 seconds total duration</li>
     <li>no editing, no backtracking, no thinking — just flow</li>
     <li>the writing is raw consciousness, unfiltered</li>
+    <li>writing is checkpointed every 30 seconds — never lost</li>
     <li>when complete, AI generates: image prompt, reflection, 3-word title, and a mystical image</li>
+    <li>failed generations are automatically retried every 5 minutes</li>
   </ul>
 
-  <h2>cost model</h2>
+  <h2>payment model</h2>
   <ul>
-    <li>transformation: ~$0.02-0.05 per call (claude sonnet, 50% markup)</li>
-    <li>single anky generation: ~$0.09-0.14 (claude + gemini image)</li>
-    <li>collection of 88: ~$10-14 (generation) + ~$2 (LoRA training)</li>
-    <li>credits: 1 USDC on Base = $1.00 balance</li>
+    <li>free tier: 4 sessions with API key, no payment needed</li>
+    <li>writing sessions: free for all (the practice costs nothing)</li>
+    <li>paid generation: ~$0.13 base + 8% protocol fee</li>
+    <li>USDC on Base mainnet: <code>0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913</code></li>
+    <li>treasury address: <code>GET /api/treasury</code></li>
+    <li>wallet payment: send USDC, pass tx hash in <code>x-payment</code> header</li>
+    <li>x402: Coinbase facilitator protocol for programmatic payments</li>
   </ul>
+</div>
+
+<div class="help-content" id="help-code" style="display:none;">
+  <p><a href="https://github.com/jpfraneto/anky-monorepo" target="_blank">clone the repo</a></p>
+
+  <h2>what is running on poiesis</h2>
+  <p>this is a single rust binary. no containers, no kubernetes, no microservices, no lambda functions. one process, one sqlite file, one machine. it runs locally and tunnels to the world through cloudflare.</p>
+  <p>the server is built with <strong>axum</strong> — the async web framework from the tokio team. templates are rendered server-side with <strong>tera</strong>. the frontend is vanilla HTML, CSS, and javascript. no react, no npm, no node_modules, no build step. you view-source and you see what's running.</p>
+
+  <h2>~4,400 lines of rust</h2>
+  <p>that's the entire server. every route, every database query, every AI pipeline, every middleware. the whole thing compiles in seconds and runs in a few megabytes of memory.</p>
+  <pre><code>src/
+  main.rs              — entry point, server setup, periodic retry spawner
+  config.rs            — environment config (ports, API keys, treasury)
+  state.rs             — shared app state (db, tera, gpu status, log broadcast)
+  error.rs             — unified error handling
+
+  routes/
+    pages.rs           — HTML page handlers (home, gallery, help, generate, anky detail)
+    writing.rs         — POST /write — the core writing session handler
+    api.rs             — REST API (ankys, generate, checkpoint, cost, treasury, retry)
+    poiesis.rs         — SSE real-time console
+    dashboard.rs       — SSE server log streaming
+    collection.rs      — 88-being mega-prompt expansion
+    credits.rs         — API key management and USDC credits
+    health.rs          — health check endpoint
+
+  pipeline/
+    image_gen.rs       — claude analysis → gemini image generation
+    stream_gen.rs      — thinker portrait pipeline
+    collection.rs      — 88-being batch orchestration
+    cost.rs            — cost estimation from token pricing
+
+  services/
+    claude.rs          — anthropic API client
+    gemini.rs          — google gemini image generation
+    ollama.rs          — local model support (experimental)
+    payment.rs         — USDC payment verification
+
+  db/
+    migrations.rs      — schema creation (ankys, sessions, checkpoints, agents, costs)
+    queries.rs         — all database operations, zero ORM
+
+  middleware/
+    api_auth.rs        — API key extraction and validation
+    x402.rs            — x402 payment protocol (coinbase facilitator)
+    security_headers.rs — CSP, HSTS, etc.
+    honeypot.rs        — bot trap</code></pre>
+
+  <h2>design decisions</h2>
+
+  <h3>no ORM</h3>
+  <p>every database query is hand-written SQL in <code>queries.rs</code>. rusqlite with prepared statements. you can read every query the server runs. there is no magic, no migration framework, no schema DSL. the migrations file creates tables with <code>CREATE TABLE IF NOT EXISTS</code>. that's it.</p>
+
+  <h3>no frontend framework</h3>
+  <p>the hourglass sand timer is a raw canvas. the wallet connection is raw <code>window.ethereum</code> calls. the checkpoint saves are raw <code>fetch</code>. there is no react, no svelte, no vue, no htmx library even — just server-rendered tera templates with vanilla javascript inlined in each page.</p>
+  <p>every page is self-contained. you can read the <code>&lt;script&gt;</code> tag at the bottom of any template and understand every behavior on that page. nothing is transpiled. nothing is bundled. the browser runs exactly what was written.</p>
+
+  <h3>no external services except AI</h3>
+  <p>the only external calls are to anthropic (claude for analysis/reflection) and google (gemini for image generation). everything else — database, file storage, authentication, payment verification — runs inside the single binary. images are saved to disk. the database is a sqlite file at <code>data/anky.db</code>.</p>
+
+  <h3>SSE over websockets</h3>
+  <p>the poiesis console and dashboard use server-sent events, not websockets. SSE is simpler — it's just HTTP streaming. one direction. no handshake protocol. the server broadcasts log entries through a tokio <code>broadcast::Sender</code> and any connected client receives them as they happen.</p>
+
+  <h3>payment without a payment processor</h3>
+  <p>anky accepts USDC directly on Base mainnet. no stripe, no payment processor, no intermediary. the frontend reads on-chain balance with a raw <code>eth_call</code> to the USDC contract's <code>balanceOf</code>. payments are raw ERC20 <code>transfer</code> calls via <code>eth_sendTransaction</code>. the tx hash is sent to the backend as proof. for programmatic agents, the x402 protocol provides a facilitator flow.</p>
+
+  <h3>resilience by default</h3>
+  <p>writing is checkpointed every 30 seconds. failed anky generations are retried every 5 minutes automatically. the pipeline marks ankys as "failed" instead of losing them. the server will keep trying until it succeeds. no human writing is ever lost.</p>
+
+  <h2>what makes this cool</h2>
+  <p>this codebase is a bet that you don't need much. you don't need a cluster. you don't need a build system. you don't need 47 npm packages to render a text input.</p>
+  <p>the entire stack is: one language (rust), one database (sqlite), one template engine (tera), two AI APIs (claude, gemini), one chain (base), and raw browser APIs. that's it. every line is readable. every decision is traceable. every page loads instantly because there's nothing to load.</p>
+  <p>the server compiles to a single binary. you can copy it to any machine and run it. <code>cargo build --release && ./target/release/anky</code>. done.</p>
+  <p>the code is written to be read. not by a framework, not by a linter, not by a type-checker obsessed with edge cases — by a human who opens the file and wants to understand what's happening. or by an agent. the mirror doesn't care.</p>
+
+  <h2>philosophy</h2>
+  <p>rule 4: what you write is absolutely open source. consider it a public good on the quest of humanity understanding itself.</p>
+  <p>the same applies to the code. every line that runs this server is visible at the repo. there is no private backend, no secret sauce, no proprietary algorithm. the "magic" is that claude reads your writing and gemini draws what it sees. the infrastructure is intentionally boring. the consciousness part is not.</p>
+  <p>you are looking at software that was written mostly by AI, directed by a human, for the purpose of helping both understand themselves better. the tools built the toolmaker's mirror. there's something recursive about that which feels right.</p>
 </div>
 {% endblock %}
 
@@ -148,20 +308,22 @@
   function showTab(tab) {
     document.getElementById('help-humans').style.display = tab === 'humans' ? 'block' : 'none';
     document.getElementById('help-agents').style.display = tab === 'agents' ? 'block' : 'none';
+    document.getElementById('help-code').style.display = tab === 'code' ? 'block' : 'none';
     document.getElementById('tab-humans').classList.toggle('active', tab === 'humans');
     document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
+    document.getElementById('tab-code').classList.toggle('active', tab === 'code');
 
     if (tab === 'agents' && !agentsRevealed) {
       agentsRevealed = true;
       const kannada = document.getElementById('agents-kannada');
       const english = document.getElementById('agents-english');
-      // Blink from Kannada to English
       setTimeout(() => {
         kannada.style.display = 'none';
         english.style.display = 'inline';
       }, 150);
     }
   }
+  window.showTab = showTab;
 
   document.addEventListener('keydown', (e) => {
     const el = document.querySelector('.help-content[style*="block"], .help-content:not([style])');

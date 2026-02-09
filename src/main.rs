@@ -65,6 +65,38 @@ async fn main() -> anyhow::Result<()> {
 
     state.emit_log("INFO", "server", &format!("Anky server starting on port {}", port));
 
+    // Retry failed ankys every 5 minutes
+    let retry_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            let failed = {
+                let db = retry_state.db.lock().await;
+                db::queries::get_failed_ankys(&db).unwrap_or_default()
+            };
+            if !failed.is_empty() {
+                retry_state.emit_log("INFO", "retry", &format!("Auto-retrying {} failed ankys", failed.len()));
+                for (anky_id, session_id, writing) in failed {
+                    let s = retry_state.clone();
+                    let aid = anky_id.clone();
+                    let sid = session_id.clone();
+                    let text = writing.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = pipeline::image_gen::generate_anky_from_writing(
+                            &s, &aid, &sid, "auto-retry", &text,
+                        ).await {
+                            s.emit_log("ERROR", "retry", &format!("Auto-retry failed for {}: {}", &aid[..8], e));
+                            let db = s.db.lock().await;
+                            let _ = db::queries::mark_anky_failed(&db, &aid);
+                        }
+                    });
+                    // Small delay between retries
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            }
+        }
+    });
+
     // Build router
     let app = routes::build_router(state);
 

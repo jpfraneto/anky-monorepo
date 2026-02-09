@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}anky - dashboard{% endblock %}
+
+{% block content %}
+<div class="dash-header">
+  <h2>dashboard</h2>
+  <div class="dash-stats">
+    <span>gpu: <strong id="gpu-status">{{ gpu_status }}</strong></span>
+    <span>log lines: <strong id="line-count">0</strong></span>
+    <button class="btn-small" id="clear-btn">clear</button>
+    <label class="dash-toggle"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+  </div>
+</div>
+<div class="console" id="log-console"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const console_el = document.getElementById('log-console');
+  const lineCount = document.getElementById('line-count');
+  const clearBtn = document.getElementById('clear-btn');
+  const autoscroll = document.getElementById('autoscroll');
+  let count = 0;
+  const MAX_LINES = 2000;
+
+  clearBtn.addEventListener('click', function() {
+    console_el.innerHTML = '';
+    count = 0;
+    lineCount.textContent = '0';
+  });
+
+  function appendLine(text) {
+    const div = document.createElement('div');
+    div.className = 'console-line';
+    div.textContent = text;
+
+    // Color by level
+    if (text.includes('[ERROR]')) div.style.color = '#e05050';
+    else if (text.includes('[WARN]')) div.style.color = '#e0a040';
+    else if (text.includes('[DEBUG]')) div.classList.add('dim');
+
+    console_el.appendChild(div);
+    count++;
+    lineCount.textContent = count;
+
+    // Trim old lines
+    while (console_el.children.length > MAX_LINES) {
+      console_el.removeChild(console_el.firstChild);
+    }
+
+    if (autoscroll.checked) {
+      console_el.scrollTop = console_el.scrollHeight;
+    }
+  }
+
+  const evtSource = new EventSource('/dashboard/logs');
+
+  evtSource.onmessage = function(e) {
+    appendLine(e.data);
+  };
+
+  evtSource.onerror = function() {
+    appendLine('[connection lost — retrying...]');
+  };
+
+  appendLine('[connected to server log stream]');
+})();
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@ pub struct Config {
     pub base_rpc_url: String,
     pub usdc_address: String,
     pub treasury_address: String,
+    pub x402_facilitator_url: String,
 }
 
 impl Config {
@@ -32,6 +33,8 @@ impl Config {
             usdc_address: std::env::var("USDC_ADDRESS")
                 .unwrap_or_else(|_| "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into()),
             treasury_address: std::env::var("TREASURY_ADDRESS").unwrap_or_default(),
+            x402_facilitator_url: std::env::var("X402_FACILITATOR_URL")
+                .unwrap_or_else(|_| "https://x402.org/facilitator".into()),
         })
     }
 }

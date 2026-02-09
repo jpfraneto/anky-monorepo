@@ -11,19 +11,21 @@
 <div class="gallery-grid">
   {% for anky in ankys %}
   <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}">
-    {% if anky.image_path and anky.status == 'complete' %}
-    <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
-    {% else %}
-    <div class="placeholder">
-      <div class="processing">generating...</div>
-    </div>
-    {% endif %}
-    <div class="gallery-caption">
-      <span class="gallery-title">{{ anky.title }}</span>
-      {% if anky.thinker_name %}
-      <span class="gallery-thinker">{{ anky.thinker_name }}</span>
+    <a href="/anky/{{ anky.id }}">
+      {% if anky.image_path and anky.status == 'complete' %}
+      <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
+      {% else %}
+      <div class="placeholder">
+        <div class="processing">generating...</div>
+      </div>
       {% endif %}
-    </div>
+      <div class="gallery-caption">
+        <span class="gallery-title">{{ anky.title }}</span>
+        {% if anky.thinker_name %}
+        <span class="gallery-thinker">{{ anky.thinker_name }}</span>
+        {% endif %}
+      </div>
+    </a>
   </div>
   {% endfor %}
 
