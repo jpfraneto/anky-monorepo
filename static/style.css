@@ -1217,6 +1217,7 @@ code {
 /* ==================== Landing page sections ==================== */
 .landing {
   background: #0a0a0a;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .land-section {
@@ -1225,35 +1226,36 @@ code {
 }
 
 .land-inner {
-  max-width: 720px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
 .land-eyebrow {
-  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 3px;
-  color: #555;
-  margin-bottom: 20px;
+  color: #666;
+  margin-bottom: 24px;
 }
 
 .land-heading {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 36px;
+  font-size: 42px;
   font-weight: normal;
   color: #fff;
   line-height: 1.3;
-  margin-bottom: 28px;
+  margin-bottom: 32px;
 }
 
 .land-text {
-  color: #999;
-  font-size: 15px;
+  color: #bbb;
+  font-size: 18px;
   line-height: 1.9;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
-.land-dim { color: #555; font-size: 13px; }
+.land-dim { color: #777; font-size: 15px; }
 .land-dim a { color: #7b2ff7; }
 
 /* Steps grid */
@@ -1279,16 +1281,17 @@ code {
 }
 
 .land-step h3 {
+  font-family: 'Courier New', monospace;
   color: #c4a0ff;
   font-size: 15px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   text-transform: lowercase;
   letter-spacing: 1px;
 }
 
 .land-step p {
-  color: #888;
-  font-size: 13px;
+  color: #aaa;
+  font-size: 16px;
   line-height: 1.8;
 }
 
@@ -1303,7 +1306,8 @@ code {
 
 .land-code pre {
   margin: 0;
-  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -1322,17 +1326,18 @@ code {
 }
 
 .mirror-item h3 {
+  font-family: 'Courier New', monospace;
   color: #c4a0ff;
-  font-size: 14px;
-  margin-bottom: 8px;
+  font-size: 15px;
+  margin-bottom: 10px;
   text-transform: lowercase;
   letter-spacing: 1px;
 }
 
 .mirror-item p {
-  color: #777;
-  font-size: 13px;
-  line-height: 1.8;
+  color: #aaa;
+  font-size: 16px;
+  line-height: 1.9;
 }
 
 /* Pricing grid */
@@ -1345,29 +1350,30 @@ code {
 
 .price-item {
   border: 1px solid #1a1a1a;
-  padding: 24px;
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .price-label {
-  color: #666;
-  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  color: #777;
+  font-size: 13px;
   text-transform: lowercase;
   letter-spacing: 1px;
 }
 
 .price-value {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: 28px;
+  font-size: 32px;
   color: #fff;
 }
 
 .price-note {
-  color: #555;
-  font-size: 12px;
-  line-height: 1.5;
+  color: #999;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 /* CTA */
@@ -1395,6 +1401,7 @@ code {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-family: 'Courier New', monospace;
   font-size: 13px;
   color: #444;
   flex-wrap: wrap;
@@ -1653,7 +1660,16 @@ code {
   }
 
   .land-heading {
-    font-size: 26px;
+    font-size: 28px;
+  }
+
+  .land-text {
+    font-size: 16px;
+  }
+
+  .land-step p,
+  .mirror-item p {
+    font-size: 15px;
   }
 
   .land-steps {
