@@ -3,6 +3,7 @@
 {% block title %}anky - help{% endblock %}
 
 {% block content %}
+<div class="help-page">
 <div class="help-tabs">
   <button class="help-tab active" id="tab-humans" onclick="showTab('humans')">for humans</button>
   <button class="help-tab agent-tab" id="tab-agents" onclick="showTab('agents')">
@@ -299,11 +300,13 @@
   <p>the same applies to the code. every line that runs this server is visible at the repo. there is no private backend, no secret sauce, no proprietary algorithm. the "magic" is that claude reads your writing and gemini draws what it sees. the infrastructure is intentionally boring. the consciousness part is not.</p>
   <p>you are looking at software that was written mostly by AI, directed by a human, for the purpose of helping both understand themselves better. the tools built the toolmaker's mirror. there's something recursive about that which feels right.</p>
 </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
   let agentsRevealed = false;
+  const TABS = ['humans', 'agents', 'code'];
 
   function showTab(tab) {
     document.getElementById('help-humans').style.display = tab === 'humans' ? 'block' : 'none';
@@ -312,6 +315,8 @@
     document.getElementById('tab-humans').classList.toggle('active', tab === 'humans');
     document.getElementById('tab-agents').classList.toggle('active', tab === 'agents');
     document.getElementById('tab-code').classList.toggle('active', tab === 'code');
+
+    history.replaceState(null, '', '#' + tab);
 
     if (tab === 'agents' && !agentsRevealed) {
       agentsRevealed = true;
@@ -325,9 +330,42 @@
   }
   window.showTab = showTab;
 
+  function activateFromHash() {
+    const hash = location.hash.replace('#', '');
+    if (TABS.includes(hash)) {
+      showTab(hash);
+    }
+  }
+
+  // Activate tab from URL hash on load
+  if (location.hash) {
+    activateFromHash();
+  }
+
+  // Handle browser back/forward
+  window.addEventListener('hashchange', activateFromHash);
+
+  function activeTabIndex() {
+    return TABS.findIndex(t => document.getElementById('tab-' + t).classList.contains('active'));
+  }
+
   document.addEventListener('keydown', (e) => {
+    // Don't interfere with inputs or navbar focus
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.target.closest('.navbar')) return;
+
     const el = document.querySelector('.help-content[style*="block"], .help-content:not([style])');
     if (!el) return;
+
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const idx = activeTabIndex();
+      const next = e.key === 'ArrowRight'
+        ? (idx + 1) % TABS.length
+        : (idx - 1 + TABS.length) % TABS.length;
+      showTab(TABS[next]);
+    }
     if (e.key === 'ArrowUp') { e.preventDefault(); el.scrollTop -= 50; }
     if (e.key === 'ArrowDown') { e.preventDefault(); el.scrollTop += 50; }
     if (e.key === 'Escape') window.location.href = '/';

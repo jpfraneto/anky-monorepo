@@ -15,6 +15,22 @@ body {
 a { color: #c4a0ff; text-decoration: none; }
 a:hover { color: #e0c8ff; }
 
+/* ==================== Focus-visible ==================== */
+:focus-visible {
+  outline: 2px solid #7b2ff7;
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.gallery-item:focus-visible {
+  border-color: #7b2ff7;
+  outline: 2px solid #7b2ff7;
+  outline-offset: -2px;
+}
+
 code {
   background: #1a1a1a;
   padding: 2px 6px;
@@ -406,6 +422,15 @@ code {
 
 .dash-toggle input { margin-right: 4px; }
 
+/* ==================== Help page layout ==================== */
+.help-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 60px);
+  height: calc(100dvh - 60px);
+  overflow: hidden;
+}
+
 /* ==================== Help tabs ==================== */
 .help-tabs {
   display: flex;
@@ -416,6 +441,7 @@ code {
   margin: 0 auto;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
 }
 
 .help-tab {
@@ -453,8 +479,9 @@ code {
   max-width: 800px;
   margin: 0 auto;
   line-height: 2;
-  height: calc(100vh - 120px);
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .help-content h2 {
@@ -1498,7 +1525,6 @@ code {
 
   .help-content {
     padding: 20px 16px;
-    height: calc(100vh - 110px);
   }
 
   .help-content pre {

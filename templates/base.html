@@ -155,6 +155,46 @@
       });
     }
   })();
+
+  // Navbar arrow key navigation (roving tabindex)
+  (function() {
+    var navbar = document.querySelector('.navbar');
+    if (!navbar) return;
+
+    function getNavItems() {
+      var items = [];
+      var logo = navbar.querySelector('.logo');
+      if (logo) items.push(logo);
+      navbar.querySelectorAll('.nav-links a').forEach(function(a) { items.push(a); });
+      var walletBtn = document.getElementById('wallet-btn');
+      if (walletBtn) items.push(walletBtn);
+      return items;
+    }
+
+    navbar.addEventListener('keydown', function(e) {
+      var tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      var items = getNavItems();
+      var idx = items.indexOf(e.target);
+      if (idx === -1) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        var next = e.key === 'ArrowRight'
+          ? (idx + 1) % items.length
+          : (idx - 1 + items.length) % items.length;
+        items[next].focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        var main = document.querySelector('main, .help-page, .writing-container, .gallery-grid, .container, .poiesis-dashboard');
+        if (main) {
+          var focusable = main.querySelector('a, button, input, textarea, select, [tabindex]');
+          if (focusable) focusable.focus();
+        }
+      }
+    });
+  })();
   </script>
 </body>
 </html>

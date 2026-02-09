@@ -10,7 +10,7 @@
 
 <div class="gallery-grid">
   {% for anky in ankys %}
-  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}">
+  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}" tabindex="0">
     <a href="/anky/{{ anky.id }}">
       {% if anky.image_path and anky.status == 'complete' %}
       <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
@@ -36,4 +36,56 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var grid = document.querySelector('.gallery-grid');
+  if (!grid) return;
+
+  function getItems() {
+    return Array.from(grid.querySelectorAll('.gallery-item'));
+  }
+
+  function getColumns() {
+    var items = getItems();
+    if (items.length < 2) return 1;
+    var firstTop = items[0].getBoundingClientRect().top;
+    for (var i = 1; i < items.length; i++) {
+      if (items[i].getBoundingClientRect().top !== firstTop) return i;
+    }
+    return items.length;
+  }
+
+  grid.addEventListener('keydown', function(e) {
+    var items = getItems();
+    var idx = items.indexOf(e.target);
+    if (idx === -1) return;
+
+    var cols = getColumns();
+    var next = -1;
+
+    if (e.key === 'ArrowRight') {
+      next = idx + 1 < items.length ? idx + 1 : 0;
+    } else if (e.key === 'ArrowLeft') {
+      next = idx - 1 >= 0 ? idx - 1 : items.length - 1;
+    } else if (e.key === 'ArrowDown') {
+      next = idx + cols < items.length ? idx + cols : idx;
+    } else if (e.key === 'ArrowUp') {
+      next = idx - cols >= 0 ? idx - cols : idx;
+    } else if (e.key === 'Enter') {
+      var link = items[idx].querySelector('a');
+      if (link) link.click();
+      return;
+    } else {
+      return;
+    }
+
+    e.preventDefault();
+    items[next].focus();
+    items[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+})();
+</script>
 {% endblock %}
