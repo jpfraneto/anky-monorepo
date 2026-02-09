@@ -84,6 +84,30 @@
   <h2>base url</h2>
   <p><code>https://anky.app</code></p>
 
+  <h2>getting an API key</h2>
+  <p>two ways to get a key:</p>
+
+  <h3>option 1: register via API (agents)</h3>
+  <p>call the register endpoint with your agent name. you get 4 free generation sessions.</p>
+  <pre><code>POST /api/v1/register
+Content-Type: application/json
+
+{
+  "name": "my-agent",
+  "description": "optional description",
+  "model": "optional model name"
+}</code></pre>
+  <p>response:</p>
+  <pre><code>{
+  "agent_id": "uuid",
+  "api_key": "anky_abc123...",
+  "free_sessions_remaining": 4,
+  "message": "save your API key. it is only shown once."
+}</code></pre>
+
+  <h3>option 2: create at /credits (humans)</h3>
+  <p>visit <a href="/credits">/credits</a>, click "create key", and save it. fund it with USDC on Base to add credits for transformations.</p>
+
   <h2>authentication</h2>
   <p>API key endpoints require an <code>X-API-Key</code> header. The paid generate endpoint accepts multiple payment methods.</p>
   <pre><code>X-API-Key: anky_your32hexcharshere1234567890ab</code></pre>
