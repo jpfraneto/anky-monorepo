@@ -6,7 +6,7 @@
   <title>{% block title %}anky{% endblock %}</title>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/htmx-sse.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20260208">
+  <link rel="stylesheet" href="/static/style.css?v=20260208b">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -187,7 +187,7 @@
         items[next].focus();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        var main = document.querySelector('main, .help-page, .writing-container, .gallery-grid, .container, .poiesis-dashboard');
+        var main = document.querySelector('main, .help-tabs, .writing-container, .gallery-grid, .container, .poiesis-dashboard');
         if (main) {
           var focusable = main.querySelector('a, button, input, textarea, select, [tabindex]');
           if (focusable) focusable.focus();

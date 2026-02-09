@@ -422,15 +422,6 @@ code {
 
 .dash-toggle input { margin-right: 4px; }
 
-/* ==================== Help page layout ==================== */
-.help-page {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 60px);
-  height: calc(100dvh - 60px);
-  overflow: hidden;
-}
-
 /* ==================== Help tabs ==================== */
 .help-tabs {
   display: flex;
@@ -441,7 +432,6 @@ code {
   margin: 0 auto;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  flex-shrink: 0;
 }
 
 .help-tab {
@@ -479,9 +469,6 @@ code {
   max-width: 800px;
   margin: 0 auto;
   line-height: 2;
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 .help-content h2 {
