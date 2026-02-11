@@ -84,15 +84,13 @@ pub fn build_router(state: AppState) -> Router {
         // Collection
         .route("/collection/create", axum::routing::post(collection::create_collection))
         .route("/collection/{id}", axum::routing::get(collection::get_collection))
-        // Poiesis
-        .route("/poiesis", axum::routing::get(poiesis::poiesis_page))
-        .route("/poiesis/stream", axum::routing::get(poiesis::poiesis_stream))
         // Payment
         .route("/payment/verify", axum::routing::post(payment::verify_payment))
         // Notifications
         .route("/notify/signup", axum::routing::post(notification::signup))
         // API
         .route("/api/ankys", axum::routing::get(api::list_ankys))
+        .route("/api/v1/ankys", axum::routing::get(api::list_ankys))
         .route("/api/generate", axum::routing::post(api::generate_anky))
         .route("/api/v1/anky/{id}", axum::routing::get(api::get_anky))
         .route("/api/checkpoint", axum::routing::post(api::save_checkpoint))
@@ -100,6 +98,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/treasury", axum::routing::get(api::treasury_address))
         .route("/api/feedback", axum::routing::post(api::submit_feedback))
         .route("/api/retry-failed", axum::routing::post(api::retry_failed))
+        .route("/api/v1/check-prompt", axum::routing::post(api::check_prompt))
         // Agent registration (no auth required)
         .route("/api/v1/register", axum::routing::post(extension_api::register))
         // Credits

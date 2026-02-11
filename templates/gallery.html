@@ -6,11 +6,16 @@
 <div class="page-header">
   <h2>gallery</h2>
   <p class="subtitle">ankys born from consciousness streams</p>
+  <div class="gallery-filters">
+    <button class="filter-btn active" data-filter="all">all</button>
+    <button class="filter-btn" data-filter="written">written</button>
+    <button class="filter-btn" data-filter="generated">generated</button>
+  </div>
 </div>
 
 <div class="gallery-grid">
   {% for anky in ankys %}
-  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}" tabindex="0">
+  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}" data-origin="{{ anky.origin }}" tabindex="0">
     <a href="/anky/{{ anky.id }}">
       {% if anky.image_path and anky.status == 'complete' %}
       <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
@@ -20,7 +25,12 @@
       </div>
       {% endif %}
       <div class="gallery-caption">
+        {% if anky.origin == 'generated' %}
+        <span class="gallery-badge generated">generated</span>
+        <span class="gallery-prompt">{{ anky.image_prompt | truncate(length=80) }}</span>
+        {% else %}
         <span class="gallery-title">{{ anky.title }}</span>
+        {% endif %}
         {% if anky.thinker_name %}
         <span class="gallery-thinker">{{ anky.thinker_name }}</span>
         {% endif %}
@@ -41,6 +51,24 @@
 {% block scripts %}
 <script>
 (function() {
+  // Gallery origin filter
+  var filterBtns = document.querySelectorAll('.filter-btn');
+  var allItems = document.querySelectorAll('.gallery-item');
+  filterBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      filterBtns.forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var filter = btn.getAttribute('data-filter');
+      allItems.forEach(function(item) {
+        if (filter === 'all' || item.getAttribute('data-origin') === filter) {
+          item.style.display = '';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    });
+  });
+
   var grid = document.querySelector('.gallery-grid');
   if (!grid) return;
 

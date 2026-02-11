@@ -44,6 +44,7 @@ pub async fn process_writing(
                 duration: req.duration,
                 is_anky: false,
                 anky_id: None,
+                estimated_wait_seconds: None,
                 error: Some("write more. stream-of-consciousness means letting words flow — at least a few sentences.".into()),
             }),
         ));
@@ -134,7 +135,8 @@ pub async fn process_writing(
                 &session_id,
                 &user_id,
                 None, None, None, None, None, None, None,
-                "pending",
+                "generating",
+                "written",
             )?;
         }
 
@@ -166,6 +168,7 @@ pub async fn process_writing(
             duration: req.duration,
             is_anky,
             anky_id,
+            estimated_wait_seconds: if is_anky { Some(45) } else { None },
             error: None,
         }),
     ))

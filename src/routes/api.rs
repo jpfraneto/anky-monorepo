@@ -34,14 +34,21 @@ pub async fn get_anky(
                 "writing": detail.writing_text,
                 "url": url,
                 "created_at": detail.created_at,
+                "origin": detail.origin,
             })))
         }
         None => Err(AppError::NotFound(format!("anky {} not found", id))),
     }
 }
 
+#[derive(serde::Deserialize, Default)]
+pub struct ListAnkysQuery {
+    pub origin: Option<String>,
+}
+
 pub async fn list_ankys(
     State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<ListAnkysQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let ankys = {
         let db = state.db.lock().await;
@@ -50,6 +57,13 @@ pub async fn list_ankys(
 
     let data: Vec<serde_json::Value> = ankys
         .iter()
+        .filter(|a| {
+            if let Some(ref origin) = query.origin {
+                a.origin == *origin
+            } else {
+                true
+            }
+        })
         .map(|a| {
             serde_json::json!({
                 "id": a.id,
@@ -58,6 +72,7 @@ pub async fn list_ankys(
                 "thinker_name": a.thinker_name,
                 "status": a.status,
                 "created_at": a.created_at,
+                "origin": a.origin,
             })
         })
         .collect();
@@ -86,7 +101,7 @@ pub async fn generate_anky(
     let moment = req.moment.clone();
 
     let anky_id = tokio::spawn(async move {
-        crate::pipeline::stream_gen::generate_for_thinker(&state_clone, &name, &moment, None).await
+        crate::pipeline::stream_gen::generate_for_thinker(&state_clone, &name, &moment, None, None).await
     })
     .await
     .map_err(|e| AppError::Internal(format!("Spawn error: {}", e)))?
@@ -101,9 +116,41 @@ pub async fn generate_anky(
 const GENERATE_COST_USD: f64 = 0.10;
 
 #[derive(serde::Deserialize)]
+pub struct CheckPromptRequest {
+    pub writing: String,
+}
+
+/// POST /api/v1/check-prompt — classify a prompt before payment
+pub async fn check_prompt(
+    State(state): State<AppState>,
+    Json(req): Json<CheckPromptRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = &state.config.anthropic_api_key;
+    if api_key.is_empty() {
+        return Err(AppError::Internal("API key not configured".into()));
+    }
+
+    let classification = crate::services::claude::classify_and_enhance_prompt(api_key, &req.writing)
+        .await
+        .map_err(|e| AppError::Internal(format!("Classification failed: {}", e)))?;
+
+    if classification.is_image_request {
+        Ok(Json(json!({
+            "status": "ready",
+            "enhanced_prompt": classification.enhanced_prompt.unwrap_or_default(),
+        })))
+    } else {
+        Ok(Json(json!({
+            "status": "needs_revision",
+            "message": classification.feedback.unwrap_or_else(|| "Please describe a visual scene or concept for your Anky image.".into()),
+        })))
+    }
+}
+
+#[derive(serde::Deserialize)]
 #[serde(untagged)]
 pub enum PaidGenerateRequest {
-    Direct { writing: String },
+    Direct { writing: String, enhanced_prompt: Option<String> },
     Thinker { thinker_name: String, moment: String },
 }
 
@@ -229,74 +276,99 @@ pub async fn generate_anky_paid(
     let agent_id_for_record = agent_id.clone();
     let tx_hash_for_record = tx_hash.clone();
 
-    let anky_id_result = match req {
-        PaidGenerateRequest::Direct { ref writing } => {
-            let writing = writing.clone();
+    // Create the anky record synchronously, then spawn background generation
+    let anky_id = match req {
+        PaidGenerateRequest::Direct { ref writing, ref enhanced_prompt } => {
+            let session_id = uuid::Uuid::new_v4().to_string();
+            let anky_id = uuid::Uuid::new_v4().to_string();
+            let user_id = "api-user";
+            let word_count = writing.split_whitespace().count() as i32;
+
+            {
+                let db = state.db.lock().await;
+                queries::ensure_user(&db, user_id)?;
+                queries::insert_writing_session(
+                    &db,
+                    &session_id,
+                    user_id,
+                    writing,
+                    480.0,
+                    word_count,
+                    true,
+                    None,
+                )?;
+                queries::insert_anky(
+                    &db,
+                    &anky_id,
+                    &session_id,
+                    user_id,
+                    None, None, None, None, None, None, None,
+                    "generating",
+                    "generated",
+                )?;
+            }
+
             let sc = state_clone.clone();
+            let aid = anky_id.clone();
+            let w = writing.clone();
+            let ep = enhanced_prompt.clone();
             tokio::spawn(async move {
-                // Create a writing session first, then run the image pipeline
-                let session_id = uuid::Uuid::new_v4().to_string();
-                let anky_id = uuid::Uuid::new_v4().to_string();
-                let user_id = "api-user";
-
-                let word_count = writing.split_whitespace().count() as i32;
-                {
+                if let Err(e) = crate::pipeline::image_gen::generate_image_only(&sc, &aid, &w, ep.as_deref()).await {
+                    tracing::error!("Generation failed for {}: {}", &aid[..8], e);
+                    sc.emit_log("ERROR", "image_gen", &format!("Generation failed for {}: {}", &aid[..8], e));
                     let db = sc.db.lock().await;
-                    queries::ensure_user(&db, user_id)?;
-                    queries::insert_writing_session(
-                        &db,
-                        &session_id,
-                        user_id,
-                        &writing,
-                        480.0,
-                        word_count,
-                        true,
-                        None,
-                    )?;
-                    queries::insert_anky(
-                        &db,
-                        &anky_id,
-                        &session_id,
-                        user_id,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        "generating",
-                    )?;
+                    let _ = queries::mark_anky_failed(&db, &aid);
                 }
+            });
 
-                crate::pipeline::image_gen::generate_anky_from_writing(
-                    &sc, &anky_id, &session_id, user_id, &writing,
-                )
-                .await?;
-                Ok::<String, anyhow::Error>(anky_id)
-            })
+            anky_id
         }
         PaidGenerateRequest::Thinker {
             ref thinker_name,
             ref moment,
         } => {
-            let name = thinker_name.clone();
-            let moment = moment.clone();
+            // Pre-create anky record so we can return the ID immediately
+            let anky_id = uuid::Uuid::new_v4().to_string();
+            let placeholder_session = uuid::Uuid::new_v4().to_string();
+
+            {
+                let db = state.db.lock().await;
+                queries::ensure_user(&db, "system")?;
+                queries::insert_anky(
+                    &db,
+                    &anky_id,
+                    &placeholder_session,
+                    "system",
+                    None, None, None, None, None,
+                    Some(thinker_name),
+                    Some(moment),
+                    "generating",
+                    "generated",
+                )?;
+            }
+
             let sc = state_clone.clone();
+            let aid = anky_id.clone();
+            let name = thinker_name.clone();
+            let mom = moment.clone();
             tokio::spawn(async move {
-                crate::pipeline::stream_gen::generate_for_thinker(&sc, &name, &moment, None).await
-            })
+                match crate::pipeline::stream_gen::generate_for_thinker(&sc, &name, &mom, None, Some(&aid)).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::error!("Thinker generation failed for {}: {}", &aid[..8], e);
+                        sc.emit_log("ERROR", "stream_gen", &format!("Thinker generation failed for {}: {}", &aid[..8], e));
+                        let db = sc.db.lock().await;
+                        let _ = queries::mark_anky_failed(&db, &aid);
+                    }
+                }
+            });
+
+            anky_id
         }
     };
 
-    // Get the anky_id (awaiting spawn)
-    let anky_id = anky_id_result
-        .await
-        .map_err(|e| AppError::Internal(format!("spawn error: {e}")))?
-        .map_err(|e| AppError::Internal(format!("generation error: {e}")))?;
-
-    // Record the generation and fetch completed anky details
-    let anky_detail = {
+    // Record generation
+    {
         let db = state.db.lock().await;
         let _ = queries::insert_generation_record(
             &db,
@@ -312,30 +384,16 @@ pub async fn generate_anky_paid(
             },
             tx_hash_for_record.as_deref(),
         );
-        queries::get_anky_by_id(&db, &anky_id).ok().flatten()
-    };
+    }
 
     let url = format!("https://anky.app/anky/{}", anky_id);
 
-    let response = if let Some(detail) = anky_detail {
-        json!({
-            "anky_id": anky_id,
-            "status": detail.status,
-            "payment_method": payment_method,
-            "url": url,
-            "title": detail.title,
-            "reflection": detail.reflection,
-            "image_url": detail.image_path.as_ref().map(|p| format!("https://anky.app/data/images/{}", p)),
-            "writing": detail.writing_text,
-        })
-    } else {
-        json!({
-            "anky_id": anky_id,
-            "status": "generating",
-            "payment_method": payment_method,
-            "url": url,
-        })
-    };
+    let response = json!({
+        "anky_id": anky_id,
+        "status": "generating",
+        "payment_method": payment_method,
+        "url": url,
+    });
 
     Ok(Json(response).into_response())
 }

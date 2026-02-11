@@ -242,6 +242,35 @@ code {
 .subtitle { color: #666; font-size: 14px; }
 
 /* ==================== Gallery ==================== */
+.gallery-filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.filter-btn {
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  padding: 4px 14px;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.filter-btn:hover {
+  border-color: #555;
+  color: #ccc;
+}
+
+.filter-btn.active {
+  background: #1a1a2e;
+  border-color: #7b2ff7;
+  color: #c4a0ff;
+}
+
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -294,6 +323,35 @@ code {
   display: block;
   color: #666;
   font-size: 12px;
+}
+
+.gallery-badge {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-bottom: 4px;
+}
+
+.gallery-badge.generated {
+  background: #1a1a2e;
+  color: #7b68ee;
+  border: 1px solid #333;
+}
+
+.gallery-prompt {
+  display: block;
+  color: #999;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.anky-image-prompt {
+  color: #ccc;
+  line-height: 1.5;
+  font-style: italic;
 }
 
 /* ==================== Writings list ==================== */
@@ -1199,6 +1257,83 @@ code {
   margin-top: 16px;
   font-size: 14px;
   line-height: 1.8;
+}
+
+.gen-progress {
+  margin-top: 24px;
+}
+
+.gen-skeleton {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.skeleton-pulse {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(110deg, #1a1a1a 8%, #252525 18%, #1a1a1a 33%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s linear infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to { background-position: -200% 0; }
+}
+
+.gen-logs {
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  padding: 8px;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+}
+
+.gen-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.gen-result-image {
+  max-width: 400px;
+  margin-bottom: 16px;
+}
+
+.gen-result-image img {
+  width: 100%;
+  border-radius: 8px;
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gen-result-prompt {
+  color: #999;
+  font-style: italic;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.gen-result-link {
+  display: inline-block;
+  color: #7b68ee;
+  text-decoration: none;
+  border-bottom: 1px solid #7b68ee33;
+}
+
+.gen-result-link:hover {
+  border-bottom-color: #7b68ee;
 }
 
 /* ==================== Landing page sections ==================== */

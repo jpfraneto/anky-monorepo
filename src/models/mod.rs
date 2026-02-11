@@ -14,6 +14,8 @@ pub struct WriteResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anky_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_wait_seconds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 

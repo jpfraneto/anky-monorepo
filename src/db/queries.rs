@@ -88,10 +88,11 @@ pub fn insert_anky(
     thinker_name: Option<&str>,
     thinker_moment: Option<&str>,
     status: &str,
+    origin: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO ankys (id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status],
+        "INSERT INTO ankys (id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin],
     )?;
     Ok(())
 }
@@ -120,6 +121,19 @@ pub fn update_anky_fields(
     Ok(())
 }
 
+pub fn update_anky_image_only(
+    conn: &Connection,
+    id: &str,
+    image_prompt: &str,
+    image_path: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET image_prompt = ?2, image_path = ?3, status = 'complete' WHERE id = ?1",
+        params![id, image_prompt, image_path],
+    )?;
+    Ok(())
+}
+
 pub struct AnkyRecord {
     pub id: String,
     pub title: Option<String>,
@@ -129,11 +143,12 @@ pub struct AnkyRecord {
     pub thinker_name: Option<String>,
     pub status: String,
     pub created_at: String,
+    pub origin: String,
 }
 
 pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, image_path, reflection, image_prompt, thinker_name, status, created_at FROM ankys ORDER BY created_at DESC",
+        "SELECT id, title, image_path, reflection, image_prompt, thinker_name, status, created_at, origin FROM ankys ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(AnkyRecord {
@@ -145,6 +160,7 @@ pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
             thinker_name: row.get(5)?,
             status: row.get(6)?,
             created_at: row.get(7)?,
+            origin: row.get(8)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -162,11 +178,12 @@ pub struct AnkyDetail {
     pub status: String,
     pub writing_text: Option<String>,
     pub created_at: String,
+    pub origin: String,
 }
 
 pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at
+        "SELECT a.id, a.title, a.image_path, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin
          FROM ankys a
          LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
          WHERE a.id = ?1",
@@ -184,6 +201,7 @@ pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>>
             status: row.get(8)?,
             writing_text: row.get(9)?,
             created_at: row.get(10)?,
+            origin: row.get(11)?,
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))
@@ -586,7 +604,7 @@ pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String
 
 pub fn mark_anky_failed(conn: &Connection, id: &str) -> Result<()> {
     conn.execute(
-        "UPDATE ankys SET status = 'failed' WHERE id = ?1 AND status = 'pending'",
+        "UPDATE ankys SET status = 'failed' WHERE id = ?1 AND status IN ('pending', 'generating')",
         params![id],
     )?;
     Ok(())
