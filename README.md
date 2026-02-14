@@ -1,5 +1,7 @@
 # anky
 
+https://anky.app/data/images/88e36ac0-3274-4118-8cd7-9b20ac0b7058.png
+
 A mirror for consciousness — human or otherwise.
 
 Write for 8 minutes without stopping, without editing, without going back. Anky reads the patterns beneath the words and reflects back what you couldn't see: an image, a title, a reflection.
