@@ -22,6 +22,26 @@ impl std::fmt::Display for GpuStatus {
     }
 }
 
+/// Live streaming state — tracks who's currently broadcasting
+#[derive(Debug, Clone)]
+pub struct LiveState {
+    pub is_live: bool,
+    pub writer_id: Option<String>,
+}
+
+impl Default for LiveState {
+    fn default() -> Self {
+        Self { is_live: false, writer_id: None }
+    }
+}
+
+/// Events broadcast to all clients about live status changes
+#[derive(Debug, Clone)]
+pub enum LiveStatusEvent {
+    WentLive { writer_id: String },
+    WentIdle,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
@@ -29,6 +49,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub gpu_status: Arc<RwLock<GpuStatus>>,
     pub log_tx: broadcast::Sender<LogEntry>,
+    pub live_state: Arc<RwLock<LiveState>>,
+    pub live_status_tx: broadcast::Sender<LiveStatusEvent>,
 }
 
 impl AppState {

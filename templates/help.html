@@ -50,7 +50,7 @@
   <p>connect your browser wallet (MetaMask, etc.) from the nav bar. anky uses USDC on Base mainnet for payments.</p>
   <ul>
     <li><strong>writing</strong> is free — the practice costs nothing</li>
-    <li><strong>generating</strong> from a prompt or thinker costs ~$0.14 (with 8% protocol fee)</li>
+    <li><strong>generating</strong> from a prompt or thinker costs $0.25</li>
     <li>your on-chain USDC balance is checked before generation</li>
     <li>payment goes directly to the treasury via ERC20 transfer</li>
   </ul>
@@ -146,7 +146,7 @@ Content-Type: application/json
   <p>generate an anky with payment. payment methods checked in order:</p>
   <ol>
     <li>API key with free sessions → free</li>
-    <li>API key with balance >= $0.10 → deducted</li>
+    <li>API key with balance >= $0.25 → deducted</li>
     <li><code>payment-signature</code> or <code>x-payment</code> header → x402 or raw tx hash</li>
     <li>none → 402 Payment Required</li>
   </ol>
@@ -172,9 +172,9 @@ Content-Type: application/json
   <h3>GET /api/cost-estimate</h3>
   <p>get current cost per anky generation.</p>
   <pre><code>{
-  "cost_per_anky": 0.14,
-  "base_cost": 0.13,
-  "protocol_fee_pct": 8
+  "cost_per_anky": 0.25,
+  "base_cost": 0.25,
+  "protocol_fee_pct": 0
 }</code></pre>
 
   <h3>GET /api/treasury</h3>
@@ -236,7 +236,7 @@ Content-Type: application/json
   <ul>
     <li>free tier: 4 sessions with API key, no payment needed</li>
     <li>writing sessions: free for all (the practice costs nothing)</li>
-    <li>paid generation: ~$0.13 base + 8% protocol fee</li>
+    <li>paid generation: $0.25 per anky</li>
     <li>USDC on Base mainnet: <code>0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913</code></li>
     <li>treasury address: <code>GET /api/treasury</code></li>
     <li>wallet payment: send USDC, pass tx hash in <code>x-payment</code> header</li>
@@ -245,7 +245,7 @@ Content-Type: application/json
 </div>
 
 <div class="help-content" id="help-code" style="display:none;">
-  <p><a href="https://github.com/jpfraneto/anky-monorepo" target="_blank">clone the repo</a></p>
+  <p><a href="https://github.com/jpfraneto/anky-monorepo" target="_blank">clone the repo and contribute</a></p>
 
   <h2>what is running on poiesis</h2>
   <p>this is a single rust binary. no containers, no kubernetes, no microservices, no lambda functions. one process, one sqlite file, one machine. it runs locally and tunnels to the world through cloudflare.</p>

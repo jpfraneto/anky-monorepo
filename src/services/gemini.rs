@@ -97,11 +97,21 @@ pub fn load_references(references_dir: &Path) -> Vec<String> {
     refs
 }
 
-/// Generate an Anky image using Gemini with reference images.
+/// Generate an Anky image using Gemini with reference images (default 1:1 aspect ratio).
 pub async fn generate_image(
     api_key: &str,
     prompt: &str,
     references: &[String],
+) -> Result<ImageResult> {
+    generate_image_with_aspect(api_key, prompt, references, "1:1").await
+}
+
+/// Generate an Anky image with a specific aspect ratio (e.g. "1:1", "2:1", "16:9").
+pub async fn generate_image_with_aspect(
+    api_key: &str,
+    prompt: &str,
+    references: &[String],
+    aspect_ratio: &str,
 ) -> Result<ImageResult> {
     let full_prompt = format!(
         r#"Create a mystical fantasy illustration: {}
@@ -147,7 +157,7 @@ STYLE:
         generation_config: GenerationConfig {
             response_modalities: vec!["TEXT".into(), "IMAGE".into()],
             image_config: Some(ImageConfig {
-                aspect_ratio: "1:1".into(),
+                aspect_ratio: aspect_ratio.into(),
             }),
         },
     };

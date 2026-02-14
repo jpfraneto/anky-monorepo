@@ -1,13 +1,18 @@
 pub mod api;
+pub mod auth;
 pub mod collection;
 pub mod credits;
 pub mod dashboard;
 pub mod extension_api;
 pub mod health;
+pub mod live;
 pub mod notification;
 pub mod pages;
 pub mod payment;
+pub mod payment_helper;
 pub mod poiesis;
+pub mod prompt;
+pub mod settings;
 pub mod writing;
 
 use crate::middleware;
@@ -55,6 +60,7 @@ pub fn build_router(state: AppState) -> Router {
     // Paid generate route (optional API key — payment handled in handler)
     let generate_routes = Router::new()
         .route("/api/v1/generate", axum::routing::post(api::generate_anky_paid))
+        .route("/api/v1/prompt", axum::routing::post(prompt::create_prompt_api))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::api_auth::optional_api_key,
@@ -74,10 +80,28 @@ pub fn build_router(state: AppState) -> Router {
         .route("/", axum::routing::get(pages::home))
         .route("/gallery", axum::routing::get(pages::gallery))
         .route("/help", axum::routing::get(pages::help))
-        .route("/generate", axum::routing::get(pages::generate))
+        .route("/generate", axum::routing::get(pages::generate_page))
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
+        // Prompt pages
+        .route("/prompt/create", axum::routing::get(prompt::create_prompt_page))
+        .route("/prompt/{id}", axum::routing::get(prompt::prompt_page))
+        // Prompt API
+        .route("/api/v1/prompt/{id}", axum::routing::get(prompt::get_prompt_api))
+        .route("/api/v1/prompt/{id}/write", axum::routing::post(prompt::submit_prompt_writing))
+        .route("/api/v1/prompts", axum::routing::get(prompt::list_prompts_api))
+        .route("/api/v1/prompts/random", axum::routing::get(prompt::random_prompt_api))
+        // Settings
+        .route("/settings", axum::routing::get(settings::settings_page))
+        .route("/api/settings", axum::routing::post(settings::save_settings))
+        // Auth
+        .route("/auth/x/login", axum::routing::get(auth::login))
+        .route("/auth/x/callback", axum::routing::get(auth::callback))
+        .route("/auth/x/logout", axum::routing::get(auth::logout))
+        // Privy auth
+        .route("/auth/privy/verify", axum::routing::post(auth::privy_verify))
+        .route("/auth/privy/logout", axum::routing::post(auth::privy_logout))
         // Writing
         .route("/write", axum::routing::post(writing::process_writing))
         .route("/writings", axum::routing::get(writing::get_writings))
@@ -93,10 +117,13 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/ankys", axum::routing::get(api::list_ankys))
         .route("/api/generate", axum::routing::post(api::generate_anky))
         .route("/api/v1/anky/{id}", axum::routing::get(api::get_anky))
+        .route("/api/stream-reflection/{id}", axum::routing::get(api::stream_reflection))
         .route("/api/checkpoint", axum::routing::post(api::save_checkpoint))
         .route("/api/cost-estimate", axum::routing::get(api::cost_estimate))
         .route("/api/treasury", axum::routing::get(api::treasury_address))
         .route("/api/feedback", axum::routing::post(api::submit_feedback))
+        .route("/api/chat", axum::routing::post(api::chat_with_anky))
+        .route("/api/chat-quick", axum::routing::post(api::chat_quick))
         .route("/api/retry-failed", axum::routing::post(api::retry_failed))
         .route("/api/v1/check-prompt", axum::routing::post(api::check_prompt))
         // Agent registration (no auth required)
@@ -111,6 +138,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/skill", axum::routing::get(skills_redirect))
         .route("/skill.md", axum::routing::get(skills_redirect))
         .route("/skills.md", axum::routing::get(skills_redirect))
+        // Live streaming
+        .route("/ws/live", axum::routing::get(live::ws_live))
+        .route("/api/live-status", axum::routing::get(live::live_status_sse))
+        .route("/api/live-check", axum::routing::get(live::live_check))
         // Dashboard
         .route("/dashboard", axum::routing::get(dashboard::dashboard))
         .route("/dashboard/logs", axum::routing::get(dashboard::dashboard_logs))

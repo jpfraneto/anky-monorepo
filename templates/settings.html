@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}settings — anky{% endblock %}
+
+{% block content %}
+<div class="settings-form">
+  <h1>settings</h1>
+
+  <div class="settings-group">
+    <label class="settings-label">username</label>
+    <input type="text" class="settings-input" id="settings-username" value="{{ username }}" maxlength="20" placeholder="your username">
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">font</label>
+    <select class="settings-select" id="settings-font">
+      <option value="monospace" {% if font_family == "monospace" %}selected{% endif %}>monospace</option>
+      <option value="serif" {% if font_family == "serif" %}selected{% endif %}>serif</option>
+      <option value="sans-serif" {% if font_family == "sans-serif" %}selected{% endif %}>sans-serif</option>
+    </select>
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">font size <span class="settings-range-value" id="size-display">{{ font_size }}px</span></label>
+    <input type="range" class="settings-range" id="settings-size" min="14" max="28" value="{{ font_size }}">
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">theme</label>
+    <div class="settings-toggle" id="settings-theme">
+      <button class="settings-toggle-btn {% if theme == 'dark' %}active{% endif %}" data-value="dark">dark</button>
+      <button class="settings-toggle-btn {% if theme == 'light' %}active{% endif %}" data-value="light">light</button>
+    </div>
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">idle timeout <span class="settings-range-value" id="timeout-display">{{ idle_timeout }}s</span></label>
+    <input type="range" class="settings-range" id="settings-timeout" min="5" max="15" value="{{ idle_timeout }}">
+  </div>
+
+  <div class="settings-group">
+    <label class="settings-label">preview</label>
+    <div class="settings-preview" id="settings-preview">the quick brown fox jumps over the lazy dog. write without stopping and see what emerges.</div>
+  </div>
+
+  <button class="settings-save" id="settings-save">save settings</button>
+  <div class="settings-msg" id="settings-msg"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var fontSelect = document.getElementById('settings-font');
+  var sizeSlider = document.getElementById('settings-size');
+  var sizeDisplay = document.getElementById('size-display');
+  var timeoutSlider = document.getElementById('settings-timeout');
+  var timeoutDisplay = document.getElementById('timeout-display');
+  var themeToggle = document.getElementById('settings-theme');
+  var preview = document.getElementById('settings-preview');
+  var saveBtn = document.getElementById('settings-save');
+  var msg = document.getElementById('settings-msg');
+  var usernameInput = document.getElementById('settings-username');
+
+  var currentTheme = '{{ theme }}';
+
+  function updatePreview() {
+    preview.style.fontFamily = fontSelect.value;
+    preview.style.fontSize = sizeSlider.value + 'px';
+  }
+
+  fontSelect.addEventListener('change', updatePreview);
+
+  sizeSlider.addEventListener('input', function() {
+    sizeDisplay.textContent = sizeSlider.value + 'px';
+    updatePreview();
+  });
+
+  timeoutSlider.addEventListener('input', function() {
+    timeoutDisplay.textContent = timeoutSlider.value + 's';
+  });
+
+  themeToggle.querySelectorAll('.settings-toggle-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      themeToggle.querySelectorAll('.settings-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      currentTheme = btn.dataset.value;
+    });
+  });
+
+  updatePreview();
+
+  saveBtn.addEventListener('click', function() {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'saving...';
+    msg.textContent = '';
+
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: usernameInput.value.trim() || null,
+        font_family: fontSelect.value,
+        font_size: parseInt(sizeSlider.value),
+        theme: currentTheme,
+        idle_timeout: parseInt(timeoutSlider.value),
+      }),
+    })
+    .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+    .then(function(result) {
+      if (result.ok) {
+        msg.textContent = 'saved!';
+        msg.style.color = '#8a8';
+      } else {
+        msg.textContent = result.data.error || 'failed to save';
+        msg.style.color = '#e05050';
+      }
+    })
+    .catch(function() {
+      msg.textContent = 'network error';
+      msg.style.color = '#e05050';
+    })
+    .finally(function() {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'save settings';
+    });
+  });
+})();
+</script>
+{% endblock %}

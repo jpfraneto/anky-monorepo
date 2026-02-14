@@ -2,12 +2,14 @@ use crate::services::claude;
 use crate::state::AppState;
 use anyhow::Result;
 
-/// Generate a stream of consciousness for a thinker, then run the full Anky pipeline.
+/// Generate a stream of consciousness for a thinker, then run the image-only pipeline.
+/// If `existing_anky_id` is provided, uses that record instead of creating a new one.
 pub async fn generate_for_thinker(
     state: &AppState,
     thinker_name: &str,
     moment: &str,
     collection_id: Option<&str>,
+    existing_anky_id: Option<&str>,
 ) -> Result<String> {
     let api_key = &state.config.anthropic_api_key;
 
@@ -76,33 +78,42 @@ pub async fn generate_for_thinker(
         )?;
     }
 
-    // Create Anky record and generate
-    let anky_id = uuid::Uuid::new_v4().to_string();
-    {
-        let db = state.db.lock().await;
-        crate::db::queries::insert_anky(
-            &db,
-            &anky_id,
-            &session_id,
-            "system",
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(thinker_name),
-            Some(moment),
-            "generating",
-        )?;
-    }
+    // Create Anky record (or use existing one)
+    let anky_id = if let Some(id) = existing_anky_id {
+        // Update the existing record with writing session link
+        {
+            let db = state.db.lock().await;
+            db.execute(
+                "UPDATE ankys SET writing_session_id = ?2 WHERE id = ?1",
+                rusqlite::params![id, session_id],
+            )?;
+        }
+        id.to_string()
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        {
+            let db = state.db.lock().await;
+            crate::db::queries::insert_anky(
+                &db,
+                &id,
+                &session_id,
+                "system",
+                None, None, None, None, None,
+                Some(thinker_name),
+                Some(moment),
+                "generating",
+                "generated",
+            )?;
+        }
+        id
+    };
 
-    // Run the image generation pipeline
-    crate::pipeline::image_gen::generate_anky_from_writing(
+    // Run the image-only pipeline (generated ankys skip reflection/title)
+    crate::pipeline::image_gen::generate_image_only(
         state,
         &anky_id,
-        &session_id,
-        "system",
         &stream_text,
+        None,
     )
     .await?;
 

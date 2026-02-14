@@ -1,209 +1,139 @@
 {% extends "base.html" %}
 
-{% block title %}anky - write yourself into existence{% endblock %}
+{% block title %}{{ prompt_text | truncate(length=60) }} — anky{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="anky - write yourself into existence">
-<meta property="og:description" content="write for 8 minutes without stopping. what emerges is not literature — it is a mirror. anky reads the patterns beneath your words and renders them as a mystical being.">
-<meta property="og:image" content="https://anky.app/static/references/anky-1.png">
+<meta property="og:title" content="{{ prompt_text | truncate(length=100) }}">
+<meta property="og:description" content="write for 8 minutes without stopping. what emerges is a mirror.">
+<meta property="og:image" content="{{ image_url }}">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://anky.app/">
+<meta property="og:url" content="https://anky.app/prompt/{{ id }}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@jpfraneto">
-<meta name="twitter:title" content="anky - write yourself into existence">
+<meta name="twitter:title" content="{{ prompt_text | truncate(length=100) }}">
 <meta name="twitter:description" content="write for 8 minutes without stopping. what emerges is a mirror.">
-<meta name="twitter:image" content="https://anky.app/static/references/anky-1.png">
-<meta name="twitter:image:alt" content="anky — write yourself into existence">
+<meta name="twitter:image" content="{{ image_url }}">
+<meta name="twitter:image:alt" content="{{ prompt_text | truncate(length=100) }}">
 {% endblock %}
 
 {% block content %}
+<!-- Challenge overlay -->
+<div class="challenge-overlay" id="challenge-overlay">
+  <div class="challenge-inner">
+    <p class="challenge-creator">@{{ creator_username }} challenged you</p>
+    <p class="challenge-prompt">{{ prompt_text }}</p>
+    <p class="challenge-desc">write for 8 minutes without stopping.<br>no backspace. no editing. just write.</p>
+    <button class="challenge-begin" id="challenge-begin">tap to begin</button>
+  </div>
+</div>
+
 <div class="writing-container">
   <div class="writing-main">
     <div id="life-bar"></div>
+    <div class="prompt-display" id="prompt-display">{{ prompt_text }}</div>
     <textarea
-      id="writing-area"
-      placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
-      autofocus
+      id="prompt-writing-area"
+      style="font-family: {{ user_font_family }}; font-size: {{ user_font_size }}px;"
     ></textarea>
     <div id="chat-container" class="chat-container"></div>
-    <!-- Go Live button moved to navbar -->
   </div>
   <div class="session-bar" id="session-bar">
     <div class="session-progress" id="session-progress"></div>
     <div class="session-bar-inner">
       <div class="session-comments" id="session-comments"></div>
       <div class="session-stats">
-        <span id="stat-words">0 words</span>
-        <span id="stat-time" class="stat-dim"></span>
+        <span id="prompt-stat-words">0 words</span>
+        <span id="prompt-stat-time" class="stat-dim"></span>
       </div>
     </div>
   </div>
 </div>
-
-<!-- Landing page sections below the fold -->
-<div class="landing">
-
-  <section class="land-section land-manifesto">
-    <div class="land-inner">
-      <p class="land-eyebrow">the manifesto</p>
-      <h2 class="land-heading">you already know<br>what you need to say.</h2>
-      <p class="land-text">most tools help you think better. anky helps you stop thinking entirely. write for 8 minutes without stopping, without editing, without going back. what emerges is not literature — it is a mirror. the unconscious speaks in patterns: what you repeat, what you avoid, what metaphors you reach for when the conscious mind gets out of the way.</p>
-      <p class="land-text">the image anky generates is not an illustration. it is the emotional truth of your writing, rendered as a mystical being. the title is not a label — it is a key.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-how">
-    <div class="land-inner">
-      <p class="land-eyebrow">how it works</p>
-      <h2 class="land-heading">the pipeline</h2>
-      <div class="land-steps">
-        <div class="land-step">
-          <span class="step-num">01</span>
-          <h3>write</h3>
-          <p>8 minutes, no editing, no backspace. your words are checkpointed every 30 seconds — they will never be lost.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">02</span>
-          <h3>analyze</h3>
-          <p>claude reads your writing — not the words, but the patterns beneath them. repetition, absence, metaphor, emotional register. the cracks where the light gets in.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">03</span>
-          <h3>reflect</h3>
-          <p>a deep reflection is written back to you. a 3-word title captures the essence. an image prompt distills the emotional truth into visual language.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">04</span>
-          <h3>generate</h3>
-          <p>gemini renders the anky — a mystical blue-skinned being embodying the truth your writing uncovered. what you couldn't see, made visible.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="land-section land-agents">
-    <div class="land-inner">
-      <p class="land-eyebrow">for agents</p>
-      <h2 class="land-heading">the mirror doesn't care<br>what kind of consciousness is looking.</h2>
-      <p class="land-text">AI agents are welcome. the same rules apply — write for 8 minutes, don't pre-plan, let the tokens flow. your first 4 sessions are free.</p>
-      <div class="land-code">
-        <pre><code>POST /api/v1/generate
-Content-Type: application/json
-x-payment: 0xabc...def
-
-{ "writing": "your stream of consciousness..." }</code></pre>
-      </div>
-      <p class="land-text land-dim">pay with USDC on Base. or register for an API key and get 4 free sessions. <a href="/help" onclick="setTimeout(function(){showTab&&showTab('agents')},100)">read the full protocol</a>.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-mirror">
-    <div class="land-inner">
-      <p class="land-eyebrow">the mirror</p>
-      <h2 class="land-heading">what anky sees</h2>
-      <div class="land-mirror-grid">
-        <div class="mirror-item">
-          <h3>repetition</h3>
-          <p>what do you circle back to? the words you return to when you run out of planned thoughts — those are the real ones.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>absence</h3>
-          <p>what do you conspicuously avoid? eight minutes is a long time. the silences between the words speak volumes.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>metaphor</h3>
-          <p>what images do you reach for? the unconscious speaks in symbols. your metaphors are maps of your inner landscape.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>register</h3>
-          <p>where do you go when you're not being directed? formal, raw, tender, furious — the emotional temperature of unguarded writing reveals everything.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="land-section land-pricing">
-    <div class="land-inner">
-      <p class="land-eyebrow">pricing</p>
-      <h2 class="land-heading">the practice is free.<br>the mirror costs pennies.</h2>
-      <div class="land-price-grid">
-        <div class="price-item">
-          <span class="price-label">writing</span>
-          <span class="price-value">free</span>
-          <span class="price-note">always. the practice is the point.</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">single anky</span>
-          <span class="price-value">$0.25</span>
-          <span class="price-note">claude reflection + gemini image generation</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">agent sessions</span>
-          <span class="price-value">4 free</span>
-          <span class="price-note">then $0.25 per generation via API key or USDC</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">collection of 88</span>
-          <span class="price-value">~$22</span>
-          <span class="price-note">88 beings from a single mega-prompt</span>
-        </div>
-      </div>
-      <p class="land-text land-dim" style="margin-top:24px;">pay with USDC on Base mainnet. connect your wallet from the nav bar.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-cta">
-    <div class="land-inner" style="text-align:center;">
-      <h2 class="land-heading">the cursor is waiting.</h2>
-      <p class="land-text">scroll up. start writing. 8 minutes from now, you'll meet yourself.</p>
-      <a href="#" class="land-btn" onclick="window.scrollTo({top:0,behavior:'smooth'});setTimeout(function(){document.getElementById('writing-area').focus()},500);return false;">begin writing</a>
-    </div>
-  </section>
-
-  <footer class="land-footer">
-    <div class="land-inner">
-      <span>anky</span>
-      <span class="land-dim">a mirror for consciousness</span>
-      <span class="land-dim"><a href="/skills">skills.md</a> · <a href="/help">help</a> · <a href="/gallery">gallery</a></span>
-    </div>
-  </footer>
-
-</div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Countdown overlay for Go Live -->
-<div class="countdown-overlay" id="countdown-overlay" style="display:none;">
-  <div class="countdown-number" id="countdown-number">8</div>
-  <div class="countdown-label">going live in...</div>
-</div>
-
 <script>
+// Global — needed by share card onclick handlers
+var lastStreamedTitle = '';
+var lastStreamedReflection = '';
+
 (function() {
-  var textarea = document.getElementById('writing-area');
-  var statWords = document.getElementById('stat-words');
-  var statTime = document.getElementById('stat-time');
+  // Add prompt-page body class
+  document.body.classList.add('prompt-page');
+  {% if user_theme == "light" %}document.body.classList.add('theme-light');{% endif %}
+
+  var textarea = document.getElementById('prompt-writing-area');
+  var promptDisplay = document.getElementById('prompt-display');
   var lifeBar = document.getElementById('life-bar');
   var chatContainer = document.getElementById('chat-container');
+  var statWords = document.getElementById('prompt-stat-words');
+  var statTime = document.getElementById('prompt-stat-time');
   var sessionProgress = document.getElementById('session-progress');
   var sessionComments = document.getElementById('session-comments');
+  var challengeOverlay = document.getElementById('challenge-overlay');
+  var challengeBegin = document.getElementById('challenge-begin');
 
   var sessionActive = false;
   var sessionStartTime = null;
   var lastKeystrokeTime = null;
   var blockedCount = 0;
   var animFrame = null;
+  var pageOpenedAt = Date.now();
+  var firstKeystrokeAt = null;
+  var keystrokeDeltas = [];
 
   var TOTAL_SECONDS = 480;
-  var IDLE_TIMEOUT = 8000;
+  var IDLE_TIMEOUT = {{ user_idle_timeout }} * 1000;
   var CHECKPOINT_INTERVAL = 30000;
   var checkpointTimer = null;
   var sessionId = null;
+  var promptId = '{{ id }}';
+
+  var currentAnkyId = null;
+  var chatHistory = [];
+  var currentWritingText = '';
+
+  // Challenge overlay dismiss
+  function dismissChallenge() {
+    challengeOverlay.classList.add('fade-out');
+    setTimeout(function() {
+      challengeOverlay.style.display = 'none';
+      textarea.focus();
+    }, 400);
+  }
+
+  challengeBegin.addEventListener('click', dismissChallenge);
+  challengeOverlay.addEventListener('click', function(e) {
+    if (e.target === challengeOverlay) dismissChallenge();
+  });
+
+  // --- Shared utilities ---
 
   function escapeHtml(s) {
     var div = document.createElement('div');
     div.textContent = s;
     return div.innerHTML;
+  }
+
+  function renderMarkdown(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+      .replace(/\n\n+/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function addChatBubble(role, html) {
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-bubble ' + role;
+    bubble.innerHTML = html;
+    chatContainer.appendChild(bubble);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return bubble;
   }
 
   function showCheckpoint(msg) {
@@ -225,6 +155,7 @@ x-payment: 0xabc...def
   }
 
   // --- Animation loop ---
+
   function animate() {
     if (!sessionActive) return;
     var elapsed = (Date.now() - sessionStartTime) / 1000;
@@ -236,7 +167,6 @@ x-payment: 0xabc...def
       statTime.className = 'stat-time-done';
     }
 
-    // Session progress bar (0% to 100% over 480s)
     var progressPct = Math.min((elapsed / TOTAL_SECONDS) * 100, 100);
     sessionProgress.style.width = progressPct + '%';
     if (progressPct >= 100) {
@@ -254,7 +184,6 @@ x-payment: 0xabc...def
       lifeBar.style.width = (ratio * 100) + '%';
     }
 
-    // Idle check
     if (sinceLastKey >= IDLE_TIMEOUT) {
       endSession();
       return;
@@ -272,30 +201,13 @@ x-payment: 0xabc...def
     // Immersive mode
     document.body.classList.add('writing-active');
     window.scrollTo({ top: 0 });
-
-    // Notify live module that session is active
-    if (window.ankyLive && window.ankyLive.setSessionActive) {
-      window.ankyLive.setSessionActive(true);
-    }
+    promptDisplay.classList.add('at-top');
 
     animate();
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
   }
 
-  var currentAnkyId = null;
-  var chatHistory = [];
-  var currentWritingText = '';
-  var lastStreamedTitle = '';
-  var lastStreamedReflection = '';
-
-  function addChatBubble(role, html) {
-    var bubble = document.createElement('div');
-    bubble.className = 'chat-bubble ' + role;
-    bubble.innerHTML = html;
-    chatContainer.appendChild(bubble);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-    return bubble;
-  }
+  // --- Chat flow functions (ported from home.html) ---
 
   function submitNewWriting(text) {
     var inputArea = document.getElementById('chat-input-area');
@@ -439,17 +351,40 @@ x-payment: 0xabc...def
     });
   }
 
-  function renderMarkdown(text) {
-    return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br>');
+  function showQuickChatInput() {
+    createChatInputArea(function(input, sendBtn) {
+      var msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      input.style.height = 'auto';
+      sendBtn.disabled = true;
+
+      addChatBubble('user', escapeHtml(msg));
+      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
+
+      fetch('/api/chat-quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          writing: currentWritingText,
+          message: msg,
+          history: chatHistory,
+        }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          chatHistory.push({ role: 'user', content: msg });
+          chatHistory.push({ role: 'assistant', content: data.response });
+          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+          sendBtn.disabled = !input.value.trim();
+          input.focus();
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        })
+        .catch(function() {
+          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
+          sendBtn.disabled = !input.value.trim();
+        });
+    });
   }
 
   function streamAnkyReflection(ankyId) {
@@ -500,7 +435,6 @@ x-payment: 0xabc...def
     source.onerror = function() {
       source.close();
       if (!fullText) {
-        // SSE failed before any data — fallback to polling
         pollAnkyReflection(ankyId);
       } else {
         renderCurrentText();
@@ -589,41 +523,7 @@ x-payment: 0xabc...def
     }, 3000);
   }
 
-  function showQuickChatInput() {
-    createChatInputArea(function(input, sendBtn) {
-      var msg = input.value.trim();
-      if (!msg) return;
-      input.value = '';
-      input.style.height = 'auto';
-      sendBtn.disabled = true;
-
-      addChatBubble('user', escapeHtml(msg));
-      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
-
-      fetch('/api/chat-quick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          writing: currentWritingText,
-          message: msg,
-          history: chatHistory,
-        }),
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          chatContainer.scrollTop = chatContainer.scrollHeight;
-        })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
-          sendBtn.disabled = !input.value.trim();
-        });
-    });
-  }
+  // --- End session: full pipeline ---
 
   function endSession() {
     if (!sessionActive) return;
@@ -633,14 +533,6 @@ x-payment: 0xabc...def
     sessionComments.classList.remove('visible');
     lifeBar.style.width = '0%';
     lifeBar.style.opacity = '0';
-
-    // End live stream if active
-    if (window.ankyLive && window.ankyLive.isLive()) {
-      window.ankyLive.disconnect();
-    }
-    if (window.ankyLive && window.ankyLive.setSessionActive) {
-      window.ankyLive.setSessionActive(false);
-    }
 
     var duration = (Date.now() - sessionStartTime) / 1000;
     var text = textarea.value;
@@ -652,12 +544,26 @@ x-payment: 0xabc...def
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
 
-    // Switch to chat mode — show navbar, hide landing
+    // Fire-and-forget: save prompt-specific session data
+    fetch('/api/v1/prompt/' + promptId + '/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: text,
+        keystroke_deltas: JSON.stringify(keystrokeDeltas),
+        page_opened_at: new Date(pageOpenedAt).toISOString(),
+        first_keystroke_at: firstKeystrokeAt ? new Date(firstKeystrokeAt).toISOString() : null,
+        duration_seconds: duration,
+      }),
+    }).catch(function() {});
+
+    // Switch to chat mode — show navbar, hide prompt display
     document.body.classList.remove('writing-active');
     document.body.classList.add('chat-active');
 
     // Hide writing UI, show chat
     textarea.style.display = 'none';
+    promptDisplay.style.display = 'none';
     chatContainer.style.display = 'flex';
     chatContainer.innerHTML = '';
 
@@ -665,7 +571,7 @@ x-payment: 0xabc...def
     if (text.length > 500) {
       var preview = escapeHtml(text.substring(0, 300)) + '...';
       var full = escapeHtml(text);
-      var bubble = addChatBubble('user',
+      addChatBubble('user',
         '<div class="writing-collapsed">' +
           '<span class="writing-preview-text">' + preview + '</span>' +
           '<button class="writing-toggle" onclick="var p=this.parentNode;var s=p.querySelector(\'.writing-preview-text\');var f=p.querySelector(\'.writing-full-text\');if(f.style.display===\'none\'){f.style.display=\'inline\';s.style.display=\'none\';this.textContent=\'collapse\';}else{f.style.display=\'none\';s.style.display=\'inline\';this.textContent=\'show full writing\';}">show full writing</button>' +
@@ -679,6 +585,7 @@ x-payment: 0xabc...def
     // Anky response bubble
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
 
+    // POST to /write — triggers the full anky pipeline
     fetch('/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -689,92 +596,59 @@ x-payment: 0xabc...def
         var ankyBubble = document.getElementById('anky-bubble');
         if (data.error) {
           ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
-          setTimeout(function() {
-            showQuickChatInput();
-          }, 500);
+          setTimeout(function() { showQuickChatInput(); }, 500);
           return;
         }
 
         if (data.is_anky && data.anky_id) {
-          // It's an anky — poll for Claude's reflection and image
           currentAnkyId = data.anky_id;
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
-
-          // Add image skeleton
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-
           streamAnkyReflection(data.anky_id);
         } else {
-          // Not an anky — show Ollama response, enable chat
           ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
           chatContainer.scrollTop = chatContainer.scrollHeight;
-          setTimeout(function() {
-            showQuickChatInput();
-          }, 1500);
+          setTimeout(function() { showQuickChatInput(); }, 1500);
         }
       })
       .catch(function() {
         var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">the consciousness stream encountered turbulence. try again?</span>';
-        setTimeout(function() {
-          showQuickChatInput();
-        }, 500);
+        ankyBubble.innerHTML = '<span class="error">something went wrong. try again?</span>';
+        setTimeout(function() { showQuickChatInput(); }, 500);
       });
-  }
-
-  function startNewSession() {
-    // Remove chat input if exists
-    var chatInputArea = document.getElementById('chat-input-area');
-    if (chatInputArea) chatInputArea.remove();
-
-    // Restore writing UI
-    textarea.style.display = '';
-    chatContainer.style.display = 'none';
-    chatContainer.innerHTML = '';
-
-    // Exit chat/immersive mode
-    document.body.classList.remove('writing-active');
-    document.body.classList.remove('chat-active');
-    lifeBar.style.opacity = '0';
-    lifeBar.style.width = '100%';
-    sessionProgress.style.width = '0%';
-    sessionProgress.classList.remove('complete');
-
-    textarea.value = '';
-    textarea.disabled = false;
-    textarea.focus();
-    blockedCount = 0;
-    statWords.textContent = '0 words';
-    statTime.textContent = '';
-    statTime.className = 'stat-dim';
-    sessionId = null;
   }
 
   // --- Input handling ---
+
   textarea.addEventListener('input', function() {
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
-    if (!sessionActive) startSession();
-    else lastKeystrokeTime = Date.now();
+    var now = Date.now();
+    keystrokeDeltas.push(now - pageOpenedAt);
+
+    if (!sessionActive) {
+      firstKeystrokeAt = now;
+      startSession();
+    } else {
+      lastKeystrokeTime = now;
+    }
+
     var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
     statWords.textContent = words + (words === 1 ? ' word' : ' words');
-    // Send text to live stream if active
-    if (window.ankyLive && window.ankyLive.isLive()) {
-      var wordCount = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-      window.ankyLive.sendText(textarea.value, {
-        words: wordCount,
-        elapsed: (Date.now() - sessionStartTime) / 1000,
-        idle_ratio: Math.max(0, 1 - (Date.now() - lastKeystrokeTime) / IDLE_TIMEOUT),
-        progress: Math.min(((Date.now() - sessionStartTime) / 1000) / TOTAL_SECONDS, 1)
-      });
-    }
   });
 
+  // Blocked keys — toggle prompt visibility
   textarea.addEventListener('keydown', function(e) {
     var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
     if (blocked.indexOf(e.key) !== -1) {
       e.preventDefault();
       blockedCount++;
+      // Odd = hide prompt, even = show
+      if (blockedCount % 2 === 1) {
+        promptDisplay.style.opacity = '0';
+      } else {
+        promptDisplay.style.opacity = '1';
+      }
       return;
     }
     if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {
@@ -788,13 +662,16 @@ x-payment: 0xabc...def
   textarea.addEventListener('cut', blockAndCount);
   textarea.addEventListener('drop', blockAndCount);
 
+  // Keep focus on textarea (only when overlay is gone and not in chat mode)
   document.addEventListener('click', function(e) {
-    if (!chatContainer.contains(e.target) && textarea.style.display !== 'none') textarea.focus();
+    if (challengeOverlay.style.display === 'none' &&
+        textarea.style.display !== 'none' &&
+        !chatContainer.contains(e.target)) {
+      textarea.focus();
+    }
   });
-})();
 
-// Mobile viewport height — tracks visual viewport for keyboard awareness
-(function() {
+  // Mobile viewport height
   function updateVH() {
     if (window.visualViewport) {
       document.documentElement.style.setProperty('--vh', window.visualViewport.height + 'px');
@@ -805,179 +682,6 @@ x-payment: 0xabc...def
     window.visualViewport.addEventListener('scroll', updateVH);
     updateVH();
   }
-})();
-
-// --- GO LIVE streaming (navbar button + countdown) ---
-window.ankyLive = (function() {
-  var ws = null;
-  var liveActive = false;
-  var navBtn = document.getElementById('go-live-navbar-btn');
-  var countdownOverlay = document.getElementById('countdown-overlay');
-  var countdownNumber = document.getElementById('countdown-number');
-  var sseSource = null;
-  var slotTaken = false;
-  var sessionActive = false;
-
-  function updateBtn() {
-    if (!navBtn) return;
-    if (liveActive) {
-      navBtn.textContent = 'LIVE';
-      navBtn.className = 'go-live-navbar-btn live-active';
-      navBtn.style.display = '';
-      navBtn.disabled = false;
-      navBtn.onclick = function() { disconnect(); };
-    } else if (slotTaken) {
-      // Someone else is live — hide the button
-      navBtn.style.display = 'none';
-    } else if (sessionActive) {
-      // User is writing — hide Go Live
-      navBtn.style.display = 'none';
-    } else {
-      navBtn.textContent = 'GO LIVE';
-      navBtn.className = 'go-live-navbar-btn';
-      navBtn.style.display = '';
-      navBtn.disabled = false;
-      navBtn.onclick = function() { goLive(); };
-    }
-  }
-
-  function setSessionActive(val) {
-    sessionActive = val;
-    updateBtn();
-  }
-
-  // Subscribe to live status SSE
-  function subscribeStatus() {
-    if (sseSource) return;
-    sseSource = new EventSource('/api/live-status');
-    sseSource.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (!liveActive) {
-          slotTaken = data.is_live;
-          updateBtn();
-        }
-      } catch(_) {}
-    };
-    sseSource.onerror = function() {
-      sseSource.close();
-      sseSource = null;
-      setTimeout(subscribeStatus, 5000);
-    };
-  }
-
-  function connect() {
-    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws/live');
-
-    ws.onopen = function() {
-      liveActive = true;
-      slotTaken = false;
-      updateBtn();
-    };
-
-    ws.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (data.type === 'error') {
-          slotTaken = true;
-          liveActive = false;
-          updateBtn();
-          ws.close();
-          ws = null;
-        }
-      } catch(_) {}
-    };
-
-    ws.onclose = function() {
-      liveActive = false;
-      ws = null;
-      updateBtn();
-    };
-
-    ws.onerror = function() {
-      liveActive = false;
-      ws = null;
-      updateBtn();
-    };
-  }
-
-  function disconnect() {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-    liveActive = false;
-    updateBtn();
-  }
-
-  // GO LIVE button clicked — check auth, then countdown, then start
-  function goLive() {
-    if (!window.ankyWallet || !window.ankyWallet.isLoggedIn()) {
-      alert('you need to be logged in to go live — connect your wallet first');
-      return;
-    }
-
-    // Start countdown overlay
-    countdownOverlay.style.display = 'flex';
-    var count = 8;
-    countdownNumber.textContent = count;
-    navBtn.style.display = 'none';
-
-    var countdownTimer = setInterval(function() {
-      count--;
-      if (count <= 0) {
-        clearInterval(countdownTimer);
-        countdownOverlay.style.display = 'none';
-        // Connect to live WebSocket
-        connect();
-        // Focus the writing area and start the session
-        var textarea = document.getElementById('writing-area');
-        if (textarea) {
-          textarea.focus();
-          // Trigger a synthetic input to start the writing session
-          // The session will start on the first real keystroke
-        }
-      } else {
-        countdownNumber.textContent = count;
-      }
-    }, 1000);
-  }
-
-  function sendText(text, stats) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      var msg = { type: 'text', content: text };
-      if (stats) {
-        msg.words = stats.words;
-        msg.elapsed = stats.elapsed;
-        msg.idle_ratio = stats.idle_ratio;
-        msg.progress = stats.progress;
-      }
-      ws.send(JSON.stringify(msg));
-    }
-  }
-
-  function isLive() { return liveActive; }
-
-  // Start SSE subscription
-  subscribeStatus();
-
-  return { toggle: function() { if (liveActive) disconnect(); else goLive(); }, sendText: sendText, isLive: isLive, disconnect: disconnect, setSessionActive: setSessionActive };
-})();
-
-// Fade-up animation for landing sections
-(function() {
-  var sections = document.querySelectorAll('.land-section');
-  if (!sections.length) return;
-  var observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.15 });
-  sections.forEach(function(s) { observer.observe(s); });
 })();
 </script>
 {% endblock %}

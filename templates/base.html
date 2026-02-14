@@ -6,7 +6,10 @@
   <title>{% block title %}anky{% endblock %}</title>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/htmx-sse.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=20260208b">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=20260213b">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -15,25 +18,43 @@
     <button class="nav-hamburger" id="nav-hamburger" aria-label="menu">&#9776;</button>
     <div class="nav-links" id="nav-links">
       <a href="/gallery">gallery</a>
-      <a href="/poiesis">poiesis</a>
       <a href="/writings">writings</a>
       <a href="/generate">generate</a>
+      <a href="/prompt/create">prompts</a>
       <a href="/feedback">feedback</a>
-      <a href="/dashboard">dashboard</a>
+      <a href="/settings">settings</a>
       <a href="/help">help</a>
     </div>
     <div class="nav-auth" id="nav-auth">
+      <button class="go-live-navbar-btn" id="go-live-navbar-btn" style="display:none;">GO LIVE</button>
       <button class="wallet-btn" id="wallet-btn" onclick="window.ankyWallet.connect()">connect</button>
     </div>
   </nav>
+  <div class="share-card-overlay" id="share-card-overlay">
+    <button class="share-card-close" id="share-card-close">&times;</button>
+    <div class="share-card">
+      <div class="share-card-image">
+        <img id="share-card-img" src="" alt="">
+      </div>
+      <h2 class="share-card-title" id="share-card-title"></h2>
+      <p class="share-card-excerpt" id="share-card-excerpt"></p>
+      <div class="share-card-brand">anky.app</div>
+    </div>
+    <div class="share-card-actions">
+      <button class="share-card-btn" id="share-card-share">share</button>
+      <button class="share-card-btn share-card-btn-dim" id="share-card-copy">copy link</button>
+    </div>
+  </div>
   {% block content %}{% endblock %}
-  {% block scripts %}{% endblock %}
+  <script src="https://cdn.privy.io/js-sdk@2.0.0/index.js"></script>
   <script>
-  // --- Wallet ---
+  // --- Wallet (Privy-based) ---
   window.ankyWallet = (function() {
     var btn = document.getElementById('wallet-btn');
     var BASE_CHAIN = '0x2105'; // 8453
     var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    var privyReady = false;
+    var privyInstance = null;
 
     function shortAddr(a) {
       return a.slice(0, 6) + '...' + a.slice(-4);
@@ -52,7 +73,53 @@
       }
     }
 
+    function isLoggedIn() {
+      return !!localStorage.getItem('wallet_address');
+    }
+
+    // Initialize Privy
+    function initPrivy() {
+      if (typeof Privy === 'undefined' || !Privy) {
+        // SDK not loaded yet, retry
+        setTimeout(initPrivy, 500);
+        return;
+      }
+      try {
+        privyInstance = new Privy({
+          appId: 'cmivv85zt00ftla0cjpaw155h',
+          config: {
+            loginMethods: ['wallet'],
+            appearance: {
+              theme: 'dark',
+              accentColor: '#7b2ff7',
+            },
+            embeddedWallets: {
+              createOnLogin: 'users-without-wallets',
+            },
+            defaultChain: { id: 8453, name: 'Base' },
+            supportedChains: [{ id: 8453, name: 'Base' }],
+          },
+        });
+        privyReady = true;
+      } catch(e) {
+        console.log('Privy init skipped:', e.message);
+        // Fall back to raw ethereum if Privy SDK fails to load
+      }
+    }
+
     async function connect() {
+      // Try Privy first
+      if (privyReady && privyInstance) {
+        try {
+          privyInstance.login();
+          // Privy handles the modal — we listen for auth state changes
+          return null;
+        } catch(e) {
+          console.error('Privy login failed, falling back:', e);
+        }
+      }
+
+      // Fallback: raw window.ethereum
       if (!window.ethereum) {
         alert('install a wallet (metamask, rabby, coinbase wallet) to connect');
         return null;
@@ -82,6 +149,8 @@
         }
         localStorage.setItem('wallet_address', address);
         updateBtn();
+        // Verify with backend
+        verifyWithBackend(address);
         return address;
       } catch (e) {
         console.error('wallet connect failed:', e);
@@ -91,19 +160,44 @@
 
     function disconnect() {
       localStorage.removeItem('wallet_address');
+      if (privyReady && privyInstance) {
+        try { privyInstance.logout(); } catch(e) {}
+      }
+      // Clear backend session
+      fetch('/auth/privy/logout', { method: 'POST' }).catch(function(){});
+      updateBtn();
+    }
+
+    // Verify wallet with backend after Privy or raw connect
+    async function verifyWithBackend(address) {
+      // For raw ethereum connections, we don't have a Privy auth token.
+      // Store address locally; backend auth via Privy verify is the proper flow.
+      localStorage.setItem('wallet_address', address);
       updateBtn();
     }
 
     // Send USDC on Base. Returns tx hash.
     async function sendUSDC(toAddress, amountUSD) {
       var from = localStorage.getItem('wallet_address');
-      if (!from || !window.ethereum) {
+      var provider = window.ethereum;
+
+      // Try to get provider from Privy if available
+      if (privyReady && privyInstance) {
+        try {
+          var pw = privyInstance.getEthereumProvider();
+          if (pw) provider = pw;
+        } catch(e) {}
+      }
+
+      if (!from || !provider) {
         var addr = await connect();
         if (!addr) throw new Error('wallet not connected');
         from = addr;
+        provider = window.ethereum;
       }
+
       // Ensure Base chain
-      await window.ethereum.request({
+      await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: BASE_CHAIN }],
       });
@@ -112,7 +206,7 @@
       var toHex = toAddress.slice(2).toLowerCase().padStart(64, '0');
       var amtHex = amount.toString(16).padStart(64, '0');
       var data = '0xa9059cbb' + toHex + amtHex;
-      var txHash = await window.ethereum.request({
+      var txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [{
           from: from,
@@ -123,7 +217,7 @@
       return txHash;
     }
 
-    // Listen for account changes
+    // Listen for account changes (raw ethereum)
     if (window.ethereum) {
       window.ethereum.on('accountsChanged', function(accounts) {
         if (accounts.length === 0) {
@@ -135,9 +229,41 @@
       });
     }
 
-    updateBtn();
+    // Poll for Privy auth state (Privy fires events after login)
+    function pollPrivyAuth() {
+      if (!privyReady || !privyInstance) return;
+      try {
+        if (privyInstance.authenticated) {
+          var user = privyInstance.user;
+          if (user && user.wallet && user.wallet.address) {
+            var addr = user.wallet.address;
+            localStorage.setItem('wallet_address', addr);
+            updateBtn();
+            // Send auth token to backend
+            var authToken = privyInstance.getAccessToken();
+            if (authToken) {
+              fetch('/auth/privy/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auth_token: authToken }),
+              }).catch(function(){});
+            }
+          }
+        }
+      } catch(e) {}
+    }
 
-    return { connect: connect, disconnect: disconnect, sendUSDC: sendUSDC };
+    // Check Privy state periodically after init
+    setTimeout(function() {
+      pollPrivyAuth();
+      // Also set up an interval to catch login events
+      setInterval(pollPrivyAuth, 2000);
+    }, 2000);
+
+    updateBtn();
+    setTimeout(initPrivy, 100);
+
+    return { connect: connect, disconnect: disconnect, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn };
   })();
 
   // Hamburger menu toggle
@@ -154,6 +280,89 @@
         });
       });
     }
+  })();
+
+  // --- Share Card ---
+  window.ankyShareCard = (function() {
+    var overlay = document.getElementById('share-card-overlay');
+    var closeBtn = document.getElementById('share-card-close');
+    var imgEl = document.getElementById('share-card-img');
+    var titleEl = document.getElementById('share-card-title');
+    var excerptEl = document.getElementById('share-card-excerpt');
+    var shareBtn = document.getElementById('share-card-share');
+    var copyBtn = document.getElementById('share-card-copy');
+    var currentAnkyId = null;
+
+    function extractExcerpt(reflection) {
+      if (!reflection) return '';
+      var lines = reflection.split('\n');
+      var result = '';
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        // Skip greeting lines
+        if (i < 3 && /^(hey|hi|hello|thanks|thank you|wow|oh)\b/i.test(line)) continue;
+        // Skip markdown headings
+        if (/^#{1,4}\s/.test(line)) continue;
+        // Strip bold/italic markers
+        line = line.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '').trim();
+        if (!line) continue;
+        result = line;
+        break;
+      }
+      if (result.length > 200) {
+        result = result.substring(0, 197) + '...';
+      }
+      return result;
+    }
+
+    function open(opts) {
+      currentAnkyId = opts.ankyId || null;
+      imgEl.src = opts.imageUrl || '';
+      imgEl.alt = opts.title || 'anky';
+      titleEl.textContent = opts.title || '';
+      excerptEl.textContent = extractExcerpt(opts.reflection);
+      overlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function close() {
+      overlay.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+
+    closeBtn.addEventListener('click', close);
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) close();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && overlay.classList.contains('active')) close();
+    });
+
+    shareBtn.addEventListener('click', function() {
+      var url = currentAnkyId ? (window.location.origin + '/anky/' + currentAnkyId) : window.location.href;
+      var title = titleEl.textContent || 'my anky';
+      if (navigator.share) {
+        navigator.share({ title: title, text: excerptEl.textContent, url: url }).catch(function() {});
+      } else {
+        navigator.clipboard.writeText(url).then(function() {
+          shareBtn.textContent = 'copied!';
+          setTimeout(function() { shareBtn.textContent = 'share'; }, 2000);
+        });
+      }
+    });
+
+    copyBtn.addEventListener('click', function() {
+      var url = currentAnkyId ? (window.location.origin + '/anky/' + currentAnkyId) : window.location.href;
+      navigator.clipboard.writeText(url).then(function() {
+        copyBtn.textContent = 'copied!';
+        setTimeout(function() { copyBtn.textContent = 'copy link'; }, 2000);
+      });
+    });
+
+    return { open: open, close: close, extractExcerpt: extractExcerpt };
   })();
 
   // Navbar arrow key navigation (roving tabindex)
@@ -187,7 +396,7 @@
         items[next].focus();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        var main = document.querySelector('main, .help-tabs, .writing-container, .gallery-grid, .container, .poiesis-dashboard');
+        var main = document.querySelector('main, .help-tabs, .writing-container, .gallery-grid, .container');
         if (main) {
           var focusable = main.querySelector('a, button, input, textarea, select, [tabindex]');
           if (focusable) focusable.focus();
@@ -196,5 +405,6 @@
     });
   })();
   </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

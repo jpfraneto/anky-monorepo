@@ -7,14 +7,27 @@
 <meta property="og:description" content="{{ reflection | truncate(length=160) }}">
 {% if image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
 <meta property="og:type" content="article">
+<meta property="og:url" content="https://anky.app/anky/{{ id }}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@jpfraneto">
+<meta name="twitter:title" content="{{ title }} - anky">
+<meta name="twitter:description" content="{{ reflection | truncate(length=160) }}">
+{% if image_path %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_path }}">
+<meta name="twitter:image:alt" content="{{ title }}">{% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="anky-detail">
   {% if status == "complete" and image_path %}
   <div class="anky-image">
-    <img src="/data/images/{{ image_path }}" alt="{{ title }}">
+    <img src="/data/images/{{ image_path }}" alt="{{ title }}" id="anky-detail-img">
+  </div>
+  <div style="margin-bottom: 20px;">
+    <button class="share-card-btn" id="anky-detail-share"
+      data-title="{{ title }}"
+      data-reflection="{{ reflection | default(value='') }}"
+      data-prompt="{{ image_prompt | default(value='') }}"
+      data-anky-id="{{ id }}">share</button>
   </div>
   {% elif status == "generating" %}
   <div class="anky-image">
@@ -25,6 +38,25 @@
   {% endif %}
 
   <div class="anky-content">
+    {% if origin == "generated" %}
+    <span class="gallery-badge generated">generated</span>
+    {% if image_prompt %}
+    <div class="anky-section">
+      <h2>prompt</h2>
+      <div class="anky-image-prompt">{{ image_prompt }}</div>
+    </div>
+    {% endif %}
+
+    <div class="anky-created">{{ created_at }}</div>
+
+    {% if thinker_name %}
+    <div class="anky-meta">
+      <span class="anky-thinker">{{ thinker_name }}</span>
+      {% if thinker_moment %}<span class="anky-moment">{{ thinker_moment }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
     <h1 class="anky-title">{{ title }}</h1>
 
     {% if thinker_name %}
@@ -49,6 +81,7 @@
       <div class="anky-reflection" id="reflection-content">{{ reflection }}</div>
     </div>
     {% endif %}
+    {% endif %}
   </div>
 </div>
 {% endblock %}
@@ -59,6 +92,24 @@
   setTimeout(function() { location.reload(); }, 15000);
 </script>
 {% endif %}
+{% if status == "complete" and image_path %}
+<script>
+(function() {
+  var shareBtn = document.getElementById('anky-detail-share');
+  if (!shareBtn) return;
+  shareBtn.addEventListener('click', function() {
+    var img = document.getElementById('anky-detail-img');
+    window.ankyShareCard.open({
+      imageUrl: img ? img.src : '',
+      title: shareBtn.dataset.title || '',
+      reflection: shareBtn.dataset.reflection || shareBtn.dataset.prompt || '',
+      ankyId: shareBtn.dataset.ankyId
+    });
+  });
+})();
+</script>
+{% endif %}
+{% if origin != "generated" %}
 <script>
 (function() {
   var el = document.getElementById('reflection-content');
@@ -115,4 +166,5 @@
   el.innerHTML = html;
 })();
 </script>
+{% endif %}
 {% endblock %}

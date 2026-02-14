@@ -164,5 +164,147 @@ pub fn run(conn: &Connection) -> Result<()> {
         );
         ",
     )?;
+
+    // Add origin column to ankys (safe for existing data — defaults to 'written')
+    let has_origin: bool = conn
+        .prepare("SELECT origin FROM ankys LIMIT 0")
+        .is_ok();
+    if !has_origin {
+        conn.execute_batch(
+            "ALTER TABLE ankys ADD COLUMN origin TEXT NOT NULL DEFAULT 'written';"
+        )?;
+    }
+
+    // User collections — tracks who has viewed/collected a written anky via shared link
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_collections (
+            user_id TEXT NOT NULL,
+            anky_id TEXT NOT NULL,
+            collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, anky_id)
+        );"
+    )?;
+
+    // --- Phase 1: Prompts ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS prompts (
+            id TEXT PRIMARY KEY,
+            creator_user_id TEXT NOT NULL,
+            prompt_text TEXT NOT NULL,
+            image_path TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            payment_tx_hash TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (creator_user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS prompt_sessions (
+            id TEXT PRIMARY KEY,
+            prompt_id TEXT NOT NULL,
+            user_id TEXT,
+            content TEXT,
+            keystroke_deltas TEXT,
+            page_opened_at TEXT,
+            first_keystroke_at TEXT,
+            duration_seconds REAL,
+            word_count INTEGER NOT NULL DEFAULT 0,
+            completed BOOLEAN NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (prompt_id) REFERENCES prompts(id)
+        );"
+    )?;
+
+    // --- Phase 2: X OAuth ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS x_users (
+            x_user_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            username TEXT NOT NULL,
+            display_name TEXT,
+            profile_image_url TEXT,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT,
+            token_expires_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            x_user_id TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS oauth_states (
+            state TEXT PRIMARY KEY,
+            code_verifier TEXT NOT NULL,
+            redirect_to TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    )?;
+
+    // --- Username on users ---
+    let has_username: bool = conn
+        .prepare("SELECT username FROM users LIMIT 0")
+        .is_ok();
+    if !has_username {
+        conn.execute_batch(
+            "ALTER TABLE users ADD COLUMN username TEXT;
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"
+        )?;
+    }
+
+    // --- User settings ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_settings (
+            user_id TEXT PRIMARY KEY,
+            font_family TEXT NOT NULL DEFAULT 'monospace',
+            font_size INTEGER NOT NULL DEFAULT 18,
+            theme TEXT NOT NULL DEFAULT 'dark',
+            idle_timeout INTEGER NOT NULL DEFAULT 8,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );"
+    )?;
+
+    // --- Phase 3: X Bot ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS x_interactions (
+            id TEXT PRIMARY KEY,
+            tweet_id TEXT UNIQUE NOT NULL,
+            x_user_id TEXT,
+            x_username TEXT,
+            tweet_text TEXT,
+            prompt_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            classification TEXT,
+            reply_tweet_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    )?;
+
+    // --- wallet_address on users ---
+    let has_wallet: bool = conn
+        .prepare("SELECT wallet_address FROM users LIMIT 0")
+        .is_ok();
+    if !has_wallet {
+        conn.execute_batch(
+            "ALTER TABLE users ADD COLUMN wallet_address TEXT;"
+        )?;
+    }
+
+    // --- privy_did on users ---
+    let has_privy_did: bool = conn
+        .prepare("SELECT privy_did FROM users LIMIT 0")
+        .is_ok();
+    if !has_privy_did {
+        conn.execute_batch(
+            "ALTER TABLE users ADD COLUMN privy_did TEXT;"
+        )?;
+    }
+
     Ok(())
 }

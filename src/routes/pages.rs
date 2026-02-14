@@ -1,7 +1,14 @@
 use crate::error::AppError;
 use crate::state::{AppState, GpuStatus};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Html;
+use axum_extra::extract::cookie::CookieJar;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct GalleryQuery {
+    pub tab: Option<String>,
+}
 
 pub async fn home(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     // If training, redirect to sleeping page
@@ -20,22 +27,48 @@ pub async fn home(State(state): State<AppState>) -> Result<Html<String>, AppErro
     Ok(Html(html))
 }
 
-pub async fn gallery(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub async fn gallery(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Query(query): Query<GalleryQuery>,
+) -> Result<Html<String>, AppError> {
+    let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let has_user = user_id.is_some();
+
+    let tab = match query.tab.as_deref() {
+        Some("mine") if has_user => "mine",
+        Some("viewed") if has_user => "viewed",
+        _ => "all",
+    };
+
     let ankys = {
         let db = state.db.lock().await;
-        crate::db::queries::get_all_ankys(&db)?
+        match tab {
+            "mine" => crate::db::queries::get_user_ankys(&db, user_id.as_deref().unwrap())?,
+            "viewed" => crate::db::queries::get_user_viewed_ankys(&db, user_id.as_deref().unwrap())?,
+            _ => {
+                // "all" tab: only show non-written ankys (writing sessions are private)
+                let all = crate::db::queries::get_all_complete_ankys(&db)?;
+                all.into_iter().filter(|a| a.origin != "written").collect()
+            }
+        }
     };
 
     let mut ctx = tera::Context::new();
+    ctx.insert("active_tab", tab);
+    ctx.insert("has_user", &has_user);
     ctx.insert("ankys", &serde_json::to_value(
         ankys.iter().map(|a| {
             serde_json::json!({
                 "id": a.id,
                 "title": a.title.as_deref().unwrap_or("untitled"),
                 "image_path": a.image_path.as_deref().unwrap_or(""),
+                "image_prompt": a.image_prompt.as_deref().unwrap_or(""),
+                "reflection": a.reflection.as_deref().unwrap_or(""),
                 "thinker_name": a.thinker_name.as_deref().unwrap_or(""),
                 "status": a.status,
                 "created_at": a.created_at,
+                "origin": a.origin,
             })
         }).collect::<Vec<_>>()
     ).unwrap_or_default());
@@ -50,7 +83,7 @@ pub async fn help(State(state): State<AppState>) -> Result<Html<String>, AppErro
     Ok(Html(html))
 }
 
-pub async fn generate(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub async fn generate_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ctx = tera::Context::new();
     let html = state.tera.render("generate.html", &ctx)?;
     Ok(Html(html))
@@ -90,14 +123,27 @@ pub async fn feedback(State(state): State<AppState>) -> Result<Html<String>, App
 
 pub async fn anky_detail(
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
+    let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+
     let anky = {
         let db = state.db.lock().await;
         crate::db::queries::get_anky_by_id(&db, &id)?
     };
 
     let anky = anky.ok_or_else(|| AppError::NotFound("anky not found".into()))?;
+
+    // Always collect when a logged-in user views any anky (tracks views)
+    if let Some(ref vid) = viewer_id {
+        let db = state.db.lock().await;
+        let _ = crate::db::queries::collect_anky(&db, vid, &id);
+    }
+
+    // Determine if the viewer can see the writing text
+    // Having the link means the writer shared it — show everything
+    let show_writing = anky.origin != "generated";
 
     let mut ctx = tera::Context::new();
     ctx.insert("id", &anky.id);
@@ -108,8 +154,14 @@ pub async fn anky_detail(
     ctx.insert("thinker_name", &anky.thinker_name.as_deref().unwrap_or(""));
     ctx.insert("thinker_moment", &anky.thinker_moment.as_deref().unwrap_or(""));
     ctx.insert("status", &anky.status);
-    ctx.insert("writing", &anky.writing_text.as_deref().unwrap_or(""));
     ctx.insert("created_at", &anky.created_at);
+    ctx.insert("origin", &anky.origin);
+
+    if show_writing {
+        ctx.insert("writing", &anky.writing_text.as_deref().unwrap_or(""));
+    } else {
+        ctx.insert("writing", &"");
+    }
 
     let html = state.tera.render("anky.html", &ctx)?;
     Ok(Html(html))

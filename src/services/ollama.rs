@@ -35,6 +35,52 @@ pub async fn call_ollama(base_url: &str, model: &str, prompt: &str) -> Result<St
     Ok(data.response)
 }
 
+// --- Multi-turn chat via /api/chat ---
+
+#[derive(Serialize)]
+struct OllamaChatRequest {
+    model: String,
+    messages: Vec<OllamaChatMessage>,
+    stream: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OllamaChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaChatResponse {
+    message: OllamaChatMessage,
+}
+
+pub async fn chat_ollama(
+    base_url: &str,
+    model: &str,
+    messages: Vec<OllamaChatMessage>,
+) -> Result<String> {
+    let client = reqwest::Client::new();
+    let req = OllamaChatRequest {
+        model: model.to_string(),
+        messages,
+        stream: false,
+    };
+
+    let resp = client
+        .post(format!("{}/api/chat", base_url))
+        .json(&req)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("Ollama chat API error: {}", resp.status());
+    }
+
+    let data: OllamaChatResponse = resp.json().await?;
+    Ok(data.message.content)
+}
+
 pub fn deep_reflection_prompt(text: &str) -> String {
     format!(
         r#"You are a guide in the tradition of Jungian shadow work and Ramana Maharshi's self-inquiry. A seeker has written for over 8 minutes in a stream of consciousness. Your task is to help them see what they cannot see in themselves.

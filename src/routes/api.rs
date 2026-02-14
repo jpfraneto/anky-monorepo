@@ -5,15 +5,22 @@ use crate::middleware::x402;
 use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
+use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum_extra::extract::cookie::CookieJar;
 use serde_json::json;
+use std::convert::Infallible;
 
 /// GET /api/v1/anky/{id} — fetch anky details (for polling after /write)
+/// Writing text is only included if the requester's anky_user_id cookie matches the anky's owner.
 pub async fn get_anky(
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+
     let anky = {
         let db = state.db.lock().await;
         queries::get_anky_by_id(&db, &id)?
@@ -23,7 +30,22 @@ pub async fn get_anky(
         Some(detail) => {
             let image_url = detail.image_path.as_ref().map(|p| format!("https://anky.app/data/images/{}", p));
             let url = format!("https://anky.app/anky/{}", detail.id);
-            
+
+            // Only show writing to the owner
+            let writing = if detail.origin == "written" {
+                let db = state.db.lock().await;
+                let owner = queries::get_anky_owner(&db, &id)?;
+                let is_owner = viewer_id.as_deref().is_some()
+                    && owner.as_deref() == viewer_id.as_deref();
+                if is_owner {
+                    detail.writing_text
+                } else {
+                    None
+                }
+            } else {
+                detail.writing_text
+            };
+
             Ok(Json(json!({
                 "id": detail.id,
                 "status": detail.status,
@@ -31,7 +53,7 @@ pub async fn get_anky(
                 "reflection": detail.reflection,
                 "image_url": image_url,
                 "image_prompt": detail.image_prompt,
-                "writing": detail.writing_text,
+                "writing": writing,
                 "url": url,
                 "created_at": detail.created_at,
                 "origin": detail.origin,
@@ -58,11 +80,8 @@ pub async fn list_ankys(
     let data: Vec<serde_json::Value> = ankys
         .iter()
         .filter(|a| {
-            if let Some(ref origin) = query.origin {
-                a.origin == *origin
-            } else {
-                true
-            }
+            let origin_filter = query.origin.as_deref().unwrap_or("generated");
+            a.origin == origin_filter
         })
         .map(|a| {
             serde_json::json!({
@@ -113,7 +132,7 @@ pub async fn generate_anky(
     })))
 }
 
-const GENERATE_COST_USD: f64 = 0.10;
+const GENERATE_COST_USD: f64 = 0.25;
 
 #[derive(serde::Deserialize)]
 pub struct CheckPromptRequest {
@@ -398,6 +417,120 @@ pub async fn generate_anky_paid(
     Ok(Json(response).into_response())
 }
 
+// --- Chat with Anky ---
+#[derive(serde::Deserialize)]
+pub struct ChatRequest {
+    pub anky_id: String,
+    pub message: String,
+    #[serde(default)]
+    pub history: Vec<ChatMessage>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+pub async fn chat_with_anky(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<ChatRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+
+    let anky = {
+        let db = state.db.lock().await;
+        queries::get_anky_by_id(&db, &req.anky_id)?
+    };
+
+    let anky = anky.ok_or_else(|| AppError::NotFound("anky not found".into()))?;
+
+    // Verify ownership
+    if let Some(ref vid) = viewer_id {
+        let db = state.db.lock().await;
+        let owner = queries::get_anky_owner(&db, &req.anky_id)?;
+        if owner.as_deref() != Some(vid.as_str()) {
+            return Err(AppError::BadRequest("not your anky".into()));
+        }
+    } else {
+        return Err(AppError::BadRequest("not authenticated".into()));
+    }
+
+    let api_key = &state.config.anthropic_api_key;
+    if api_key.is_empty() {
+        return Err(AppError::Internal("API key not configured".into()));
+    }
+
+    let writing = anky.writing_text.as_deref().unwrap_or("");
+    let reflection = anky.reflection.as_deref().unwrap_or("");
+
+    let history: Vec<(String, String)> = req.history
+        .iter()
+        .map(|m| (m.role.clone(), m.content.clone()))
+        .collect();
+
+    let result = crate::services::claude::chat_about_writing(
+        api_key, writing, reflection, &history, &req.message,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+
+    Ok(Json(json!({
+        "response": result.text,
+    })))
+}
+
+// --- Quick Chat (Ollama, for non-anky sessions) ---
+#[derive(serde::Deserialize)]
+pub struct QuickChatRequest {
+    pub writing: String,
+    pub message: String,
+    #[serde(default)]
+    pub history: Vec<ChatMessage>,
+}
+
+pub async fn chat_quick(
+    State(state): State<AppState>,
+    Json(req): Json<QuickChatRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    use crate::services::ollama::{OllamaChatMessage, chat_ollama};
+
+    let mut messages = vec![
+        OllamaChatMessage {
+            role: "system".into(),
+            content: format!(
+                "You are Anky, a consciousness companion. The user wrote a stream of consciousness session (less than 8 minutes). Be warm, direct, insightful. Reference their writing. Keep responses concise (2-3 paragraphs). Help them see patterns and encourage them to write for the full 8 minutes next time.\n\nTheir writing:\n{}",
+                req.writing
+            ),
+        },
+    ];
+
+    // Add conversation history
+    for msg in &req.history {
+        messages.push(OllamaChatMessage {
+            role: msg.role.clone(),
+            content: msg.content.clone(),
+        });
+    }
+
+    // Add the new message
+    messages.push(OllamaChatMessage {
+        role: "user".into(),
+        content: req.message.clone(),
+    });
+
+    let response = chat_ollama(
+        &state.config.ollama_base_url,
+        "llama3.1:latest",
+        messages,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+
+    Ok(Json(json!({ "response": response })))
+}
+
 // --- Feedback ---
 #[derive(serde::Deserialize)]
 pub struct FeedbackRequest {
@@ -448,18 +581,12 @@ pub async fn save_checkpoint(
 
 // --- Cost Estimate ---
 pub async fn cost_estimate(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let avg = {
-        let db = state.db.lock().await;
-        queries::get_average_anky_cost(&db)?
-    };
-    let base = if avg > 0.01 { avg } else { crate::pipeline::cost::estimate_single_anky_cost() };
-    let with_fee = base * 1.08;
     Ok(Json(json!({
-        "cost_per_anky": (with_fee * 100.0).round() / 100.0,
-        "base_cost": (base * 10000.0).round() / 10000.0,
-        "protocol_fee_pct": 8,
+        "cost_per_anky": GENERATE_COST_USD,
+        "base_cost": GENERATE_COST_USD,
+        "protocol_fee_pct": 0,
     })))
 }
 
@@ -468,6 +595,85 @@ pub async fn treasury_address(
     State(state): State<AppState>,
 ) -> Json<serde_json::Value> {
     Json(json!({ "address": state.config.treasury_address }))
+}
+
+// --- Stream Reflection (SSE) ---
+/// GET /api/stream-reflection/{id} — stream title+reflection from Claude via SSE.
+/// If reflection already exists in DB, sends it immediately.
+/// Otherwise, streams from Claude and saves to DB in the background.
+pub async fn stream_reflection(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    let (writing_text, existing_reflection, existing_title) = {
+        let db = state.db.lock().await;
+        let anky = queries::get_anky_by_id(&db, &id)?;
+        match anky {
+            Some(a) => (
+                a.writing_text.unwrap_or_default(),
+                a.reflection.clone(),
+                a.title.clone(),
+            ),
+            None => return Err(AppError::NotFound("anky not found".into())),
+        }
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(64);
+
+    let has_existing = existing_reflection.as_ref().map_or(false, |r| !r.is_empty());
+
+    if has_existing {
+        // Already have reflection — send it immediately
+        let title = existing_title.unwrap_or_default();
+        let refl = existing_reflection.unwrap_or_default();
+        let full = format!("{}\n\n{}", title, refl);
+        tokio::spawn(async move {
+            let _ = tx.send(full).await;
+        });
+    } else if writing_text.is_empty() {
+        drop(tx);
+        return Err(AppError::BadRequest("no writing text found".into()));
+    } else {
+        let api_key = state.config.anthropic_api_key.clone();
+        if api_key.is_empty() {
+            drop(tx);
+            return Err(AppError::Internal("API key not configured".into()));
+        }
+
+        let anky_id = id.clone();
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            match crate::services::claude::stream_title_and_reflection(&api_key, &writing_text, tx).await {
+                Ok((full_text, input_tokens, output_tokens)) => {
+                    let (title, reflection) = crate::services::claude::parse_title_reflection(&full_text);
+                    let cost = crate::pipeline::cost::estimate_claude_cost(input_tokens, output_tokens);
+                    let db = state_clone.db.lock().await;
+                    if let Err(e) = queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection) {
+                        tracing::error!("Failed to save reflection for {}: {}", &anky_id[..8], e);
+                    }
+                    let _ = queries::insert_cost_record(&db, "claude", "claude-sonnet-4-20250514", input_tokens, output_tokens, cost, Some(&anky_id));
+                    state_clone.emit_log("INFO", "stream", &format!("Streamed reflection saved for {} (${:.4})", &anky_id[..8], cost));
+                }
+                Err(e) => {
+                    tracing::error!("Stream reflection failed for {}: {}", &anky_id[..8], e);
+                    state_clone.emit_log("ERROR", "stream", &format!("Stream failed for {}: {}", &anky_id[..8], e));
+                }
+            }
+        });
+    }
+
+    let stream = async_stream::stream! {
+        while let Some(text) = rx.recv().await {
+            yield Ok::<_, Infallible>(Event::default().data(text));
+        }
+        yield Ok::<_, Infallible>(Event::default().event("done").data(""));
+    };
+
+    Ok(Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
 }
 
 // --- Retry Failed Ankys ---

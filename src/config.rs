@@ -11,6 +11,24 @@ pub struct Config {
     pub usdc_address: String,
     pub treasury_address: String,
     pub x402_facilitator_url: String,
+    // X OAuth (user login)
+    pub twitter_client_id: String,
+    pub twitter_client_secret: String,
+    pub twitter_callback_url: String,
+    // X Bot (app-level credentials)
+    pub twitter_bot_bearer_token: String,
+    pub twitter_bot_api_key: String,
+    pub twitter_bot_api_secret: String,
+    pub twitter_bot_access_token: String,
+    pub twitter_bot_access_secret: String,
+    pub twitter_bot_user_id: String,
+    // Privy (wallet auth)
+    pub privy_app_id: String,
+    pub privy_app_secret: String,
+    pub privy_verification_key: String,
+    // Livestream (pump.fun)
+    pub pumpfun_rtmp_url: String,
+    pub pumpfun_stream_key: String,
 }
 
 impl Config {
@@ -35,6 +53,23 @@ impl Config {
             treasury_address: std::env::var("TREASURY_ADDRESS").unwrap_or_default(),
             x402_facilitator_url: std::env::var("X402_FACILITATOR_URL")
                 .unwrap_or_else(|_| "https://x402.org/facilitator".into()),
+            twitter_client_id: std::env::var("TWITTER_CLIENT_ID").unwrap_or_default(),
+            twitter_client_secret: std::env::var("TWITTER_CLIENT_SECRET").unwrap_or_default(),
+            twitter_callback_url: std::env::var("TWITTER_CALLBACK_URL")
+                .unwrap_or_else(|_| "https://anky.app/auth/x/callback".into()),
+            twitter_bot_bearer_token: std::env::var("TWITTER_BOT_BEARER_TOKEN").unwrap_or_default(),
+            twitter_bot_api_key: std::env::var("TWITTER_BOT_API_KEY").unwrap_or_default(),
+            twitter_bot_api_secret: std::env::var("TWITTER_BOT_API_SECRET").unwrap_or_default(),
+            twitter_bot_access_token: std::env::var("TWITTER_BOT_ACCESS_TOKEN").unwrap_or_default(),
+            twitter_bot_access_secret: std::env::var("TWITTER_BOT_ACCESS_SECRET").unwrap_or_default(),
+            twitter_bot_user_id: std::env::var("TWITTER_BOT_USER_ID").unwrap_or_default(),
+            privy_app_id: std::env::var("PRIVY_APP_ID").unwrap_or_default(),
+            privy_app_secret: std::env::var("PRIVY_APP_SECRET").unwrap_or_default(),
+            privy_verification_key: std::env::var("PRIVY_VERIFICATION_KEY")
+                .unwrap_or_default()
+                .replace("\\n", "\n"),
+            pumpfun_rtmp_url: std::env::var("PUMPFUN_RTMP_URL").unwrap_or_default(),
+            pumpfun_stream_key: std::env::var("PUMPFUN_STREAM_KEY").unwrap_or_default(),
         })
     }
 }

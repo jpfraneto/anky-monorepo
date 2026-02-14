@@ -2,20 +2,44 @@
 
 {% block title %}anky - gallery{% endblock %}
 
+{% block head %}
+<meta property="og:title" content="anky - gallery">
+<meta property="og:description" content="browse ankys born from consciousness streams — mystical beings rendered from the patterns beneath human and AI writing.">
+<meta property="og:image" content="https://anky.app/static/references/anky-1.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://anky.app/gallery">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@jpfraneto">
+<meta name="twitter:title" content="anky - gallery">
+<meta name="twitter:description" content="browse ankys born from consciousness streams">
+<meta name="twitter:image" content="https://anky.app/static/references/anky-1.png">
+<meta name="twitter:image:alt" content="anky gallery — mystical beings from consciousness streams">
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h2>gallery</h2>
   <p class="subtitle">ankys born from consciousness streams</p>
-  <div class="gallery-filters">
-    <button class="filter-btn active" data-filter="all">all</button>
-    <button class="filter-btn" data-filter="written">written</button>
-    <button class="filter-btn" data-filter="generated">generated</button>
-  </div>
+</div>
+
+<div class="gallery-tabs">
+  <a href="/gallery" class="gallery-tab {% if active_tab == 'all' %}active{% endif %}">all</a>
+  {% if has_user %}
+  <a href="/gallery?tab=mine" class="gallery-tab {% if active_tab == 'mine' %}active{% endif %}">mine</a>
+  <a href="/gallery?tab=viewed" class="gallery-tab {% if active_tab == 'viewed' %}active{% endif %}">viewed</a>
+  {% endif %}
 </div>
 
 <div class="gallery-grid">
   {% for anky in ankys %}
-  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}" data-origin="{{ anky.origin }}" tabindex="0">
+  <div class="gallery-item {% if anky.status != 'complete' %}generating{% endif %}"
+       data-id="{{ anky.id }}"
+       data-title="{{ anky.title }}"
+       data-image="{% if anky.image_path %}/data/images/{{ anky.image_path }}{% endif %}"
+       data-prompt="{{ anky.image_prompt }}"
+       data-reflection="{{ anky.reflection | truncate(length=200) }}"
+       data-origin-type="{{ anky.origin }}"
+       tabindex="0">
     <a href="/anky/{{ anky.id }}">
       {% if anky.image_path and anky.status == 'complete' %}
       <img src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
@@ -29,6 +53,7 @@
         <span class="gallery-badge generated">generated</span>
         <span class="gallery-prompt">{{ anky.image_prompt | truncate(length=80) }}</span>
         {% else %}
+        <span class="gallery-badge written">written</span>
         <span class="gallery-title">{{ anky.title }}</span>
         {% endif %}
         {% if anky.thinker_name %}
@@ -41,43 +66,51 @@
 
   {% if ankys | length == 0 %}
   <div class="empty-state">
+    {% if active_tab == 'mine' %}
+    <p>you haven't created any ankys yet.</p>
+    <a href="/" class="new-session-btn">start writing</a>
+    {% elif active_tab == 'viewed' %}
+    <p>you haven't viewed any ankys yet. browse the gallery and click on one.</p>
+    <a href="/gallery" class="new-session-btn">browse all</a>
+    {% else %}
     <p>no ankys yet. go write for 8 minutes to create your first.</p>
     <a href="/" class="new-session-btn">start writing</a>
+    {% endif %}
   </div>
   {% endif %}
+</div>
+
+<!-- Slideshow overlay -->
+<div class="slideshow-overlay" id="slideshow-overlay">
+  <button class="slideshow-close" id="slideshow-close" aria-label="close">&times;</button>
+  <button class="slideshow-prev" id="slideshow-prev" aria-label="previous">&lsaquo;</button>
+  <button class="slideshow-next" id="slideshow-next" aria-label="next">&rsaquo;</button>
+  <div class="slideshow-content">
+    <div class="slideshow-image-wrap">
+      <img id="slideshow-img" src="" alt="">
+    </div>
+    <div class="slideshow-info">
+      <div class="slideshow-badge" id="slideshow-badge"></div>
+      <h3 id="slideshow-title"></h3>
+      <p id="slideshow-desc"></p>
+      <a id="slideshow-link" href="" class="slideshow-detail-link">view full detail &rarr;</a>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function() {
-  // Gallery origin filter
-  var filterBtns = document.querySelectorAll('.filter-btn');
-  var allItems = document.querySelectorAll('.gallery-item');
-  filterBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      filterBtns.forEach(function(b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      var filter = btn.getAttribute('data-filter');
-      allItems.forEach(function(item) {
-        if (filter === 'all' || item.getAttribute('data-origin') === filter) {
-          item.style.display = '';
-        } else {
-          item.style.display = 'none';
-        }
-      });
-    });
-  });
-
   var grid = document.querySelector('.gallery-grid');
-  if (!grid) return;
+  var overlay = document.getElementById('slideshow-overlay');
+  if (!grid || !overlay) return;
 
-  function getItems() {
-    return Array.from(grid.querySelectorAll('.gallery-item'));
-  }
+  var items = Array.from(grid.querySelectorAll('.gallery-item[data-id]'));
+  var currentIdx = -1;
 
+  // --- Grid keyboard navigation ---
   function getColumns() {
-    var items = getItems();
     if (items.length < 2) return 1;
     var firstTop = items[0].getBoundingClientRect().top;
     for (var i = 1; i < items.length; i++) {
@@ -87,7 +120,6 @@
   }
 
   grid.addEventListener('keydown', function(e) {
-    var items = getItems();
     var idx = items.indexOf(e.target);
     if (idx === -1) return;
 
@@ -103,8 +135,8 @@
     } else if (e.key === 'ArrowUp') {
       next = idx - cols >= 0 ? idx - cols : idx;
     } else if (e.key === 'Enter') {
-      var link = items[idx].querySelector('a');
-      if (link) link.click();
+      e.preventDefault();
+      openSlide(idx);
       return;
     } else {
       return;
@@ -113,6 +145,124 @@
     e.preventDefault();
     items[next].focus();
     items[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+
+  // --- Slideshow ---
+  var sImg = document.getElementById('slideshow-img');
+  var sTitle = document.getElementById('slideshow-title');
+  var sDesc = document.getElementById('slideshow-desc');
+  var sLink = document.getElementById('slideshow-link');
+  var sBadge = document.getElementById('slideshow-badge');
+
+  function openSlide(idx) {
+    currentIdx = idx;
+    showSlide(idx);
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function showSlide(idx) {
+    if (idx < 0 || idx >= items.length) return;
+    currentIdx = idx;
+    var el = items[idx];
+    var id = el.getAttribute('data-id');
+    var title = el.getAttribute('data-title');
+    var image = el.getAttribute('data-image');
+    var prompt = el.getAttribute('data-prompt');
+    var reflection = el.getAttribute('data-reflection');
+    var origin = el.getAttribute('data-origin-type');
+
+    sImg.src = image || '';
+    sImg.alt = title || '';
+    sTitle.textContent = origin === 'generated' ? (prompt || '').substring(0, 120) : (title || 'untitled');
+    sDesc.textContent = origin === 'generated' ? '' : (reflection || '');
+    sLink.href = '/anky/' + id;
+
+    if (origin === 'generated') {
+      sBadge.textContent = 'generated';
+      sBadge.className = 'slideshow-badge gallery-badge generated';
+    } else {
+      sBadge.textContent = 'written';
+      sBadge.className = 'slideshow-badge gallery-badge written';
+    }
+
+    // Track locally
+    try {
+      var viewed = JSON.parse(localStorage.getItem('anky_viewed') || '[]');
+      if (viewed.indexOf(id) === -1) {
+        viewed.push(id);
+        localStorage.setItem('anky_viewed', JSON.stringify(viewed));
+      }
+    } catch(e) {}
+  }
+
+  function closeSlideshow() {
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+    if (currentIdx >= 0 && currentIdx < items.length) {
+      items[currentIdx].focus();
+    }
+    currentIdx = -1;
+  }
+
+  function prevSlide() {
+    if (items.length === 0) return;
+    var next = currentIdx - 1 < 0 ? items.length - 1 : currentIdx - 1;
+    showSlide(next);
+  }
+
+  function nextSlide() {
+    if (items.length === 0) return;
+    var next = currentIdx + 1 >= items.length ? 0 : currentIdx + 1;
+    showSlide(next);
+  }
+
+  // Click handlers on gallery items — open slideshow instead of navigating
+  items.forEach(function(item, idx) {
+    item.addEventListener('click', function(e) {
+      // Only intercept if the item has an image (complete anky)
+      if (item.getAttribute('data-image')) {
+        e.preventDefault();
+        openSlide(idx);
+      }
+    });
+  });
+
+  // Slideshow button handlers
+  document.getElementById('slideshow-close').addEventListener('click', closeSlideshow);
+  document.getElementById('slideshow-prev').addEventListener('click', prevSlide);
+  document.getElementById('slideshow-next').addEventListener('click', nextSlide);
+
+  // Close on backdrop click
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) closeSlideshow();
+  });
+
+  // Keyboard navigation in slideshow
+  document.addEventListener('keydown', function(e) {
+    if (!overlay.classList.contains('active')) return;
+    if (e.key === 'Escape') { closeSlideshow(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { prevSlide(); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { nextSlide(); e.preventDefault(); }
+  });
+
+  // Touch/pointer swipe detection
+  var pointerStartX = 0;
+  var pointerStartY = 0;
+
+  overlay.addEventListener('pointerdown', function(e) {
+    pointerStartX = e.clientX;
+    pointerStartY = e.clientY;
+  });
+
+  overlay.addEventListener('pointerup', function(e) {
+    var dx = e.clientX - pointerStartX;
+    var dy = e.clientY - pointerStartY;
+    // Only count horizontal swipes (must be >50px and more horizontal than vertical)
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) nextSlide();
+      else prevSlide();
+    }
   });
 })();
 </script>

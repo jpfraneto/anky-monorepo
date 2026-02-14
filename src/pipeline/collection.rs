@@ -70,6 +70,7 @@ pub async fn generate_collection(
             &being.name,
             &being.moment,
             Some(collection_id),
+            None,
         )
         .await
         {

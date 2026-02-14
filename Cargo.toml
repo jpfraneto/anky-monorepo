@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "set-header", "limit"] }
 sha2 = "0.10"
@@ -12,7 +12,8 @@ hex = "0.4"
 rand = "0.8"
 tera = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio-cron-scheduler = "0.13"
@@ -30,3 +31,10 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 async-stream = "0.3"
 futures = "0.3"
 time = "0.3"
+image = "0.25"
+ab_glyph = "0.2"
+imageproc = "0.25"
+hmac = "0.12"
+sha1 = "0.10"
+jsonwebtoken = "9"
+urlencoding = "2"

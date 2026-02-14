@@ -40,8 +40,8 @@
   </div>
 
   <div class="gen-cost" id="gen-cost">
-    <span>estimated cost: <strong id="cost-display">$0.14</strong></span>
-    <span class="cost-detail" id="cost-detail">$0.13 generation + $0.01 protocol (8%)</span>
+    <span>estimated cost: <strong id="cost-display">$0.25</strong></span>
+    <span class="cost-detail" id="cost-detail">$0.25 per generation</span>
   </div>
 
   <div class="gen-balance" id="gen-balance"></div>
@@ -49,6 +49,15 @@
   <button class="gen-btn" id="gen-btn" onclick="generate()">generate</button>
 
   <div id="gen-status" class="gen-status"></div>
+
+  <!-- Generation progress area (hidden until generation starts) -->
+  <div id="gen-progress" class="gen-progress" style="display:none;">
+    <div class="gen-skeleton" id="gen-skeleton">
+      <div class="skeleton-pulse"></div>
+    </div>
+    <div class="gen-logs" id="gen-logs"></div>
+    <div class="gen-result" id="gen-result" style="display:none;"></div>
+  </div>
 </div>
 {% endblock %}
 
@@ -57,7 +66,7 @@
 (function() {
   var mode = 'prompt';
   var count = 1;
-  var costPerAnky = 0.13;
+  var costPerAnky = 0.25;
   var userBalance = null;
   var balanceEl = document.getElementById('gen-balance');
 
@@ -96,12 +105,14 @@
 
   // Check balance on load and when wallet changes
   checkBalance();
-  var origConnect = window.ankyWallet.connect;
-  window.ankyWallet.connect = async function() {
-    var result = await origConnect();
-    checkBalance();
-    return result;
-  };
+  if (window.ankyWallet) {
+    var origConnect = window.ankyWallet.connect;
+    window.ankyWallet.connect = async function() {
+      var result = await origConnect();
+      checkBalance();
+      return result;
+    };
+  }
   // Re-check periodically (wallet might change)
   setInterval(checkBalance, 30000);
 
@@ -123,12 +134,10 @@
   };
 
   function updateCost() {
-    var base = costPerAnky * count;
-    var fee = base * 0.08;
-    var total = base + fee;
+    var total = costPerAnky * count;
     document.getElementById('cost-display').textContent = '$' + total.toFixed(2);
     document.getElementById('cost-detail').textContent =
-      '$' + base.toFixed(2) + ' generation + $' + fee.toFixed(2) + ' protocol (8%)';
+      '$' + costPerAnky.toFixed(2) + ' x ' + count + (count === 1 ? ' generation' : ' generations');
 
     // Show warning if insufficient balance
     var btn = document.getElementById('gen-btn');
@@ -146,12 +155,74 @@
     }
   }
 
+  function addLog(msg) {
+    var logsEl = document.getElementById('gen-logs');
+    var line = document.createElement('div');
+    line.className = 'gen-log-line';
+    line.textContent = msg;
+    logsEl.appendChild(line);
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+
+  function startLogStream() {
+    var evtSource = new EventSource('/dashboard/logs');
+    evtSource.onmessage = function(e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (data.msg) {
+          addLog('[' + (data.tag || '') + '] ' + data.msg);
+        }
+      } catch(_) {
+        addLog(e.data);
+      }
+    };
+    return evtSource;
+  }
+
+  function pollAnky(ankyId, evtSource) {
+    var interval = setInterval(function() {
+      fetch('/api/v1/anky/' + ankyId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.status === 'complete') {
+            clearInterval(interval);
+            if (evtSource) evtSource.close();
+
+            // Hide skeleton, show result
+            document.getElementById('gen-skeleton').style.display = 'none';
+            var resultEl = document.getElementById('gen-result');
+            resultEl.style.display = 'block';
+
+            var imgHtml = '';
+            if (data.image_url) {
+              imgHtml = '<div class="gen-result-image"><img src="' + data.image_url + '" alt="generated anky" /></div>';
+            }
+            var promptHtml = data.image_prompt
+              ? '<div class="gen-result-prompt">' + data.image_prompt + '</div>'
+              : '';
+
+            resultEl.innerHTML = imgHtml + promptHtml +
+              '<a href="/anky/' + ankyId + '" class="gen-result-link">view full anky</a>';
+
+            addLog('done!');
+          } else if (data.status === 'failed') {
+            clearInterval(interval);
+            if (evtSource) evtSource.close();
+            document.getElementById('gen-skeleton').style.display = 'none';
+            addLog('generation failed. it will be retried automatically.');
+          }
+        })
+        .catch(function() {});
+    }, 3000);
+  }
+
   window.generate = async function() {
     var btn = document.getElementById('gen-btn');
     var status = document.getElementById('gen-status');
     var wallet = localStorage.getItem('wallet_address');
 
     var payload;
+    var enhancedPrompt = null;
     if (mode === 'thinker') {
       var name = document.getElementById('thinker-name').value.trim();
       var moment = document.getElementById('thinker-moment').value.trim();
@@ -160,13 +231,36 @@
     } else {
       var prompt = document.getElementById('gen-prompt').value.trim();
       if (!prompt) { status.innerHTML = '<span class="error">enter a prompt</span>'; return; }
-      payload = { writing: prompt };
+
+      // Check prompt before payment
+      btn.disabled = true;
+      btn.textContent = 'checking prompt...';
+      status.innerHTML = '';
+      try {
+        var checkResp = await fetch('/api/v1/check-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ writing: prompt }),
+        });
+        var checkData = await checkResp.json();
+        if (checkData.status === 'needs_revision') {
+          status.innerHTML = '<span class="error">' + checkData.message + '</span>';
+          btn.disabled = false;
+          btn.textContent = 'generate';
+          return;
+        }
+        enhancedPrompt = checkData.enhanced_prompt || prompt;
+      } catch (e) {
+        // If check fails, proceed with raw prompt
+        enhancedPrompt = null;
+      }
+      btn.textContent = 'generate';
+
+      payload = { writing: prompt, enhanced_prompt: enhancedPrompt };
     }
 
     // Pre-flight balance check
-    var base = costPerAnky * count;
-    var fee = base * 0.08;
-    var total = base + fee;
+    var total = costPerAnky * count;
 
     if (!wallet) {
       status.innerHTML = '<span class="balance-low">connect your wallet first — you need USDC on Base to generate</span>';
@@ -185,6 +279,12 @@
     btn.textContent = 'preparing...';
     status.innerHTML = '';
 
+    // Reset progress area
+    var progressEl = document.getElementById('gen-progress');
+    document.getElementById('gen-skeleton').style.display = '';
+    document.getElementById('gen-result').style.display = 'none';
+    document.getElementById('gen-logs').innerHTML = '';
+
     try {
       var headers = { 'Content-Type': 'application/json' };
 
@@ -200,6 +300,12 @@
       await new Promise(function(resolve) { setTimeout(resolve, 4000); });
 
       headers['x-payment'] = txHash;
+
+      // Show progress area and start log stream
+      progressEl.style.display = 'block';
+      addLog('payment confirmed, starting generation...');
+      var evtSource = startLogStream();
+
       var resp = await fetch('/api/v1/generate', {
         method: 'POST',
         headers: headers,
@@ -208,6 +314,8 @@
 
       if (!resp.ok) {
         var errText = await resp.text();
+        evtSource.close();
+        progressEl.style.display = 'none';
         status.innerHTML = '<span class="error">generation failed: ' + errText +
           '</span><br><span class="stat-dim">your tx: ' + txHash + '</span>';
         btn.disabled = false;
@@ -216,13 +324,14 @@
       }
 
       var data = await resp.json();
-      status.innerHTML = '<span class="success">generating!</span> ' +
-        '<a href="/anky/' + data.anky_id + '">view anky</a>' +
-        ' · <a href="/poiesis">watch progress</a>';
+      addLog('anky ' + data.anky_id.slice(0, 8) + ' queued, generating image...');
+
+      // Start polling for completion
+      pollAnky(data.anky_id, evtSource);
 
       // For packs, queue remaining with same payment proof
       if (count > 1) {
-        status.innerHTML += '<br><span class="stat-dim">queuing ' + (count - 1) + ' more...</span>';
+        addLog('queuing ' + (count - 1) + ' more...');
         for (var i = 1; i < count; i++) {
           fetch('/api/v1/generate', {
             method: 'POST',
@@ -231,7 +340,7 @@
           }).catch(function() {});
           await new Promise(function(resolve) { setTimeout(resolve, 500); });
         }
-        status.innerHTML += '<br><span class="success">all ' + count + ' queued. <a href="/poiesis">watch on poiesis</a></span>';
+        addLog('all ' + count + ' queued');
       }
 
       // Refresh balance

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}create a prompt — anky{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="create a prompt — anky">
+<meta property="og:description" content="create a self-inquiry question. pay with USDC. share the link. let others write.">
+<meta property="og:image" content="https://anky.app/static/references/anky-1.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@jpfraneto">
+<meta name="twitter:title" content="create a prompt — anky">
+<meta name="twitter:description" content="create a self-inquiry question. share the link. let others write.">
+<meta name="twitter:image" content="https://anky.app/static/references/anky-1.png">
+<meta name="twitter:image:alt" content="anky — create a self-inquiry prompt">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>create a prompt</h1>
+  <p class="subtitle">write a self-inquiry question. anky will generate a beautiful card image. share the link and let anyone write in response.</p>
+
+  <div class="gen-section">
+    <label class="gen-label">your question</label>
+    <textarea id="prompt-text" class="gen-input" rows="3" placeholder="what are you avoiding that you already know?" maxlength="500"></textarea>
+    <div style="text-align:right;color:#444;font-size:12px;margin-top:4px;"><span id="char-count">0</span>/500</div>
+  </div>
+
+  <div class="gen-cost" id="gen-cost">
+    <span>cost: <strong>$0.25</strong> USDC on Base</span>
+    <span class="cost-detail">claude + gemini image generation</span>
+  </div>
+
+  <div class="gen-balance" id="gen-balance"></div>
+
+  <button class="gen-btn" id="gen-btn" onclick="createPrompt()">create prompt</button>
+
+  <div id="gen-status" class="gen-status"></div>
+
+  <div id="gen-progress" class="gen-progress" style="display:none;">
+    <div class="gen-skeleton" id="gen-skeleton">
+      <div class="skeleton-pulse"></div>
+    </div>
+    <div id="gen-result" style="display:none;"></div>
+  </div>
+
+  <div id="waiting-gallery" class="waiting-gallery" style="display:none;">
+    <p class="waiting-gallery-label">while you wait, explore some ankys</p>
+    <div class="waiting-gallery-scroll" id="waiting-gallery-scroll"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var textarea = document.getElementById('prompt-text');
+  var charCount = document.getElementById('char-count');
+  var balanceEl = document.getElementById('gen-balance');
+  var USDC_ADDR = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+  var userBalance = null;
+
+  textarea.addEventListener('input', function() {
+    charCount.textContent = textarea.value.length;
+  });
+
+  async function checkBalance() {
+    var wallet = localStorage.getItem('wallet_address');
+    if (!wallet || !window.ethereum) {
+      balanceEl.innerHTML = '<span class="balance-hint">connect your wallet to pay</span>';
+      userBalance = null;
+      return;
+    }
+    try {
+      var addrHex = wallet.slice(2).toLowerCase().padStart(64, '0');
+      var data = '0x70a08231' + addrHex;
+      var result = await window.ethereum.request({
+        method: 'eth_call',
+        params: [{ to: USDC_ADDR, data: data }, 'latest'],
+      });
+      userBalance = parseInt(result, 16) / 1e6;
+      balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' + userBalance.toFixed(2) + '</strong></span>';
+    } catch(e) {
+      balanceEl.innerHTML = '<span class="balance-hint">could not read balance</span>';
+    }
+  }
+
+  checkBalance();
+  if (window.ankyWallet) {
+    var origConnect = window.ankyWallet.connect;
+    window.ankyWallet.connect = async function() {
+      var result = await origConnect();
+      checkBalance();
+      return result;
+    };
+  }
+
+  window.createPrompt = async function() {
+    var btn = document.getElementById('gen-btn');
+    var status = document.getElementById('gen-status');
+    var text = textarea.value.trim();
+
+    if (!text) { status.innerHTML = '<span class="error">write a question first</span>'; return; }
+    if (text.length > 500) { status.innerHTML = '<span class="error">500 characters max</span>'; return; }
+
+    var wallet = localStorage.getItem('wallet_address');
+    if (!wallet) {
+      status.innerHTML = '<span class="balance-low">connect your wallet first</span>';
+      return;
+    }
+
+    await checkBalance();
+    if (userBalance !== null && userBalance < 0.25) {
+      status.innerHTML = '<span class="balance-low">you need at least $0.25 USDC on Base</span>';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'approve in wallet...';
+    status.innerHTML = '';
+
+    try {
+      var treasury = await fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) { return d.address; });
+      var txHash = await window.ankyWallet.sendUSDC(treasury, 0.25);
+      btn.textContent = 'confirming...';
+      await new Promise(function(resolve) { setTimeout(resolve, 4000); });
+
+      // Show progress + gallery
+      var progressEl = document.getElementById('gen-progress');
+      progressEl.style.display = 'block';
+      showWaitingGallery();
+
+      btn.textContent = 'generating...';
+
+      var resp = await fetch('/api/v1/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-payment': txHash },
+        body: JSON.stringify({ prompt_text: text }),
+      });
+
+      if (!resp.ok) {
+        var errText = await resp.text();
+        status.innerHTML = '<span class="error">' + errText + '</span>';
+        btn.disabled = false;
+        btn.textContent = 'create prompt';
+        progressEl.style.display = 'none';
+        return;
+      }
+
+      var data = await resp.json();
+
+      // Poll for completion
+      var interval = setInterval(function() {
+        fetch('/api/v1/prompt/' + data.prompt_id)
+          .then(function(r) { return r.json(); })
+          .then(function(p) {
+            if (p.status === 'complete') {
+              clearInterval(interval);
+              document.getElementById('gen-skeleton').style.display = 'none';
+              document.getElementById('waiting-gallery').style.display = 'none';
+              var resultEl = document.getElementById('gen-result');
+              resultEl.style.display = 'block';
+              var imgHtml = p.image_url ? '<div class="gen-result-image" style="max-width:600px;"><img src="' + p.image_url + '" alt="prompt card" style="width:100%;aspect-ratio:2/1;object-fit:cover;" /></div>' : '';
+              var url = 'https://anky.app/prompt/' + data.prompt_id;
+              resultEl.innerHTML = imgHtml +
+                '<div style="margin-top:16px;">' +
+                  '<p style="color:#888;margin-bottom:8px;">share this link:</p>' +
+                  '<input type="text" value="' + url + '" class="gen-input" style="margin-bottom:8px;" onclick="this.select()" readonly />' +
+                  '<a href="/prompt/' + data.prompt_id + '" class="gen-result-link">open prompt page</a>' +
+                '</div>';
+              btn.disabled = false;
+              btn.textContent = 'create another';
+            } else if (p.status === 'failed') {
+              clearInterval(interval);
+              document.getElementById('gen-skeleton').style.display = 'none';
+              document.getElementById('waiting-gallery').style.display = 'none';
+              status.innerHTML = '<span class="error">image generation failed. the prompt was saved — it will be retried.</span>';
+              btn.disabled = false;
+              btn.textContent = 'create prompt';
+            }
+          });
+      }, 3000);
+
+      setTimeout(checkBalance, 5000);
+
+    } catch(e) {
+      document.getElementById('waiting-gallery').style.display = 'none';
+      status.innerHTML = '<span class="error">' + (e.message || 'something went wrong') + '</span>';
+      btn.disabled = false;
+      btn.textContent = 'create prompt';
+    }
+  };
+  function showWaitingGallery() {
+    var gallery = document.getElementById('waiting-gallery');
+    var scroll = document.getElementById('waiting-gallery-scroll');
+    gallery.style.display = 'block';
+    scroll.innerHTML = '<span style="color:#555;">loading...</span>';
+
+    fetch('/api/ankys?origin=written')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var ankys = (data.ankys || data || []).filter(function(a) { return a.image_path; });
+        if (!ankys.length) { gallery.style.display = 'none'; return; }
+
+        // Shuffle and take up to 20
+        for (var i = ankys.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var tmp = ankys[i]; ankys[i] = ankys[j]; ankys[j] = tmp;
+        }
+        ankys = ankys.slice(0, 20);
+
+        scroll.innerHTML = ankys.map(function(a) {
+          var imgSrc = a.image_path.startsWith('/') ? a.image_path : '/data/images/' + a.image_path;
+          var title = a.title || '';
+          return '<a href="/anky/' + a.id + '" class="waiting-gallery-item" target="_blank">' +
+            '<img src="' + imgSrc + '" alt="' + title.replace(/"/g, '') + '" loading="lazy" />' +
+            (title ? '<span class="waiting-gallery-title">' + title + '</span>' : '') +
+            '</a>';
+        }).join('');
+      })
+      .catch(function() { gallery.style.display = 'none'; });
+  }
+})();
+</script>
+{% endblock %}
