@@ -83,6 +83,12 @@ pub async fn help(State(state): State<AppState>) -> Result<Html<String>, AppErro
     Ok(Html(html))
 }
 
+pub async fn login_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("login.html", &ctx)?;
+    Ok(Html(html))
+}
+
 pub async fn generate_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ctx = tera::Context::new();
     let html = state.tera.render("generate.html", &ctx)?;

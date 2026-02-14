@@ -46,15 +46,12 @@
     </div>
   </div>
   {% block content %}{% endblock %}
-  <script src="https://cdn.privy.io/js-sdk@2.0.0/index.js"></script>
   <script>
-  // --- Wallet (Privy-based) ---
+  // --- Wallet ---
   window.ankyWallet = (function() {
     var btn = document.getElementById('wallet-btn');
     var BASE_CHAIN = '0x2105'; // 8453
     var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-    var privyReady = false;
-    var privyInstance = null;
 
     function shortAddr(a) {
       return a.slice(0, 6) + '...' + a.slice(-4);
@@ -77,127 +74,26 @@
       return !!localStorage.getItem('wallet_address');
     }
 
-    // Initialize Privy
-    function initPrivy() {
-      if (typeof Privy === 'undefined' || !Privy) {
-        // SDK not loaded yet, retry
-        setTimeout(initPrivy, 500);
-        return;
-      }
-      try {
-        privyInstance = new Privy({
-          appId: 'cmivv85zt00ftla0cjpaw155h',
-          config: {
-            loginMethods: ['wallet'],
-            appearance: {
-              theme: 'dark',
-              accentColor: '#7b2ff7',
-            },
-            embeddedWallets: {
-              createOnLogin: 'users-without-wallets',
-            },
-            defaultChain: { id: 8453, name: 'Base' },
-            supportedChains: [{ id: 8453, name: 'Base' }],
-          },
-        });
-        privyReady = true;
-      } catch(e) {
-        console.log('Privy init skipped:', e.message);
-        // Fall back to raw ethereum if Privy SDK fails to load
-      }
-    }
-
-    async function connect() {
-      // Try Privy first
-      if (privyReady && privyInstance) {
-        try {
-          privyInstance.login();
-          // Privy handles the modal — we listen for auth state changes
-          return null;
-        } catch(e) {
-          console.error('Privy login failed, falling back:', e);
-        }
-      }
-
-      // Fallback: raw window.ethereum
-      if (!window.ethereum) {
-        alert('install a wallet (metamask, rabby, coinbase wallet) to connect');
-        return null;
-      }
-      try {
-        var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        var address = accounts[0];
-        // Switch to Base
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: BASE_CHAIN }],
-          });
-        } catch (e) {
-          if (e.code === 4902) {
-            await window.ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: BASE_CHAIN,
-                chainName: 'Base',
-                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-                rpcUrls: ['https://mainnet.base.org'],
-                blockExplorerUrls: ['https://basescan.org'],
-              }],
-            });
-          }
-        }
-        localStorage.setItem('wallet_address', address);
-        updateBtn();
-        // Verify with backend
-        verifyWithBackend(address);
-        return address;
-      } catch (e) {
-        console.error('wallet connect failed:', e);
-        return null;
-      }
+    function connect() {
+      // Navigate to the Privy login page
+      window.location.href = '/login';
     }
 
     function disconnect() {
       localStorage.removeItem('wallet_address');
-      if (privyReady && privyInstance) {
-        try { privyInstance.logout(); } catch(e) {}
-      }
-      // Clear backend session
       fetch('/auth/privy/logout', { method: 'POST' }).catch(function(){});
-      updateBtn();
-    }
-
-    // Verify wallet with backend after Privy or raw connect
-    async function verifyWithBackend(address) {
-      // For raw ethereum connections, we don't have a Privy auth token.
-      // Store address locally; backend auth via Privy verify is the proper flow.
-      localStorage.setItem('wallet_address', address);
       updateBtn();
     }
 
     // Send USDC on Base. Returns tx hash.
     async function sendUSDC(toAddress, amountUSD) {
       var from = localStorage.getItem('wallet_address');
-      var provider = window.ethereum;
-
-      // Try to get provider from Privy if available
-      if (privyReady && privyInstance) {
-        try {
-          var pw = privyInstance.getEthereumProvider();
-          if (pw) provider = pw;
-        } catch(e) {}
+      if (!from || !window.ethereum) {
+        connect();
+        throw new Error('wallet not connected');
       }
-
-      if (!from || !provider) {
-        var addr = await connect();
-        if (!addr) throw new Error('wallet not connected');
-        from = addr;
-        provider = window.ethereum;
-      }
-
       // Ensure Base chain
-      await provider.request({
+      await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: BASE_CHAIN }],
       });
@@ -206,7 +102,7 @@
       var toHex = toAddress.slice(2).toLowerCase().padStart(64, '0');
       var amtHex = amount.toString(16).padStart(64, '0');
       var data = '0xa9059cbb' + toHex + amtHex;
-      var txHash = await provider.request({
+      var txHash = await window.ethereum.request({
         method: 'eth_sendTransaction',
         params: [{
           from: from,
@@ -229,39 +125,7 @@
       });
     }
 
-    // Poll for Privy auth state (Privy fires events after login)
-    function pollPrivyAuth() {
-      if (!privyReady || !privyInstance) return;
-      try {
-        if (privyInstance.authenticated) {
-          var user = privyInstance.user;
-          if (user && user.wallet && user.wallet.address) {
-            var addr = user.wallet.address;
-            localStorage.setItem('wallet_address', addr);
-            updateBtn();
-            // Send auth token to backend
-            var authToken = privyInstance.getAccessToken();
-            if (authToken) {
-              fetch('/auth/privy/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ auth_token: authToken }),
-              }).catch(function(){});
-            }
-          }
-        }
-      } catch(e) {}
-    }
-
-    // Check Privy state periodically after init
-    setTimeout(function() {
-      pollPrivyAuth();
-      // Also set up an interval to catch login events
-      setInterval(pollPrivyAuth, 2000);
-    }, 2000);
-
     updateBtn();
-    setTimeout(initPrivy, 100);
 
     return { connect: connect, disconnect: disconnect, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn };
   })();
