@@ -68,7 +68,8 @@
   <script type="module">
     import React from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import { PrivyProvider, usePrivy, useWallets } from 'https://esm.sh/@privy-io/react-auth@2.25.0?deps=react@18.3.1,react-dom@18.3.1';
+    import { PrivyProvider, usePrivy } from 'https://esm.sh/@privy-io/react-auth@2.25.0?deps=react@18.3.1,react-dom@18.3.1';
+    import { base } from 'https://esm.sh/viem@2.21.0/chains';
 
     const h = React.createElement;
     const statusEl = document.getElementById('login-status');
@@ -178,8 +179,8 @@
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },
-          defaultChain: { id: 8453, name: 'Base' },
-          supportedChains: [{ id: 8453, name: 'Base' }],
+          defaultChain: base,
+          supportedChains: [base],
         },
       }, h(LoginButton));
     }

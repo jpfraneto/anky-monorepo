@@ -23,7 +23,7 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://auth.privy.io https://esm.sh; frame-src https://auth.privy.io; frame-ancestors 'none'",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://auth.privy.io https://esm.sh https://*.privy.io wss://*.privy.io; frame-src https://auth.privy.io https://*.privy.io; frame-ancestors 'none'",
         ),
     );
 
