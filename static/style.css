@@ -89,17 +89,6 @@ code {
   gap: 10px;
 }
 
-.anky-token-link {
-  color: #444;
-  font-size: 11px;
-  text-decoration: none;
-  letter-spacing: 0.5px;
-  transition: color 0.2s;
-}
-
-.anky-token-link:hover {
-  color: #c4a0ff;
-}
 
 .wallet-btn {
   background: transparent;
@@ -852,6 +841,61 @@ body.chat-active .writing-main {
 }
 
 .dash-toggle input { margin-right: 4px; }
+
+/* ==================== $ANKY coin page ==================== */
+.ankycoin-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 60px 24px 80px;
+}
+
+.ankycoin-page h1 {
+  font-size: 28px;
+  color: #c4a0ff;
+  margin-bottom: 28px;
+}
+
+.ankycoin-page h2 {
+  font-size: 16px;
+  color: #888;
+  margin: 32px 0 12px;
+  letter-spacing: 0.5px;
+}
+
+.ankycoin-page p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #aaa;
+  margin-bottom: 16px;
+}
+
+.ankycoin-links {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid #1a1a1a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.ankycoin-links a {
+  color: #c4a0ff;
+  border: 1px solid #2a2a3a;
+  padding: 6px 14px;
+  transition: border-color 0.2s;
+}
+
+.ankycoin-links a:hover {
+  border-color: #7b2ff7;
+}
+
+.ankycoin-ca {
+  color: #444;
+  font-size: 11px;
+  word-break: break-all;
+}
 
 /* ==================== Help tabs ==================== */
 .help-tabs {

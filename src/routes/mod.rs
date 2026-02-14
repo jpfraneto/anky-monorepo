@@ -81,6 +81,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/gallery", axum::routing::get(pages::gallery))
         .route("/help", axum::routing::get(pages::help))
         .route("/login", axum::routing::get(pages::login_page))
+        .route("/ankycoin", axum::routing::get(pages::ankycoin_page))
         .route("/generate", axum::routing::get(pages::generate_page))
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
