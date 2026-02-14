@@ -84,6 +84,21 @@ code {
 .nav-auth {
   font-size: 12px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.anky-token-link {
+  color: #444;
+  font-size: 11px;
+  text-decoration: none;
+  letter-spacing: 0.5px;
+  transition: color 0.2s;
+}
+
+.anky-token-link:hover {
+  color: #c4a0ff;
 }
 
 .wallet-btn {
