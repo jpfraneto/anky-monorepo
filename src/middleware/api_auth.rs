@@ -25,32 +25,19 @@ pub async fn require_api_key(
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
                     "error": "missing or invalid API key",
-                    "hint": "set X-API-Key header with your anky_ key. get one at https://anky.app/credits"
+                    "hint": "set X-API-Key header with your anky_ key. get one at https://anky.app/api/v1/register"
                 })),
             )
                 .into_response();
         }
     };
 
-    // Validate key exists and has balance
+    // Validate key exists and is active
     let db = state.db.lock().await;
     match queries::get_api_key(&db, &api_key) {
         Ok(Some(key_record)) if key_record.is_active => {
-            if key_record.balance_usd <= 0.0 {
-                return (
-                    StatusCode::PAYMENT_REQUIRED,
-                    Json(json!({
-                        "error": "insufficient balance",
-                        "balance": key_record.balance_usd,
-                        "hint": "add credits at https://anky.app/credits"
-                    })),
-                )
-                    .into_response();
-            }
-            // Store key info in request extensions for downstream handlers
             req.extensions_mut().insert(ApiKeyInfo {
                 key: api_key,
-                balance_usd: key_record.balance_usd,
             });
             drop(db);
             next.run(req).await
@@ -66,7 +53,6 @@ pub async fn require_api_key(
 #[derive(Clone, Debug)]
 pub struct ApiKeyInfo {
     pub key: String,
-    pub balance_usd: f64,
 }
 
 /// Non-rejecting API key middleware. If a valid key is present, injects ApiKeyInfo
@@ -89,7 +75,6 @@ pub async fn optional_api_key(
             if key_record.is_active {
                 req.extensions_mut().insert(ApiKeyInfo {
                     key,
-                    balance_usd: key_record.balance_usd,
                 });
             }
         }

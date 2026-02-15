@@ -68,12 +68,11 @@ pub struct TransformResponse {
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub cost_usd: f64,
-    pub balance_remaining: f64,
+    pub payment_method: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BalanceResponse {
-    pub balance_usd: f64,
     pub total_spent_usd: f64,
     pub total_transforms: i32,
     pub recent_transforms: Vec<TransformSummary>,
@@ -84,32 +83,6 @@ pub struct TransformSummary {
     pub id: String,
     pub cost_usd: f64,
     pub created_at: String,
-}
-
-// --- Credits ---
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateKeyRequest {
-    #[serde(default)]
-    pub label: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateKeyResponse {
-    pub key: String,
-    pub message: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreditPaymentRequest {
-    pub api_key: String,
-    pub tx_hash: String,
-    pub amount_usdc: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreditPaymentResponse {
-    pub credited: f64,
-    pub new_balance: f64,
 }
 
 // --- Agent Registration ---

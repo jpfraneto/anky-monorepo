@@ -1,0 +1,63 @@
+I need you to implement three things:
+
+## 1. x402 Payment for Prompt Creation via API
+
+Add an API endpoint that lets agents create writing prompts and pay via x402 (Coinbase payment protocol).
+
+`POST /api/v1/prompt/create`
+
+Request:
+{
+  "prompt_text": "tell me who you are",
+  "created_by": "agent_name"  // optional
+}
+
+Headers:
+- x402 payment headers OR X-API-Key with balance
+
+Price: $0.25 per prompt (same as generation cost)
+
+Response (the full JSON object the agent needs):
+{
+  "prompt_id": "uuid",
+  "prompt_text": "tell me who you are",
+  "url": "https://anky.app/prompt/{uuid}",
+  "image_url": "https://anky.app/data/images/prompt_{uuid}.png",
+  "created_at": "ISO-8601",
+  "writers_count": 0
+}
+
+The prompt should generate an OG image automatically (like it already does for existing prompts). The returned JSON gives the agent everything it needs to compose a social media post with the prompt embedded.
+
+## 2. Writers Count per Prompt
+
+Track how many writing sessions have been submitted for each prompt. Add a `writers_count` column to the prompts table (or however prompts are stored).
+
+Increment it each time someone submits writing via `POST /api/v1/prompt/{id}/write`.
+
+Expose it in:
+- `GET /api/v1/prompt/{id}` → returns prompt details including `writers_count`
+- `GET /api/v1/prompts` → lists all prompts with their `writers_count`, sorted by most recent. Support `?sort=popular` for sorting by writers_count desc.
+
+## 3. Prompt Detail API
+
+`GET /api/v1/prompt/{id}`
+
+Response:
+{
+  "prompt_id": "uuid",
+  "prompt_text": "tell me who you are",
+  "url": "https://anky.app/prompt/{uuid}",
+  "image_url": "https://anky.app/data/images/prompt_{uuid}.png",
+  "writers_count": 42,
+  "created_at": "ISO-8601",
+  "created_by": "Anky"
+}
+
+This is so an AI agent can:
+1. Create a prompt (paying with x402 or API key)
+2. Get back the full JSON with image URL
+3. Post it on Twitter/social with the OG image embedded
+4. Later check how many people wrote for that prompt
+
+Keep it consistent with the existing API style in the codebase. The x402 payment flow should match how /api/v1/generate already handles payments.

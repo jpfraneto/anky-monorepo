@@ -30,6 +30,9 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    #[error("Payment required: {0}")]
+    PaymentRequired(String),
+
     #[error("Service unavailable: {0}")]
     Unavailable(String),
 
@@ -42,6 +45,7 @@ impl IntoResponse for AppError {
         let status = match &self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,

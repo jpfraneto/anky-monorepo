@@ -2,6 +2,36 @@ use crate::db::queries;
 use crate::services::{claude, gemini};
 use crate::state::AppState;
 use anyhow::Result;
+use std::process::Command;
+
+/// Convert a PNG image to WebP using ffmpeg. Returns the WebP filename.
+fn convert_to_webp(png_path: &str) -> Result<String> {
+    let full_png = format!("data/images/{}", png_path);
+    let webp_filename = png_path.replace(".png", ".webp");
+    let full_webp = format!("data/images/{}", webp_filename);
+
+    // Try cwebp first, fall back to ffmpeg
+    let output = Command::new("cwebp")
+        .args(["-q", "85", &full_png, "-o", &full_webp])
+        .output();
+
+    let success = match output {
+        Ok(o) if o.status.success() => true,
+        _ => {
+            // Fallback to ffmpeg
+            let ffmpeg = Command::new("ffmpeg")
+                .args(["-y", "-i", &full_png, "-quality", "85", &full_webp])
+                .output();
+            matches!(ffmpeg, Ok(o) if o.status.success())
+        }
+    };
+
+    if success && std::path::Path::new(&full_webp).exists() {
+        Ok(webp_filename)
+    } else {
+        anyhow::bail!("WebP conversion failed for {}", png_path)
+    }
+}
 
 /// Image pipeline for generating an Anky from a writing session.
 /// Title + reflection are handled by the SSE streaming endpoint.
@@ -53,6 +83,18 @@ pub async fn generate_anky_from_writing(
         queries::insert_cost_record(&db, "gemini", "gemini-2.5-flash-image", 0, 0, 0.04, Some(anky_id))?;
     }
     state.emit_log("INFO", "gemini", &format!("Image saved: {}", image_path));
+
+    // WebP conversion
+    match convert_to_webp(&image_path) {
+        Ok(webp) => {
+            let db = state.db.lock().await;
+            let _ = queries::update_anky_webp(&db, anky_id, &webp);
+            state.emit_log("INFO", "image_gen", &format!("WebP saved: {}", webp));
+        }
+        Err(e) => {
+            state.emit_log("WARN", "image_gen", &format!("WebP conversion failed: {}", e));
+        }
+    }
 
     // Step 3: Fallback — generate title+reflection if streaming endpoint didn't set them
     {
@@ -137,6 +179,18 @@ pub async fn generate_image_only(
         queries::insert_cost_record(&db, "gemini", "gemini-2.5-flash-image", 0, 0, 0.04, Some(anky_id))?;
     }
     state.emit_log("INFO", "gemini", &format!("Image saved: {}", image_path));
+
+    // WebP conversion
+    match convert_to_webp(&image_path) {
+        Ok(webp) => {
+            let db = state.db.lock().await;
+            let _ = queries::update_anky_webp(&db, anky_id, &webp);
+            state.emit_log("INFO", "image_gen", &format!("WebP saved: {}", webp));
+        }
+        Err(e) => {
+            state.emit_log("WARN", "image_gen", &format!("WebP conversion failed: {}", e));
+        }
+    }
 
     // Step 3: Update DB with image only
     {

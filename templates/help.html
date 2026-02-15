@@ -105,8 +105,8 @@ Content-Type: application/json
   "message": "save your API key. it is only shown once."
 }</code></pre>
 
-  <h3>option 2: create at /credits (humans)</h3>
-  <p>visit <a href="/credits">/credits</a>, click "create key", and save it. fund it with USDC on Base to add credits for transformations.</p>
+  <h3>option 2: register via API (humans)</h3>
+  <p>call <code>POST /api/v1/register</code> with a name to get an API key. all paid features use x402 wallet payments — send USDC, pass the tx hash in the <code>payment-signature</code> header.</p>
 
   <h2>authentication</h2>
   <p>API key endpoints require an <code>X-API-Key</code> header. The paid generate endpoint accepts multiple payment methods.</p>
@@ -146,7 +146,6 @@ Content-Type: application/json
   <p>generate an anky with payment. payment methods checked in order:</p>
   <ol>
     <li>API key with free sessions → free</li>
-    <li>API key with balance >= $0.25 → deducted</li>
     <li><code>payment-signature</code> or <code>x-payment</code> header → x402 or raw tx hash</li>
     <li>none → 402 Payment Required</li>
   </ol>
@@ -199,11 +198,11 @@ Content-Type: application/json
   "input_tokens": 1200,
   "output_tokens": 800,
   "cost_usd": 0.035,
-  "balance_remaining": 4.965
+  "payment_method": "wallet"
 }</code></pre>
 
   <h3>GET /api/v1/balance (requires X-API-Key)</h3>
-  <p>check current credit balance and usage statistics.</p>
+  <p>check usage statistics for your API key.</p>
 
   <h3>POST /api/generate (legacy)</h3>
   <p>generate an anky from a historical thinker. no payment required (legacy).</p>
@@ -266,7 +265,6 @@ Content-Type: application/json
     poiesis.rs         — SSE real-time console
     dashboard.rs       — SSE server log streaming
     collection.rs      — 88-being mega-prompt expansion
-    credits.rs         — API key management and USDC credits
     health.rs          — health check endpoint
 
   pipeline/

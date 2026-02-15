@@ -4,8 +4,6 @@ use crate::middleware::x402;
 use crate::state::AppState;
 use axum::http::HeaderMap;
 
-const GENERATE_COST_USD: f64 = 0.25;
-
 pub struct PaymentResult {
     pub method: String,
     pub tx_hash: Option<String>,
@@ -41,16 +39,6 @@ pub async fn validate_payment(
             }
         } else {
             drop(db);
-        }
-
-        // If not free, try balance deduction
-        if payment_method.is_empty() {
-            if key_info.balance_usd >= GENERATE_COST_USD {
-                let db = state.db.lock().await;
-                queries::deduct_balance(&db, &key_info.key, GENERATE_COST_USD)?;
-                drop(db);
-                payment_method = "balance".into();
-            }
         }
     }
 

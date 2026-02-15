@@ -1,7 +1,6 @@
 pub mod api;
 pub mod auth;
 pub mod collection;
-pub mod credits;
 pub mod dashboard;
 pub mod extension_api;
 pub mod health;
@@ -57,22 +56,28 @@ pub fn build_router(state: AppState) -> Router {
         ])
         .allow_credentials(false);
 
-    // Paid generate route (optional API key — payment handled in handler)
+    // Paid generate routes (optional API key — payment handled in handler)
     let generate_routes = Router::new()
         .route("/api/v1/generate", axum::routing::post(api::generate_anky_paid))
         .route("/api/v1/prompt", axum::routing::post(prompt::create_prompt_api))
+        .route("/api/v1/prompt/create", axum::routing::post(prompt::create_prompt_api))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::api_auth::optional_api_key,
         ));
 
-    // Extension API routes (behind API key auth)
+    // Studio upload route (needs large body limit for video)
+    let studio_routes = Router::new()
+        .route("/api/v1/studio/upload", axum::routing::post(api::upload_studio_video))
+        .layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024)); // 512MB
+
+    // Extension API routes (optional API key — payment handled in handler)
     let extension_routes = Router::new()
         .route("/api/v1/transform", axum::routing::post(extension_api::transform))
         .route("/api/v1/balance", axum::routing::get(extension_api::balance))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
-            middleware::api_auth::require_api_key,
+            middleware::api_auth::optional_api_key,
         ));
 
     Router::new()
@@ -83,8 +88,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/login", axum::routing::get(pages::login_page))
         .route("/ankycoin", axum::routing::get(pages::ankycoin_page))
         .route("/generate", axum::routing::get(pages::generate_page))
+        .route("/generate/video", axum::routing::get(pages::video_dashboard))
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
+        .route("/changelog", axum::routing::get(pages::changelog))
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
         // Prompt pages
         .route("/prompt/create", axum::routing::get(prompt::create_prompt_page))
@@ -127,14 +134,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/chat", axum::routing::post(api::chat_with_anky))
         .route("/api/chat-quick", axum::routing::post(api::chat_quick))
         .route("/api/retry-failed", axum::routing::post(api::retry_failed))
+        .route("/api/v1/generate/video-frame", axum::routing::post(api::generate_video_frame))
+        .route("/og/video", axum::routing::get(api::og_video_image))
         .route("/api/v1/check-prompt", axum::routing::post(api::check_prompt))
         // Agent registration (no auth required)
         .route("/api/v1/register", axum::routing::post(extension_api::register))
-        // Credits
-        .route("/credits", axum::routing::get(credits::credits_page))
-        .route("/credits/create-key", axum::routing::post(credits::create_key))
-        .route("/credits/verify-payment", axum::routing::post(credits::verify_credit_payment))
-        .route("/credits/usage", axum::routing::get(credits::usage_stats))
         // Skills (for agents)
         .route("/skills", axum::routing::get(skills))
         .route("/skill", axum::routing::get(skills_redirect))
@@ -153,9 +157,12 @@ pub fn build_router(state: AppState) -> Router {
         .merge(extension_routes)
         // Paid generate API (optional auth)
         .merge(generate_routes)
+        // Studio upload (large body limit)
+        .merge(studio_routes)
         // Static files
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/data/images", ServeDir::new("data/images"))
+        .nest_service("/data/videos", ServeDir::new("data/videos"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())
         .layer(cors)

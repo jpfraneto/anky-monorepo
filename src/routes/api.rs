@@ -176,9 +176,8 @@ pub enum PaidGenerateRequest {
 /// POST /api/v1/generate — paid anky generation
 /// Payment flow:
 ///   1. API key with free agent sessions → free
-///   2. API key with balance >= $0.10 → deduct
-///   3. PAYMENT-SIGNATURE header → verify via x402 facilitator
-///   4. Nothing → 402 Payment Required
+///   2. PAYMENT-SIGNATURE header → verify via x402 facilitator / raw wallet tx
+///   3. Nothing → 402 Payment Required
 pub async fn generate_anky_paid(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -204,22 +203,9 @@ pub async fn generate_anky_paid(
                 drop(db);
             } else {
                 drop(db);
-                // Fall through to balance check
             }
         } else {
             drop(db);
-        }
-
-        // If not free, try balance deduction
-        if payment_method.is_empty() {
-            if key_info.balance_usd >= GENERATE_COST_USD {
-                let db = state.db.lock().await;
-                queries::deduct_balance(&db, &key_info.key, GENERATE_COST_USD)?;
-                drop(db);
-                payment_method = "balance".into();
-            } else {
-                // API key present but insufficient balance — still try x402 below
-            }
         }
     }
 
@@ -561,6 +547,8 @@ pub struct CheckpointRequest {
     pub session_id: String,
     pub text: String,
     pub elapsed: f64,
+    #[serde(default)]
+    pub session_token: Option<String>,
 }
 
 pub async fn save_checkpoint(
@@ -569,14 +557,38 @@ pub async fn save_checkpoint(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let word_count = req.text.split_whitespace().count() as i32;
     let db = state.db.lock().await;
-    queries::insert_checkpoint(&db, &req.session_id, &req.text, req.elapsed, word_count)?;
+
+    // Check for existing checkpoint to validate session
+    let prev = queries::get_latest_checkpoint(&db, &req.session_id)?;
+    let token = if let Some(ref prev) = prev {
+        // Validate: elapsed must increase monotonically
+        if req.elapsed < prev.elapsed_seconds {
+            return Err(AppError::BadRequest("elapsed time cannot decrease".into()));
+        }
+        // Validate: session_token must match
+        if let Some(ref prev_token) = prev.session_token {
+            match &req.session_token {
+                Some(t) if t == prev_token => t.clone(),
+                Some(_) => return Err(AppError::BadRequest("session token mismatch".into())),
+                None => return Err(AppError::BadRequest("session token required".into())),
+            }
+        } else {
+            // Legacy checkpoint without token — accept
+            req.session_token.unwrap_or_default()
+        }
+    } else {
+        // First checkpoint for this session — generate token
+        uuid::Uuid::new_v4().to_string()
+    };
+
+    queries::insert_checkpoint(&db, &req.session_id, &req.text, req.elapsed, word_count, Some(&token))?;
     drop(db);
     state.emit_log(
         "INFO",
         "checkpoint",
         &format!("Checkpoint saved: {} ({} words, {:.0}s)", &req.session_id, word_count, req.elapsed),
     );
-    Ok(Json(json!({ "saved": true })))
+    Ok(Json(json!({ "saved": true, "session_token": token })))
 }
 
 // --- Cost Estimate ---
@@ -710,4 +722,269 @@ pub async fn retry_failed(
     }
 
     Ok(Json(json!({ "retried": count })))
+}
+
+// ==================== Video Frame Generation ====================
+
+const VIDEO_FRAME_COST_USD: f64 = 0.10;
+
+#[derive(serde::Deserialize)]
+pub struct VideoFrameRequest {
+    pub prompt_id: String,
+    pub prompt_text: Option<String>,
+}
+
+/// POST /api/v1/generate/video-frame — generate a single video frame image (paid via x402)
+pub async fn generate_video_frame(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<VideoFrameRequest>,
+) -> Result<Response, AppError> {
+    // Require wallet tx hash
+    let tx_hash = headers
+        .get("payment-signature")
+        .or_else(|| headers.get("x-payment"))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.starts_with("0x") && s.len() == 66 && s[2..].chars().all(|c| c.is_ascii_hexdigit()));
+
+    if tx_hash.is_none() {
+        return Ok((
+            axum::http::StatusCode::PAYMENT_REQUIRED,
+            Json(json!({
+                "error": "payment required",
+                "cost_usd": VIDEO_FRAME_COST_USD,
+                "treasury": state.config.treasury_address,
+            })),
+        ).into_response());
+    }
+
+    let prompt_text = req.prompt_text.unwrap_or_else(|| {
+        format!("Video frame for prompt: {}", req.prompt_id)
+    });
+
+    let gemini_key = &state.config.gemini_api_key;
+    if gemini_key.is_empty() {
+        return Err(AppError::Internal("Gemini API key not configured".into()));
+    }
+
+    let frame_id = uuid::Uuid::new_v4().to_string();
+    let references = crate::services::gemini::load_references(std::path::Path::new("src/public"));
+
+    state.emit_log("INFO", "video", &format!(
+        "Generating video frame: {} (tx={})", req.prompt_id, tx_hash.as_deref().unwrap_or("?")
+    ));
+
+    let image_result = crate::services::gemini::generate_image_with_aspect(
+        gemini_key,
+        &prompt_text,
+        &references,
+        "16:9",
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Gemini error: {}", e)))?;
+
+    let image_path = crate::services::gemini::save_image(&image_result.base64, &frame_id)
+        .map_err(|e| AppError::Internal(format!("Save error: {}", e)))?;
+
+    {
+        let db = state.db.lock().await;
+        let _ = queries::insert_cost_record(
+            &db, "gemini", "gemini-2.5-flash-image", 0, 0, 0.04, Some(&frame_id),
+        );
+    }
+
+    state.emit_log("INFO", "video", &format!("Video frame saved: {}", image_path));
+
+    Ok(Json(json!({
+        "frame_id": frame_id,
+        "image_path": image_path,
+        "image_url": format!("/data/images/{}", image_path),
+    })).into_response())
+}
+
+// ==================== OG Video Image ====================
+
+/// GET /og/video — dynamically generate an OG image for the video page
+pub async fn og_video_image() -> Result<Response, AppError> {
+    use image::{Rgb, RgbImage};
+
+    let width = 1200u32;
+    let height = 630u32;
+
+    // Create black background
+    let mut img = RgbImage::from_pixel(width, height, Rgb([8, 8, 12]));
+
+    // Draw a gold-ish rectangle border
+    let gold = Rgb([212, 168, 83]);
+    let white = Rgb([200, 200, 212]);
+    for x in 40..1160 {
+        img.put_pixel(x, 200, gold);
+        img.put_pixel(x, 201, gold);
+        img.put_pixel(x, 430, gold);
+        img.put_pixel(x, 431, gold);
+    }
+    for y in 200..432 {
+        img.put_pixel(40, y, gold);
+        img.put_pixel(41, y, gold);
+        img.put_pixel(1159, y, gold);
+        img.put_pixel(1158, y, gold);
+    }
+
+    // Draw "ANKY" text as simple block letters (since we can't easily load fonts)
+    // We'll use a simple approach: draw filled rectangles for each letter
+    let letter_y = 250u32;
+    let letter_h = 80u32;
+
+    // A
+    draw_rect(&mut img, 420, letter_y, 10, letter_h, gold);
+    draw_rect(&mut img, 460, letter_y, 10, letter_h, gold);
+    draw_rect(&mut img, 420, letter_y, 50, 10, gold);
+    draw_rect(&mut img, 420, letter_y + 35, 50, 10, gold);
+
+    // N
+    draw_rect(&mut img, 490, letter_y, 10, letter_h, gold);
+    draw_rect(&mut img, 540, letter_y, 10, letter_h, gold);
+    draw_rect(&mut img, 490, letter_y, 60, 10, gold);
+
+    // K
+    draw_rect(&mut img, 570, letter_y, 10, letter_h, gold);
+    draw_rect(&mut img, 580, letter_y + 35, 30, 10, gold);
+    draw_rect(&mut img, 610, letter_y, 10, 35, gold);
+    draw_rect(&mut img, 610, letter_y + 45, 10, 35, gold);
+
+    // Y
+    draw_rect(&mut img, 640, letter_y, 10, 45, gold);
+    draw_rect(&mut img, 690, letter_y, 10, 45, gold);
+    draw_rect(&mut img, 650, letter_y + 35, 40, 10, gold);
+    draw_rect(&mut img, 665, letter_y + 35, 10, 45, gold);
+
+    // "LEARN HOW TO FOCUS" in smaller blocks (just draw thin white line as separator)
+    for x in 300..900 {
+        img.put_pixel(x, 380, white);
+    }
+
+    // Encode to PNG
+    let mut buf = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+    image::ImageEncoder::write_image(
+        encoder,
+        img.as_raw(),
+        width,
+        height,
+        image::ExtendedColorType::Rgb8,
+    )
+    .map_err(|e| AppError::Internal(format!("PNG encode error: {}", e)))?;
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "image/png")],
+        [(axum::http::header::CACHE_CONTROL, "public, max-age=3600")],
+        buf,
+    )
+        .into_response())
+}
+
+// ==================== Studio Video Upload ====================
+
+/// POST /api/v1/studio/upload — multipart: video (WebM blob) + metadata (JSON)
+pub async fn upload_studio_video(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = jar
+        .get("anky_user_id")
+        .map(|c| c.value().to_string());
+
+    let video_id = uuid::Uuid::new_v4().to_string();
+    let mut video_data: Option<Vec<u8>> = None;
+    let mut metadata: Option<serde_json::Value> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {}", e)))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "video" => {
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("video read error: {}", e)))?;
+                video_data = Some(bytes.to_vec());
+            }
+            "metadata" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("metadata read error: {}", e)))?;
+                metadata = Some(
+                    serde_json::from_str(&text)
+                        .unwrap_or_else(|_| json!({})),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    let video_bytes = video_data.ok_or_else(|| AppError::BadRequest("no video field".into()))?;
+    let meta = metadata.unwrap_or_else(|| json!({}));
+
+    // Ensure data/videos directory exists
+    tokio::fs::create_dir_all("data/videos")
+        .await
+        .map_err(|e| AppError::Internal(format!("mkdir error: {}", e)))?;
+
+    let file_path = format!("{}.webm", video_id);
+    let full_path = format!("data/videos/{}", file_path);
+    tokio::fs::write(&full_path, &video_bytes)
+        .await
+        .map_err(|e| AppError::Internal(format!("write error: {}", e)))?;
+
+    let duration = meta["duration_seconds"].as_f64().unwrap_or(0.0);
+    let title = meta["title"].as_str();
+    let scene_data = meta.get("scenes").map(|s| s.to_string());
+
+    {
+        let db = state.db.lock().await;
+        queries::insert_video_recording(
+            &db,
+            &video_id,
+            user_id.as_deref(),
+            title,
+            &file_path,
+            duration,
+            scene_data.as_deref(),
+        )?;
+    }
+
+    let size_mb = video_bytes.len() as f64 / (1024.0 * 1024.0);
+    state.emit_log(
+        "INFO",
+        "studio",
+        &format!(
+            "Video uploaded: {} ({:.1}MB, {:.0}s)",
+            &video_id[..8],
+            size_mb,
+            duration
+        ),
+    );
+
+    Ok(Json(json!({
+        "video_id": video_id,
+        "file_path": file_path,
+        "size_mb": format!("{:.1}", size_mb),
+        "status": "uploaded",
+    })))
+}
+
+fn draw_rect(img: &mut image::RgbImage, x: u32, y: u32, w: u32, h: u32, color: image::Rgb<u8>) {
+    for dx in 0..w {
+        for dy in 0..h {
+            if x + dx < img.width() && y + dy < img.height() {
+                img.put_pixel(x + dx, y + dy, color);
+            }
+        }
+    }
 }

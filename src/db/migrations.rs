@@ -306,5 +306,49 @@ pub fn run(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // --- image_webp on ankys ---
+    let has_image_webp: bool = conn
+        .prepare("SELECT image_webp FROM ankys LIMIT 0")
+        .is_ok();
+    if !has_image_webp {
+        conn.execute_batch(
+            "ALTER TABLE ankys ADD COLUMN image_webp TEXT;"
+        )?;
+    }
+
+    // --- session_token on writing_checkpoints ---
+    let has_session_token: bool = conn
+        .prepare("SELECT session_token FROM writing_checkpoints LIMIT 0")
+        .is_ok();
+    if !has_session_token {
+        conn.execute_batch(
+            "ALTER TABLE writing_checkpoints ADD COLUMN session_token TEXT;"
+        )?;
+    }
+
+    // --- created_by on prompts ---
+    let has_created_by: bool = conn
+        .prepare("SELECT created_by FROM prompts LIMIT 0")
+        .is_ok();
+    if !has_created_by {
+        conn.execute_batch(
+            "ALTER TABLE prompts ADD COLUMN created_by TEXT;"
+        )?;
+    }
+
+    // --- Video Recordings ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS video_recordings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            title TEXT,
+            file_path TEXT,
+            duration_seconds REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            scene_data TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    )?;
+
     Ok(())
 }

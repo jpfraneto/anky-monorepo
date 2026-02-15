@@ -1,0 +1,1 @@
+nooo just do everything with x402 payments as the standard. no more api keys please. that's confusing and not necessary. we will charge a fee per transaction. and eventually the generation of ankys need to be limited. we need to find the sweet spot tho. step by step. thanks

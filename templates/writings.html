@@ -3,59 +3,146 @@
 {% block title %}anky - your writings{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h2>your writings</h2>
-  <p class="subtitle">{{ writings | length }} session{{ writings | length | pluralize }}</p>
-</div>
-
-<div class="writings-list" id="writings-list">
-  {% for w in writings %}
-  <div class="writing-item" data-index="{{ loop.index0 }}">
-    <div class="writing-meta">
-      {{ w.created_at }} &middot; {{ w.duration_display }}
-      {% if w.is_anky %} &middot; <span class="anky-badge">anky</span>{% endif %}
-      &middot; {{ w.word_count }} words
+<div class="writings-layout" id="writings-layout">
+  <div class="writings-sidebar" id="writings-sidebar">
+    <div class="writings-sidebar-header">
+      <h2>writings</h2>
+      <span class="writings-count">{{ writings | length }}</span>
     </div>
-    <div class="writing-preview">{{ w.content | truncate(length=200) }}</div>
-    {% if w.response %}
-    <div class="writing-response">{{ w.response }}</div>
+    {% for w in writings %}
+    <div class="writing-sidebar-item{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" tabindex="0">
+      <div class="writing-sidebar-top">
+        {% if w.anky_image_path %}
+        <img class="writing-sidebar-thumb" src="/data/images/{{ w.anky_image_path }}" alt="">
+        {% endif %}
+        <div class="writing-sidebar-text">
+          <div class="writing-sidebar-firstline">{{ w.first_line }}{% if w.first_line | length >= 60 %}...{% endif %}</div>
+          <div class="writing-sidebar-meta">
+            {{ w.relative_time }} &middot; {{ w.duration_display }} &middot; {{ w.word_count }}w
+            {% if w.is_anky %}<span class="anky-badge">anky</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if writings | length == 0 %}
+    <div class="empty-state">
+      <p>no writings yet.</p>
+      <a href="/" class="new-session-btn">start writing</a>
+    </div>
     {% endif %}
   </div>
-  {% endfor %}
 
-  {% if writings | length == 0 %}
-  <div class="empty-state">
-    <p>no writings yet. go create your first.</p>
-    <a href="/" class="new-session-btn">start writing</a>
+  <div class="writings-detail" id="writings-detail">
+    {% if writings | length > 0 %}
+    <div class="writings-detail-inner" id="writings-detail-inner">
+      <div class="writings-detail-header">
+        <button class="writings-back-btn" id="writings-back-btn">&larr; back</button>
+        {% if writings.0.anky_title %}
+        <h2 class="writings-detail-title">{{ writings.0.anky_title }}</h2>
+        {% endif %}
+        <div class="writings-detail-meta">
+          {{ writings.0.created_at }} &middot; {{ writings.0.duration_display }} &middot; {{ writings.0.word_count }} words
+          {% if writings.0.is_anky %} &middot; <span class="anky-badge">anky</span>{% endif %}
+          {% if writings.0.anky_id %} &middot; <a href="/anky/{{ writings.0.anky_id }}">view anky</a>{% endif %}
+        </div>
+      </div>
+      <div class="writings-detail-content" id="writings-detail-content">{{ writings.0.content }}</div>
+      {% if writings.0.response %}
+      <div class="writings-detail-response" id="writings-detail-response">{{ writings.0.response }}</div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="writings-detail-empty">
+      <p>select a writing to view</p>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  const items = Array.from(document.querySelectorAll('.writing-item'));
-  let current = 0;
+(function() {
+  var items = Array.from(document.querySelectorAll('.writing-sidebar-item'));
+  var detailInner = document.getElementById('writings-detail-inner');
+  var detailContent = document.getElementById('writings-detail-content');
+  var detailResponse = document.getElementById('writings-detail-response');
+  var layout = document.getElementById('writings-layout');
+  var backBtn = document.getElementById('writings-back-btn');
+  var current = 0;
 
-  if (items.length > 0) items[0].classList.add('selected');
+  // Data embedded from server
+  var writings = {{ writings | json_encode() | safe }};
 
-  document.addEventListener('keydown', (e) => {
-    if (items.length === 0) return;
-    if (e.key === 'ArrowDown' && current < items.length - 1) {
-      e.preventDefault();
-      items[current].classList.remove('selected');
-      current++;
-      items[current].classList.add('selected');
-      items[current].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  function selectItem(idx) {
+    if (idx < 0 || idx >= items.length) return;
+    items[current].classList.remove('active');
+    current = idx;
+    items[current].classList.add('active');
+    items[current].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    var w = writings[idx];
+    if (!detailInner) return;
+
+    // Update header
+    var header = detailInner.querySelector('.writings-detail-header');
+    var titleHtml = w.anky_title ? '<h2 class="writings-detail-title">' + w.anky_title + '</h2>' : '';
+    var ankyLink = w.anky_id ? ' &middot; <a href="/anky/' + w.anky_id + '">view anky</a>' : '';
+    var badge = w.is_anky ? ' &middot; <span class="anky-badge">anky</span>' : '';
+    header.innerHTML = '<button class="writings-back-btn" id="writings-back-btn">&larr; back</button>' +
+      titleHtml +
+      '<div class="writings-detail-meta">' + w.created_at + ' &middot; ' + w.duration_display + ' &middot; ' + w.word_count + ' words' + badge + ankyLink + '</div>';
+
+    // Re-attach back button
+    var newBack = document.getElementById('writings-back-btn');
+    if (newBack) newBack.onclick = function() { layout.classList.remove('detail-open'); };
+
+    detailContent.textContent = w.content;
+
+    if (detailResponse) {
+      if (w.response) {
+        detailResponse.textContent = w.response;
+        detailResponse.style.display = '';
+      } else {
+        detailResponse.style.display = 'none';
+      }
     }
-    if (e.key === 'ArrowUp' && current > 0) {
-      e.preventDefault();
-      items[current].classList.remove('selected');
-      current--;
-      items[current].classList.add('selected');
-      items[current].scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    if (e.key === 'Escape') window.location.href = '/';
+
+    // Mobile: show detail panel
+    layout.classList.add('detail-open');
+  }
+
+  items.forEach(function(item, i) {
+    item.addEventListener('click', function() { selectItem(i); });
   });
+
+  if (backBtn) {
+    backBtn.addEventListener('click', function() { layout.classList.remove('detail-open'); });
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (items.length === 0) return;
+    var tag = e.target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+    if (e.key === 'ArrowDown' || e.key === 'j') {
+      e.preventDefault();
+      selectItem(Math.min(current + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      e.preventDefault();
+      selectItem(Math.max(current - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      layout.classList.add('detail-open');
+    } else if (e.key === 'Escape') {
+      if (layout.classList.contains('detail-open')) {
+        layout.classList.remove('detail-open');
+      } else {
+        window.location.href = '/';
+      }
+    }
+  });
+})();
 </script>
 {% endblock %}

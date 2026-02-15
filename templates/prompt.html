@@ -30,9 +30,16 @@
 <div class="writing-container">
   <div class="writing-main">
     <div id="life-bar"></div>
-    <div class="prompt-display" id="prompt-display">{{ prompt_text }}</div>
+    <div class="prompt-display at-top" id="prompt-display">{{ prompt_text }}</div>
     <textarea
       id="prompt-writing-area"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      data-gramm="false"
+      data-gramm_editor="false"
+      data-enable-grammarly="false"
       style="font-family: {{ user_font_family }}; font-size: {{ user_font_size }}px;"
     ></textarea>
     <div id="chat-container" class="chat-container"></div>
@@ -201,7 +208,6 @@ var lastStreamedReflection = '';
     // Immersive mode
     document.body.classList.add('writing-active');
     window.scrollTo({ top: 0 });
-    promptDisplay.classList.add('at-top');
 
     animate();
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
@@ -267,7 +273,7 @@ var lastStreamedReflection = '';
     inputArea.id = 'chat-input-area';
     inputArea.className = 'chat-input-area';
     inputArea.innerHTML =
-      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1"></textarea>' +
+      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
       '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
     var writingMain = document.querySelector('.writing-main');
     writingMain.appendChild(inputArea);
@@ -636,19 +642,13 @@ var lastStreamedReflection = '';
     statWords.textContent = words + (words === 1 ? ' word' : ' words');
   });
 
-  // Blocked keys — toggle prompt visibility
+  // Blocked keys
   textarea.addEventListener('keydown', function(e) {
     var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
     if (blocked.indexOf(e.key) !== -1) {
       e.preventDefault();
       blockedCount++;
-      // Odd = hide prompt, even = show
-      if (blockedCount % 2 === 1) {
-        promptDisplay.style.opacity = '0';
-      } else {
-        promptDisplay.style.opacity = '1';
-      }
       return;
     }
     if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {

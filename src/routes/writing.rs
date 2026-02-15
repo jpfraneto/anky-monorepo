@@ -182,21 +182,38 @@ pub async fn get_writings(
 
     let writings = {
         let db = state.db.lock().await;
-        crate::db::queries::get_user_writings(&db, &user_id)?
+        crate::db::queries::get_user_writings_with_ankys(&db, &user_id)?
     };
+
+    let now = chrono::Utc::now();
 
     let mut ctx = tera::Context::new();
     ctx.insert("writings", &serde_json::to_value(
         writings.iter().map(|w| {
+            let first_line: String = w.content.lines().next().unwrap_or("").chars().take(60).collect();
+            let duration_display = format!("{}m {}s", (w.duration_seconds / 60.0) as u32, (w.duration_seconds % 60.0) as u32);
+            let relative_time = if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&w.created_at, "%Y-%m-%d %H:%M:%S") {
+                let diff = now.naive_utc() - dt;
+                if diff.num_days() > 0 { format!("{}d ago", diff.num_days()) }
+                else if diff.num_hours() > 0 { format!("{}h ago", diff.num_hours()) }
+                else { format!("{}m ago", diff.num_minutes().max(1)) }
+            } else {
+                w.created_at.clone()
+            };
             serde_json::json!({
                 "id": w.id,
                 "content": w.content,
+                "first_line": first_line,
                 "duration_seconds": w.duration_seconds,
+                "duration_display": duration_display,
                 "word_count": w.word_count,
                 "is_anky": w.is_anky,
                 "response": w.response,
                 "created_at": w.created_at,
-                "duration_display": format!("{}m {}s", (w.duration_seconds / 60.0) as u32, (w.duration_seconds % 60.0) as u32),
+                "relative_time": relative_time,
+                "anky_id": w.anky_id,
+                "anky_title": w.anky_title,
+                "anky_image_path": w.anky_image_path,
             })
         }).collect::<Vec<_>>()
     ).unwrap_or_default());

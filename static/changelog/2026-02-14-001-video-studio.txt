@@ -1,0 +1,40 @@
+Implement the following plan:
+
+# Video Production Studio — Implementation Plan
+
+## Context
+The current /generate/video page is a static read-only script reference. We're transforming it into a **live production studio** where the user:
+1. Views the script and generates Anky images per scene
+2. Records themselves reading the script via in-browser camera (MediaRecorder API)
+3. Reviews the recording and uploads it to the server
+
+The script drives everything. One continuous take with auto-scrolling teleprompter. Image generation auto-triggers from pre-written scene prompts.
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `templates/video.html` | **Complete rewrite** → 3-phase studio (prep/record/review) with MediaRecorder, teleprompter, upload |
+| `static/style.css` | Replace `.video-*` styles with `.studio-*` classes for all 3 phases, teleprompter, camera PIP, timeline |
+| `src/routes/api.rs` | Add `upload_studio_video()` — multipart video upload handler |
+| `src/routes/mod.rs` | Add route: `/api/v1/studio/upload` |
+| `src/db/migrations.rs` | Add `video_recordings` table |
+| `src/db/queries.rs` | Add `insert_video_recording()` + `update_video_status()` |
+
+## Implementation Steps
+
+### 1. Database: `video_recordings` table
+### 2. Upload endpoint (`src/routes/api.rs`)
+### 3. Template rewrite (`templates/video.html`) — Three phases managed by JS state machine
+### 4. CSS changes — New `.studio-*` classes
+### 5. Patterns reused from existing code (timer, countdown, immersive mode, image generation)
+### 6. Script data structure (hardcoded in template JS)
+
+## Verification
+1. `cargo build --release` — compiles with new upload handler + DB migration
+2. Visit `/generate/video` — see PREP phase with script + image grid
+3. Click generate on an image prompt — see Anky image appear
+4. Click START RECORDING — countdown, camera preview, teleprompter scrolls
+5. Click STOP — review phase with playback
+6. Click UPLOAD — video saved to `data/videos/`, DB record created
+7. Test on phone — front-facing camera, readable teleprompter

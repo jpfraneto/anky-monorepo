@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}anky — changelog{% endblock %}
+
+{% block content %}
+<div class="changelog-page">
+  <h1>changelog</h1>
+  <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
+
+  <div class="changelog-entry" id="2026-02-15-remove-balance-payments">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Remove balance-based payments, x402 only</h2>
+    <p class="changelog-desc">Eliminated the USDC balance/credits system. All paid features now use x402 per-request wallet payments. Deleted /credits page, credits.rs, and balance deduction logic. API keys remain for agent identity. Free sessions remain.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-001-remove-balance-payments.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-remove-balance-payments">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-prompt-api-agents">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">Agent prompt API: x402 payment, writers count, prompt detail</h2>
+    <p class="changelog-desc">Added POST /api/v1/prompt/create for agents to create prompts with x402/API key payment. Added writers_count tracking per prompt. Enhanced GET /api/v1/prompt/{id} and GET /api/v1/prompts with full agent-friendly JSON including created_by field and ?sort=popular support.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-007-prompt-api-agents.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-prompt-api-agents">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-ux-overhaul">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">UX overhaul: dropdown fix, hero copy, mobile writing, inline share, abuse prevention, writings redesign</h2>
+    <p class="changelog-desc">Fixed navbar dropdown dead zone with ::before bridge + touch support. Added hero copy above textarea. Fixed mobile writing with position:fixed body. Replaced share card overlay with inline share/copy buttons. Added session_token checkpoint validation. Redesigned /writings as two-panel layout with sidebar + detail.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-006-ux-overhaul.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-ux-overhaul">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-post-writing-ux">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">post-writing UX overhaul</h2>
+    <p class="changelog-desc">Removed collapsible text — full writing always visible. Page scrolls naturally with arrow keys. Bigger fonts. Backspace gives visual feedback. "anky accomplished" badge at 8 minutes.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-005-post-writing-ux.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-post-writing-ux">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-changelog">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">changelog page</h2>
+    <p class="changelog-desc">Added this page. Every prompt that shapes anky is stored as a txt file and linked here. Each entry has a permalink.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-004-changelog.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-changelog">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-x402-only">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">x402 payments only</h2>
+    <p class="changelog-desc">Removed API key payment path from video frame generation. All image generation now requires wallet payment via x402 — send USDC, get art.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-003-x402-only.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-x402-only">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-paid-image-gen">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">paid image generation + generate all</h2>
+    <p class="changelog-desc">Video studio image generation now requires payment ($0.10/frame). Added "Generate All" button — pay once for the whole batch.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-002-paid-image-gen.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-paid-image-gen">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-14-video-studio">
+    <div class="changelog-date">2026-02-14</div>
+    <h2 class="changelog-title">video production studio</h2>
+    <p class="changelog-desc">Rewrote /generate/video into a 3-phase production studio: prep (script + image gen), record (camera + teleprompter + timer), review (playback + upload). MediaRecorder API, auto-scrolling teleprompter, camera PIP, immersive mode, multipart upload, video_recordings table.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-14-001-video-studio.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-14-video-studio">#</a>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Scroll to anchor and highlight on load
+(function() {
+  if (!location.hash) return;
+  var el = document.querySelector(location.hash);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('changelog-highlight');
+})();
+</script>
+{% endblock %}

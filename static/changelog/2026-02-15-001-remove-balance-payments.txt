@@ -1,0 +1,19 @@
+Implement the following plan:
+
+# Plan: Remove Balance-Based Payments, Use x402 Only
+
+## Context
+The app currently has a balance system where users fund API keys with USDC, which gets credited as a USD balance, then deducted per request. The user wants to eliminate this and use only x402 per-request wallet payments. API keys stay for agent identity, free sessions stay.
+
+## Changes
+
+### 1. `src/middleware/api_auth.rs` — Remove balance from ApiKeyInfo and balance check
+### 2. `src/models/mod.rs` — Remove balance-related models
+### 3. `src/routes/api.rs` — Remove balance deduction from generate
+### 4. `src/routes/payment_helper.rs` — Same removal
+### 5. `src/routes/extension_api.rs` — Rewrite transform to use x402, simplify balance
+### 6. `src/routes/mod.rs` — Remove credits routes, update extension routes
+### 7. `src/routes/credits.rs` — Delete entire file
+### 8. `templates/credits.html` — Delete entire file
+### 9. `templates/help.html` — Update references to /credits
+### 10. `src/db/queries.rs` — Remove dead functions

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.8", features = ["macros", "ws"] }
+axum = { version = "0.8", features = ["macros", "ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "set-header", "limit"] }
 sha2 = "0.10"

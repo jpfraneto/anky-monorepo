@@ -1,0 +1,17 @@
+Implement the following plan:
+
+# Post-Writing UX Overhaul Plan
+
+## Context
+User wrote an anky and provided feedback about the writing experience. Several UX issues need fixing: landing page needs stronger copy, mobile writing is broken, navbar dropdown can't be clicked, share card overlay is annoying, writings page is ugly, and the app needs basic abuse prevention.
+
+## Changes (in implementation order)
+
+### 1. Navbar Dropdown Fix (CSS only)
+### 2. Navbar Keyboard Navigation (JS + CSS)
+### 3. Landing Page Copy + Simplification
+### 4. Mobile Writing Responsiveness
+### 5. Remove Share Card Overlay → Inline Share
+### 6. Session Abuse Prevention (Backend)
+### 7. Writings Page Redesign
+### 8. Anonymous Anky Generation (verify)

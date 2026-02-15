@@ -20,6 +20,7 @@ pub async fn create_prompt_page(State(state): State<AppState>) -> Result<Html<St
 #[derive(serde::Deserialize)]
 pub struct CreatePromptRequest {
     pub prompt_text: String,
+    pub created_by: Option<String>,
 }
 
 /// POST /api/v1/prompt — create prompt (with payment)
@@ -54,8 +55,9 @@ pub async fn create_prompt_api(
 
     let prompt_id = uuid::Uuid::new_v4().to_string();
     let user_id = payment.api_key.as_deref().unwrap_or("anon");
+    let created_by = req.created_by.as_deref().unwrap_or("Anky");
 
-    {
+    let created_at = {
         let db = state.db.lock().await;
         queries::ensure_user(&db, user_id)?;
         queries::insert_prompt(
@@ -64,9 +66,13 @@ pub async fn create_prompt_api(
             user_id,
             &prompt_text,
             payment.tx_hash.as_deref(),
+            Some(created_by),
         )?;
         queries::update_prompt_status(&db, &prompt_id, "generating")?;
-    }
+        // Fetch created_at from the newly inserted row
+        let p = queries::get_prompt_by_id(&db, &prompt_id)?;
+        p.map(|r| r.created_at).unwrap_or_default()
+    };
 
     state.emit_log("INFO", "prompt", &format!("Creating prompt {}: {}", &prompt_id[..8], &prompt_text[..prompt_text.len().min(60)]));
 
@@ -91,10 +97,16 @@ pub async fn create_prompt_api(
     });
 
     let url = format!("https://anky.app/prompt/{}", prompt_id);
+    let image_url = format!("https://anky.app/data/images/prompt_{}.png", prompt_id);
     Ok(Json(json!({
         "prompt_id": prompt_id,
-        "status": "generating",
+        "prompt_text": prompt_text,
         "url": url,
+        "image_url": image_url,
+        "created_at": created_at,
+        "created_by": created_by,
+        "writers_count": 0,
+        "status": "generating",
         "payment_method": payment.method,
     }))
     .into_response())
@@ -120,15 +132,16 @@ pub async fn get_prompt_api(
 
     let p = prompt.unwrap();
     let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+    let created_by = p.created_by.as_deref().unwrap_or(&creator_username);
     Ok(Json(json!({
-        "id": p.id,
+        "prompt_id": p.id,
         "prompt_text": p.prompt_text,
         "status": p.status,
         "image_url": image_url,
-        "creator_username": creator_username,
-        "sessions_count": sessions_count,
         "url": format!("https://anky.app/prompt/{}", p.id),
+        "writers_count": sessions_count,
         "created_at": p.created_at,
+        "created_by": created_by,
     })))
 }
 
@@ -259,6 +272,7 @@ pub async fn submit_prompt_writing(
 pub struct ListPromptsQuery {
     pub page: Option<i32>,
     pub limit: Option<i32>,
+    pub sort: Option<String>,
 }
 
 /// GET /api/v1/prompts — paginated list of completed prompts
@@ -268,24 +282,26 @@ pub async fn list_prompts_api(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let sort = query.sort.as_deref().unwrap_or("recent");
 
     let (prompts, total) = {
         let db = state.db.lock().await;
-        queries::get_prompts_paginated(&db, page, limit)?
+        queries::get_prompts_paginated(&db, page, limit, sort)?
     };
 
     let items: Vec<serde_json::Value> = prompts
         .iter()
         .map(|p| {
             let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+            let created_by = p.created_by.as_deref().unwrap_or(&p.creator_username);
             json!({
-                "id": p.id,
+                "prompt_id": p.id,
                 "prompt_text": p.prompt_text,
                 "image_url": image_url,
-                "creator_username": p.creator_username,
-                "sessions_count": p.sessions_count,
+                "writers_count": p.sessions_count,
                 "url": format!("https://anky.app/prompt/{}", p.id),
                 "created_at": p.created_at,
+                "created_by": created_by,
             })
         })
         .collect();
@@ -311,14 +327,15 @@ pub async fn random_prompt_api(
     match prompt {
         Some(p) => {
             let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+            let created_by = p.created_by.as_deref().unwrap_or(&p.creator_username);
             Ok(Json(json!({
-                "id": p.id,
+                "prompt_id": p.id,
                 "prompt_text": p.prompt_text,
                 "image_url": image_url,
-                "creator_username": p.creator_username,
-                "sessions_count": p.sessions_count,
+                "writers_count": p.sessions_count,
                 "url": format!("https://anky.app/prompt/{}", p.id),
                 "created_at": p.created_at,
+                "created_by": created_by,
             })))
         }
         None => Err(AppError::NotFound("no prompts found".into())),

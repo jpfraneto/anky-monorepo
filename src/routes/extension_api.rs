@@ -1,9 +1,11 @@
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::response::Json;
 
 use crate::db::queries;
 use crate::error::AppError;
 use crate::middleware::api_auth::ApiKeyInfo;
+use crate::middleware::x402;
 use crate::models::{BalanceResponse, RegisterRequest, RegisterResponse, TransformRequest, TransformResponse, TransformSummary};
 use crate::pipeline::cost;
 use crate::services::claude;
@@ -31,7 +33,7 @@ pub async fn register(
 
     let db = state.db.lock().await;
 
-    // Create the API key in api_keys table (starts with 0 balance, free tier tracked via agents table)
+    // Create the API key in api_keys table (free tier tracked via agents table)
     queries::create_api_key(&db, &api_key, Some(name))?;
 
     // Create the agent record with 4 free sessions
@@ -54,7 +56,8 @@ pub async fn register(
 
 pub async fn transform(
     State(state): State<AppState>,
-    axum::extract::Extension(key_info): axum::extract::Extension<ApiKeyInfo>,
+    headers: HeaderMap,
+    api_key_info: Option<axum::Extension<ApiKeyInfo>>,
     Json(req): Json<TransformRequest>,
 ) -> Result<Json<TransformResponse>, AppError> {
     if req.writing.trim().is_empty() {
@@ -63,6 +66,37 @@ pub async fn transform(
 
     if req.writing.len() > 50_000 {
         return Err(AppError::BadRequest("writing too long (max 50000 chars)".into()));
+    }
+
+    // Payment: check for x402/wallet payment header
+    let payment_method;
+    if let Some(sig) = headers
+        .get("payment-signature")
+        .or_else(|| headers.get("x-payment"))
+        .and_then(|v| v.to_str().ok())
+    {
+        let sig = sig.trim();
+        if sig.starts_with("0x") && sig.len() == 66 && sig[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+            state.emit_log("INFO", "payment", &format!("Transform wallet payment: {}", sig));
+            payment_method = "wallet".to_string();
+        } else {
+            let facilitator = &state.config.x402_facilitator_url;
+            if facilitator.is_empty() {
+                return Err(AppError::Internal("x402 facilitator not configured".into()));
+            }
+            match x402::verify_x402_payment(facilitator, sig, "https://anky.app/api/v1/transform").await {
+                Ok(_) => {
+                    payment_method = "x402".to_string();
+                }
+                Err(reason) => {
+                    return Err(AppError::PaymentRequired(format!("payment verification failed: {}", reason)));
+                }
+            }
+        }
+    } else {
+        return Err(AppError::PaymentRequired(
+            "payment required. send USDC tx hash in payment-signature header".into(),
+        ));
     }
 
     // Call Claude to transform the writing
@@ -74,17 +108,17 @@ pub async fn transform(
     .await
     .map_err(|e| AppError::Internal(format!("transformation failed: {}", e)))?;
 
-    // Calculate cost with markup
+    // Calculate cost for tracking
     let cost_usd = cost::calculate_transform_cost(result.input_tokens, result.output_tokens);
 
-    // Deduct balance and record transformation
+    // Record transformation
     let db = state.db.lock().await;
     let transform_id = uuid::Uuid::new_v4().to_string();
-    queries::deduct_balance(&db, &key_info.key, cost_usd)?;
+    let api_key_str = api_key_info.as_ref().map(|ext| ext.key.clone()).unwrap_or_default();
     queries::insert_transformation(
         &db,
         &transform_id,
-        &key_info.key,
+        &api_key_str,
         &req.writing,
         req.prompt.as_deref(),
         &result.text,
@@ -104,23 +138,21 @@ pub async fn transform(
         Some(&transform_id),
     )?;
 
-    // Get updated balance
-    let updated_key = queries::get_api_key(&db, &key_info.key)?
-        .ok_or_else(|| AppError::Internal("key vanished".into()))?;
-
     Ok(Json(TransformResponse {
         transformed: result.text,
         input_tokens: result.input_tokens,
         output_tokens: result.output_tokens,
         cost_usd,
-        balance_remaining: updated_key.balance_usd,
+        payment_method,
     }))
 }
 
 pub async fn balance(
     State(state): State<AppState>,
-    axum::extract::Extension(key_info): axum::extract::Extension<ApiKeyInfo>,
+    api_key_info: Option<axum::Extension<ApiKeyInfo>>,
 ) -> Result<Json<BalanceResponse>, AppError> {
+    let key_info = api_key_info
+        .ok_or_else(|| AppError::Unauthorized("API key required. set X-API-Key header".into()))?;
     let db = state.db.lock().await;
     let key_record = queries::get_api_key(&db, &key_info.key)?
         .ok_or_else(|| AppError::NotFound("API key not found".into()))?;
@@ -136,7 +168,6 @@ pub async fn balance(
         .collect();
 
     Ok(Json(BalanceResponse {
-        balance_usd: key_record.balance_usd,
         total_spent_usd: key_record.total_spent_usd,
         total_transforms: key_record.total_transforms,
         recent_transforms: transforms,

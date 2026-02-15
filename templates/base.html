@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20260213d">
+  <link rel="stylesheet" href="/static/style.css?v=20260214g">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -19,9 +19,16 @@
     <div class="nav-links" id="nav-links">
       <a href="/gallery">gallery</a>
       <a href="/writings">writings</a>
-      <a href="/generate">generate</a>
+      <div class="nav-dropdown">
+        <a href="/generate" class="nav-dropdown-trigger">generate</a>
+        <div class="nav-dropdown-menu">
+          <a href="/generate">anky from prompt</a>
+          <a href="/generate/video">video production</a>
+        </div>
+      </div>
       <a href="/prompt/create">prompts</a>
       <a href="/feedback">feedback</a>
+      <a href="/changelog">changelog</a>
       <a href="/settings">settings</a>
       <a href="/help">help</a>
       <a href="/ankycoin">$ANKY</a>
@@ -60,6 +67,7 @@
 
     function updateBtn() {
       var addr = localStorage.getItem('wallet_address');
+      var isConnected = !!addr;
       if (addr) {
         btn.textContent = shortAddr(addr);
         btn.classList.add('connected');
@@ -69,6 +77,9 @@
         btn.classList.remove('connected');
         btn.onclick = connect;
       }
+      window.dispatchEvent(new CustomEvent('anky:wallet-changed', {
+        detail: { connected: isConnected, wallet: addr || null }
+      }));
     }
 
     function isLoggedIn() {
@@ -145,6 +156,23 @@
         });
       });
     }
+    // Touch support for nav dropdowns
+    document.querySelectorAll('.nav-dropdown-trigger').forEach(function(trigger) {
+      trigger.addEventListener('click', function(e) {
+        var dd = trigger.closest('.nav-dropdown');
+        if (dd && window.innerWidth <= 768) return; // mobile hamburger handles it
+        if (dd && !dd.classList.contains('open')) {
+          e.preventDefault();
+          document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+          dd.classList.add('open');
+        }
+      });
+    });
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.nav-dropdown')) {
+        document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+      }
+    });
   })();
 
   // --- Share Card ---
@@ -253,12 +281,23 @@
       var idx = items.indexOf(e.target);
       if (idx === -1) return;
 
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Tab') {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          var next = e.shiftKey
+            ? (idx - 1 + items.length) % items.length
+            : (idx + 1) % items.length;
+          items[next].focus();
+        } else {
+          e.preventDefault();
+          var next = e.key === 'ArrowRight'
+            ? (idx + 1) % items.length
+            : (idx - 1 + items.length) % items.length;
+          items[next].focus();
+        }
+      } else if (e.key === ' ') {
         e.preventDefault();
-        var next = e.key === 'ArrowRight'
-          ? (idx + 1) % items.length
-          : (idx - 1 + items.length) % items.length;
-        items[next].focus();
+        e.target.click();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         var main = document.querySelector('main, .help-tabs, .writing-container, .gallery-grid, .container');
@@ -268,6 +307,34 @@
         }
       }
     });
+  })();
+
+  // Disable browser/editor writing aids on all textareas
+  (function() {
+    function hardenTextarea(el) {
+      if (!el || el.tagName !== 'TEXTAREA') return;
+      el.setAttribute('autocomplete', 'off');
+      el.setAttribute('autocorrect', 'off');
+      el.setAttribute('autocapitalize', 'off');
+      el.setAttribute('spellcheck', 'false');
+      el.setAttribute('data-gramm', 'false');
+      el.setAttribute('data-gramm_editor', 'false');
+      el.setAttribute('data-enable-grammarly', 'false');
+    }
+
+    document.querySelectorAll('textarea').forEach(hardenTextarea);
+
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(node) {
+          if (!node || node.nodeType !== 1) return;
+          if (node.tagName === 'TEXTAREA') hardenTextarea(node);
+          if (node.querySelectorAll) node.querySelectorAll('textarea').forEach(hardenTextarea);
+        });
+      });
+    });
+
+    observer.observe(document.documentElement, { childList: true, subtree: true });
   })();
   </script>
   {% block scripts %}{% endblock %}

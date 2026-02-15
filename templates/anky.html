@@ -20,7 +20,10 @@
 <div class="anky-detail">
   {% if status == "complete" and image_path %}
   <div class="anky-image">
-    <img src="/data/images/{{ image_path }}" alt="{{ title }}" id="anky-detail-img">
+    <picture>
+      {% if image_webp %}<source srcset="/data/images/{{ image_webp }}" type="image/webp">{% endif %}
+      <img src="/data/images/{{ image_path }}" alt="{{ title }}" id="anky-detail-img">
+    </picture>
   </div>
   <div style="margin-bottom: 20px;">
     <button class="share-card-btn" id="anky-detail-share"

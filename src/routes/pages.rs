@@ -63,6 +63,7 @@ pub async fn gallery(
                 "id": a.id,
                 "title": a.title.as_deref().unwrap_or("untitled"),
                 "image_path": a.image_path.as_deref().unwrap_or(""),
+                "image_webp": a.image_webp.as_deref().unwrap_or(""),
                 "image_prompt": a.image_prompt.as_deref().unwrap_or(""),
                 "reflection": a.reflection.as_deref().unwrap_or(""),
                 "thinker_name": a.thinker_name.as_deref().unwrap_or(""),
@@ -133,6 +134,18 @@ pub async fn feedback(State(state): State<AppState>) -> Result<Html<String>, App
     Ok(Html(html))
 }
 
+pub async fn video_dashboard(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("video.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn changelog(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("changelog.html", &ctx)?;
+    Ok(Html(html))
+}
+
 pub async fn anky_detail(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -161,6 +174,7 @@ pub async fn anky_detail(
     ctx.insert("id", &anky.id);
     ctx.insert("title", &anky.title.as_deref().unwrap_or("untitled"));
     ctx.insert("image_path", &anky.image_path.as_deref().unwrap_or(""));
+    ctx.insert("image_webp", &anky.image_webp.as_deref().unwrap_or(""));
     ctx.insert("reflection", &anky.reflection.as_deref().unwrap_or(""));
     ctx.insert("image_prompt", &anky.image_prompt.as_deref().unwrap_or(""));
     ctx.insert("thinker_name", &anky.thinker_name.as_deref().unwrap_or(""));

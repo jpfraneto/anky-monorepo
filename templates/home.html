@@ -20,9 +20,20 @@
 <div class="writing-container">
   <div class="writing-main">
     <div id="life-bar"></div>
+    <div class="hero-copy" id="hero-copy">
+      <h1 class="hero-title">write yourself into existence.</h1>
+      <p class="hero-sub">8 minutes. no backspace. what comes out is yours.</p>
+    </div>
     <textarea
       id="writing-area"
       placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      data-gramm="false"
+      data-gramm_editor="false"
+      data-enable-grammarly="false"
       autofocus
     ></textarea>
     <div id="chat-container" class="chat-container"></div>
@@ -199,6 +210,7 @@ x-payment: 0xabc...def
   var CHECKPOINT_INTERVAL = 30000;
   var checkpointTimer = null;
   var sessionId = null;
+  var sessionToken = null;
 
   function escapeHtml(s) {
     var div = document.createElement('div');
@@ -216,10 +228,14 @@ x-payment: 0xabc...def
     if (!sessionActive || !textarea.value) return;
     var elapsed = (Date.now() - sessionStartTime) / 1000;
     if (!sessionId) sessionId = 'ses_' + Date.now().toString(36);
+    var payload = { session_id: sessionId, text: textarea.value, elapsed: elapsed };
+    if (sessionToken) payload.session_token = sessionToken;
     fetch('/api/checkpoint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, text: textarea.value, elapsed: elapsed }),
+      body: JSON.stringify(payload),
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.session_token) sessionToken = data.session_token;
     }).catch(function() {});
     showCheckpoint('checkpoint saved');
   }
@@ -241,6 +257,14 @@ x-payment: 0xabc...def
     sessionProgress.style.width = progressPct + '%';
     if (progressPct >= 100) {
       sessionProgress.classList.add('complete');
+      // Show "anky accomplished" text
+      if (!document.getElementById('anky-accomplished-text')) {
+        var badge = document.createElement('span');
+        badge.id = 'anky-accomplished-text';
+        badge.className = 'anky-accomplished';
+        badge.textContent = 'anky accomplished';
+        sessionComments.parentNode.insertBefore(badge, sessionComments.parentNode.firstChild.nextSibling);
+      }
     }
 
     // Life bar — only show when > 3 seconds since last keystroke
@@ -268,9 +292,11 @@ x-payment: 0xabc...def
     lastKeystrokeTime = Date.now();
     blockedCount = 0;
     sessionId = 'ses_' + Date.now().toString(36);
+    sessionToken = null;
 
     // Immersive mode
     document.body.classList.add('writing-active');
+    textarea.classList.add('writing-engaged');
     window.scrollTo({ top: 0 });
 
     // Notify live module that session is active
@@ -293,7 +319,8 @@ x-payment: 0xabc...def
     bubble.className = 'chat-bubble ' + role;
     bubble.innerHTML = html;
     chatContainer.appendChild(bubble);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    // Page scrolls now, not the container
+    setTimeout(function() { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 50);
     return bubble;
   }
 
@@ -302,19 +329,7 @@ x-payment: 0xabc...def
     if (inputArea) inputArea.remove();
 
     currentWritingText = text;
-
-    if (text.length > 500) {
-      var preview = escapeHtml(text.substring(0, 300)) + '...';
-      var full = escapeHtml(text);
-      addChatBubble('user',
-        '<div class="writing-collapsed">' +
-          '<span class="writing-preview-text">' + preview + '</span>' +
-          '<button class="writing-toggle" onclick="var p=this.parentNode;var s=p.querySelector(\'.writing-preview-text\');var f=p.querySelector(\'.writing-full-text\');if(f.style.display===\'none\'){f.style.display=\'inline\';s.style.display=\'none\';this.textContent=\'collapse\';}else{f.style.display=\'none\';s.style.display=\'inline\';this.textContent=\'show full writing\';}">show full writing</button>' +
-          '<span class="writing-full-text" style="display:none;">' + full + '</span>' +
-        '</div>');
-    } else {
-      addChatBubble('user', escapeHtml(text));
-    }
+    addChatBubble('user', escapeHtml(text));
 
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
 
@@ -338,7 +353,7 @@ x-payment: 0xabc...def
           streamAnkyReflection(data.anky_id);
         } else {
           ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
           setTimeout(function() { showQuickChatInput(); }, 1500);
         }
       })
@@ -355,7 +370,7 @@ x-payment: 0xabc...def
     inputArea.id = 'chat-input-area';
     inputArea.className = 'chat-input-area';
     inputArea.innerHTML =
-      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1"></textarea>' +
+      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
       '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
     var writingMain = document.querySelector('.writing-main');
     writingMain.appendChild(inputArea);
@@ -400,7 +415,7 @@ x-payment: 0xabc...def
     };
 
     input.focus();
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   }
 
   function showChatInput() {
@@ -430,7 +445,7 @@ x-payment: 0xabc...def
           thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
           sendBtn.disabled = !input.value.trim();
           input.focus();
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         })
         .catch(function() {
           thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
@@ -475,7 +490,7 @@ x-payment: 0xabc...def
         ankyBubble.innerHTML =
           '<span class="anky-response-text">' + escapeHtml(fullText) + '</span>';
       }
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     }
 
     var source = new EventSource('/api/stream-reflection/' + ankyId);
@@ -509,6 +524,14 @@ x-payment: 0xabc...def
     };
   }
 
+  function makeInlineShareHtml(ankyId) {
+    var url = window.location.origin + '/anky/' + ankyId;
+    return '<div class="anky-inline-share">' +
+      '<button class="anky-inline-share-btn" onclick="if(navigator.share){navigator.share({title:\'my anky\',url:\'' + url + '\'}).catch(function(){})}else{navigator.clipboard.writeText(\'' + url + '\').then(function(){this.textContent=\'copied!\';var b=this;setTimeout(function(){b.textContent=\'share\'},2000)}.bind(this))}">share</button>' +
+      '<button class="anky-inline-share-btn anky-inline-share-dim" onclick="navigator.clipboard.writeText(\'' + url + '\').then(function(){this.textContent=\'copied!\';var b=this;setTimeout(function(){b.textContent=\'copy link\'},2000)}.bind(this))">copy link</button>' +
+      '</div>';
+  }
+
   function pollAnkyImage(ankyId) {
     var pollCount = 0;
     var interval = setInterval(function() {
@@ -519,19 +542,13 @@ x-payment: 0xabc...def
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
             clearInterval(interval);
-            var shareHtml = '<div class="anky-share-link" onclick="window.ankyShareCard.open({imageUrl:this.parentNode.querySelector(\'img\').src,title:lastStreamedTitle,reflection:lastStreamedReflection,ankyId:\'' + ankyId + '\'})"><span>share</span></div>';
+            var shareHtml = makeInlineShareHtml(ankyId);
             if (imgEl) {
               imgEl.innerHTML = '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml;
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
             showChatInput();
-            window.ankyShareCard.open({
-              imageUrl: data.image_url,
-              title: lastStreamedTitle || data.title || '',
-              reflection: lastStreamedReflection || data.reflection || '',
-              ankyId: ankyId
-            });
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed. it will be retried.</span>';
@@ -560,24 +577,18 @@ x-payment: 0xabc...def
             if (data.title) {
               ankyBubble.innerHTML = '<div class="anky-chat-title">' + escapeHtml(data.title) + '</div>' + ankyBubble.innerHTML;
             }
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
           }
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
             clearInterval(interval);
-            var shareHtml = '<div class="anky-share-link" onclick="window.ankyShareCard.open({imageUrl:this.parentNode.querySelector(\'img\').src,title:lastStreamedTitle,reflection:lastStreamedReflection,ankyId:\'' + ankyId + '\'})"><span>share</span></div>';
+            var shareHtml = makeInlineShareHtml(ankyId);
             if (imgEl) {
               imgEl.innerHTML = '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml;
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
             showChatInput();
-            window.ankyShareCard.open({
-              imageUrl: data.image_url,
-              title: lastStreamedTitle || data.title || '',
-              reflection: lastStreamedReflection || data.reflection || '',
-              ankyId: ankyId
-            });
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed. it will be retried.</span>';
@@ -616,7 +627,7 @@ x-payment: 0xabc...def
           thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
           sendBtn.disabled = !input.value.trim();
           input.focus();
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         })
         .catch(function() {
           thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
@@ -651,6 +662,8 @@ x-payment: 0xabc...def
     // Reset session bar
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
+    var accomplishedText = document.getElementById('anky-accomplished-text');
+    if (accomplishedText) accomplishedText.remove();
 
     // Switch to chat mode — show navbar, hide landing
     document.body.classList.remove('writing-active');
@@ -661,20 +674,8 @@ x-payment: 0xabc...def
     chatContainer.style.display = 'flex';
     chatContainer.innerHTML = '';
 
-    // User bubble — collapsible if long
-    if (text.length > 500) {
-      var preview = escapeHtml(text.substring(0, 300)) + '...';
-      var full = escapeHtml(text);
-      var bubble = addChatBubble('user',
-        '<div class="writing-collapsed">' +
-          '<span class="writing-preview-text">' + preview + '</span>' +
-          '<button class="writing-toggle" onclick="var p=this.parentNode;var s=p.querySelector(\'.writing-preview-text\');var f=p.querySelector(\'.writing-full-text\');if(f.style.display===\'none\'){f.style.display=\'inline\';s.style.display=\'none\';this.textContent=\'collapse\';}else{f.style.display=\'none\';s.style.display=\'inline\';this.textContent=\'show full writing\';}">show full writing</button>' +
-          '<span class="writing-full-text" style="display:none;">' + full + '</span>' +
-        '</div>'
-      );
-    } else {
-      addChatBubble('user', escapeHtml(text));
-    }
+    // User bubble — always show full writing
+    addChatBubble('user', escapeHtml(text));
 
     // Anky response bubble
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
@@ -707,7 +708,7 @@ x-payment: 0xabc...def
         } else {
           // Not an anky — show Ollama response, enable chat
           ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
           setTimeout(function() {
             showQuickChatInput();
           }, 1500);
@@ -739,15 +740,19 @@ x-payment: 0xabc...def
     lifeBar.style.width = '100%';
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
+    var accomplishedText = document.getElementById('anky-accomplished-text');
+    if (accomplishedText) accomplishedText.remove();
 
     textarea.value = '';
     textarea.disabled = false;
+    textarea.classList.remove('writing-engaged');
     textarea.focus();
     blockedCount = 0;
     statWords.textContent = '0 words';
     statTime.textContent = '';
     statTime.className = 'stat-dim';
     sessionId = null;
+    sessionToken = null;
   }
 
   // --- Input handling ---
@@ -775,11 +780,18 @@ x-payment: 0xabc...def
     if (blocked.indexOf(e.key) !== -1) {
       e.preventDefault();
       blockedCount++;
+      // Visual flash on blocked key
+      textarea.classList.remove('blocked-flash');
+      void textarea.offsetWidth; // force reflow
+      textarea.classList.add('blocked-flash');
       return;
     }
     if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {
       e.preventDefault();
       blockedCount++;
+      textarea.classList.remove('blocked-flash');
+      void textarea.offsetWidth;
+      textarea.classList.add('blocked-flash');
     }
   });
 
@@ -789,6 +801,8 @@ x-payment: 0xabc...def
   textarea.addEventListener('drop', blockAndCount);
 
   document.addEventListener('click', function(e) {
+    var isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+    if (isMobile) return;
     if (!chatContainer.contains(e.target) && textarea.style.display !== 'none') textarea.focus();
   });
 })();
@@ -798,13 +812,17 @@ x-payment: 0xabc...def
   function updateVH() {
     if (window.visualViewport) {
       document.documentElement.style.setProperty('--vh', window.visualViewport.height + 'px');
+      return;
     }
+    document.documentElement.style.setProperty('--vh', window.innerHeight + 'px');
   }
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateVH);
     window.visualViewport.addEventListener('scroll', updateVH);
-    updateVH();
   }
+  window.addEventListener('resize', updateVH);
+  window.addEventListener('orientationchange', updateVH);
+  updateVH();
 })();
 
 // --- GO LIVE streaming (navbar button + countdown) ---
@@ -820,6 +838,11 @@ window.ankyLive = (function() {
 
   function updateBtn() {
     if (!navBtn) return;
+    var walletConnected = window.ankyWallet && window.ankyWallet.isLoggedIn && window.ankyWallet.isLoggedIn();
+    if (!walletConnected) {
+      navBtn.style.display = 'none';
+      return;
+    }
     if (liveActive) {
       navBtn.textContent = 'LIVE';
       navBtn.className = 'go-live-navbar-btn live-active';
@@ -915,6 +938,7 @@ window.ankyLive = (function() {
   function goLive() {
     if (!window.ankyWallet || !window.ankyWallet.isLoggedIn()) {
       alert('you need to be logged in to go live — connect your wallet first');
+      updateBtn();
       return;
     }
 
@@ -961,6 +985,11 @@ window.ankyLive = (function() {
 
   // Start SSE subscription
   subscribeStatus();
+  window.addEventListener('anky:wallet-changed', updateBtn);
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'wallet_address') updateBtn();
+  });
+  updateBtn();
 
   return { toggle: function() { if (liveActive) disconnect(); else goLive(); }, sendText: sendText, isLive: isLive, disconnect: disconnect, setSessionActive: setSessionActive };
 })();
@@ -978,6 +1007,23 @@ window.ankyLive = (function() {
     });
   }, { threshold: 0.15 });
   sections.forEach(function(s) { observer.observe(s); });
+})();
+
+// Arrow key page scrolling in chat mode
+(function() {
+  document.addEventListener('keydown', function(e) {
+    if (!document.body.classList.contains('chat-active')) return;
+    // Don't intercept if user is typing in an input
+    var tag = e.target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      window.scrollBy({ top: 120, behavior: 'smooth' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      window.scrollBy({ top: -120, behavior: 'smooth' });
+    }
+  });
 })();
 </script>
 {% endblock %}

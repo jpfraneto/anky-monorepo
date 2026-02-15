@@ -301,7 +301,7 @@ async fn run_bot_cycle(state: &state::AppState) -> anyhow::Result<()> {
         {
             let db = state.db.lock().await;
             db::queries::ensure_user(&db, author_id)?;
-            db::queries::insert_prompt(&db, &prompt_id, author_id, &prompt_text, None)?;
+            db::queries::insert_prompt(&db, &prompt_id, author_id, &prompt_text, None, Some("Anky"))?;
             db::queries::update_prompt_status(&db, &prompt_id, "generating")?;
             db::queries::update_x_interaction_status(
                 &db,
