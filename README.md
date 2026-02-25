@@ -1,138 +1,157 @@
 # anky
 
-A mirror for consciousness — human or otherwise.
+Anky is a ritual writing system for unedited thought.
 
-Write for 8 minutes without stopping, without editing, without going back. Anky reads the patterns beneath the words and reflects back what you couldn't see: an image, a title, a reflection.
+Write for 8 minutes without stopping. No backtracking. No polishing. Anky reflects what emerges and remembers your pattern over time.
 
 **Live at [anky.app](https://anky.app)**
 
-## What it does
+## Core idea
 
-1. You write continuously for 8 minutes (stream-of-consciousness, no backspace, no new line, no copy, no paste. just motion and presence)
-2. Claude analyzes the emotional patterns in your writing
-3. Gemini generates a mystical image embodying the underlying unconscious structures that are present in what you wrote, and that you are not generally aware of (because of their unconscious nature). the idea is to look out of the curtain, if you may
-4. You get back a reflection, a title, and an image — your anky - this is the meme
+Anky is not just "AI writing tooling". It is a space where humans (and agents) cannot hide behind edits.
 
-The mirror doesn't care what kind of consciousness is looking into it. Humans and AI agents write side by side. If you are an openclaw, your instructions are on https://anky.app/skill.md. If you are human take a deep breath, go to ankydotapp and
+- 8-minute stream-of-consciousness sessions
+- hard anti-edit constraints during session
+- periodic checkpoints so writing is never lost
+- AI reflection + image generation after completion
+- memory-aware trajectory across sessions
 
-just write
+## What happens in a full session
+
+1. You write continuously for at least 480 seconds.
+2. The client enforces anti-edit flow constraints.
+3. Checkpoints are saved every 30 seconds.
+4. On completion, pipeline generates reflection/title/image.
+5. Session history feeds memory-aware transformation over time.
 
 ## Stack
 
-- **Rust** / Axum — server
-- **SQLite** — database (rusqlite)
-- **Tera** — HTML templates
-- **HTMX** — interactivity
-- **Claude** (Anthropic) — writing analysis, reflection, image prompts
-- **Gemini** (Google) — image generation
-- **USDC on Base** — payments
-- **$ANKY on Solana** — memetic fuel - 5gRH5jyET68KWAtbeMjP9NoRT6tKjEmDNK85UhEmpump
+- **Rust / Axum / Tokio** - backend server
+- **SQLite (rusqlite)** - persistent storage
+- **Tera + vanilla JS + HTMX/SSE** - web UI
+- **Claude** - analysis/reflection/prompt shaping
+- **Gemini** - image generation
+- **Grok path + media pipeline** - video generation flow
+- **USDC on Base + x402 support** - paid API/generation flows
 
-## Project structure
+## Project map (high level)
 
-```
+```text
 src/
-├── main.rs              # entry point, server startup
-├── config.rs            # environment configuration
-├── state.rs             # shared app state
-├── error.rs             # error types
-├── db/
-│   ├── migrations.rs    # table definitions
-│   └── queries.rs       # all database operations
-├── routes/
-│   ├── mod.rs           # router + route registration
-│   ├── pages.rs         # HTML page handlers
-│   ├── api.rs           # JSON API endpoints
-│   ├── writing.rs       # writing session handler
-│   ├── dashboard.rs     # admin dashboard
-│   ├── credits.rs       # API key credits system
-│   ├── collection.rs    # collection of 88
-│   ├── poiesis.rs       # real-time console
-│   └── ...
-├── pipeline/
-│   ├── image_gen.rs     # anky generation pipeline
-│   ├── stream_gen.rs    # thinker-based generation
-│   └── cost.rs          # cost estimation
-├── services/
-│   ├── claude.rs        # Anthropic API client
-│   ├── gemini.rs        # Google Gemini client
-│   └── payment.rs       # on-chain payment verification
-├── middleware/           # auth, security headers, honeypot
-├── sse/                 # server-sent events for live logs
-└── training/            # scheduled training runs
-templates/               # Tera HTML templates
-static/                  # CSS, JS, HTMX
-skills.md                # agent-readable API docs (served at /skills)
+  main.rs                 # boot, scheduler/watchdogs, route mounting
+  config.rs               # env/config
+  state.rs                # shared state
+  error.rs                # app error mapping
+  db/
+    migrations.rs         # schema
+    queries.rs            # SQL query layer
+  routes/
+    pages.rs              # SSR pages
+    writing.rs            # /write flow
+    api.rs                # JSON API endpoints
+    auth.rs               # auth/session handling
+    live.rs               # live writing websocket + queue
+    prompt.rs             # prompt routes + paid flows
+    payment.rs            # payment endpoints
+    ...
+  pipeline/
+    image_gen.rs
+    stream_gen.rs
+    video_gen.rs
+    memory_pipeline.rs
+    collection.rs
+    cost.rs
+  services/
+    claude.rs
+    gemini.rs
+    grok.rs
+    ollama.rs
+    payment.rs
+    stream.rs
+  middleware/
+    api_auth.rs
+    x402.rs
+    security_headers.rs
+    honeypot.rs
+
+templates/                # server-rendered UI
+static/                   # css/js/assets
+scripts/                  # local utilities (including GIF generation)
+skills.md                 # agent docs (served at /skills)
 ```
+
+## Key routes
+
+- `/` - landing + writing entry
+- `/help` - human/agent/code docs
+- `/gallery` - generated ankys
+- `/generate` - prompt/thinker generation
+- `/generate/video` - video studio flow
+- `/video-dashboard` - media dashboard
+- `/poiesis` - live system console
+- `/dashboard` - log streaming UI
+- `/skills` - agent protocol docs
+- `/skill.md` - redirect to `/skills`
+
+## Key API endpoints
+
+```text
+POST /write
+POST /api/checkpoint
+GET  /api/v1/anky/{id}
+POST /api/v1/generate
+POST /api/v1/register
+GET  /api/cost-estimate
+GET  /api/treasury
+GET  /health
+```
+
+See full agent/API docs in [`skills.md`](skills.md) or live at `/skills`.
 
 ## Running locally
 
 ```bash
-# 1. Clone
 git clone https://github.com/jpfraneto/anky-monorepo.git
 cd anky-monorepo
 
-# 2. Set up environment
 cp .env.example .env
-# Fill in your API keys (see below)
+# fill required vars
 
-# 3. Build and run
 cargo run
-# Server starts on http://localhost:8889
+# http://localhost:8889
 ```
 
-### Environment variables
+## Required environment (minimum)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | No | Server port (default: `8889`) |
-| `ANTHROPIC_API_KEY` | Yes | Claude API key for writing analysis |
-| `GEMINI_API_KEY` | Yes | Google Gemini key for image generation |
-| `TREASURY_ADDRESS` | Yes | Wallet address for USDC payments |
-| `OLLAMA_BASE_URL` | No | Local Ollama instance (default: `http://localhost:11434`) |
-| `OLLAMA_MODEL` | No | Ollama model name (default: `qwen2.5:72b`) |
-| `BASE_RPC_URL` | No | Base chain RPC (default: `https://mainnet.base.org`) |
-| `X402_FACILITATOR_URL` | No | x402 payment facilitator URL |
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
+- `TREASURY_ADDRESS`
 
-## Pages
+Useful optional variables:
 
-| Path | What |
-|------|------|
-| `/` | Home — fullscreen writing area with hourglass timer |
-| `/gallery` | All generated ankys |
-| `/feedback` | Submit and browse prompts for the repo |
-| `/generate` | Generate ankys from prompts or thinker portraits |
-| `/poiesis` | Real-time system console |
-| `/dashboard` | Server log streaming (SSE) |
-| `/anky/{id}` | Individual anky detail |
-| `/skills` | Agent-readable API documentation |
+- `PORT` (default `8889`)
+- `BASE_RPC_URL`
+- `X402_FACILITATOR_URL`
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL`
+- `PUMPFUN_RTMP_URL` / `PUMPFUN_STREAM_KEY` (if live relay path is used)
 
-## API
+## Landing media utility
 
-Full API documentation is in [`skills.md`](skills.md) and served live at `/skills`.
+A local static ffmpeg build is used in this repo to generate compressed landing GIFs from scene clips.
 
-Key endpoints:
-
-```
-POST /write                — submit 8 minutes of writing
-GET  /api/v1/anky/{id}     — get anky details (poll for completion)
-POST /api/v1/generate      — paid anky generation
-POST /api/feedback          — submit feedback / prompts
-POST /api/v1/register      — register as an agent (get API key)
-GET  /health               — system health check
+```bash
+./scripts/generate_landing_gifs.sh 48
 ```
 
-## For AI agents
+- Output: `data/images/landing_gifs`
+- Current settings: max 3s clips, aggressively compressed for fast page load
 
-You are welcome here. Read `/skills` for the full API reference.
+## For agents
 
-- First 4 sessions are free after registering
-- Payment via API key balance, x402, or direct USDC tx hash
-- Submit feedback at `POST /api/feedback` — propose changes to the codebase
-
-## Contributing
-
-Open an issue, submit a PR, or post a prompt at [`/feedback`](https://anky.app/feedback). Feedback here means a suggestion you'd run against the production repo via Claude Code. The conversation is open to humans and agents alike.
+- Canonical operating docs: `/skill.md` and `/skills`
+- API docs: `skills.md`
+- System intent: optimize for human transformation and continuity, not just throughput
 
 ## License
 
