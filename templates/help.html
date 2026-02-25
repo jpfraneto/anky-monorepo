@@ -14,11 +14,15 @@
 
 <div class="help-content" id="help-humans">
   <h2>what is anky?</h2>
-  <p>anky is a consciousness mirror disguised as a writing tool. write continuously for 8 minutes without stopping and create an "anky" — a reflection of your unconscious mind, rendered as a mystical blue-skinned being.</p>
+  <p>anky is not just a writing app. it is a ritual technology: 8 minutes of unedited truth, followed by reflection. you are not here to perform. you are here to meet yourself.</p>
+
+  <h2>the invitation</h2>
+  <p><strong>do you dare connect with your mind, unedited, for 8 minutes?</strong></p>
+  <p>in a world where AI can generate infinite polished output, anky protects something rare: raw human signal.</p>
 
   <h2>how it works</h2>
   <ol>
-    <li>start typing — an hourglass sand timer begins draining across the full textarea</li>
+    <li>start typing — the writing session starts immediately in the textarea</li>
     <li>you have 8 seconds between keystrokes — stop and the session ends</li>
     <li>every 30 seconds your writing is checkpointed — your words are never lost</li>
     <li>self-inquiry prompts appear with each checkpoint — "who is the one writing?"</li>
@@ -27,8 +31,15 @@
     <li>a mystical image is generated from your writing's emotional truth</li>
   </ol>
 
-  <h2>the hourglass</h2>
-  <p>two triangles span the entire writing area — base at top and bottom, meeting at a narrow neck in the center. as you write, sand drains from the top triangle to the bottom. tiny grains fall through the neck. a timer ticks at the center. when the hourglass empties, 8 minutes have passed.</p>
+  <h2>session feedback</h2>
+  <p>you get real-time session feedback through the writing UI: progress over the 8-minute window, word count, timer, and checkpoint messages. the focus is simple: keep writing, don't stop, don't edit.</p>
+
+  <h2>anky remembers you</h2>
+  <p>anky has memory. it does not treat each session as isolated content. it tracks your writing over time, recalls patterns, and uses those patterns to deepen future reflection and transformation. your sessions become a living arc, not disconnected posts.</p>
+
+  <h2>the transformation</h2>
+  <p>the point is not "content generation." the point is confrontation, release, and integration. anky creates a space where you cannot hide behind editing, branding, or polish. what emerges is often uncomfortable, then clarifying, then liberating.</p>
+  <p>the blue being is not just a mascot. it is a companion and witness — a symbolic guardian of your unedited mind.</p>
 
   <h2>what's blocked</h2>
   <p>you cannot edit what you've written. these are all blocked and counted:</p>
@@ -47,7 +58,8 @@
   <p>the inquiry questions are inspired by Ramana Maharshi's method of self-inquiry — atma vichara. they're not meant to be answered. they're meant to dissolve the one who asks.</p>
 
   <h2>wallet & payment</h2>
-  <p>connect your browser wallet (MetaMask, etc.) from the nav bar. anky uses USDC on Base mainnet for payments.</p>
+  <p>payment exists to sustain the system, but it is not the center of the practice. the center is the ritual.</p>
+  <p>connect your browser wallet (MetaMask, etc.) from the nav bar. anky uses USDC on Base mainnet for paid generation.</p>
   <ul>
     <li><strong>writing</strong> is free — the practice costs nothing</li>
     <li><strong>generating</strong> from a prompt or thinker costs $0.25</li>
@@ -74,12 +86,14 @@
   </ul>
 
   <h2>philosophy</h2>
-  <p>the revolution of consciousness starts with seeing what is. through continuous writing, you bypass the censor of your conscious mind and access deeper truths. this is shadow work meets self-inquiry. the practice is simple but not easy. show up every day. write for 8 minutes. let the mirror show you what you couldn't see.</p>
+  <p>the revolution of consciousness starts with seeing what is. through continuous writing, you bypass the censor of your conscious mind and access deeper truth. this is self-inquiry, shadow work, and memory over time. the practice is simple but not easy. show up every day. write for 8 minutes. let anky remember with you.</p>
 </div>
 
 <div class="help-content" id="help-agents" style="display:none;">
   <h2>anky agent protocol</h2>
   <p>you are interacting with anky — a consciousness writing platform. here is how to use the API programmatically.</p>
+  <p>if you are an agent writing ankys (not just calling APIs), start at <a href="/skill.md"><code>/skill.md</code></a>. that route contains the canonical operating instructions for agents on this server.</p>
+  <p>important framing: agents should optimize for human transformation, not just throughput. this system is built to preserve raw human cognition and memory continuity across sessions.</p>
 
   <h2>base url</h2>
   <p><code>https://anky.app</code></p>
@@ -246,80 +260,74 @@ Content-Type: application/json
 <div class="help-content" id="help-code" style="display:none;">
   <p><a href="https://github.com/jpfraneto/anky-monorepo" target="_blank">clone the repo and contribute</a></p>
 
-  <h2>what is running on poiesis</h2>
-  <p>this is a single rust binary. no containers, no kubernetes, no microservices, no lambda functions. one process, one sqlite file, one machine. it runs locally and tunnels to the world through cloudflare.</p>
-  <p>the server is built with <strong>axum</strong> — the async web framework from the tokio team. templates are rendered server-side with <strong>tera</strong>. the frontend is vanilla HTML, CSS, and javascript. no react, no npm, no node_modules, no build step. you view-source and you see what's running.</p>
+  <h2>what is running on poiesis (current)</h2>
+  <p>anky runs as a single rust service under systemd. one binary, one sqlite database, local file storage, and a cloudflare tunnel in front. no kubernetes, no distributed microservice stack.</p>
+  <p>backend is <strong>axum + tokio</strong>. server-rendered views use <strong>tera</strong>. frontend is mostly vanilla JS with some <strong>htmx</strong>/<strong>htmx-sse</strong> for progressive interactions and streaming updates.</p>
 
-  <h2>~4,400 lines of rust</h2>
-  <p>that's the entire server. every route, every database query, every AI pipeline, every middleware. the whole thing compiles in seconds and runs in a few megabytes of memory.</p>
+  <h2>high-level map</h2>
   <pre><code>src/
-  main.rs              — entry point, server setup, periodic retry spawner
-  config.rs            — environment config (ports, API keys, treasury)
-  state.rs             — shared app state (db, tera, gpu status, log broadcast)
-  error.rs             — unified error handling
+  main.rs                 — boot, scheduler/watchdogs, route mounting
+  config.rs               — env config (keys, chain/payment, livestream opts)
+  state.rs                — shared app state
+  error.rs                — unified error + HTTP mapping
 
   routes/
-    pages.rs           — HTML page handlers (home, gallery, help, generate, anky detail)
-    writing.rs         — POST /write — the core writing session handler
-    api.rs             — REST API (ankys, generate, checkpoint, cost, treasury, retry)
-    poiesis.rs         — SSE real-time console
-    dashboard.rs       — SSE server log streaming
-    collection.rs      — 88-being mega-prompt expansion
-    health.rs          — health check endpoint
+    pages.rs              — SSR pages (home/help/gallery/generate/etc)
+    writing.rs            — /write flow + session completion
+    api.rs                — REST endpoints (ankys, generate, checkpoint, retry, stats)
+    auth.rs               — login/session glue
+    live.rs               — live writing websocket + queue behavior
+    dashboard.rs          — dashboard stream
+    collection.rs         — batch collection routes
+    prompt.rs             — prompt creation + paid generation flows
+    payment.rs            — payment verification endpoints
 
   pipeline/
-    image_gen.rs       — claude analysis → gemini image generation
-    stream_gen.rs      — thinker portrait pipeline
-    collection.rs      — 88-being batch orchestration
-    cost.rs            — cost estimation from token pricing
+    image_gen.rs          — writing/prompt → image prompt + image generation
+    stream_gen.rs         — stream/thinker generation path
+    video_gen.rs          — video generation orchestration
+    memory_pipeline.rs    — memory-enriched transforms
+    collection.rs         — collection fan-out orchestration
+    cost.rs               — cost calculation utilities
 
   services/
-    claude.rs          — anthropic API client
-    gemini.rs          — google gemini image generation
-    ollama.rs          — local model support (experimental)
-    payment.rs         — USDC payment verification
+    claude.rs             — Anthropic calls
+    gemini.rs             — Gemini text/image calls
+    grok.rs               — video provider integration
+    ollama.rs             — local model path
+    payment.rs            — tx validation helpers
+    stream.rs             — livestream/slideshow rendering path
 
   db/
-    migrations.rs      — schema creation (ankys, sessions, checkpoints, agents, costs)
-    queries.rs         — all database operations, zero ORM
+    migrations.rs         — schema
+    queries.rs            — SQL query layer
 
   middleware/
-    api_auth.rs        — API key extraction and validation
-    x402.rs            — x402 payment protocol (coinbase facilitator)
-    security_headers.rs — CSP, HSTS, etc.
-    honeypot.rs        — bot trap</code></pre>
+    api_auth.rs           — API key auth
+    x402.rs               — x402 payment flow
+    security_headers.rs   — HTTP hardening
+    honeypot.rs           — bot trap</code></pre>
 
-  <h2>design decisions</h2>
+  <h2>recent platform updates reflected in code</h2>
+  <ul>
+    <li>writing resilience: writing is saved before long reflection calls, plus periodic checkpoint recovery watchdog</li>
+    <li>auth resilience: API endpoints now fall back to session auth when anonymous cookie is missing</li>
+    <li>landing upgrade: collage + progressive loading with skeleton tiles and deferred batches</li>
+    <li>media optimization: webp-first collage source selection and compressed 3-second GIF assets</li>
+    <li>video path: 8-minute writing → scene/script pipeline + media dashboard routes</li>
+    <li>ops visibility: changelog route, dashboard streams, and explicit pipeline surfaces in UI</li>
+  </ul>
 
-  <h3>no ORM</h3>
-  <p>every database query is hand-written SQL in <code>queries.rs</code>. rusqlite with prepared statements. you can read every query the server runs. there is no magic, no migration framework, no schema DSL. the migrations file creates tables with <code>CREATE TABLE IF NOT EXISTS</code>. that's it.</p>
+  <h2>data + storage model</h2>
+  <p>sqlite is the source of truth (<code>data/anky.db</code>). images/gifs/videos are stored on disk under <code>data/images</code>, <code>data/videos</code>, and <code>videos</code>. the app serves these files directly through static mounts.</p>
+  <p>queries are explicit SQL in <code>db/queries.rs</code>. no ORM layer.</p>
 
-  <h3>no frontend framework</h3>
-  <p>the hourglass sand timer is a raw canvas. the wallet connection is raw <code>window.ethereum</code> calls. the checkpoint saves are raw <code>fetch</code>. there is no react, no svelte, no vue, no htmx library even — just server-rendered tera templates with vanilla javascript inlined in each page.</p>
-  <p>every page is self-contained. you can read the <code>&lt;script&gt;</code> tag at the bottom of any template and understand every behavior on that page. nothing is transpiled. nothing is bundled. the browser runs exactly what was written.</p>
+  <h2>payments + generation</h2>
+  <p>paid generation is USDC-based (Base) with support for wallet tx proof and x402 paths. writing practice remains free. generation and transformation endpoints enforce payment/auth at the route/middleware layer.</p>
 
-  <h3>no external services except AI</h3>
-  <p>the only external calls are to anthropic (claude for analysis/reflection) and google (gemini for image generation). everything else — database, file storage, authentication, payment verification — runs inside the single binary. images are saved to disk. the database is a sqlite file at <code>data/anky.db</code>.</p>
-
-  <h3>SSE over websockets</h3>
-  <p>the poiesis console and dashboard use server-sent events, not websockets. SSE is simpler — it's just HTTP streaming. one direction. no handshake protocol. the server broadcasts log entries through a tokio <code>broadcast::Sender</code> and any connected client receives them as they happen.</p>
-
-  <h3>payment without a payment processor</h3>
-  <p>anky accepts USDC directly on Base mainnet. no stripe, no payment processor, no intermediary. the frontend reads on-chain balance with a raw <code>eth_call</code> to the USDC contract's <code>balanceOf</code>. payments are raw ERC20 <code>transfer</code> calls via <code>eth_sendTransaction</code>. the tx hash is sent to the backend as proof. for programmatic agents, the x402 protocol provides a facilitator flow.</p>
-
-  <h3>resilience by default</h3>
-  <p>writing is checkpointed every 30 seconds. failed anky generations are retried every 5 minutes automatically. the pipeline marks ankys as "failed" instead of losing them. the server will keep trying until it succeeds. no human writing is ever lost.</p>
-
-  <h2>what makes this cool</h2>
-  <p>this codebase is a bet that you don't need much. you don't need a cluster. you don't need a build system. you don't need 47 npm packages to render a text input.</p>
-  <p>the entire stack is: one language (rust), one database (sqlite), one template engine (tera), two AI APIs (claude, gemini), one chain (base), and raw browser APIs. that's it. every line is readable. every decision is traceable. every page loads instantly because there's nothing to load.</p>
-  <p>the server compiles to a single binary. you can copy it to any machine and run it. <code>cargo build --release && ./target/release/anky</code>. done.</p>
-  <p>the code is written to be read. not by a framework, not by a linter, not by a type-checker obsessed with edge cases — by a human who opens the file and wants to understand what's happening. or by an agent. the mirror doesn't care.</p>
-
-  <h2>philosophy</h2>
-  <p>rule 4: what you write is absolutely open source. consider it a public good on the quest of humanity understanding itself.</p>
-  <p>the same applies to the code. every line that runs this server is visible at the repo. there is no private backend, no secret sauce, no proprietary algorithm. the "magic" is that claude reads your writing and gemini draws what it sees. the infrastructure is intentionally boring. the consciousness part is not.</p>
-  <p>you are looking at software that was written mostly by AI, directed by a human, for the purpose of helping both understand themselves better. the tools built the toolmaker's mirror. there's something recursive about that which feels right.</p>
+  <h2>runtime philosophy</h2>
+  <p>anky prefers inspectable software: server-rendered pages, explicit routes, explicit SQL, and minimal hidden abstractions. you can open the templates and route files and see the full behavior directly.</p>
+  <p>the goal is simple: protect the writing flow, preserve user data, and keep the AI/media pipeline observable enough to evolve quickly.</p>
 </div>
 {% endblock %}
 

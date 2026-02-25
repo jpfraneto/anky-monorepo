@@ -2,42 +2,56 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>{% block title %}anky{% endblock %}</title>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/htmx-sse.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20260214g">
+  <link rel="stylesheet" href="/static/style.css?v=20260222a">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="anky">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="fc:miniapp" content='{"version":"1","imageUrl":"https://anky.app/api/v1/og-embed","button":{"title":"write with anky","action":{"type":"launch_frame","url":"https://anky.app","name":"anky","splashImageUrl":"https://anky.app/static/splash.png","splashBackgroundColor":"#0a0a0a"}}}' />
   {% block head %}{% endblock %}
 </head>
 <body>
   <nav class="navbar">
-    <a href="/" class="logo">anky</a>
     <button class="nav-hamburger" id="nav-hamburger" aria-label="menu">&#9776;</button>
-    <div class="nav-links" id="nav-links">
-      <a href="/gallery">gallery</a>
-      <a href="/writings">writings</a>
-      <div class="nav-dropdown">
-        <a href="/generate" class="nav-dropdown-trigger">generate</a>
-        <div class="nav-dropdown-menu">
-          <a href="/generate">anky from prompt</a>
-          <a href="/generate/video">video production</a>
-        </div>
+    <a href="/" class="logo">anky</a>
+    <div class="nav-right">
+      <div class="nav-auth" id="nav-auth">
+        <button class="wallet-btn" id="wallet-btn" onclick="window.ankyAuth.login()">login</button>
       </div>
-      <a href="/prompt/create">prompts</a>
-      <a href="/feedback">feedback</a>
-      <a href="/changelog">changelog</a>
-      <a href="/settings">settings</a>
-      <a href="/help">help</a>
-      <a href="/ankycoin">$ANKY</a>
-    </div>
-    <div class="nav-auth" id="nav-auth">
-      <button class="go-live-navbar-btn" id="go-live-navbar-btn" style="display:none;">GO LIVE</button>
-      <button class="wallet-btn" id="wallet-btn" onclick="window.ankyWallet.connect()">connect</button>
+      <a class="anky-tv-btn" href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">BUY $ANKY</a>
     </div>
   </nav>
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <a href="/" class="drawer-logo">anky</a>
+      <button class="drawer-close" id="drawer-close">&times;</button>
+    </div>
+    <div class="drawer-links">
+      <a href="/">home</a>
+      <a href="/gallery">gallery</a>
+      <a href="/writings">writings</a>
+      <a href="/generate">generate</a>
+      <a href="/generate/video">video production</a>
+      <a href="/video-dashboard">media dashboard</a>
+      <a href="/prompt/create">prompts</a>
+      <a href="/leaderboard">leaderboard</a>
+      <a href="/feedback">feedback</a>
+      <a href="/changelog">changelog</a>
+      <a href="/ankycoin">$ANKY</a>
+      <a href="/settings">settings</a>
+      <a href="/help">help</a>
+    </div>
+  </div>
   <div class="share-card-overlay" id="share-card-overlay">
     <button class="share-card-close" id="share-card-close">&times;</button>
     <div class="share-card">
@@ -54,124 +68,121 @@
     </div>
   </div>
   {% block content %}{% endblock %}
-  <script>
-  // --- Wallet ---
-  window.ankyWallet = (function() {
-    var btn = document.getElementById('wallet-btn');
-    var BASE_CHAIN = '0x2105'; // 8453
-    var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
-    function shortAddr(a) {
-      return a.slice(0, 6) + '...' + a.slice(-4);
-    }
+  <!-- Bottom Live Bar -->
+  <div class="bottom-live-bar" id="bottom-live-bar" style="display:none;">
+    <a class="bottom-live-watch-btn" id="bottom-live-watch" href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">
+      <span class="live-dot"></span>
+      WATCH LIVE
+    </a>
+    <span class="bottom-live-info" id="bottom-live-info"></span>
+    <span class="bottom-live-timer" id="bottom-live-timer"></span>
+    <div class="bottom-live-progress-wrap">
+      <div class="bottom-live-progress" id="bottom-live-progress"></div>
+    </div>
+    <button class="bottom-live-queue-btn" id="bottom-live-queue-btn" style="display:none;">enter waiting room</button>
+  </div>
+  <script>
+  // --- Auth ---
+  window.ankyAuth = (function() {
+    var btn = document.getElementById('wallet-btn');
 
     function updateBtn() {
-      var addr = localStorage.getItem('wallet_address');
-      var isConnected = !!addr;
-      if (addr) {
-        btn.textContent = shortAddr(addr);
+      var loggedIn = localStorage.getItem('anky_logged_in');
+      var uname = localStorage.getItem('anky_username');
+      var email = localStorage.getItem('anky_email');
+      if (loggedIn) {
+        btn.textContent = uname ? ('@' + uname) : (email || 'logged in');
         btn.classList.add('connected');
-        btn.onclick = disconnect;
+        btn.onclick = function() { window.location.href = '/settings'; };
       } else {
-        btn.textContent = 'connect';
+        btn.textContent = 'login';
         btn.classList.remove('connected');
-        btn.onclick = connect;
+        btn.onclick = login;
       }
-      window.dispatchEvent(new CustomEvent('anky:wallet-changed', {
-        detail: { connected: isConnected, wallet: addr || null }
+      window.dispatchEvent(new CustomEvent('anky:auth-changed', {
+        detail: { connected: !!loggedIn }
       }));
     }
 
     function isLoggedIn() {
-      return !!localStorage.getItem('wallet_address');
+      return !!localStorage.getItem('anky_logged_in');
     }
 
-    function connect() {
-      // Navigate to the Privy login page
+    function login() {
       window.location.href = '/login';
     }
 
-    function disconnect() {
+    function logout() {
+      localStorage.removeItem('anky_logged_in');
+      localStorage.removeItem('anky_username');
+      localStorage.removeItem('anky_email');
       localStorage.removeItem('wallet_address');
       fetch('/auth/privy/logout', { method: 'POST' }).catch(function(){});
       updateBtn();
     }
 
-    // Send USDC on Base. Returns tx hash.
+    // Send USDC on Base (for payment flows only). Returns tx hash.
     async function sendUSDC(toAddress, amountUSD) {
       var from = localStorage.getItem('wallet_address');
-      if (!from || !window.ethereum) {
-        connect();
-        throw new Error('wallet not connected');
+      if (!from) {
+        throw new Error('no wallet address found — log out and log back in with a wallet, or check your settings page');
       }
-      // Ensure Base chain
+      if (!window.ethereum) {
+        throw new Error('no browser wallet detected — install MetaMask or another wallet extension, then send ' + amountUSD + ' USDC on Base to ' + toAddress + ' and use the tx hash');
+      }
+      var BASE_CHAIN = '0x2105';
+      var USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: BASE_CHAIN }],
       });
-      // ERC20 transfer(address,uint256) — USDC has 6 decimals
       var amount = Math.ceil(amountUSD * 1e6);
       var toHex = toAddress.slice(2).toLowerCase().padStart(64, '0');
       var amtHex = amount.toString(16).padStart(64, '0');
       var data = '0xa9059cbb' + toHex + amtHex;
       var txHash = await window.ethereum.request({
         method: 'eth_sendTransaction',
-        params: [{
-          from: from,
-          to: USDC,
-          data: data,
-        }],
+        params: [{ from: from, to: USDC, data: data }],
       });
       return txHash;
     }
 
-    // Listen for account changes (raw ethereum)
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', function(accounts) {
-        if (accounts.length === 0) {
-          disconnect();
-        } else {
-          localStorage.setItem('wallet_address', accounts[0]);
-          updateBtn();
-        }
-      });
-    }
-
     updateBtn();
 
-    return { connect: connect, disconnect: disconnect, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn };
+    return { login: login, logout: logout, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn, updateBtn: updateBtn };
   })();
 
-  // Hamburger menu toggle
+  // Backwards compat: ankyWallet points to ankyAuth
+  window.ankyWallet = window.ankyAuth;
+
+  // Drawer toggle
   (function() {
     var btn = document.getElementById('nav-hamburger');
-    var links = document.getElementById('nav-links');
-    if (btn && links) {
-      btn.addEventListener('click', function() {
-        links.classList.toggle('open');
-      });
-      links.querySelectorAll('a').forEach(function(a) {
-        a.addEventListener('click', function() {
-          links.classList.remove('open');
-        });
-      });
+    var drawer = document.getElementById('drawer');
+    var overlay = document.getElementById('drawer-overlay');
+    var closeBtn = document.getElementById('drawer-close');
+    if (!btn || !drawer) return;
+
+    function openDrawer() {
+      drawer.classList.add('open');
+      overlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
     }
-    // Touch support for nav dropdowns
-    document.querySelectorAll('.nav-dropdown-trigger').forEach(function(trigger) {
-      trigger.addEventListener('click', function(e) {
-        var dd = trigger.closest('.nav-dropdown');
-        if (dd && window.innerWidth <= 768) return; // mobile hamburger handles it
-        if (dd && !dd.classList.contains('open')) {
-          e.preventDefault();
-          document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-          dd.classList.add('open');
-        }
-      });
+    function closeDrawer() {
+      drawer.classList.remove('open');
+      overlay.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    btn.addEventListener('click', openDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    if (overlay) overlay.addEventListener('click', closeDrawer);
+    drawer.querySelectorAll('a').forEach(function(a) {
+      a.addEventListener('click', closeDrawer);
     });
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.nav-dropdown')) {
-        document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-      }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
     });
   })();
 
@@ -258,18 +269,14 @@
     return { open: open, close: close, extractExcerpt: extractExcerpt };
   })();
 
-  // Navbar arrow key navigation (roving tabindex)
+  // Navbar keyboard navigation
   (function() {
     var navbar = document.querySelector('.navbar');
     if (!navbar) return;
 
     function getNavItems() {
       var items = [];
-      var logo = navbar.querySelector('.logo');
-      if (logo) items.push(logo);
-      navbar.querySelectorAll('.nav-links a').forEach(function(a) { items.push(a); });
-      var walletBtn = document.getElementById('wallet-btn');
-      if (walletBtn) items.push(walletBtn);
+      navbar.querySelectorAll('a, button').forEach(function(el) { items.push(el); });
       return items;
     }
 
@@ -281,32 +288,158 @@
       var idx = items.indexOf(e.target);
       if (idx === -1) return;
 
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Tab') {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          var next = e.shiftKey
-            ? (idx - 1 + items.length) % items.length
-            : (idx + 1) % items.length;
-          items[next].focus();
-        } else {
-          e.preventDefault();
-          var next = e.key === 'ArrowRight'
-            ? (idx + 1) % items.length
-            : (idx - 1 + items.length) % items.length;
-          items[next].focus();
-        }
-      } else if (e.key === ' ') {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        e.target.click();
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        var main = document.querySelector('main, .help-tabs, .writing-container, .gallery-grid, .container');
-        if (main) {
-          var focusable = main.querySelector('a, button, input, textarea, select, [tabindex]');
-          if (focusable) focusable.focus();
-        }
+        var next = e.key === 'ArrowRight'
+          ? (idx + 1) % items.length
+          : (idx - 1 + items.length) % items.length;
+        items[next].focus();
       }
     });
+  })();
+
+  // --- Bottom Live Bar ---
+  (function() {
+    var bar = document.getElementById('bottom-live-bar');
+    var watchBtn = document.getElementById('bottom-live-watch');
+    var info = document.getElementById('bottom-live-info');
+    var timer = document.getElementById('bottom-live-timer');
+    var progress = document.getElementById('bottom-live-progress');
+    var queueBtn = document.getElementById('bottom-live-queue-btn');
+    if (!bar) return;
+
+    var liveStartTime = 0;
+    var elapsedTimer = null;
+    var isQueued = false;
+    var queueCount = 0;
+
+    function updateTimer() {
+      if (!liveStartTime) return;
+      var secs = Math.floor((Date.now() - liveStartTime) / 1000);
+      var m = Math.floor(secs / 60);
+      var s = secs % 60;
+      timer.textContent = m + ':' + String(s).padStart(2, '0');
+      var pct = Math.min((secs / 480) * 100, 100);
+      progress.style.width = pct + '%';
+    }
+
+    function startTimer() {
+      liveStartTime = Date.now();
+      timer.textContent = '0:00';
+      progress.style.width = '0%';
+      clearInterval(elapsedTimer);
+      elapsedTimer = setInterval(updateTimer, 1000);
+    }
+
+    function stopTimer() {
+      liveStartTime = 0;
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+      timer.textContent = '';
+      progress.style.width = '0%';
+    }
+
+    function updateQueueBtn() {
+      var loggedIn = window.ankyAuth && window.ankyAuth.isLoggedIn && window.ankyAuth.isLoggedIn();
+      if (!loggedIn) { queueBtn.style.display = 'none'; return; }
+      queueBtn.style.display = '';
+      if (isQueued) {
+        queueBtn.textContent = 'leave waiting room' + (queueCount > 0 ? ' (' + queueCount + ')' : '');
+        queueBtn.className = 'bottom-live-queue-btn queued';
+      } else {
+        queueBtn.textContent = 'enter waiting room' + (queueCount > 0 ? ' (' + queueCount + ')' : '');
+        queueBtn.className = 'bottom-live-queue-btn';
+      }
+    }
+
+    queueBtn.addEventListener('click', function() {
+      if (isQueued) {
+        fetch('/api/live/queue', { method: 'DELETE' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) { if (d.ok) { isQueued = false; updateQueueBtn(); } })
+          .catch(function() {});
+      } else {
+        fetch('/api/live/queue', { method: 'POST' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.ok) { isQueued = true; updateQueueBtn(); }
+            else if (d.error) { alert(d.error); }
+          })
+          .catch(function() {});
+      }
+    });
+
+    function connectLiveStatus() {
+      var src = new EventSource('/api/live-status');
+      src.onmessage = function(e) {
+        try {
+          var data = JSON.parse(e.data);
+
+          // Queue count updates
+          if (data.queue_count !== undefined) {
+            queueCount = data.queue_count;
+            updateQueueBtn();
+          }
+
+          // Your turn — auto-trigger countdown on home page
+          if (data.your_turn && data.writer_username) {
+            var myUsername = localStorage.getItem('anky_username');
+            if (myUsername && data.writer_username === myUsername) {
+              isQueued = false;
+              updateQueueBtn();
+              if (window.ankyLive && window.ankyLive.startCountdown) {
+                window.ankyLive.startCountdown();
+              }
+            }
+          }
+
+          // Hide bottom live bar if the current user is the live writer
+          var myUsername = localStorage.getItem('anky_username');
+          var isMe = myUsername && data.writer_username && data.writer_username === myUsername;
+
+          if (data.congrats && data.writer_username) {
+            stopTimer();
+            if (isMe) {
+              // Don't show congrats bar for the writer — they're still writing
+              bar.style.display = 'none';
+            } else {
+              bar.style.display = '';
+              bar.classList.add('congrats');
+              bar.classList.remove('live');
+              info.textContent = '@' + data.writer_username + ' just wrote an anky!';
+              watchBtn.style.display = '';
+              updateQueueBtn();
+            }
+          } else if (data.is_live && data.writer_username) {
+            if (isMe) {
+              // Writer sees their own session bar, not the bottom live bar
+              bar.style.display = 'none';
+            } else {
+              var typeLabel = data.writer_type === 'agent' ? ' (agent)' : '';
+              info.textContent = '@' + data.writer_username + typeLabel + ' is writing an anky';
+              bar.style.display = '';
+              bar.classList.add('live');
+              bar.classList.remove('congrats');
+              watchBtn.style.display = '';
+              startTimer();
+              updateQueueBtn();
+            }
+          } else if (data.is_live === false && !data.congrats && !data.your_turn && data.queue_count === undefined) {
+            stopTimer();
+            bar.classList.remove('live', 'congrats');
+            bar.style.display = 'none';
+            isQueued = false;
+            updateQueueBtn();
+          }
+        } catch(_) {}
+      };
+      src.onerror = function() {
+        src.close();
+        stopTimer();
+        setTimeout(connectLiveStatus, 10000);
+      };
+    }
+    connectLiveStatus();
   })();
 
   // Disable browser/editor writing aids on all textareas
@@ -336,6 +469,70 @@
 
     observer.observe(document.documentElement, { childList: true, subtree: true });
   })();
+  </script>
+  <!-- Farcaster MiniApp SDK -->
+  <script type="module">
+    (async function() {
+      let sdk;
+      try {
+        const mod = await import('https://esm.sh/@farcaster/miniapp-sdk');
+        sdk = mod.sdk;
+        window.farcasterSDK = sdk;
+      } catch(e) {
+        // SDK failed to load — not in Farcaster context
+        return;
+      }
+
+      try {
+        const context = await sdk.context;
+        if (context && context.user) {
+          window.farcasterContext = context;
+
+          // Get embedded wallet address
+          let walletAddress = null;
+          try {
+            const provider = sdk.wallet.ethProvider;
+            if (provider) {
+              const accounts = await provider.request({ method: 'eth_requestAccounts' });
+              if (accounts && accounts[0]) walletAddress = accounts[0];
+            }
+          } catch(_) {}
+
+          // Auto-authenticate with backend
+          try {
+            const resp = await fetch('/auth/farcaster/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fid: context.user.fid,
+                username: context.user.username,
+                display_name: context.user.displayName,
+                pfp_url: context.user.pfpUrl,
+                wallet_address: walletAddress,
+              })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+              localStorage.setItem('anky_logged_in', 'true');
+              if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
+              if (data.username) localStorage.setItem('anky_username', data.username);
+              if (data.email) localStorage.setItem('anky_email', data.email);
+              if (window.ankyAuth) window.ankyAuth.updateBtn();
+            }
+          } catch(_) {}
+        }
+      } catch(e) {
+        console.warn('Farcaster context error:', e);
+      }
+
+      // ALWAYS signal ready to dismiss splash screen, regardless of auth outcome
+      try { sdk.actions.ready(); } catch(_) {}
+    })();
+  </script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
+  }
   </script>
   {% block scripts %}{% endblock %}
 </body>

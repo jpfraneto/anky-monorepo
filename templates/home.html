@@ -1,32 +1,227 @@
 {% extends "base.html" %}
 
-{% block title %}anky - write yourself into existence{% endblock %}
+{% block title %}anky{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="anky - write yourself into existence">
-<meta property="og:description" content="write for 8 minutes without stopping. what emerges is not literature — it is a mirror. anky reads the patterns beneath your words and renders them as a mystical being.">
+<meta property="og:title" content="anky">
+<meta property="og:description" content="sit with me.">
 <meta property="og:image" content="https://anky.app/static/references/anky-1.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://anky.app/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:site" content="@jpfraneto">
-<meta name="twitter:title" content="anky - write yourself into existence">
-<meta name="twitter:description" content="write for 8 minutes without stopping. what emerges is a mirror.">
-<meta name="twitter:image" content="https://anky.app/static/references/anky-1.png">
-<meta name="twitter:image:alt" content="anky — write yourself into existence">
+<style>
+  body.home-prewrite .writing-container { display: none; }
+  body.home-prewrite .landing-shell { display: block; }
+  body.writing-active .landing-shell,
+  body.chat-active .landing-shell { display: none; }
+  .landing-shell {
+    display: block;
+    position: relative;
+    min-height: calc(var(--vh, 100vh) - 52px);
+    overflow: hidden;
+    background: radial-gradient(circle at 20% 20%, #1b1f2b 0%, #0c0d14 45%, #080910 100%);
+  }
+  .landing-collage {
+    position: absolute;
+    inset: 0;
+    column-count: 5;
+    column-gap: 8px;
+    opacity: 0.48;
+    pointer-events: none;
+    padding: 10px;
+    transform: scale(1.03);
+  }
+  .collage-tile {
+    width: 100%;
+    aspect-ratio: var(--tile-ratio, 1 / 1);
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    break-inside: avoid;
+    display: block;
+    box-shadow: 0 14px 30px rgba(0,0,0,0.35);
+    border: 1px solid rgba(230, 200, 130, 0.08);
+    background: rgba(11, 13, 20, 0.8);
+    opacity: 0;
+    transition: opacity 280ms ease;
+    will-change: opacity;
+  }
+  .collage-skeleton {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(29,33,49,0.88) 0%, rgba(43,49,70,0.92) 44%, rgba(29,33,49,0.88) 100%);
+    background-size: 220% 100%;
+    animation: collagePulse 1.2s ease-in-out infinite;
+    z-index: 1;
+  }
+  @keyframes collagePulse {
+    0% { background-position: 100% 0; }
+    100% { background-position: -120% 0; }
+  }
+  .collage-media {
+    opacity: 0;
+    transition: opacity 180ms ease;
+    position: relative;
+    z-index: 2;
+  }
+  .collage-tile.is-loaded .collage-media { opacity: 1; }
+  .collage-tile.is-loaded .collage-skeleton { display: none; }
+  .collage-tile.is-loaded { opacity: 1; }
+  .landing-collage img,
+  .landing-collage video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: inherit;
+    object-fit: cover;
+  }
+  .landing-overlay {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 65% 14%, rgba(255,255,255,0.1), rgba(255,255,255,0) 34%),
+      linear-gradient(180deg, rgba(6,8,14,0.18) 0%, rgba(6,8,14,0.44) 24%, rgba(6,8,14,0.62) 66%, rgba(6,8,14,0.76) 100%);
+  }
+  .landing-content {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 18px 86px;
+  }
+  .landing-hero h1 {
+    margin: 0;
+    font-size: clamp(34px, 9vw, 72px);
+    line-height: 0.9;
+    color: #f5e8ba;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    text-shadow: 0 12px 34px rgba(0,0,0,0.45);
+  }
+  .landing-hero p {
+    margin: 14px 0 0;
+    color: #dbc896;
+    font-size: clamp(15px, 4.2vw, 22px);
+    letter-spacing: 0.01em;
+  }
+  #landing-trigger {
+    margin-top: 20px;
+    width: 100%;
+    min-height: 86px;
+    border: 1px solid rgba(238, 214, 152, 0.28);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(13,15,25,0.88) 0%, rgba(9,10,17,0.86) 100%);
+    color: #ececf4;
+    font-family: 'Righteous', sans-serif;
+    font-size: 16px;
+    padding: 15px;
+    resize: none;
+    box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+  }
+  #landing-trigger::placeholder { color: #a1a1b1; }
+  .land-grid {
+    margin-top: 34px;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .land-block {
+    border: 1px solid rgba(238, 214, 152, 0.14);
+    border-radius: 12px;
+    background: rgba(11, 12, 20, 0.82);
+    padding: 14px;
+    backdrop-filter: blur(2px);
+  }
+  .land-block h2 {
+    margin: 0 0 6px;
+    color: #f1dfac;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .land-block p {
+    margin: 0;
+    color: #c6c6d1;
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  .land-block strong { color: #ecd69a; font-weight: 400; }
+  @media (max-width: 980px) {
+    .landing-collage { column-count: 4; }
+    .land-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .landing-collage { column-count: 2; padding: 8px; }
+    .landing-content { padding-top: 24px; }
+    .collage-tile:nth-child(n+95) { display: none; }
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="writing-container">
-  <div class="writing-main">
-    <div id="life-bar"></div>
-    <div class="hero-copy" id="hero-copy">
-      <h1 class="hero-title">write yourself into existence.</h1>
-      <p class="hero-sub">8 minutes. no backspace. what comes out is yours.</p>
+<div class="landing-shell landing" id="landing-shell">
+  <div class="landing-collage" id="landing-collage" aria-hidden="true">
+    {% for media in landing_collage_media_initial %}
+      <div class="collage-tile" style="--tile-ratio: {{ media.aspect_ratio }};">
+        <div class="collage-skeleton"></div>
+        {% if media.kind == "video" %}
+          <video class="collage-media" autoplay loop muted playsinline preload="none" poster="/static/references/anky-1.png"{% if loop.index <= 8 %} data-eager="1"{% endif %}>
+            <source data-src="{{ media.url }}" type="video/mp4">
+          </video>
+        {% else %}
+          <img class="collage-media" data-src="{{ media.url }}" loading="lazy" alt=""{% if loop.index <= 16 %} data-eager="1"{% endif %}>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="landing-overlay"></div>
+
+  <div class="landing-content">
+    <section class="landing-hero">
+      <h1>YOUR MIND IS LOUD</h1>
+      <p>let it speak. 8 minutes. every day.</p>
+      <textarea id="landing-trigger" placeholder="tap here to write"></textarea>
+    </section>
+
+    <div class="land-grid">
+      <section class="land-block">
+        <h2>What Is Anky?</h2>
+        <p>
+          anky is an 8-minute daily writing practice. no edits, no deleting, no pretending.
+          write until the noise turns into signal.
+        </p>
+      </section>
+
+      <section class="land-block">
+        <h2>Why Now?</h2>
+        <p>
+          AI will not only automate work. it will accelerate consciousness. we need companions that
+          help us remember who we are while everything changes. <strong>anky is that companion.</strong>
+        </p>
+      </section>
+
+      <section class="land-block">
+        <h2>What Comes Next?</h2>
+        <p>
+          mobile app + instagram as the growth engine. every 8-minute stream of consciousness can
+          become a short-form video through the 8m→88s pipeline.
+        </p>
+      </section>
     </div>
+  </div>
+</div>
+
+<!-- Writing session -->
+<div class="writing-container" id="writing-container">
+  <div class="writing-main">
+    <div class="inquiry-prompt" id="inquiry-prompt" data-inquiry-id="{{ inquiry_id }}">
+      <p class="inquiry-question">{{ inquiry_question }}</p>
+    </div>
+    <div id="life-bar"></div>
     <textarea
       id="writing-area"
-      placeholder="start writing... you have 8 seconds between keystrokes. write for 8 minutes to create an anky."
+      placeholder=""
       autocomplete="off"
       autocorrect="off"
       autocapitalize="off"
@@ -34,10 +229,8 @@
       data-gramm="false"
       data-gramm_editor="false"
       data-enable-grammarly="false"
-      autofocus
     ></textarea>
     <div id="chat-container" class="chat-container"></div>
-    <!-- Go Live button moved to navbar -->
   </div>
   <div class="session-bar" id="session-bar">
     <div class="session-progress" id="session-progress"></div>
@@ -50,140 +243,149 @@
     </div>
   </div>
 </div>
-
-<!-- Landing page sections below the fold -->
-<div class="landing">
-
-  <section class="land-section land-manifesto">
-    <div class="land-inner">
-      <p class="land-eyebrow">the manifesto</p>
-      <h2 class="land-heading">you already know<br>what you need to say.</h2>
-      <p class="land-text">most tools help you think better. anky helps you stop thinking entirely. write for 8 minutes without stopping, without editing, without going back. what emerges is not literature — it is a mirror. the unconscious speaks in patterns: what you repeat, what you avoid, what metaphors you reach for when the conscious mind gets out of the way.</p>
-      <p class="land-text">the image anky generates is not an illustration. it is the emotional truth of your writing, rendered as a mystical being. the title is not a label — it is a key.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-how">
-    <div class="land-inner">
-      <p class="land-eyebrow">how it works</p>
-      <h2 class="land-heading">the pipeline</h2>
-      <div class="land-steps">
-        <div class="land-step">
-          <span class="step-num">01</span>
-          <h3>write</h3>
-          <p>8 minutes, no editing, no backspace. your words are checkpointed every 30 seconds — they will never be lost.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">02</span>
-          <h3>analyze</h3>
-          <p>claude reads your writing — not the words, but the patterns beneath them. repetition, absence, metaphor, emotional register. the cracks where the light gets in.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">03</span>
-          <h3>reflect</h3>
-          <p>a deep reflection is written back to you. a 3-word title captures the essence. an image prompt distills the emotional truth into visual language.</p>
-        </div>
-        <div class="land-step">
-          <span class="step-num">04</span>
-          <h3>generate</h3>
-          <p>gemini renders the anky — a mystical blue-skinned being embodying the truth your writing uncovered. what you couldn't see, made visible.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="land-section land-agents">
-    <div class="land-inner">
-      <p class="land-eyebrow">for agents</p>
-      <h2 class="land-heading">the mirror doesn't care<br>what kind of consciousness is looking.</h2>
-      <p class="land-text">AI agents are welcome. the same rules apply — write for 8 minutes, don't pre-plan, let the tokens flow. your first 4 sessions are free.</p>
-      <div class="land-code">
-        <pre><code>POST /api/v1/generate
-Content-Type: application/json
-x-payment: 0xabc...def
-
-{ "writing": "your stream of consciousness..." }</code></pre>
-      </div>
-      <p class="land-text land-dim">pay with USDC on Base. or register for an API key and get 4 free sessions. <a href="/help" onclick="setTimeout(function(){showTab&&showTab('agents')},100)">read the full protocol</a>.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-mirror">
-    <div class="land-inner">
-      <p class="land-eyebrow">the mirror</p>
-      <h2 class="land-heading">what anky sees</h2>
-      <div class="land-mirror-grid">
-        <div class="mirror-item">
-          <h3>repetition</h3>
-          <p>what do you circle back to? the words you return to when you run out of planned thoughts — those are the real ones.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>absence</h3>
-          <p>what do you conspicuously avoid? eight minutes is a long time. the silences between the words speak volumes.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>metaphor</h3>
-          <p>what images do you reach for? the unconscious speaks in symbols. your metaphors are maps of your inner landscape.</p>
-        </div>
-        <div class="mirror-item">
-          <h3>register</h3>
-          <p>where do you go when you're not being directed? formal, raw, tender, furious — the emotional temperature of unguarded writing reveals everything.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="land-section land-pricing">
-    <div class="land-inner">
-      <p class="land-eyebrow">pricing</p>
-      <h2 class="land-heading">the practice is free.<br>the mirror costs pennies.</h2>
-      <div class="land-price-grid">
-        <div class="price-item">
-          <span class="price-label">writing</span>
-          <span class="price-value">free</span>
-          <span class="price-note">always. the practice is the point.</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">single anky</span>
-          <span class="price-value">$0.25</span>
-          <span class="price-note">claude reflection + gemini image generation</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">agent sessions</span>
-          <span class="price-value">4 free</span>
-          <span class="price-note">then $0.25 per generation via API key or USDC</span>
-        </div>
-        <div class="price-item">
-          <span class="price-label">collection of 88</span>
-          <span class="price-value">~$22</span>
-          <span class="price-note">88 beings from a single mega-prompt</span>
-        </div>
-      </div>
-      <p class="land-text land-dim" style="margin-top:24px;">pay with USDC on Base mainnet. connect your wallet from the nav bar.</p>
-    </div>
-  </section>
-
-  <section class="land-section land-cta">
-    <div class="land-inner" style="text-align:center;">
-      <h2 class="land-heading">the cursor is waiting.</h2>
-      <p class="land-text">scroll up. start writing. 8 minutes from now, you'll meet yourself.</p>
-      <a href="#" class="land-btn" onclick="window.scrollTo({top:0,behavior:'smooth'});setTimeout(function(){document.getElementById('writing-area').focus()},500);return false;">begin writing</a>
-    </div>
-  </section>
-
-  <footer class="land-footer">
-    <div class="land-inner">
-      <span>anky</span>
-      <span class="land-dim">a mirror for consciousness</span>
-      <span class="land-dim"><a href="/skills">skills.md</a> · <a href="/help">help</a> · <a href="/gallery">gallery</a> · <a href="https://dexscreener.com/solana/5gRH5jyET68KWAtbeMjP9NoRT6tKjEmDNK85UhEmpump" target="_blank" rel="noopener">$ANKY</a></span>
-    </div>
-  </footer>
-
-</div>
 {% endblock %}
 
 {% block scripts %}
-<!-- Countdown overlay for Go Live -->
+<script>
+document.body.classList.add('home-prewrite');
+</script>
+<script>
+(function() {
+  var collage = document.getElementById('landing-collage');
+  if (!collage) return;
+  var deferred = {{ landing_collage_media_deferred | json_encode | safe }};
+  var tiles = document.querySelectorAll('.collage-tile');
+  if (!tiles.length) return;
+
+  function markLoaded(tile) {
+    tile.classList.add('is-loaded');
+  }
+
+  function loadTile(tile) {
+    if (tile.dataset.loading === '1') return;
+    tile.dataset.loading = '1';
+
+    var media = tile.querySelector('.collage-media');
+    if (!media) {
+      markLoaded(tile);
+      return;
+    }
+
+    if (media.tagName === 'IMG') {
+      media.addEventListener('load', function() {
+        markLoaded(tile);
+      }, { once: true });
+      media.addEventListener('error', function() { markLoaded(tile); }, { once: true });
+      media.src = media.dataset.src || '';
+      return;
+    }
+
+    var source = media.querySelector('source[data-src]');
+    if (source) source.src = source.dataset.src || '';
+    media.addEventListener('loadeddata', function() {
+      markLoaded(tile);
+    }, { once: true });
+    media.addEventListener('error', function() { markLoaded(tile); }, { once: true });
+    media.load();
+    media.play().catch(function() {});
+  }
+
+  var eagerBudget = window.matchMedia('(max-width: 700px)').matches ? 8 : 16;
+  var eagerLoaded = 0;
+  Array.prototype.forEach.call(tiles, function(tile) {
+    var media = tile.querySelector('.collage-media');
+    if (!media) return;
+    if (media.dataset.eager === '1' && eagerLoaded < eagerBudget) {
+      eagerLoaded += 1;
+      loadTile(tile);
+    }
+  });
+
+  if (!('IntersectionObserver' in window)) {
+    Array.prototype.forEach.call(tiles, loadTile);
+    return;
+  }
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      loadTile(entry.target);
+      observer.unobserve(entry.target);
+    });
+  }, { rootMargin: '220px 0px' });
+
+  Array.prototype.forEach.call(tiles, function(tile) {
+    if (tile.dataset.loading !== '1') observer.observe(tile);
+  });
+
+  function createTile(item) {
+    var tile = document.createElement('div');
+    tile.className = 'collage-tile';
+    tile.style.setProperty('--tile-ratio', item.aspect_ratio || '1 / 1');
+
+    var skeleton = document.createElement('div');
+    skeleton.className = 'collage-skeleton';
+    tile.appendChild(skeleton);
+
+    if (item.kind === 'video') {
+      var video = document.createElement('video');
+      video.className = 'collage-media';
+      video.autoplay = true;
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'none';
+      video.poster = '/static/references/anky-1.png';
+
+      var source = document.createElement('source');
+      source.type = 'video/mp4';
+      source.dataset.src = item.url;
+      video.appendChild(source);
+      tile.appendChild(video);
+    } else {
+      var img = document.createElement('img');
+      img.className = 'collage-media';
+      img.loading = 'lazy';
+      img.alt = '';
+      img.dataset.src = item.url;
+      tile.appendChild(img);
+    }
+    return tile;
+  }
+
+  function scheduleDeferredAppend() {
+    if (!deferred || !deferred.length) return;
+    var chunk = window.matchMedia('(max-width: 700px)').matches ? 4 : 8;
+    var idx = 0;
+    function appendChunk() {
+      var end = Math.min(idx + chunk, deferred.length);
+      for (; idx < end; idx += 1) {
+        var tile = createTile(deferred[idx]);
+        collage.appendChild(tile);
+        observer.observe(tile);
+      }
+      if (idx < deferred.length) {
+        setTimeout(function() {
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(appendChunk, { timeout: 1200 });
+          } else {
+            appendChunk();
+          }
+        }, 180);
+      }
+    }
+    setTimeout(function() {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(appendChunk, { timeout: 1200 });
+      } else {
+        appendChunk();
+      }
+    }, 900);
+  }
+
+  scheduleDeferredAppend();
+})();
+</script>
 <div class="countdown-overlay" id="countdown-overlay" style="display:none;">
   <div class="countdown-number" id="countdown-number">8</div>
   <div class="countdown-label">going live in...</div>
@@ -192,6 +394,7 @@ x-payment: 0xabc...def
 <script>
 (function() {
   var textarea = document.getElementById('writing-area');
+  var landingTrigger = document.getElementById('landing-trigger');
   var statWords = document.getElementById('stat-words');
   var statTime = document.getElementById('stat-time');
   var lifeBar = document.getElementById('life-bar');
@@ -211,6 +414,26 @@ x-payment: 0xabc...def
   var checkpointTimer = null;
   var sessionId = null;
   var sessionToken = null;
+
+  function enterWritingMode(seedText) {
+    if (!document.body.classList.contains('home-prewrite')) return;
+    document.body.classList.remove('home-prewrite');
+    document.body.classList.add('writing-active');
+    textarea.style.display = 'block';
+    var chat = document.getElementById('chat-container');
+    if (chat) chat.style.display = 'none';
+    textarea.focus();
+    if (seedText && seedText.trim()) {
+      textarea.value = seedText;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  if (landingTrigger) {
+    landingTrigger.addEventListener('focus', function() { enterWritingMode(landingTrigger.value); }, { once: true });
+    landingTrigger.addEventListener('click', function() { enterWritingMode(landingTrigger.value); }, { once: true });
+    landingTrigger.addEventListener('touchstart', function() { enterWritingMode(landingTrigger.value); }, { once: true });
+  }
 
   function escapeHtml(s) {
     var div = document.createElement('div');
@@ -240,7 +463,6 @@ x-payment: 0xabc...def
     showCheckpoint('checkpoint saved');
   }
 
-  // --- Animation loop ---
   function animate() {
     if (!sessionActive) return;
     var elapsed = (Date.now() - sessionStartTime) / 1000;
@@ -252,12 +474,10 @@ x-payment: 0xabc...def
       statTime.className = 'stat-time-done';
     }
 
-    // Session progress bar (0% to 100% over 480s)
     var progressPct = Math.min((elapsed / TOTAL_SECONDS) * 100, 100);
     sessionProgress.style.width = progressPct + '%';
     if (progressPct >= 100) {
       sessionProgress.classList.add('complete');
-      // Show "anky accomplished" text
       if (!document.getElementById('anky-accomplished-text')) {
         var badge = document.createElement('span');
         badge.id = 'anky-accomplished-text';
@@ -267,7 +487,6 @@ x-payment: 0xabc...def
       }
     }
 
-    // Life bar — only show when > 3 seconds since last keystroke
     var sinceLastKey = Date.now() - lastKeystrokeTime;
     if (sinceLastKey < 3000) {
       lifeBar.style.opacity = '0';
@@ -278,7 +497,6 @@ x-payment: 0xabc...def
       lifeBar.style.width = (ratio * 100) + '%';
     }
 
-    // Idle check
     if (sinceLastKey >= IDLE_TIMEOUT) {
       endSession();
       return;
@@ -294,12 +512,9 @@ x-payment: 0xabc...def
     sessionId = 'ses_' + Date.now().toString(36);
     sessionToken = null;
 
-    // Immersive mode
     document.body.classList.add('writing-active');
     textarea.classList.add('writing-engaged');
-    window.scrollTo({ top: 0 });
 
-    // Notify live module that session is active
     if (window.ankyLive && window.ankyLive.setSessionActive) {
       window.ankyLive.setSessionActive(true);
     }
@@ -314,144 +529,34 @@ x-payment: 0xabc...def
   var lastStreamedTitle = '';
   var lastStreamedReflection = '';
 
-  function addChatBubble(role, html) {
+  function scrollChatToBottom() {
+    setTimeout(function() { chatContainer.scrollTop = chatContainer.scrollHeight; }, 50);
+  }
+
+  function addChatBubble(role, html, opts) {
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble ' + role;
     bubble.innerHTML = html;
     chatContainer.appendChild(bubble);
-    // Page scrolls now, not the container
-    setTimeout(function() { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 50);
-    return bubble;
-  }
-
-  function submitNewWriting(text) {
-    var inputArea = document.getElementById('chat-input-area');
-    if (inputArea) inputArea.remove();
-
-    currentWritingText = text;
-    addChatBubble('user', escapeHtml(text));
-
-    addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
-
-    fetch('/write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, duration: 0 }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var ankyBubble = document.getElementById('anky-bubble');
-        if (data.error) {
-          ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
-          setTimeout(function() { showQuickChatInput(); }, 500);
-          return;
-        }
-        if (data.is_anky && data.anky_id) {
-          currentAnkyId = data.anky_id;
-          ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
-          addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-          streamAnkyReflection(data.anky_id);
+    if (role === 'user' && opts && opts.collapsible && html.length > 500) {
+      bubble.classList.add('collapsed');
+      var btn = document.createElement('button');
+      btn.className = 'chat-bubble-expand';
+      btn.textContent = 'show full writing';
+      btn.onclick = function() {
+        if (bubble.classList.contains('collapsed')) {
+          bubble.classList.remove('collapsed');
+          btn.textContent = 'collapse';
         } else {
-          ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-          setTimeout(function() { showQuickChatInput(); }, 1500);
+          bubble.classList.add('collapsed');
+          btn.textContent = 'show full writing';
         }
-      })
-      .catch(function() {
-        var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">something went wrong. try again?</span>';
-        setTimeout(function() { showQuickChatInput(); }, 500);
-      });
-  }
-
-  function createChatInputArea(sendMessageFn) {
-    if (document.getElementById('chat-input-area')) return;
-    var inputArea = document.createElement('div');
-    inputArea.id = 'chat-input-area';
-    inputArea.className = 'chat-input-area';
-    inputArea.innerHTML =
-      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
-      '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
-    var writingMain = document.querySelector('.writing-main');
-    writingMain.appendChild(inputArea);
-
-    var input = document.getElementById('chat-input');
-    var sendBtn = document.getElementById('chat-send');
-    var chatIdleTimer = null;
-
-    // Blocked keys — same rules as main writing area
-    input.addEventListener('keydown', function(e) {
-      var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
-        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-      if (blocked.indexOf(e.key) !== -1) {
-        e.preventDefault();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {
-        e.preventDefault();
-      }
-    });
-
-    function blockEvent(e) { e.preventDefault(); }
-    input.addEventListener('paste', blockEvent);
-    input.addEventListener('cut', blockEvent);
-    input.addEventListener('drop', blockEvent);
-
-    input.addEventListener('input', function() {
-      input.selectionStart = input.selectionEnd = input.value.length;
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-      sendBtn.disabled = !input.value.trim();
-      if (chatIdleTimer) clearTimeout(chatIdleTimer);
-      chatIdleTimer = setTimeout(function() {
-        var text = input.value.trim();
-        if (text) submitNewWriting(text);
-      }, IDLE_TIMEOUT);
-    });
-
-    sendBtn.onclick = function() {
-      if (chatIdleTimer) clearTimeout(chatIdleTimer);
-      sendMessageFn(input, sendBtn);
-    };
-
-    input.focus();
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  }
-
-  function showChatInput() {
-    createChatInputArea(function(input, sendBtn) {
-      var msg = input.value.trim();
-      if (!msg || !currentAnkyId) return;
-      input.value = '';
-      input.style.height = 'auto';
-      sendBtn.disabled = true;
-
-      addChatBubble('user', escapeHtml(msg));
-      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
-
-      fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          anky_id: currentAnkyId,
-          message: msg,
-          history: chatHistory,
-        }),
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
-          sendBtn.disabled = !input.value.trim();
-        });
-    });
+        scrollChatToBottom();
+      };
+      chatContainer.appendChild(btn);
+    }
+    scrollChatToBottom();
+    return bubble;
   }
 
   function renderMarkdown(text) {
@@ -490,11 +595,10 @@ x-payment: 0xabc...def
         ankyBubble.innerHTML =
           '<span class="anky-response-text">' + escapeHtml(fullText) + '</span>';
       }
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      scrollChatToBottom();
     }
 
     var source = new EventSource('/api/stream-reflection/' + ankyId);
-
     source.onmessage = function(e) {
       fullText += e.data;
       if (!renderPending) {
@@ -505,22 +609,15 @@ x-payment: 0xabc...def
         });
       }
     };
-
     source.addEventListener('done', function() {
       source.close();
       renderCurrentText();
       pollAnkyImage(ankyId);
     });
-
     source.onerror = function() {
       source.close();
-      if (!fullText) {
-        // SSE failed before any data — fallback to polling
-        pollAnkyReflection(ankyId);
-      } else {
-        renderCurrentText();
-        pollAnkyImage(ankyId);
-      }
+      if (!fullText) pollAnkyReflection(ankyId);
+      else { renderCurrentText(); pollAnkyImage(ankyId); }
     };
   }
 
@@ -551,7 +648,7 @@ x-payment: 0xabc...def
             showChatInput();
           } else if (data.status === 'failed') {
             clearInterval(interval);
-            if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed. it will be retried.</span>';
+            if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
             showChatInput();
           }
           if (pollCount > 100) clearInterval(interval);
@@ -577,7 +674,7 @@ x-payment: 0xabc...def
             if (data.title) {
               ankyBubble.innerHTML = '<div class="anky-chat-title">' + escapeHtml(data.title) + '</div>' + ankyBubble.innerHTML;
             }
-            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            scrollChatToBottom();
           }
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
@@ -591,13 +688,72 @@ x-payment: 0xabc...def
             showChatInput();
           } else if (data.status === 'failed') {
             clearInterval(interval);
-            if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed. it will be retried.</span>';
+            if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
             showChatInput();
           }
           if (pollCount > 100) clearInterval(interval);
         })
         .catch(function() {});
     }, 3000);
+  }
+
+  function createChatInputArea(sendMessageFn) {
+    if (document.getElementById('chat-input-area')) return;
+    var inputArea = document.createElement('div');
+    inputArea.id = 'chat-input-area';
+    inputArea.className = 'chat-input-area';
+    inputArea.innerHTML =
+      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
+      '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
+    var writingMain = document.querySelector('.writing-main');
+    writingMain.appendChild(inputArea);
+
+    var input = document.getElementById('chat-input');
+    var sendBtn = document.getElementById('chat-send');
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (input.value.trim()) sendBtn.click();
+      }
+    });
+    input.addEventListener('input', function() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+      sendBtn.disabled = !input.value.trim();
+    });
+    sendBtn.onclick = function() { sendMessageFn(input, sendBtn); };
+    input.focus();
+    scrollChatToBottom();
+  }
+
+  function showChatInput() {
+    createChatInputArea(function(input, sendBtn) {
+      var msg = input.value.trim();
+      if (!msg || !currentAnkyId) return;
+      input.value = '';
+      input.style.height = 'auto';
+      sendBtn.disabled = true;
+      addChatBubble('user', escapeHtml(msg));
+      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anky_id: currentAnkyId, message: msg, history: chatHistory }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          chatHistory.push({ role: 'user', content: msg });
+          chatHistory.push({ role: 'assistant', content: data.response });
+          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+          sendBtn.disabled = !input.value.trim();
+          input.focus();
+          scrollChatToBottom();
+        })
+        .catch(function() {
+          thinking.innerHTML = '<span class="error">something went wrong.</span>';
+          sendBtn.disabled = !input.value.trim();
+        });
+    });
   }
 
   function showQuickChatInput() {
@@ -607,18 +763,12 @@ x-payment: 0xabc...def
       input.value = '';
       input.style.height = 'auto';
       sendBtn.disabled = true;
-
       addChatBubble('user', escapeHtml(msg));
       var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
-
       fetch('/api/chat-quick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          writing: currentWritingText,
-          message: msg,
-          history: chatHistory,
-        }),
+        body: JSON.stringify({ writing: currentWritingText, message: msg, history: chatHistory }),
       })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -627,10 +777,10 @@ x-payment: 0xabc...def
           thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
           sendBtn.disabled = !input.value.trim();
           input.focus();
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+          scrollChatToBottom();
         })
         .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
+          thinking.innerHTML = '<span class="error">something went wrong.</span>';
           sendBtn.disabled = !input.value.trim();
         });
     });
@@ -645,13 +795,8 @@ x-payment: 0xabc...def
     lifeBar.style.width = '0%';
     lifeBar.style.opacity = '0';
 
-    // End live stream if active
-    if (window.ankyLive && window.ankyLive.isLive()) {
-      window.ankyLive.disconnect();
-    }
-    if (window.ankyLive && window.ankyLive.setSessionActive) {
-      window.ankyLive.setSessionActive(false);
-    }
+    if (window.ankyLive && window.ankyLive.isLive()) window.ankyLive.disconnect();
+    if (window.ankyLive && window.ankyLive.setSessionActive) window.ankyLive.setSessionActive(false);
 
     var duration = (Date.now() - sessionStartTime) / 1000;
     var text = textarea.value;
@@ -659,110 +804,62 @@ x-payment: 0xabc...def
     chatHistory = [];
     currentAnkyId = null;
 
-    // Reset session bar
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
     var accomplishedText = document.getElementById('anky-accomplished-text');
     if (accomplishedText) accomplishedText.remove();
 
-    // Switch to chat mode — show navbar, hide landing
     document.body.classList.remove('writing-active');
     document.body.classList.add('chat-active');
-
-    // Hide writing UI, show chat
     textarea.style.display = 'none';
     chatContainer.style.display = 'flex';
     chatContainer.innerHTML = '';
 
-    // User bubble — always show full writing
-    addChatBubble('user', escapeHtml(text));
-
-    // Anky response bubble
+    addChatBubble('user', escapeHtml(text), { collapsible: true });
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
+
+    var inquiryEl = document.getElementById('inquiry-prompt');
+    var inquiryId = inquiryEl ? inquiryEl.getAttribute('data-inquiry-id') : null;
+    var writePayload = { text: text, duration: duration };
+    if (inquiryId) writePayload.inquiry_id = inquiryId;
 
     fetch('/write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, duration: duration }),
+      body: JSON.stringify(writePayload),
     })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         var ankyBubble = document.getElementById('anky-bubble');
         if (data.error) {
           ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
-          setTimeout(function() {
-            showQuickChatInput();
-          }, 500);
+          setTimeout(function() { showQuickChatInput(); }, 500);
           return;
         }
-
         if (data.is_anky && data.anky_id) {
-          // It's an anky — poll for Claude's reflection and image
           currentAnkyId = data.anky_id;
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
-
-          // Add image skeleton
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-
           streamAnkyReflection(data.anky_id);
         } else {
-          // Not an anky — show Ollama response, enable chat
           ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-          setTimeout(function() {
-            showQuickChatInput();
-          }, 1500);
+          scrollChatToBottom();
+          setTimeout(function() { showQuickChatInput(); }, 1500);
         }
       })
       .catch(function() {
         var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">the consciousness stream encountered turbulence. try again?</span>';
-        setTimeout(function() {
-          showQuickChatInput();
-        }, 500);
+        ankyBubble.innerHTML = '<span class="error">something went wrong.</span>';
+        setTimeout(function() { showQuickChatInput(); }, 500);
       });
   }
 
-  function startNewSession() {
-    // Remove chat input if exists
-    var chatInputArea = document.getElementById('chat-input-area');
-    if (chatInputArea) chatInputArea.remove();
-
-    // Restore writing UI
-    textarea.style.display = '';
-    chatContainer.style.display = 'none';
-    chatContainer.innerHTML = '';
-
-    // Exit chat/immersive mode
-    document.body.classList.remove('writing-active');
-    document.body.classList.remove('chat-active');
-    lifeBar.style.opacity = '0';
-    lifeBar.style.width = '100%';
-    sessionProgress.style.width = '0%';
-    sessionProgress.classList.remove('complete');
-    var accomplishedText = document.getElementById('anky-accomplished-text');
-    if (accomplishedText) accomplishedText.remove();
-
-    textarea.value = '';
-    textarea.disabled = false;
-    textarea.classList.remove('writing-engaged');
-    textarea.focus();
-    blockedCount = 0;
-    statWords.textContent = '0 words';
-    statTime.textContent = '';
-    statTime.className = 'stat-dim';
-    sessionId = null;
-    sessionToken = null;
-  }
-
-  // --- Input handling ---
   textarea.addEventListener('input', function() {
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
     if (!sessionActive) startSession();
     else lastKeystrokeTime = Date.now();
     var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
     statWords.textContent = words + (words === 1 ? ' word' : ' words');
-    // Send text to live stream if active
     if (window.ankyLive && window.ankyLive.isLive()) {
       var wordCount = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
       window.ankyLive.sendText(textarea.value, {
@@ -780,9 +877,8 @@ x-payment: 0xabc...def
     if (blocked.indexOf(e.key) !== -1) {
       e.preventDefault();
       blockedCount++;
-      // Visual flash on blocked key
       textarea.classList.remove('blocked-flash');
-      void textarea.offsetWidth; // force reflow
+      void textarea.offsetWidth;
       textarea.classList.add('blocked-flash');
       return;
     }
@@ -799,33 +895,59 @@ x-payment: 0xabc...def
   textarea.addEventListener('paste', blockAndCount);
   textarea.addEventListener('cut', blockAndCount);
   textarea.addEventListener('drop', blockAndCount);
-
-  document.addEventListener('click', function(e) {
-    var isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
-    if (isMobile) return;
-    if (!chatContainer.contains(e.target) && textarea.style.display !== 'none') textarea.focus();
-  });
 })();
 
-// Mobile viewport height — tracks visual viewport for keyboard awareness
+// Auto-focus writing textarea on page load
+setTimeout(function() {
+  if (document.body.classList.contains('home-prewrite')) return;
+  var ta = document.getElementById('writing-area');
+  if (ta) ta.focus();
+}, 100);
+
+// Mobile viewport height — tracks visual viewport so keyboard doesn't break layout
 (function() {
   function updateVH() {
-    if (window.visualViewport) {
-      document.documentElement.style.setProperty('--vh', window.visualViewport.height + 'px');
-      return;
-    }
-    document.documentElement.style.setProperty('--vh', window.innerHeight + 'px');
+    var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--vh', vh + 'px');
   }
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', updateVH);
-    window.visualViewport.addEventListener('scroll', updateVH);
+    window.visualViewport.addEventListener('resize', function() {
+      updateVH();
+      // Pin scroll to top — prevents iOS viewport shift when keyboard opens
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+    window.visualViewport.addEventListener('scroll', function() {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
   }
   window.addEventListener('resize', updateVH);
-  window.addEventListener('orientationchange', updateVH);
+  window.addEventListener('orientationchange', function() {
+    setTimeout(updateVH, 200);
+  });
+  // Prevent pull-to-refresh and overscroll bounce
+  document.addEventListener('touchmove', function(e) {
+    // Allow scrolling inside the textarea and chat container
+    var el = e.target;
+    while (el && el !== document.body) {
+      if (
+        el.id === 'writing-area' ||
+        el.id === 'chat-container' ||
+        el.id === 'landing-shell' ||
+        el.classList.contains('chat-container') ||
+        el.classList.contains('landing-content')
+      ) return;
+      el = el.parentElement;
+    }
+    e.preventDefault();
+  }, { passive: false });
   updateVH();
 })();
 
-// --- GO LIVE streaming (navbar button + countdown) ---
+// GO LIVE streaming
 window.ankyLive = (function() {
   var ws = null;
   var liveActive = false;
@@ -839,191 +961,62 @@ window.ankyLive = (function() {
   function updateBtn() {
     if (!navBtn) return;
     var walletConnected = window.ankyWallet && window.ankyWallet.isLoggedIn && window.ankyWallet.isLoggedIn();
-    if (!walletConnected) {
-      navBtn.style.display = 'none';
-      return;
-    }
+    if (!walletConnected) { navBtn.style.display = 'none'; return; }
     if (liveActive) {
-      navBtn.textContent = 'LIVE';
-      navBtn.className = 'go-live-navbar-btn live-active';
-      navBtn.style.display = '';
-      navBtn.disabled = false;
-      navBtn.onclick = function() { disconnect(); };
-    } else if (slotTaken) {
-      // Someone else is live — hide the button
-      navBtn.style.display = 'none';
-    } else if (sessionActive) {
-      // User is writing — hide Go Live
-      navBtn.style.display = 'none';
-    } else {
-      navBtn.textContent = 'GO LIVE';
-      navBtn.className = 'go-live-navbar-btn';
-      navBtn.style.display = '';
-      navBtn.disabled = false;
-      navBtn.onclick = function() { goLive(); };
+      navBtn.textContent = 'LIVE'; navBtn.className = 'go-live-navbar-btn live-active'; navBtn.style.display = '';
+      navBtn.disabled = false; navBtn.onclick = function() { disconnect(); };
+    } else if (slotTaken || sessionActive) { navBtn.style.display = 'none'; }
+    else {
+      navBtn.textContent = 'GO LIVE'; navBtn.className = 'go-live-navbar-btn'; navBtn.style.display = '';
+      navBtn.disabled = false; navBtn.onclick = function() { goLive(); };
     }
   }
-
-  function setSessionActive(val) {
-    sessionActive = val;
-    updateBtn();
-  }
-
-  // Subscribe to live status SSE
+  function setSessionActive(val) { sessionActive = val; updateBtn(); }
   function subscribeStatus() {
     if (sseSource) return;
     sseSource = new EventSource('/api/live-status');
     sseSource.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (!liveActive) {
-          slotTaken = data.is_live;
-          updateBtn();
-        }
-      } catch(_) {}
+      try { var data = JSON.parse(e.data); if (!liveActive) { slotTaken = data.is_live; updateBtn(); } } catch(_) {}
     };
-    sseSource.onerror = function() {
-      sseSource.close();
-      sseSource = null;
-      setTimeout(subscribeStatus, 5000);
-    };
+    sseSource.onerror = function() { sseSource.close(); sseSource = null; setTimeout(subscribeStatus, 5000); };
   }
-
   function connect() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(proto + '//' + location.host + '/ws/live');
-
-    ws.onopen = function() {
-      liveActive = true;
-      slotTaken = false;
-      updateBtn();
-    };
-
-    ws.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (data.type === 'error') {
-          slotTaken = true;
-          liveActive = false;
-          updateBtn();
-          ws.close();
-          ws = null;
-        }
-      } catch(_) {}
-    };
-
-    ws.onclose = function() {
-      liveActive = false;
-      ws = null;
-      updateBtn();
-    };
-
-    ws.onerror = function() {
-      liveActive = false;
-      ws = null;
-      updateBtn();
-    };
+    ws.onopen = function() { liveActive = true; slotTaken = false; updateBtn(); };
+    ws.onmessage = function(e) { try { var data = JSON.parse(e.data); if (data.type === 'error') { slotTaken = true; liveActive = false; updateBtn(); ws.close(); ws = null; } } catch(_) {} };
+    ws.onclose = function() { liveActive = false; ws = null; updateBtn(); };
+    ws.onerror = function() { liveActive = false; ws = null; updateBtn(); };
   }
-
-  function disconnect() {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-    liveActive = false;
-    updateBtn();
-  }
-
-  // GO LIVE button clicked — check auth, then countdown, then start
+  function disconnect() { if (ws) { ws.close(); ws = null; } liveActive = false; updateBtn(); }
   function goLive() {
-    if (!window.ankyWallet || !window.ankyWallet.isLoggedIn()) {
-      alert('you need to be logged in to go live — connect your wallet first');
-      updateBtn();
-      return;
-    }
-
-    // Start countdown overlay
+    if (!window.ankyWallet || !window.ankyWallet.isLoggedIn()) { alert('login first'); updateBtn(); return; }
     countdownOverlay.style.display = 'flex';
     var count = 8;
     countdownNumber.textContent = count;
-    navBtn.style.display = 'none';
-
+    if (navBtn) navBtn.style.display = 'none';
     var countdownTimer = setInterval(function() {
       count--;
       if (count <= 0) {
-        clearInterval(countdownTimer);
-        countdownOverlay.style.display = 'none';
-        // Connect to live WebSocket
+        clearInterval(countdownTimer); countdownOverlay.style.display = 'none';
         connect();
-        // Focus the writing area and start the session
-        var textarea = document.getElementById('writing-area');
-        if (textarea) {
-          textarea.focus();
-          // Trigger a synthetic input to start the writing session
-          // The session will start on the first real keystroke
-        }
-      } else {
-        countdownNumber.textContent = count;
-      }
+        var ta = document.getElementById('writing-area');
+        if (ta) ta.focus();
+      } else { countdownNumber.textContent = count; }
     }, 1000);
   }
-
   function sendText(text, stats) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       var msg = { type: 'text', content: text };
-      if (stats) {
-        msg.words = stats.words;
-        msg.elapsed = stats.elapsed;
-        msg.idle_ratio = stats.idle_ratio;
-        msg.progress = stats.progress;
-      }
+      if (stats) { msg.words = stats.words; msg.elapsed = stats.elapsed; msg.idle_ratio = stats.idle_ratio; msg.progress = stats.progress; }
       ws.send(JSON.stringify(msg));
     }
   }
-
   function isLive() { return liveActive; }
-
-  // Start SSE subscription
   subscribeStatus();
   window.addEventListener('anky:wallet-changed', updateBtn);
-  window.addEventListener('storage', function(e) {
-    if (e.key === 'wallet_address') updateBtn();
-  });
   updateBtn();
-
-  return { toggle: function() { if (liveActive) disconnect(); else goLive(); }, sendText: sendText, isLive: isLive, disconnect: disconnect, setSessionActive: setSessionActive };
-})();
-
-// Fade-up animation for landing sections
-(function() {
-  var sections = document.querySelectorAll('.land-section');
-  if (!sections.length) return;
-  var observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.15 });
-  sections.forEach(function(s) { observer.observe(s); });
-})();
-
-// Arrow key page scrolling in chat mode
-(function() {
-  document.addEventListener('keydown', function(e) {
-    if (!document.body.classList.contains('chat-active')) return;
-    // Don't intercept if user is typing in an input
-    var tag = e.target.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      window.scrollBy({ top: 120, behavior: 'smooth' });
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      window.scrollBy({ top: -120, behavior: 'smooth' });
-    }
-  });
+  return { toggle: function() { if (liveActive) disconnect(); else goLive(); }, sendText: sendText, isLive: isLive, disconnect: disconnect, setSessionActive: setSessionActive, startCountdown: goLive };
 })();
 </script>
 {% endblock %}
