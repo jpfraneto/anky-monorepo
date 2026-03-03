@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>anky - connect wallet</title>
+  <title>anky - login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
@@ -53,14 +53,43 @@
       margin-top: 32px;
       font-size: 13px;
     }
+    .login-btn {
+      background: #1a1a2e;
+      border: 1px solid #7b2ff7;
+      color: #c4a0ff;
+      font-family: 'Righteous', sans-serif;
+      font-size: 16px;
+      padding: 14px 32px;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    .login-btn:hover { background: #2a2a4e; }
+    .login-btn.google { border-color: #4285f4; }
+    .login-btn.apple { border-color: #666; }
+    .login-divider {
+      color: #444;
+      font-size: 12px;
+      margin: 16px 0;
+    }
+    .login-disconnect {
+      background: transparent;
+      border: 1px solid #333;
+      color: #666;
+      font-family: 'Righteous', sans-serif;
+      font-size: 12px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div class="login-container">
     <div class="login-logo">anky</div>
-    <div class="login-status" id="login-status">loading wallet connection...</div>
+    <div class="login-status" id="login-status">loading...</div>
     <div id="privy-mount">
-      <div class="login-loading">loading privy...</div>
+      <div class="login-loading">loading...</div>
     </div>
     <div class="login-back"><a href="/">back to writing</a></div>
   </div>
@@ -68,8 +97,7 @@
   <script type="module">
     import React from 'https://esm.sh/react@18.3.1';
     import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import { PrivyProvider, usePrivy } from 'https://esm.sh/@privy-io/react-auth@2.25.0?deps=react@18.3.1,react-dom@18.3.1';
-    import { base } from 'https://esm.sh/viem@2.21.0/chains';
+    import { PrivyProvider, usePrivy, useLoginWithEmail, useLoginWithOAuth } from 'https://esm.sh/@privy-io/react-auth@2.25.0?deps=react@18.3.1,react-dom@18.3.1';
 
     const h = React.createElement;
     const statusEl = document.getElementById('login-status');
@@ -79,9 +107,8 @@
       statusEl.className = 'login-status' + (type ? ' ' + type : '');
     }
 
-    // After Privy login succeeds, send token to our backend
     async function verifyWithBackend(accessToken) {
-      setStatus('verifying with server...', '');
+      setStatus('verifying...', '');
       try {
         const resp = await fetch('/auth/privy/verify', {
           method: 'POST',
@@ -89,9 +116,12 @@
           body: JSON.stringify({ auth_token: accessToken }),
         });
         const data = await resp.json();
-        if (data.ok && data.wallet_address) {
-          localStorage.setItem('wallet_address', data.wallet_address);
-          setStatus('connected! redirecting...', 'success');
+        if (data.ok) {
+          if (data.username) localStorage.setItem('anky_username', data.username);
+          if (data.email) localStorage.setItem('anky_email', data.email);
+          if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
+          localStorage.setItem('anky_logged_in', 'true');
+          setStatus('logged in! redirecting...', 'success');
           setTimeout(() => { window.location.href = '/'; }, 500);
         } else {
           setStatus('verification failed — try again', 'error');
@@ -102,15 +132,14 @@
       }
     }
 
-    function LoginButton() {
+    function LoginUI() {
       const { login, authenticated, ready, user, getAccessToken, logout } = usePrivy();
 
       React.useEffect(() => {
         if (!ready) return;
 
         if (authenticated && user) {
-          // User is logged in — get access token and verify with backend
-          setStatus('authenticated, getting token...', '');
+          setStatus('authenticated, verifying...', '');
           getAccessToken().then(token => {
             if (token) {
               verifyWithBackend(token);
@@ -122,7 +151,7 @@
             setStatus('token error — try again', 'error');
           });
         } else {
-          setStatus('click below to connect your wallet', '');
+          setStatus('choose how to login', '');
         }
       }, [ready, authenticated, user]);
 
@@ -136,41 +165,31 @@
           h('button', {
             onClick: () => {
               logout();
+              localStorage.removeItem('anky_logged_in');
+              localStorage.removeItem('anky_username');
+              localStorage.removeItem('anky_email');
               localStorage.removeItem('wallet_address');
-              setStatus('disconnected', '');
+              setStatus('logged out', '');
             },
-            style: {
-              background: 'transparent', border: '1px solid #333', color: '#666',
-              fontFamily: 'Righteous, sans-serif', fontSize: '12px', padding: '8px 16px',
-              cursor: 'pointer',
-            }
+            className: 'login-disconnect',
           }, 'disconnect')
         );
       }
 
-      return h('button', {
-        onClick: login,
-        style: {
-          background: '#1a1a2e',
-          border: '1px solid #7b2ff7',
-          color: '#c4a0ff',
-          fontFamily: 'Righteous, sans-serif',
-          fontSize: '16px',
-          padding: '14px 32px',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          width: '100%',
-        },
-        onMouseOver: (e) => { e.target.style.background = '#2a2a4e'; },
-        onMouseOut: (e) => { e.target.style.background = '#1a1a2e'; },
-      }, 'connect wallet');
+      // Use Privy's built-in login modal which handles email, Google, Apple
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '0' } },
+        h('button', {
+          onClick: login,
+          className: 'login-btn',
+        }, 'login with email or apple')
+      );
     }
 
     function App() {
       return h(PrivyProvider, {
         appId: 'cmivv85zt00ftla0cjpaw155h',
         config: {
-          loginMethods: ['wallet'],
+          loginMethods: ['email', 'apple'],
           appearance: {
             theme: 'dark',
             accentColor: '#7b2ff7',
@@ -179,13 +198,10 @@
           embeddedWallets: {
             createOnLogin: 'users-without-wallets',
           },
-          defaultChain: base,
-          supportedChains: [base],
         },
-      }, h(LoginButton));
+      }, h(LoginUI));
     }
 
-    // Mount React app
     const mountEl = document.getElementById('privy-mount');
     mountEl.innerHTML = '';
     const root = createRoot(mountEl);

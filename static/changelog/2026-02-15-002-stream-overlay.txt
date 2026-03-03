@@ -1,0 +1,17 @@
+Implement the following plan:
+
+# Stream Overlay: HTML-based OBS Skin for $ANKY Livestream
+
+## Context
+The current ffmpeg-based RTMP stream works (renders text on a dark background via drawtext) but is visually limited. We want a rich HTML overlay page that OBS captures via Browser Source — enabling the full anky game UI, stickers, animations, and branding. The ffmpeg stream stays as fallback.
+
+## What Ships
+A standalone HTML page at `/stream/overlay` that:
+- Matches the anky writing game layout (dark bg, purple accents, Righteous font)
+- Shows live writing text in real-time via SSE (big text, auto-scrolling)
+- Life bar (idle countdown) + progress bar (8-min writing progress)
+- `$ANKY` header branding
+- 88:88 livestream timer with progress bar at bottom
+- Contract address ticker at bottom
+- Anky sticker images accumulate around the border as ankys are completed
+- Vertical 1080x1920 layout (for pump.fun mobile viewing)

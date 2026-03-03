@@ -32,7 +32,9 @@ pub async fn create_prompt_api(
 ) -> Result<Response, AppError> {
     let prompt_text = req.prompt_text.trim().to_string();
     if prompt_text.is_empty() || prompt_text.len() > 500 {
-        return Err(AppError::BadRequest("prompt must be 1-500 characters".into()));
+        return Err(AppError::BadRequest(
+            "prompt must be 1-500 characters".into(),
+        ));
     }
 
     // Validate payment
@@ -45,9 +47,7 @@ pub async fn create_prompt_api(
             crate::routes::payment_helper::PaymentError::VerificationFailed(r) => {
                 AppError::BadRequest(format!("payment verification failed: {}", r))
             }
-            crate::routes::payment_helper::PaymentError::ConfigError(r) => {
-                AppError::Internal(r)
-            }
+            crate::routes::payment_helper::PaymentError::ConfigError(r) => AppError::Internal(r),
             crate::routes::payment_helper::PaymentError::DbError(e) => {
                 AppError::Internal(format!("db error: {}", e))
             }
@@ -74,7 +74,15 @@ pub async fn create_prompt_api(
         p.map(|r| r.created_at).unwrap_or_default()
     };
 
-    state.emit_log("INFO", "prompt", &format!("Creating prompt {}: {}", &prompt_id[..8], &prompt_text[..prompt_text.len().min(60)]));
+    state.emit_log(
+        "INFO",
+        "prompt",
+        &format!(
+            "Creating prompt {}: {}",
+            &prompt_id[..8],
+            &prompt_text[..prompt_text.len().min(60)]
+        ),
+    );
 
     // Spawn image generation in background
     let s = state.clone();
@@ -85,11 +93,19 @@ pub async fn create_prompt_api(
             Ok(image_path) => {
                 let db = s.db.lock().await;
                 let _ = queries::update_prompt_image(&db, &pid, &image_path);
-                s.emit_log("INFO", "prompt", &format!("Prompt {} image complete", &pid[..8]));
+                s.emit_log(
+                    "INFO",
+                    "prompt",
+                    &format!("Prompt {} image complete", &pid[..8]),
+                );
             }
             Err(e) => {
                 tracing::error!("Prompt image generation failed for {}: {}", &pid[..8], e);
-                s.emit_log("ERROR", "prompt", &format!("Prompt {} image failed: {}", &pid[..8], e));
+                s.emit_log(
+                    "ERROR",
+                    "prompt",
+                    &format!("Prompt {} image failed: {}", &pid[..8], e),
+                );
                 let db = s.db.lock().await;
                 let _ = queries::update_prompt_status(&db, &pid, "failed");
             }
@@ -131,7 +147,10 @@ pub async fn get_prompt_api(
     };
 
     let p = prompt.unwrap();
-    let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+    let image_url = p
+        .image_path
+        .as_ref()
+        .map(|path| format!("https://anky.app/data/images/{}", path));
     let created_by = p.created_by.as_deref().unwrap_or(&creator_username);
     Ok(Json(json!({
         "prompt_id": p.id,
@@ -292,7 +311,10 @@ pub async fn list_prompts_api(
     let items: Vec<serde_json::Value> = prompts
         .iter()
         .map(|p| {
-            let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+            let image_url = p
+                .image_path
+                .as_ref()
+                .map(|path| format!("https://anky.app/data/images/{}", path));
             let created_by = p.created_by.as_deref().unwrap_or(&p.creator_username);
             json!({
                 "prompt_id": p.id,
@@ -326,7 +348,10 @@ pub async fn random_prompt_api(
 
     match prompt {
         Some(p) => {
-            let image_url = p.image_path.as_ref().map(|path| format!("https://anky.app/data/images/{}", path));
+            let image_url = p
+                .image_path
+                .as_ref()
+                .map(|path| format!("https://anky.app/data/images/{}", path));
             let created_by = p.created_by.as_deref().unwrap_or(&p.creator_username);
             Ok(Json(json!({
                 "prompt_id": p.id,

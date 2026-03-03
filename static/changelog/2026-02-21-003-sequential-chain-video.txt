@@ -1,0 +1,51 @@
+Implement the following plan:
+
+# Sequential Chain Video Pipeline
+
+## Context
+
+The current video pipeline generates all images in parallel, then all videos in parallel. Each clip is visually disconnected — same story on paper but visually they're strangers to each other. The fix: a sequential chain where each scene's completed video provides reference frames to Gemini for generating the next scene's image. Visual continuity becomes mechanical, not prompt-engineered.
+
+## Changes
+
+### 1. `src/pipeline/video_gen.rs` (primary)
+
+- **New `extract_reference_frames(video_path) -> Vec<String>`** — uses ffmpeg to extract 1-3 frames (scaled by clip duration) as base64 PNGs
+- **New `generate_sequential_chain()`** — replaces `generate_scene_images()` + `generate_scene_videos()` with a single loop:
+  ```
+  for each scene:
+    compose refs (anky refs + prev video frames)
+    → gemini image → grok video → extract frames → next
+  ```
+- **New `compose_references()`** — scene 1 gets all 3 Anky refs; scene N>1 gets 2 Anky refs + up to 3 continuity frames
+- **New `persist_script_to_db()`** — small helper to avoid repeating DB update pattern
+- **Update `generate_video_from_script()`** — 2 steps instead of 3 (sequential chain → stitch)
+- **New `resume_from_generating()`** — resets non-complete scenes to pending, runs sequential chain (which skips completed scenes)
+- **Update system prompt** — remove "VISUAL CONTINUITY — CRITICAL" section (pipeline handles it now), remove forced "anky.app" end card, simplify video_prompt requirements
+
+### 2. `src/services/gemini.rs` (minor)
+
+- Change `.take(4)` to `.take(6)` for reference images (2 Anky + 3 continuity = 5)
+- Update context text: "Reference images above provide character and visual context..."
+
+### 3. `src/routes/api.rs` (minor)
+
+- Simplify resume endpoint: two branches (`"generating"` or `"stitching"`) instead of three
+
+### 4. `templates/video.html` (minor)
+
+- Add `"generating"` step label (keep old labels for backward compat)
+- Update `narrativeProgress()` to show per-scene status (e.g., "painting the surface... (scene 3: video)")
+- Update "how it works" modal pipeline description
+
+## Tradeoff
+
+Speed: ~10 min parallel → ~40-50 min sequential. Accepted — quality over speed.
+
+## Verification
+
+1. `cargo build --release` — must compile
+2. `systemctl --user restart anky.service`
+3. Visit `/generate/video`, select an anky, generate — watch the sequential chain progress scene by scene in the UI
+4. Check that extracted frames exist temporarily and get cleaned up
+5. Verify final stitched video has visual continuity between clips

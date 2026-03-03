@@ -1,8 +1,8 @@
 use anyhow::Result;
-use hmac::{Hmac, Mac};
-use sha1::Sha1;
 use base64::Engine;
+use hmac::{Hmac, Mac};
 use serde::Deserialize;
+use sha1::Sha1;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -57,11 +57,7 @@ pub async fn fetch_mentions(
     }
 
     let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .bearer_auth(bearer_token)
-        .send()
-        .await?;
+    let resp = client.get(&url).bearer_auth(bearer_token).send().await?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -142,8 +138,8 @@ fn generate_oauth_header(
     token_secret: &str,
     extra_params: &[(&str, &str)],
 ) -> String {
-    use std::collections::BTreeMap;
     use rand::Rng;
+    use std::collections::BTreeMap;
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -185,11 +181,15 @@ fn generate_oauth_header(
     );
 
     // Build signing key
-    let signing_key = format!("{}&{}", percent_encode(consumer_secret), percent_encode(token_secret));
+    let signing_key = format!(
+        "{}&{}",
+        percent_encode(consumer_secret),
+        percent_encode(token_secret)
+    );
 
     // HMAC-SHA1
-    let mut mac = HmacSha1::new_from_slice(signing_key.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha1::new_from_slice(signing_key.as_bytes()).expect("HMAC can take key of any size");
     mac.update(base_string.as_bytes());
     let signature = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
 

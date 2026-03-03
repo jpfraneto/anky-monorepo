@@ -1,0 +1,9 @@
+Implement the following plan:
+
+# Plan: Memory-Enriched Psychoanalytic Video Pipeline
+
+## Context
+
+The video generation pipeline currently takes ONLY the raw writing text and asks Claude to be a "video director." The result is a generic visual retelling. But the whole point of Anky is mirroring the unconscious — and we already have a rich memory system (psychological profiles, patterns, avoidances, breakthroughs, similar past moments) that's used for reflections but **not** for video generation.
+
+This upgrade injects the full memory context into video script generation, transforming the 88-second video from a slideshow into a psychoanalytic film.

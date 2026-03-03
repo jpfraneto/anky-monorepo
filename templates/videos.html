@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}anky - videos{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="anky - videos">
+<meta property="og:description" content="videos born from consciousness streams — visual journeys rendered from writing sessions.">
+<meta property="og:image" content="https://anky.app/static/icon-512.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://anky.app/video-gallery">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="anky - videos">
+<meta name="twitter:description" content="videos born from consciousness streams">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>videos</h2>
+  <p class="subtitle">visual journeys from consciousness streams</p>
+</div>
+
+{% if videos and videos | length > 0 %}
+<p class="vid-gallery-count">{{ videos | length }} video{% if videos | length != 1 %}s{% endif %}</p>
+<div class="vid-gallery-grid">
+  {% for v in videos %}
+  <a class="vid-gallery-card" href="{{ v.video_url }}" target="_blank" rel="noopener">
+    <div class="vid-gallery-thumb">
+      {% if v.thumb %}
+      <img src="{{ v.thumb }}" alt="{{ v.title | default(value='untitled') }}" loading="lazy">
+      {% else %}
+      <div class="vid-gallery-no-thumb">▶</div>
+      {% endif %}
+      <div class="vid-gallery-play">▶</div>
+    </div>
+    <div class="vid-gallery-info">
+      <div class="vid-gallery-title">{{ v.title | default(value="untitled") }}</div>
+      <div class="vid-gallery-date" data-ts="{{ v.created_at }}">{{ v.created_at | truncate(length=10, end="") }}</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>no videos yet — write something and generate a video</p>
+  <a href="/generate/video" class="btn">generate a video</a>
+</div>
+{% endif %}
+
+<script>
+  document.querySelectorAll('.vid-gallery-date[data-ts]').forEach(function(el) {
+    var ts = el.getAttribute('data-ts');
+    if (!ts) return;
+    try {
+      var d = new Date(ts.replace(' ', 'T') + 'Z');
+      if (!isNaN(d.getTime())) {
+        el.textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+    } catch(e) {}
+  });
+</script>
+{% endblock %}

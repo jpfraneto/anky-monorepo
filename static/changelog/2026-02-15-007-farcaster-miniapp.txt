@@ -1,0 +1,18 @@
+Implement the following plan:
+
+# Plan: Transform Anky into a Farcaster MiniApp
+
+## Context
+
+Anky currently authenticates users via Privy (wallet) and X OAuth. The goal is to make Anky work as a **Farcaster MiniApp** — when opened inside Warpcast/Farcaster clients, it authenticates via the Farcaster SDK, gets the user's FID, profile, and embedded wallet automatically. No login page needed. The FID becomes the atomic unit of identity.
+
+The app already stores `farcaster_fid`, `farcaster_username`, and `farcaster_pfp_url` on users (via Neynar lookup during Privy login). This integration deepens that — Farcaster becomes a first-class auth path.
+
+## What Changes
+
+### 1. Serve the Farcaster manifest at `/.well-known/farcaster.json`
+### 2. Add `fc:miniapp` meta tag to `templates/base.html`
+### 3. Add Farcaster SDK initialization to `templates/base.html`
+### 4. Add Farcaster auth endpoint: `POST /auth/farcaster/verify`
+### 5. Get wallet address from Farcaster embedded wallet
+### 6. Conditional UI: hide login navbar items when in Farcaster

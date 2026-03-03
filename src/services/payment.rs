@@ -10,8 +10,7 @@ pub struct VerificationResult {
 }
 
 /// ERC20 Transfer event topic: keccak256("Transfer(address,address,uint256)")
-const TRANSFER_TOPIC: &str =
-    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const TRANSFER_TOPIC: &str = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
 #[derive(Serialize)]
 struct JsonRpcRequest {
@@ -46,7 +45,8 @@ async fn rpc_call(
         anyhow::bail!("RPC error: {}", err);
     }
 
-    resp.result.ok_or_else(|| anyhow::anyhow!("No result from RPC"))
+    resp.result
+        .ok_or_else(|| anyhow::anyhow!("No result from RPC"))
 }
 
 pub async fn verify_base_transaction(
@@ -87,17 +87,14 @@ pub async fn verify_base_transaction(
         .get("blockNumber")
         .and_then(|b| b.as_str())
         .unwrap_or("0x0");
-    let receipt_block = u64::from_str_radix(receipt_block_hex.trim_start_matches("0x"), 16).unwrap_or(0);
+    let receipt_block =
+        u64::from_str_radix(receipt_block_hex.trim_start_matches("0x"), 16).unwrap_or(0);
 
-    let current_block_hex = rpc_call(
-        &client,
-        rpc_url,
-        "eth_blockNumber",
-        serde_json::json!([]),
-    )
-    .await?;
+    let current_block_hex =
+        rpc_call(&client, rpc_url, "eth_blockNumber", serde_json::json!([])).await?;
     let current_block_str = current_block_hex.as_str().unwrap_or("0x0");
-    let current_block = u64::from_str_radix(current_block_str.trim_start_matches("0x"), 16).unwrap_or(0);
+    let current_block =
+        u64::from_str_radix(current_block_str.trim_start_matches("0x"), 16).unwrap_or(0);
 
     if current_block.saturating_sub(receipt_block) < 2 {
         return Ok(VerificationResult {
@@ -120,15 +117,27 @@ pub async fn verify_base_transaction(
     let expected_addr_lower = expected_recipient.to_lowercase();
 
     let matching_log = logs.iter().find(|log| {
-        let addr = log.get("address").and_then(|a| a.as_str()).unwrap_or("").to_lowercase();
-        let topics = log.get("topics").and_then(|t| t.as_array()).cloned().unwrap_or_default();
+        let addr = log
+            .get("address")
+            .and_then(|a| a.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let topics = log
+            .get("topics")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
 
         if addr != token_addr_lower {
             return false;
         }
 
         // Check Transfer event topic
-        let topic0 = topics.first().and_then(|t| t.as_str()).unwrap_or("").to_lowercase();
+        let topic0 = topics
+            .first()
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_lowercase();
         if topic0 != TRANSFER_TOPIC {
             return false;
         }
@@ -172,12 +181,21 @@ pub async fn verify_base_transaction(
     }
 
     // Extract sender from topic[1]
-    let topics = log.get("topics").and_then(|t| t.as_array()).cloned().unwrap_or_default();
-    let from = topics.get(1).and_then(|t| t.as_str()).map(|t| {
-        format!("0x{}", &t[26..])
-    });
+    let topics = log
+        .get("topics")
+        .and_then(|t| t.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let from = topics
+        .get(1)
+        .and_then(|t| t.as_str())
+        .map(|t| format!("0x{}", &t[26..]));
 
-    tracing::info!("Payment verified: {}... amount={}", &tx_hash_hex[..10], actual_amount);
+    tracing::info!(
+        "Payment verified: {}... amount={}",
+        &tx_hash_hex[..10],
+        actual_amount
+    );
 
     Ok(VerificationResult {
         valid: true,

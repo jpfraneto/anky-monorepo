@@ -248,6 +248,32 @@
 {% block scripts %}
 <script>
 document.body.classList.add('home-prewrite');
+
+// --- localStorage persistence for anonymous users ---
+(function() {
+  // 1. Cookie recovery: if anky_user_id cookie is missing but localStorage has it, restore
+  function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  var cookieUserId = getCookie('anky_user_id');
+  var storedToken = localStorage.getItem('anky_user_token');
+
+  if (cookieUserId) {
+    // Cookie exists — sync to localStorage
+    localStorage.setItem('anky_user_token', cookieUserId);
+  } else if (storedToken) {
+    // Cookie missing but localStorage has it — restore the cookie
+    document.cookie = 'anky_user_id=' + storedToken + '; path=/; max-age=31536000; SameSite=Lax';
+  }
+  {% if user_token %}
+  // Server-side fallback: ensure localStorage matches server-assigned token
+  if (!localStorage.getItem('anky_user_token')) {
+    localStorage.setItem('anky_user_token', '{{ user_token }}');
+  }
+  {% endif %}
+})();
 </script>
 <script>
 (function() {
@@ -386,10 +412,6 @@ document.body.classList.add('home-prewrite');
   scheduleDeferredAppend();
 })();
 </script>
-<div class="countdown-overlay" id="countdown-overlay" style="display:none;">
-  <div class="countdown-number" id="countdown-number">8</div>
-  <div class="countdown-label">going live in...</div>
-</div>
 
 <script>
 (function() {
@@ -414,6 +436,66 @@ document.body.classList.add('home-prewrite');
   var checkpointTimer = null;
   var sessionId = null;
   var sessionToken = null;
+
+  // --- Draft saving (debounced 2s) ---
+  var draftSaveTimer = null;
+  function saveDraftToStorage() {
+    if (!sessionActive || !textarea.value) return;
+    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    localStorage.setItem('anky_draft', JSON.stringify({
+      text: textarea.value,
+      elapsed: elapsed,
+      timestamp: Date.now()
+    }));
+  }
+  function clearDraft() {
+    localStorage.removeItem('anky_draft');
+  }
+
+  // --- Anky ID persistence ---
+  function saveAnkyId(ankyId) {
+    var myAnkys = JSON.parse(localStorage.getItem('anky_my_ankys') || '[]');
+    myAnkys.unshift({ id: ankyId, timestamp: Date.now() });
+    localStorage.setItem('anky_my_ankys', JSON.stringify(myAnkys.slice(0, 50)));
+  }
+
+  // --- Draft recovery on page load ---
+  (function checkDraftRecovery() {
+    var raw = localStorage.getItem('anky_draft');
+    if (!raw) return;
+    try {
+      var draft = JSON.parse(raw);
+      // Only recover if < 1 hour old
+      if (Date.now() - draft.timestamp > 3600000) {
+        clearDraft();
+        return;
+      }
+      if (!draft.text || !draft.text.trim()) {
+        clearDraft();
+        return;
+      }
+      // Show a recovery banner on the landing page
+      var banner = document.createElement('div');
+      banner.className = 'draft-recovery-banner';
+      banner.innerHTML =
+        '<p>you have an unfinished writing (' + draft.text.split(/\s+/).filter(function(w){return w.length>0;}).length + ' words). resume?</p>' +
+        '<button class="draft-resume-btn" id="draft-resume-yes">resume</button>' +
+        '<button class="draft-dismiss-btn" id="draft-resume-no">discard</button>';
+      banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(13,15,25,0.95);border:1px solid rgba(238,214,152,0.3);border-radius:12px;padding:14px 20px;color:#ececf4;font-family:Righteous,sans-serif;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,0.4);max-width:90vw;';
+      document.body.appendChild(banner);
+
+      document.getElementById('draft-resume-yes').onclick = function() {
+        banner.remove();
+        enterWritingMode(draft.text);
+      };
+      document.getElementById('draft-resume-no').onclick = function() {
+        banner.remove();
+        clearDraft();
+      };
+    } catch(e) {
+      clearDraft();
+    }
+  })();
 
   function enterWritingMode(seedText) {
     if (!document.body.classList.contains('home-prewrite')) return;
@@ -529,32 +611,28 @@ document.body.classList.add('home-prewrite');
   var lastStreamedTitle = '';
   var lastStreamedReflection = '';
 
-  function scrollChatToBottom() {
-    setTimeout(function() { chatContainer.scrollTop = chatContainer.scrollHeight; }, 50);
+  function isNearBottom() {
+    var threshold = 80;
+    return chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < threshold;
   }
 
-  function addChatBubble(role, html, opts) {
+  var userScrolledUp = false;
+
+  chatContainer.addEventListener('scroll', function() {
+    userScrolledUp = !isNearBottom();
+  });
+
+  function scrollChatToBottom() {
+    if (!userScrolledUp) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }
+
+  function addChatBubble(role, html) {
     var bubble = document.createElement('div');
     bubble.className = 'chat-bubble ' + role;
     bubble.innerHTML = html;
     chatContainer.appendChild(bubble);
-    if (role === 'user' && opts && opts.collapsible && html.length > 500) {
-      bubble.classList.add('collapsed');
-      var btn = document.createElement('button');
-      btn.className = 'chat-bubble-expand';
-      btn.textContent = 'show full writing';
-      btn.onclick = function() {
-        if (bubble.classList.contains('collapsed')) {
-          bubble.classList.remove('collapsed');
-          btn.textContent = 'collapse';
-        } else {
-          bubble.classList.add('collapsed');
-          btn.textContent = 'show full writing';
-        }
-        scrollChatToBottom();
-      };
-      chatContainer.appendChild(btn);
-    }
     scrollChatToBottom();
     return bubble;
   }
@@ -595,7 +673,10 @@ document.body.classList.add('home-prewrite');
         ankyBubble.innerHTML =
           '<span class="anky-response-text">' + escapeHtml(fullText) + '</span>';
       }
-      scrollChatToBottom();
+      // Scroll only if user is near bottom — inline here since we're already in rAF
+      if (!userScrolledUp) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
     }
 
     var source = new EventSource('/api/stream-reflection/' + ankyId);
@@ -613,11 +694,13 @@ document.body.classList.add('home-prewrite');
       source.close();
       renderCurrentText();
       pollAnkyImage(ankyId);
+      // Show reply options right after reflection is done — don't wait for image
+      setTimeout(function() { showReplyOptions(); }, 700);
     });
     source.onerror = function() {
       source.close();
       if (!fullText) pollAnkyReflection(ankyId);
-      else { renderCurrentText(); pollAnkyImage(ankyId); }
+      else { renderCurrentText(); pollAnkyImage(ankyId); setTimeout(function() { showReplyOptions(); }, 700); }
     };
   }
 
@@ -645,11 +728,11 @@ document.body.classList.add('home-prewrite');
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
-            showChatInput();
+            // Don't call showChatInput() here — reply options are shown right after streaming ends
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
-            showChatInput();
+            // Don't call showChatInput() here — already handled
           }
           if (pollCount > 100) clearInterval(interval);
         })
@@ -675,6 +758,8 @@ document.body.classList.add('home-prewrite');
               ankyBubble.innerHTML = '<div class="anky-chat-title">' + escapeHtml(data.title) + '</div>' + ankyBubble.innerHTML;
             }
             scrollChatToBottom();
+            // Show reply options as soon as reflection is available
+            setTimeout(function() { showReplyOptions(); }, 500);
           }
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
@@ -685,11 +770,9 @@ document.body.classList.add('home-prewrite');
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
-            showChatInput();
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
-            showChatInput();
           }
           if (pollCount > 100) clearInterval(interval);
         })
@@ -697,93 +780,207 @@ document.body.classList.add('home-prewrite');
     }, 3000);
   }
 
-  function createChatInputArea(sendMessageFn) {
-    if (document.getElementById('chat-input-area')) return;
-    var inputArea = document.createElement('div');
-    inputArea.id = 'chat-input-area';
-    inputArea.className = 'chat-input-area';
-    inputArea.innerHTML =
-      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
-      '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
-    var writingMain = document.querySelector('.writing-main');
-    writingMain.appendChild(inputArea);
+  function removeReplyOptions() {
+    var existing = document.getElementById('reply-options');
+    if (existing) existing.remove();
+  }
 
-    var input = document.getElementById('chat-input');
-    var sendBtn = document.getElementById('chat-send');
-    input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (input.value.trim()) sendBtn.click();
-      }
-    });
-    input.addEventListener('input', function() {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-      sendBtn.disabled = !input.value.trim();
-    });
-    sendBtn.onclick = function() { sendMessageFn(input, sendBtn); };
-    input.focus();
+  function sendReplyToAnky(msg) {
+    if (!msg || !currentAnkyId) return;
+    removeReplyOptions();
+    userScrolledUp = false;
+    addChatBubble('user', escapeHtml(msg));
+    var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: currentAnkyId, message: msg, history: chatHistory }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        chatHistory.push({ role: 'user', content: msg });
+        chatHistory.push({ role: 'assistant', content: data.response });
+        thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+        userScrolledUp = false;
+        scrollChatToBottom();
+        showReplyOptions();
+      })
+      .catch(function() {
+        thinking.innerHTML = '<span class="error">something went wrong.</span>';
+      });
+  }
+
+  function showReplyOptions() {
+    removeReplyOptions();
+    var optionsDiv = document.createElement('div');
+    optionsDiv.id = 'reply-options';
+    optionsDiv.className = 'reply-options';
+    optionsDiv.innerHTML = '<div class="reply-options-loading"><span class="processing">...</span></div>';
+    chatContainer.appendChild(optionsDiv);
+    userScrolledUp = false;
     scrollChatToBottom();
+
+    fetch('/api/suggest-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: currentAnkyId, history: chatHistory }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        optionsDiv.innerHTML = '';
+
+        var btn1 = document.createElement('button');
+        btn1.className = 'reply-option-btn';
+        btn1.textContent = data.reply1;
+        btn1.onclick = function() { sendReplyToAnky(data.reply1); };
+        optionsDiv.appendChild(btn1);
+
+        var btn2 = document.createElement('button');
+        btn2.className = 'reply-option-btn';
+        btn2.textContent = data.reply2;
+        btn2.onclick = function() { sendReplyToAnky(data.reply2); };
+        optionsDiv.appendChild(btn2);
+
+        var customBtn = document.createElement('button');
+        customBtn.className = 'reply-option-custom';
+        customBtn.textContent = 'type a reply to anky...';
+        customBtn.onclick = function() {
+          optionsDiv.innerHTML = '';
+          var inputWrap = document.createElement('div');
+          inputWrap.className = 'reply-custom-input';
+          inputWrap.innerHTML =
+            '<textarea class="chat-input" placeholder="write your reply..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+            '<button class="chat-send-btn" disabled>send</button>';
+          optionsDiv.appendChild(inputWrap);
+          var ta = inputWrap.querySelector('textarea');
+          var sendBtn = inputWrap.querySelector('button');
+          ta.addEventListener('input', function() {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+            sendBtn.disabled = !ta.value.trim();
+          });
+          ta.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (ta.value.trim()) sendBtn.click();
+            }
+          });
+          sendBtn.onclick = function() {
+            var msg = ta.value.trim();
+            if (msg) sendReplyToAnky(msg);
+          };
+          ta.focus();
+          userScrolledUp = false;
+          scrollChatToBottom();
+        };
+        optionsDiv.appendChild(customBtn);
+        userScrolledUp = false;
+        scrollChatToBottom();
+      })
+      .catch(function() {
+        // Fallback: just show the custom input
+        optionsDiv.innerHTML = '';
+        var customBtn = document.createElement('button');
+        customBtn.className = 'reply-option-custom';
+        customBtn.textContent = 'type a reply to anky...';
+        customBtn.onclick = function() {
+          optionsDiv.innerHTML = '';
+          var inputWrap = document.createElement('div');
+          inputWrap.className = 'reply-custom-input';
+          inputWrap.innerHTML =
+            '<textarea class="chat-input" placeholder="write your reply..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+            '<button class="chat-send-btn" disabled>send</button>';
+          optionsDiv.appendChild(inputWrap);
+          var ta = inputWrap.querySelector('textarea');
+          var sendBtn = inputWrap.querySelector('button');
+          ta.addEventListener('input', function() {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+            sendBtn.disabled = !ta.value.trim();
+          });
+          ta.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (ta.value.trim()) sendBtn.click();
+            }
+          });
+          sendBtn.onclick = function() {
+            var msg = ta.value.trim();
+            if (msg) sendReplyToAnky(msg);
+          };
+          ta.focus();
+        };
+        optionsDiv.appendChild(customBtn);
+        userScrolledUp = false;
+        scrollChatToBottom();
+      });
   }
 
   function showChatInput() {
-    createChatInputArea(function(input, sendBtn) {
-      var msg = input.value.trim();
-      if (!msg || !currentAnkyId) return;
-      input.value = '';
-      input.style.height = 'auto';
-      sendBtn.disabled = true;
-      addChatBubble('user', escapeHtml(msg));
-      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
-      fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anky_id: currentAnkyId, message: msg, history: chatHistory }),
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          scrollChatToBottom();
-        })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong.</span>';
-          sendBtn.disabled = !input.value.trim();
-        });
-    });
+    showReplyOptions();
   }
 
   function showQuickChatInput() {
-    createChatInputArea(function(input, sendBtn) {
-      var msg = input.value.trim();
-      if (!msg) return;
-      input.value = '';
-      input.style.height = 'auto';
-      sendBtn.disabled = true;
-      addChatBubble('user', escapeHtml(msg));
-      var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
-      fetch('/api/chat-quick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ writing: currentWritingText, message: msg, history: chatHistory }),
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          scrollChatToBottom();
+    // For non-anky sessions, just show a simple custom reply input
+    removeReplyOptions();
+    var optionsDiv = document.createElement('div');
+    optionsDiv.id = 'reply-options';
+    optionsDiv.className = 'reply-options';
+    var customBtn = document.createElement('button');
+    customBtn.className = 'reply-option-custom';
+    customBtn.textContent = 'type a reply to anky...';
+    customBtn.onclick = function() {
+      optionsDiv.innerHTML = '';
+      var inputWrap = document.createElement('div');
+      inputWrap.className = 'reply-custom-input';
+      inputWrap.innerHTML =
+        '<textarea class="chat-input" placeholder="write your reply..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+        '<button class="chat-send-btn" disabled>send</button>';
+      optionsDiv.appendChild(inputWrap);
+      var ta = inputWrap.querySelector('textarea');
+      var sendBtn = inputWrap.querySelector('button');
+      ta.addEventListener('input', function() {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+        sendBtn.disabled = !ta.value.trim();
+      });
+      ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (ta.value.trim()) sendBtn.click();
+        }
+      });
+      sendBtn.onclick = function() {
+        var msg = ta.value.trim();
+        if (!msg) return;
+        ta.value = '';
+        ta.style.height = 'auto';
+        sendBtn.disabled = true;
+        addChatBubble('user', escapeHtml(msg));
+        var thinking = addChatBubble('anky', '<span class="processing">thinking...</span>');
+        fetch('/api/chat-quick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ writing: currentWritingText, message: msg, history: chatHistory }),
         })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong.</span>';
-          sendBtn.disabled = !input.value.trim();
-        });
-    });
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            chatHistory.push({ role: 'user', content: msg });
+            chatHistory.push({ role: 'assistant', content: data.response });
+            thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+            userScrolledUp = false;
+            scrollChatToBottom();
+          })
+          .catch(function() {
+            thinking.innerHTML = '<span class="error">something went wrong.</span>';
+          });
+      };
+      ta.focus();
+    };
+    optionsDiv.appendChild(customBtn);
+    chatContainer.appendChild(optionsDiv);
+    userScrolledUp = false;
+    scrollChatToBottom();
   }
 
   function endSession() {
@@ -815,7 +1012,19 @@ document.body.classList.add('home-prewrite');
     chatContainer.style.display = 'flex';
     chatContainer.innerHTML = '';
 
-    addChatBubble('user', escapeHtml(text), { collapsible: true });
+    userScrolledUp = false;
+    var writingBubble = addChatBubble('user', escapeHtml(text));
+    // Auto-collapse the writing bubble so it doesn't push the anky response off screen
+    writingBubble.classList.add('collapsed');
+    var wordCount = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    var expandBtn = document.createElement('button');
+    expandBtn.className = 'chat-bubble-expand';
+    expandBtn.textContent = 'show full writing \u2014 ' + wordCount + ' words';
+    expandBtn.onclick = function() {
+      writingBubble.classList.remove('collapsed');
+      expandBtn.remove();
+    };
+    chatContainer.insertBefore(expandBtn, writingBubble.nextSibling);
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
 
     var inquiryEl = document.getElementById('inquiry-prompt');
@@ -823,12 +1032,21 @@ document.body.classList.add('home-prewrite');
     var writePayload = { text: text, duration: duration };
     if (inquiryId) writePayload.inquiry_id = inquiryId;
 
+    var writeHeaders = { 'Content-Type': 'application/json' };
+    var userToken = localStorage.getItem('anky_user_token');
+    if (userToken) writeHeaders['X-Anky-User-Token'] = userToken;
+
     fetch('/write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: writeHeaders,
       body: JSON.stringify(writePayload),
     })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) {
+          return r.json().catch(function() { return { error: 'server error (' + r.status + ')' }; });
+        }
+        return r.json();
+      })
       .then(function(data) {
         var ankyBubble = document.getElementById('anky-bubble');
         if (data.error) {
@@ -836,8 +1054,10 @@ document.body.classList.add('home-prewrite');
           setTimeout(function() { showQuickChatInput(); }, 500);
           return;
         }
+        clearDraft();  // only clear after confirmed success
         if (data.is_anky && data.anky_id) {
           currentAnkyId = data.anky_id;
+          saveAnkyId(data.anky_id);
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
           streamAnkyReflection(data.anky_id);
@@ -849,7 +1069,7 @@ document.body.classList.add('home-prewrite');
       })
       .catch(function() {
         var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">something went wrong.</span>';
+        ankyBubble.innerHTML = '<span class="error">something went wrong — your writing is saved locally. reload to try again.</span>';
         setTimeout(function() { showQuickChatInput(); }, 500);
       });
   }
@@ -860,6 +1080,9 @@ document.body.classList.add('home-prewrite');
     else lastKeystrokeTime = Date.now();
     var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
     statWords.textContent = words + (words === 1 ? ' word' : ' words');
+    // Debounced draft save to localStorage
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftToStorage, 2000);
     if (window.ankyLive && window.ankyLive.isLive()) {
       var wordCount = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
       window.ankyLive.sendText(textarea.value, {
@@ -947,76 +1170,7 @@ setTimeout(function() {
   updateVH();
 })();
 
-// GO LIVE streaming
-window.ankyLive = (function() {
-  var ws = null;
-  var liveActive = false;
-  var navBtn = document.getElementById('go-live-navbar-btn');
-  var countdownOverlay = document.getElementById('countdown-overlay');
-  var countdownNumber = document.getElementById('countdown-number');
-  var sseSource = null;
-  var slotTaken = false;
-  var sessionActive = false;
-
-  function updateBtn() {
-    if (!navBtn) return;
-    var walletConnected = window.ankyWallet && window.ankyWallet.isLoggedIn && window.ankyWallet.isLoggedIn();
-    if (!walletConnected) { navBtn.style.display = 'none'; return; }
-    if (liveActive) {
-      navBtn.textContent = 'LIVE'; navBtn.className = 'go-live-navbar-btn live-active'; navBtn.style.display = '';
-      navBtn.disabled = false; navBtn.onclick = function() { disconnect(); };
-    } else if (slotTaken || sessionActive) { navBtn.style.display = 'none'; }
-    else {
-      navBtn.textContent = 'GO LIVE'; navBtn.className = 'go-live-navbar-btn'; navBtn.style.display = '';
-      navBtn.disabled = false; navBtn.onclick = function() { goLive(); };
-    }
-  }
-  function setSessionActive(val) { sessionActive = val; updateBtn(); }
-  function subscribeStatus() {
-    if (sseSource) return;
-    sseSource = new EventSource('/api/live-status');
-    sseSource.onmessage = function(e) {
-      try { var data = JSON.parse(e.data); if (!liveActive) { slotTaken = data.is_live; updateBtn(); } } catch(_) {}
-    };
-    sseSource.onerror = function() { sseSource.close(); sseSource = null; setTimeout(subscribeStatus, 5000); };
-  }
-  function connect() {
-    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws/live');
-    ws.onopen = function() { liveActive = true; slotTaken = false; updateBtn(); };
-    ws.onmessage = function(e) { try { var data = JSON.parse(e.data); if (data.type === 'error') { slotTaken = true; liveActive = false; updateBtn(); ws.close(); ws = null; } } catch(_) {} };
-    ws.onclose = function() { liveActive = false; ws = null; updateBtn(); };
-    ws.onerror = function() { liveActive = false; ws = null; updateBtn(); };
-  }
-  function disconnect() { if (ws) { ws.close(); ws = null; } liveActive = false; updateBtn(); }
-  function goLive() {
-    if (!window.ankyWallet || !window.ankyWallet.isLoggedIn()) { alert('login first'); updateBtn(); return; }
-    countdownOverlay.style.display = 'flex';
-    var count = 8;
-    countdownNumber.textContent = count;
-    if (navBtn) navBtn.style.display = 'none';
-    var countdownTimer = setInterval(function() {
-      count--;
-      if (count <= 0) {
-        clearInterval(countdownTimer); countdownOverlay.style.display = 'none';
-        connect();
-        var ta = document.getElementById('writing-area');
-        if (ta) ta.focus();
-      } else { countdownNumber.textContent = count; }
-    }, 1000);
-  }
-  function sendText(text, stats) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      var msg = { type: 'text', content: text };
-      if (stats) { msg.words = stats.words; msg.elapsed = stats.elapsed; msg.idle_ratio = stats.idle_ratio; msg.progress = stats.progress; }
-      ws.send(JSON.stringify(msg));
-    }
-  }
-  function isLive() { return liveActive; }
-  subscribeStatus();
-  window.addEventListener('anky:wallet-changed', updateBtn);
-  updateBtn();
-  return { toggle: function() { if (liveActive) disconnect(); else goLive(); }, sendText: sendText, isLive: isLive, disconnect: disconnect, setSessionActive: setSessionActive, startCountdown: goLive };
-})();
+// Livestream disabled
+window.ankyLive = { toggle: function(){}, sendText: function(){}, isLive: function(){ return false; }, disconnect: function(){}, setSessionActive: function(){}, startCountdown: function(){} };
 </script>
 {% endblock %}

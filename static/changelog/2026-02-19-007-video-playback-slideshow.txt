@@ -1,0 +1,59 @@
+Implement the following plan:
+
+# Plan: Add Video Playback to ANKY TV Slideshow
+
+## Context
+The ANKY TV livestream slideshow currently cycles through anky images (8s each with pixel dissolve transitions). There are 5 completed video projects (MP4s, 720x1280 vertical, H.264) in `data/videos/`. We want to randomly stitch these videos into the slideshow rotation so the stream shows both images and videos.
+
+## Approach: Spawn ffmpeg subprocess to decode video frames
+- ffmpeg is already on the system and used for the RTMP stream
+- Spawn a child ffmpeg process per video that outputs raw RGBA frames to stdout
+- Read frames at 10fps and write them to the shared frame buffer
+- Videos are 720x1280 (vertical) — pillarbox them into 1920x1080 with dark background
+- No new Rust dependencies needed
+
+## Changes (2 files)
+
+### 1. `src/db/queries.rs` — Add video slideshow query
+- Add `SlideshowVideo` struct: `id, video_path, created_at`
+- Add `get_slideshow_videos()`: SELECT id, video_path, created_at FROM video_projects WHERE status='complete' AND video_path IS NOT NULL
+
+### 2. `src/services/stream.rs` — Integrate videos into phase machine
+
+**New enum variant and media type:**
+```rust
+enum SlideshowItem { Image(usize), Video(usize) }
+```
+- Build a shuffled playlist mixing images and videos (e.g. insert a video every ~5 images)
+- Track a `playlist: Vec<SlideshowItem>` alongside the existing anky/video lists
+
+**New phase: `PlayingVideo`**
+- Spawn ffmpeg: `ffmpeg -i video.mp4 -vf "scale=1080:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=#0A0A0A" -r 10 -pix_fmt rgba -f rawvideo pipe:1`
+- Read 1920×1080×4 = 8,294,400 bytes per frame from stdout
+- Write each frame to the shared buffer (with ANKY TV header overlay)
+- When ffmpeg process ends (video finished) or after max 15s, transition out
+- On error/missing file, skip to next item
+
+**Phase transitions:**
+- `Showing` (image, 8s) → check next playlist item:
+  - If next is Image → `DissolveOut` → `DissolveIn` → `Showing`
+  - If next is Video → `DissolveOut` → `PlayingVideo` → `DissolveOut` → next
+- `PlayingVideo` → when video ends → `DissolveIn` (next image) or `PlayingVideo` (next video)
+
+**Playlist generation (on DB refresh):**
+- Load images and videos from DB
+- Create playlist: for every ~5 images, insert 1 random video
+- Shuffle video positions slightly for variety
+- Regenerate on wrap-around or 5-min refresh
+
+## Edge Cases
+- Video file missing → skip, log warning, advance to next item
+- ffmpeg decode fails → same as missing file
+- No videos → pure image slideshow (current behavior)
+- Very long video → cap at 15 seconds, kill ffmpeg process
+- Live session starts during video → video ffmpeg killed, live takes over
+
+## Verification
+- `cargo build --release`
+- `systemctl --user restart anky.service`
+- Watch stream — should see images cycling with occasional video clips pillarboxed in the center

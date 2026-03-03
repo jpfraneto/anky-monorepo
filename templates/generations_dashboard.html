@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}generating — {{ batch_id }}{% endblock %}
+{% block content %}
+<style>
+  .dash-page { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+
+  .dash-header {
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1.5rem; flex-wrap: wrap;
+  }
+  .dash-header h1 { font-size: 1.3rem; margin: 0; }
+  .dash-batch { font-size: 0.75rem; color: #444; font-family: monospace; }
+
+  .dash-stats {
+    display: flex; gap: 1.5rem; flex-wrap: wrap;
+    background: #111; border-radius: 8px; padding: 0.75rem 1.25rem;
+    margin-bottom: 1.5rem; font-size: 0.85rem; color: #888;
+  }
+  .dash-stats .sv { font-size: 1.4rem; font-weight: bold; display: block; margin-bottom: 0.1rem; }
+  .s-done .sv    { color: #4caf50; }
+  .s-active .sv  { color: #ff9800; }
+  .s-pending .sv { color: #555; }
+  .s-failed .sv  { color: #f44336; }
+  .s-total .sv   { color: #aaa; }
+
+  .progress-bar-wrap {
+    height: 4px; background: #1a1a1a; border-radius: 2px;
+    margin-bottom: 1.5rem; overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%; background: #4caf50; border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+
+  .image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+  .img-card {
+    background: #0e0e0e; border: 1px solid #1e1e1e;
+    border-radius: 10px; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .img-card.status-done     { border-color: #1e3a1e; }
+  .img-card.status-generating { border-color: #3a2a00; animation: pulse-border 1.5s infinite; }
+  .img-card.status-captioning { border-color: #1a2a3a; animation: pulse-border 1.5s infinite; }
+  .img-card.status-failed   { border-color: #3a1010; opacity: 0.5; }
+
+  @keyframes pulse-border {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.6; }
+  }
+
+  .img-card-img {
+    width: 100%; aspect-ratio: 1;
+    background: #0a0a0a; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .img-card-img img {
+    width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity 0.4s;
+  }
+  .img-card-img img.loaded { opacity: 1; }
+
+  .img-placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.5rem; color: #333;
+  }
+  .img-placeholder .spinner {
+    width: 24px; height: 24px; border: 2px solid #222; border-top-color: #ff9800;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .img-placeholder .ph-label { font-size: 0.7rem; color: #444; }
+  .img-placeholder.hidden { display: none; }
+
+  .img-card-info {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.72rem; color: #666; line-height: 1.4;
+  }
+  .img-card-info .prompt-preview {
+    color: #999; margin-bottom: 0.3rem;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .img-card-info .caption-preview {
+    color: #4caf50; font-size: 0.68rem;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .img-card-info .status-label {
+    display: inline-block; padding: 0.15rem 0.4rem;
+    border-radius: 3px; font-size: 0.65rem; margin-bottom: 0.3rem;
+  }
+  .status-label.pending    { background: #1a1a1a; color: #555; }
+  .status-label.generating { background: #2a1e00; color: #ff9800; }
+  .status-label.captioning { background: #0d1e2a; color: #4fc3f7; }
+  .status-label.done       { background: #0d2010; color: #4caf50; }
+  .status-label.failed     { background: #2a0d0d; color: #f44336; }
+
+  .dash-finished {
+    margin-top: 2rem; padding: 1.5rem; background: #0d1f0d;
+    border: 1px solid #2a5c2a; border-radius: 10px; text-align: center;
+    display: none;
+  }
+  .dash-finished h2 { color: #4caf50; margin: 0 0 0.5rem; }
+  .dash-finished p  { color: #888; font-size: 0.9rem; margin: 0; }
+</style>
+
+<div class="dash-page">
+  <div class="dash-header">
+    <div>
+      <h1>generating ankys</h1>
+      <div class="dash-batch">{{ batch_id }}</div>
+    </div>
+  </div>
+
+  <div class="dash-stats">
+    <div class="s-total"> <span class="sv" id="s-total">—</span>total</div>
+    <div class="s-done">  <span class="sv" id="s-done">0</span>done</div>
+    <div class="s-active"><span class="sv" id="s-active">0</span>generating</div>
+    <div class="s-pending"><span class="sv" id="s-pending">0</span>pending</div>
+    <div class="s-failed"><span class="sv" id="s-failed">0</span>failed</div>
+    <div style="flex:1"></div>
+    <div id="elapsed-wrap" style="align-self:center;font-size:0.8rem;color:#444"></div>
+  </div>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+  </div>
+
+  <div class="image-grid" id="image-grid"></div>
+
+  <div class="dash-finished" id="dash-finished">
+    <h2>all done</h2>
+    <p id="finished-summary"></p>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  const BATCH_ID = {{ batch_id | json_encode() | safe }};
+  const IMAGE_BASE = '/gen-images/' + BATCH_ID + '/images/';
+  let cards = {};
+  let startTime = Date.now();
+  let finished = false;
+
+  function statusLabel(s) {
+    return `<span class="status-label ${s}">${s}</span>`;
+  }
+
+  function renderCard(idx, item) {
+    const el = cards[idx];
+    if (!el) return;
+
+    el.className = 'img-card status-' + item.status;
+
+    const imgWrap = el.querySelector('.img-card-img');
+    const placeholder = el.querySelector('.img-placeholder');
+    const phLabel = el.querySelector('.ph-label');
+    const img = el.querySelector('img');
+    const info = el.querySelector('.img-card-info');
+
+    // Status label + prompt
+    let html = statusLabel(item.status);
+    html += `<div class="prompt-preview">${item.prompt}</div>`;
+    if (item.caption) {
+      html += `<div class="caption-preview">${item.caption}</div>`;
+    }
+    info.innerHTML = html;
+
+    // Image
+    if (item.image_id && item.status === 'done') {
+      placeholder.classList.add('hidden');
+      const src = IMAGE_BASE + item.image_id + '.png';
+      if (img.dataset.src !== src) {
+        img.dataset.src = src;
+        img.src = src;
+        img.onload = () => img.classList.add('loaded');
+      }
+    } else {
+      placeholder.classList.remove('hidden');
+      const labels = { pending: '...', generating: 'generating', captioning: 'captioning', failed: 'failed' };
+      const spinner = el.querySelector('.spinner');
+      if (item.status === 'pending') {
+        spinner.style.display = 'none';
+        phLabel.textContent = '';
+      } else if (item.status === 'failed') {
+        spinner.style.display = 'none';
+        phLabel.textContent = 'failed';
+      } else {
+        spinner.style.display = '';
+        phLabel.textContent = labels[item.status] || item.status;
+      }
+    }
+  }
+
+  function buildGrid(progress) {
+    const grid = document.getElementById('image-grid');
+    const keys = Object.keys(progress).sort((a,b) => +a - +b);
+
+    keys.forEach(function(idx) {
+      if (!cards[idx]) {
+        const card = document.createElement('div');
+        card.className = 'img-card status-pending';
+        card.innerHTML = `
+          <div class="img-card-img">
+            <img alt="anky" data-src="">
+            <div class="img-placeholder">
+              <div class="spinner"></div>
+              <div class="ph-label"></div>
+            </div>
+          </div>
+          <div class="img-card-info"></div>`;
+        grid.appendChild(card);
+        cards[idx] = card;
+      }
+      renderCard(idx, progress[idx]);
+    });
+  }
+
+  function updateStats(progress) {
+    const vals = Object.values(progress);
+    const total = vals.length;
+    const done  = vals.filter(v => v.status === 'done').length;
+    const active = vals.filter(v => v.status === 'generating' || v.status === 'captioning').length;
+    const pending = vals.filter(v => v.status === 'pending').length;
+    const failed = vals.filter(v => v.status === 'failed').length;
+
+    document.getElementById('s-total').textContent = total;
+    document.getElementById('s-done').textContent = done;
+    document.getElementById('s-active').textContent = active;
+    document.getElementById('s-pending').textContent = pending;
+    document.getElementById('s-failed').textContent = failed;
+    document.getElementById('progress-bar').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const m = Math.floor(elapsed / 60), s = elapsed % 60;
+    document.getElementById('elapsed-wrap').textContent = `${m}m ${s}s elapsed`;
+
+    if (!finished && total > 0 && pending === 0 && active === 0) {
+      finished = true;
+      const fin = document.getElementById('dash-finished');
+      fin.style.display = 'block';
+      document.getElementById('finished-summary').textContent =
+        `${done} images generated, ${failed} failed. images saved to data/generations/${BATCH_ID}/images/`;
+    }
+  }
+
+  async function poll() {
+    try {
+      const r = await fetch('/generations/' + BATCH_ID + '/progress');
+      if (!r.ok) return;
+      const progress = await r.json();
+      if (Object.keys(progress).length === 0) return;
+      buildGrid(progress);
+      updateStats(progress);
+    } catch(e) {}
+  }
+
+  // Poll every 2s
+  poll();
+  setInterval(poll, 2000);
+})();
+</script>
+{% endblock %}

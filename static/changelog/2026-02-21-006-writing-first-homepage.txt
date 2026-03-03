@@ -1,0 +1,49 @@
+Implement the following plan:
+
+# Writing-First Home Page
+
+## Context
+
+The home page currently shows the meditation timer as the default view, with writing hidden behind a FAB. The user wants the opposite: writing is the core of anky — a journal — so the writing textarea should be front and center when you land. Meditation becomes a secondary action via a FAB. The time picker's arrow buttons are also tedious — replace with native scrollable number inputs.
+
+## Changes
+
+### 1. `templates/home.html` — Flip default visibility
+
+- **Writing container**: Remove `style="display:none"` — visible by default, textarea auto-focused
+- **Meditation scene**: Add `style="display:none"` — hidden by default
+- **FAB**: Change from pen/write icon to a meditation icon (simple circle/lotus). Click opens the meditation overlay instead of write mode.
+
+### 2. `templates/home.html` — Replace time picker with native inputs
+
+Replace the arrow-button picker with two `<input type="number">` fields (minutes 0-99, seconds 0-59). On mobile these give native scroll/stepper UX. Remove the arrow button markup and JS.
+
+### 3. `templates/home.html` — Update JavaScript
+
+- FAB click → show meditation scene overlay (instead of `enterWriteMode()`)
+- Writing textarea auto-focuses on page load
+- Add close/back button on meditation overlay to return to writing
+- Post-meditation "write" option hides meditation and returns to writing view
+- `resetToMed` renamed/adjusted → returns to writing view (hides meditation scene)
+- `enterWriteMode` still exists but is simplified (just hides meditation if visible)
+
+### 4. `static/style.css` — Adjust styles
+
+- FAB: hide during meditation (not during writing)
+- Writing container visible by default
+- Style the native number inputs to match the dark theme
+- Med-scene keeps fullscreen overlay styling (z-index 50), just starts hidden
+
+## Files to modify
+
+1. `templates/home.html` — template structure + JS logic
+2. `static/style.css` — FAB visibility, picker input styling
+
+## Verification
+
+1. `cargo build --release && systemctl --user restart anky.service`
+2. Open anky.app → writing textarea visible immediately
+3. FAB in bottom-right → click → meditation overlay appears
+4. Tap timer → number inputs for min:sec (scrollable on mobile)
+5. Complete meditation → "write" returns to writing view
+6. Writing session works as before (8s idle, checkpoints, chat)

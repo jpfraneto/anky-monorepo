@@ -1,0 +1,53 @@
+Implement the following plan:
+
+# Plan: Infinite Media Slideshow for Livestream
+
+## Context
+The RTMP livestream to pump.fun currently shows a static pulsing "$ANKY" text when nobody is writing. We want to replace this with an infinite slideshow of completed anky images — making the stream always visually interesting. Each anky is shown for 88 seconds with a subtle dark overlay and attribution text. When someone goes live, the stream switches to their writing as before.
+
+## Changes (3 files)
+
+### 1. `src/db/queries.rs` — New slideshow query
+- Add `SlideshowAnky` struct: `id, title, image_path, origin, display_username, created_at`
+- Add `get_slideshow_ankys()` query that JOINs ankys + users, resolves display username via COALESCE (username, farcaster_username, x_users.username, "someone"), filters `status='complete' AND image_path IS NOT NULL`, ordered by `created_at DESC`
+
+### 2. `src/services/stream.rs` — Core slideshow rendering
+- Add `SlideshowState` struct tracking: anky list, current index, cached frame, slide start time, last DB refresh time
+- Add `render_slideshow_frame(anky)`:
+  - Load PNG from `anky.image_path` via `image::open()`
+  - Scale to fill 1920x1080 canvas height (1080x1080 centered for square images, any aspect handled)
+  - Draw subtle dark gradient strips at top (~100px) and bottom (~120px) for text readability
+  - Top-left attribution: "written by @username 3 hours ago" or "generated 2 days ago" — dim gray, small font, gentle
+  - Bottom-center: anky title in Righteous font, white, subtle
+  - Return `Option<RgbaImage>` (None if image file missing → falls back to old pulse animation)
+- Add `relative_time(created_at)` helper using chrono
+- Modify idle animator loop:
+  - Refresh anky list from DB every 5 minutes
+  - Advance slide every 88 seconds
+  - Cache the rendered frame (avoid re-compositing at 2fps)
+  - Fall back to old `render_idle_frame_animated()` if no ankys exist
+- Update `spawn_ffmpeg_loop` signature to accept `db: Arc<Mutex<Connection>>`
+
+### 3. `src/main.rs` — Pass DB to ffmpeg loop
+- Pass `state.db.clone()` to `spawn_ffmpeg_loop`
+
+## Visual Design
+- Image is the star: scaled to fill canvas height, centered
+- Top gradient strip (100px): fades to dark for text readability
+- Bottom gradient strip (120px): same
+- Attribution (top-left, 40px margin): `"written by @kithkui 8 hours ago"` in dim gray (#888), ~28px mono
+- Title (bottom-center): anky title in ~40px Righteous, white
+- Background fill: #0A0A0A (same as current)
+
+## Edge Cases
+- No ankys yet → falls back to existing pulse animation
+- Missing image file → skip to next, log warning
+- Single anky → re-shows after 88s
+- New ankys → caught by 5-min DB refresh (also refreshes on list wrap-around)
+- Live session interrupts → resumes slideshow from next anky when idle returns
+
+## Verification
+- `cargo build --release`
+- `systemctl --user restart anky.service`
+- Watch the pump.fun stream — should see anky images cycling with attribution overlays
+- Go live to confirm it switches to writing mode and back

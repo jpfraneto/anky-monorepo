@@ -1,0 +1,11 @@
+Implement the following plan:
+
+# Plan: Fix Post-Session Chat UI + Anonymous User Flow
+
+Two problems:
+
+1. Chat UI is broken after writing sessions — the entire page scrolls (no contained scroll area), the user's writing dumps as a huge un-collapsed block, the chat input blocks Enter so follow-up messages can't have newlines, and the chat-input-area floats outside the scroll container causing layout breakage.
+
+2. Anonymous users can't actually write — there's a bug where has_cookie is checked on line 34 of writing.rs BEFORE the cookie is created on line 88. First-time visitors get rejected with "API key required". The cookie also has inconsistent http_only settings (true in writing.rs, false in auth.rs).
+
+Files to modify: static/style.css, templates/home.html, src/routes/pages.rs, src/routes/writing.rs

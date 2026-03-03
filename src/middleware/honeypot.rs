@@ -25,11 +25,20 @@ const HONEYPOT_PATHS: &[&str] = &[
 ];
 
 const ATTACK_PATTERNS: &[&str] = &[
-    "SELECT ", "UNION ", "DROP ", "INSERT ", "DELETE ",
-    "../", "..\\",
-    "<script", "javascript:", "onerror=",
-    "/etc/passwd", "/etc/shadow",
-    "cmd.exe", "powershell",
+    "SELECT ",
+    "UNION ",
+    "DROP ",
+    "INSERT ",
+    "DELETE ",
+    "../",
+    "..\\",
+    "<script",
+    "javascript:",
+    "onerror=",
+    "/etc/passwd",
+    "/etc/shadow",
+    "cmd.exe",
+    "powershell",
 ];
 
 const PHILOSOPHICAL_RESPONSES: &[&str] = &[

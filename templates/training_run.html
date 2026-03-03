@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}anky — training run {{ date }}{% endblock %}
+{% block content %}
+<style>
+  .run-page {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .run-back {
+    display: inline-block;
+    color: #666;
+    text-decoration: none;
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+  }
+  .run-back:hover { color: #fff; }
+  .run-page h1 {
+    font-size: 2rem;
+    margin-bottom: 0.3rem;
+  }
+  .run-meta {
+    color: #666;
+    font-size: 0.85rem;
+    font-family: monospace;
+    margin-bottom: 2rem;
+  }
+  .run-section {
+    margin-bottom: 2rem;
+  }
+  .run-section h2 {
+    font-size: 1rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #1e1e1e;
+    padding-bottom: 0.5rem;
+  }
+  .run-section p {
+    color: #ccc;
+    line-height: 1.7;
+    font-size: 0.95rem;
+  }
+  .run-section p + p {
+    margin-top: 0.75rem;
+  }
+  .run-params {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .param {
+    background: #0d0d0d;
+    border: 1px solid #1e1e1e;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .param-label {
+    font-size: 0.7rem;
+    color: #666;
+    font-family: monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.2rem;
+  }
+  .param-value {
+    font-size: 1rem;
+    color: #fff;
+    font-family: monospace;
+  }
+  .status-pill {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-family: monospace;
+    margin-left: 0.75rem;
+    vertical-align: middle;
+  }
+  .status-running {
+    background: rgba(76, 175, 80, 0.1);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+  }
+</style>
+
+<div class="run-page">
+  <a class="run-back" href="/trainings">← all training runs</a>
+
+  {% if date == "2026-02-28" %}
+
+  <h1>run 001 — first LoRA <span class="status-pill status-running" style="background:rgba(33,150,243,0.1);color:#2196f3;border-color:rgba(33,150,243,0.3)">complete</span></h1>
+  <div class="run-meta">2026-02-28 &nbsp;·&nbsp; FLUX.1-dev &nbsp;·&nbsp; RunPod A100 80GB</div>
+
+  <div class="run-section">
+    <h2>what is happening</h2>
+    <p>
+      Right now, a machine in a datacenter somewhere is looking at 112 images of Anky — a small blue alien creature — and learning what makes Anky, Anky.
+    </p>
+    <p>
+      The technique is called LoRA (Low-Rank Adaptation). Instead of retraining an entire image model from scratch (which would take weeks and cost thousands of dollars), LoRA injects a small set of trainable parameters into a frozen base model. We're training on top of FLUX.1-dev, one of the best open-source image generation models that exists right now.
+    </p>
+    <p>
+      After 3000 training steps, the model will have learned to associate the word "anky" with this specific visual character. You'll be able to prompt it: <em>"anky meditating at sunset"</em> or <em>"anky in a forest"</em> and it will generate coherent, recognizable versions of this being in any scene.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>why</h2>
+    <p>
+      Anky exists as a writing companion — it appears after someone has written for 8+ minutes straight. But right now, every Anky image is generated from scratch by prompting a generic model with a description. The results are inconsistent. Sometimes beautiful, sometimes completely off.
+    </p>
+    <p>
+      With a trained LoRA, every image generated will be recognizably Anky. The character will have visual continuity. The blue alien being that emerged from thousands of human writing sessions will have a stable face.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>the dataset</h2>
+    <p>
+      112 images curated by hand from all the Ankys ever generated on anky.app. Each image was reviewed using a Tinder-style swipe interface — kept or discarded based on whether it felt true to the character. Each image has a caption describing what's in it, which teaches the model the connection between words and visual features.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>training parameters</h2>
+    <div class="run-params">
+      <div class="param">
+        <div class="param-label">base model</div>
+        <div class="param-value">FLUX.1-dev</div>
+      </div>
+      <div class="param">
+        <div class="param-label">technique</div>
+        <div class="param-value">LoRA</div>
+      </div>
+      <div class="param">
+        <div class="param-label">rank / alpha</div>
+        <div class="param-value">16 / 16</div>
+      </div>
+      <div class="param">
+        <div class="param-label">steps</div>
+        <div class="param-value">3000</div>
+      </div>
+      <div class="param">
+        <div class="param-label">learning rate</div>
+        <div class="param-value">1e-4</div>
+      </div>
+      <div class="param">
+        <div class="param-label">optimizer</div>
+        <div class="param-value">adamw8bit</div>
+      </div>
+      <div class="param">
+        <div class="param-label">dtype</div>
+        <div class="param-value">bf16</div>
+      </div>
+      <div class="param">
+        <div class="param-label">images</div>
+        <div class="param-value">112</div>
+      </div>
+      <div class="param">
+        <div class="param-label">trigger word</div>
+        <div class="param-value">anky</div>
+      </div>
+      <div class="param">
+        <div class="param-label">hardware</div>
+        <div class="param-value">A100 80GB</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="run-section">
+    <h2>what comes out</h2>
+    <p>
+      A <code>.safetensors</code> file — the trained LoRA weights. Small enough to share (~100MB). It can be loaded into any FLUX-compatible tool: ComfyUI, Diffusers, fal.ai, Replicate. Anky becomes portable.
+    </p>
+    <p>
+      Sample images are generated every 500 steps so we can watch the model learn. By step 500 it should vaguely resemble Anky. By step 3000 it should be unmistakably Anky.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>publishing to huggingface</h2>
+    <p>When training finishes, the LoRA file will be at <code>/workspace/output/anky_flux_lora/anky_flux_lora.safetensors</code> on the RunPod. To publish it:</p>
+
+    <p><strong>1. Create the repo on huggingface.co</strong><br>
+    Go to <a href="https://huggingface.co/new" style="color:#aaa">huggingface.co/new</a>, create a model repo called <code>ankydotapp/anky-flux-lora</code>, set it to public.</p>
+
+    <p><strong>2. Upload from the RunPod terminal</strong></p>
+    <pre style="background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:1rem; font-size:0.8rem; overflow-x:auto; color:#ccc;">source /workspace/venv/bin/activate
+
+pip install huggingface_hub
+
+python3 - &lt;&lt;'EOF'
+from huggingface_hub import HfApi
+api = HfApi()
+api.upload_file(
+    path_or_fileobj="/workspace/output/anky_flux_lora/anky_flux_lora.safetensors",
+    path_in_repo="anky_flux_lora.safetensors",
+    repo_id="ankydotapp/anky-flux-lora",
+    repo_type="model",
+)
+print("done")
+EOF</pre>
+
+    <p><strong>3. Write a model card</strong><br>
+    On the HuggingFace repo page, edit the README to include the trigger word (<code>anky</code>), example prompts, and a sample image. This is what people see when they find the model.</p>
+  </div>
+
+  <div class="run-section">
+    <h2>how to use this lora to generate ankys</h2>
+    <p>Once published, anyone can generate Ankys in three ways:</p>
+
+    <p><strong>ComfyUI (easiest for local use)</strong><br>
+    Download the <code>.safetensors</code> file, drop it into your ComfyUI <code>models/loras/</code> folder. In your workflow, add a Load LoRA node pointing to FLUX.1-dev, set strength to 0.8–1.0, and include <code>anky</code> in your prompt.</p>
+
+    <p><strong>Python / Diffusers</strong></p>
+    <pre style="background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:1rem; font-size:0.8rem; overflow-x:auto; color:#ccc;">from diffusers import FluxPipeline
+import torch
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16
+).to("cuda")
+
+pipe.load_lora_weights("ankydotapp/anky-flux-lora")
+
+image = pipe(
+    "anky meditating under a giant ancient tree, soft light",
+    num_inference_steps=28,
+    guidance_scale=3.5,
+).images[0]
+
+image.save("anky.png")</pre>
+
+    <p><strong>fal.ai (no GPU needed)</strong><br>
+    Go to <a href="https://fal.ai/models/fal-ai/flux-lora" style="color:#aaa">fal.ai/models/fal-ai/flux-lora</a>, paste <code>ankydotapp/anky-flux-lora</code> as the LoRA URL, and type a prompt with <code>anky</code> in it. Generates in seconds, costs a few cents.</p>
+
+    <p><strong>prompting tips</strong><br>
+    Always include <code>anky</code> in your prompt — that's the trigger word the model was trained on. Good prompts: <em>"anky sitting by a fire at night"</em>, <em>"anky with glowing eyes in a cosmic void"</em>, <em>"close-up portrait of anky, soft light"</em>. The more descriptive the scene, the better. Avoid over-specifying the character's appearance — the LoRA already knows what anky looks like.</p>
+  </div>
+
+  {% else %}
+
+  <h1>training run {{ date }}</h1>
+  <div class="run-meta">{{ date }}</div>
+  <div class="run-section">
+    <p style="color: #666;">no notes for this run yet.</p>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

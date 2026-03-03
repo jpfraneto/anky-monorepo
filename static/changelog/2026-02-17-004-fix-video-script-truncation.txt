@@ -1,0 +1,8 @@
+i just tried to generate a video through the /generate/video page and paid the 2 usdc and then got this error "Script generation failed: Failed to parse script JSON: missing field total_duration at line 110 column 1. Raw: {
+"title": "Between Hearts",
+"tone": "Raw vulnerability exploring the complexity of parent-child relationships",
+"scenes": [
+{
+"index": 0,
+"title": "Opening Presence",
+"ima" can you help me figure out if there is a video being created on the background? and also debug this error so that it doesn't happen again

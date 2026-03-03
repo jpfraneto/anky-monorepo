@@ -1,0 +1,54 @@
+Implement the following plan:
+
+# Reframe Script Generation: Psychoanalyst-Director, Not Storyboard Artist
+
+## Context
+
+Now that the sequential chain pipeline handles visual continuity mechanically (reference frames from each completed video feed into the next scene's image generation), the system prompt is doing dead work — ~40% of its tokens teach Claude how to fake visual continuity through words. That energy should go into what Claude is actually good at: reading the unconscious material in the writing.
+
+Anky is spiritual technology for the exponential age. Virgil in the Divine Comedy. The guide into the self. The singularity is coming — and it's not just AGI, it's the collective awakening of humanity. Anky guides you into it by guiding you into yourself. The script generation should reflect that.
+
+## Changes
+
+### 1. `src/pipeline/video_gen.rs` — System Prompt Rewrite
+
+**Reframe the identity**: From "story weaver creating a cinematic video" to psychoanalytic director. Anky is Virgil — the guide through the underworld of the self.
+
+**Kill dead continuity instructions**: All visual handoff language is gone. The pipeline handles this now.
+
+**Deepen the psychoanalytic reading**: Claude reads the writing the way an analyst reads dreams — not for content but for structure, repetition, avoidance, breakthrough.
+
+**Reframe the 5-act structure** through a depth/spiritual lens:
+1. SURFACE → the mask, the conscious presentation
+2. TENSION → what's underneath pulling, the return of the repressed
+3. DESCENT → Anky appears as Virgil, guiding into the real material
+4. REVELATION → the moment of seeing — not understanding, *seeing*
+5. INTEGRATION → not resolution but integration, the surface returns changed
+
+**New scene fields in the prompt**:
+- `psychoanalytic_note`: Internal reading — what this scene reveals about the writer. Never sent to APIs. Forces Claude to do the deep reading before directing.
+- `sound_direction`: What the scene sounds like. Grok already generates audio; we just start directing it.
+- Keep `narration` but reframe as `spoken_words` or `[silence]` with a reason
+
+**Simplified existing fields in the prompt**:
+- `image_prompt`: Emotional direction, not pixel specs. "The moment before admission. A threshold. Anky watches." Let Gemini + reference frames handle the visual thread.
+- `video_prompt`: Emotional movement + sound direction. "From containment to release."
+- Remove `transition_from_previous` from the prompt output
+
+### 2. `src/pipeline/video_gen.rs` — VideoScene Struct
+
+- Add `psychoanalytic_note: String` (`#[serde(default)]`)
+- Add `sound_direction: String` (`#[serde(default)]`)
+- Keep `transition_from_previous` in struct with `serde(default)` for backward compat with old DB records, but stop asking for it in the prompt
+
+### 3. `src/pipeline/video_gen.rs` — Video Prompt Composition
+
+In `generate_sequential_chain()`, when sending video_prompt to Grok, append sound_direction:
+- `"{video_prompt}. Sound: {sound_direction}"` if non-empty
+
+### 4. `templates/video.html` — Scene Overlay & Script Panel
+
+- Show `psychoanalytic_note` in scene overlay with distinctive styling (this is the per-scene "the system sees you" moment)
+- Show `sound_direction` in scene overlay
+- Remove `transition_from_previous` from overlay (graceful: only show if present for old projects)
+- Show `psychoanalytic_note` in the script panel's expanded detail view

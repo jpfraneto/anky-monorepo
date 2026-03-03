@@ -1,0 +1,6 @@
+Implement the following plan:
+
+# Plan: Interview System Integration + systemd Service
+
+## Context
+The interview engine works end-to-end but lives in isolation — its own `memory.db`, no access to main app user data, no time limits, no nav link. We need to: (1) integrate interview data with the main DB, (2) feed user context from the main app into interviews, (3) enforce time limits (5min anon, 30min auth), and (4) run the Python engine as a systemd service with auto-restart.

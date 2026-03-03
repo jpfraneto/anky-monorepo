@@ -36,9 +36,7 @@ pub async fn require_api_key(
     let db = state.db.lock().await;
     match queries::get_api_key(&db, &api_key) {
         Ok(Some(key_record)) if key_record.is_active => {
-            req.extensions_mut().insert(ApiKeyInfo {
-                key: api_key,
-            });
+            req.extensions_mut().insert(ApiKeyInfo { key: api_key });
             drop(db);
             next.run(req).await
         }
@@ -73,9 +71,7 @@ pub async fn optional_api_key(
         let db = state.db.lock().await;
         if let Ok(Some(key_record)) = queries::get_api_key(&db, &key) {
             if key_record.is_active {
-                req.extensions_mut().insert(ApiKeyInfo {
-                    key,
-                });
+                req.extensions_mut().insert(ApiKeyInfo { key });
             }
         }
         drop(db);

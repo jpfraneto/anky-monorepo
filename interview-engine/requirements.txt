@@ -1,0 +1,13 @@
+edge-tts
+websockets
+Pillow
+numpy
+requests
+python-dotenv
+transformers
+accelerate
+mistral-common>=1.9.0
+soxr
+librosa
+soundfile
+torch

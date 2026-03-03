@@ -61,8 +61,14 @@ pub async fn callback(
         return Ok((jar, Redirect::temporary("/")));
     }
 
-    let code = query.code.as_deref().ok_or_else(|| AppError::BadRequest("missing code".into()))?;
-    let oauth_state = query.state.as_deref().ok_or_else(|| AppError::BadRequest("missing state".into()))?;
+    let code = query
+        .code
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("missing code".into()))?;
+    let oauth_state = query
+        .state
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("missing state".into()))?;
 
     // Look up and delete PKCE state
     let (verifier, redirect_to) = {
@@ -147,7 +153,11 @@ pub async fn callback(
         queries::create_auth_session(&db, &session_token, &user_id, Some(&user.id), &expires_at)?;
     }
 
-    state.emit_log("INFO", "auth", &format!("X login: @{} ({})", user.username, &user_id[..8]));
+    state.emit_log(
+        "INFO",
+        "auth",
+        &format!("X login: @{} ({})", user.username, &user_id[..8]),
+    );
 
     // Set cookies
     let session_cookie = Cookie::build(("anky_session", session_token))
@@ -195,6 +205,7 @@ pub struct AuthUser {
     pub display_name: Option<String>,
     pub profile_image_url: Option<String>,
     pub wallet_address: Option<String>,
+    pub email: Option<String>,
 }
 
 pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser> {
@@ -205,6 +216,7 @@ pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser
         if let Ok(Some((user_id, x_user_id))) = queries::get_auth_session(&db, token) {
             if let Some(ref xid) = x_user_id {
                 if let Ok(Some(xu)) = queries::get_x_user_by_x_id(&db, xid) {
+                    let email = queries::get_user_email(&db, &xu.user_id).ok().flatten();
                     return Some(AuthUser {
                         user_id: xu.user_id,
                         x_user_id: Some(xu.x_user_id),
@@ -212,9 +224,11 @@ pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser
                         display_name: xu.display_name,
                         profile_image_url: xu.profile_image_url,
                         wallet_address: None,
+                        email,
                     });
                 }
             }
+            let email = queries::get_user_email(&db, &user_id).ok().flatten();
             return Some(AuthUser {
                 user_id,
                 x_user_id,
@@ -222,6 +236,7 @@ pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser
                 display_name: None,
                 profile_image_url: None,
                 wallet_address: None,
+                email,
             });
         }
     }
@@ -244,6 +259,7 @@ async fn get_auth_user_from_privy_token(state: &AppState, token: &str) -> Option
     if let Ok(Some((user_id, _))) = queries::get_auth_session(&db, token) {
         let wallet = queries::get_user_wallet(&db, &user_id).ok().flatten();
         let username = queries::get_user_username(&db, &user_id).ok().flatten();
+        let email = queries::get_user_email(&db, &user_id).ok().flatten();
         return Some(AuthUser {
             user_id,
             x_user_id: None,
@@ -251,6 +267,7 @@ async fn get_auth_user_from_privy_token(state: &AppState, token: &str) -> Option
             display_name: None,
             profile_image_url: None,
             wallet_address: wallet,
+            email,
         });
     }
     None
@@ -266,7 +283,7 @@ pub struct PrivyVerifyRequest {
 
 #[derive(serde::Deserialize)]
 struct PrivyClaims {
-    sub: String,        // Privy DID (e.g. "did:privy:...")
+    sub: String, // Privy DID (e.g. "did:privy:...")
     iss: Option<String>,
     aud: Option<String>,
 }
@@ -293,15 +310,12 @@ pub async fn privy_verify(
         validation.set_issuer(&["privy.io"]);
         validation.set_audience(&[app_id.as_str()]);
 
-        let token_data = jsonwebtoken::decode::<PrivyClaims>(
-            &req.auth_token,
-            &decoding_key,
-            &validation,
-        )
-        .map_err(|e| {
-            tracing::warn!("Privy JWT verification failed: {}", e);
-            AppError::BadRequest("invalid privy token".into())
-        })?;
+        let token_data =
+            jsonwebtoken::decode::<PrivyClaims>(&req.auth_token, &decoding_key, &validation)
+                .map_err(|e| {
+                    tracing::warn!("Privy JWT verification failed: {}", e);
+                    AppError::BadRequest("invalid privy token".into())
+                })?;
 
         token_data.claims.sub
     } else {
@@ -323,7 +337,9 @@ pub async fn privy_verify(
             return Err(AppError::BadRequest("invalid privy token".into()));
         }
 
-        let body: serde_json::Value = resp.json().await
+        let body: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| AppError::Internal(format!("Privy response parse failed: {}", e)))?;
 
         body.get("user")
@@ -337,7 +353,9 @@ pub async fn privy_verify(
     {
         let db = state.db.lock().await;
         if let Some(user_id) = queries::get_user_by_privy_did(&db, &privy_did)? {
+            let email = queries::get_user_email(&db, &user_id)?;
             let wallet = queries::get_user_wallet(&db, &user_id)?;
+            let username = queries::get_user_username(&db, &user_id)?;
             let session_token = uuid::Uuid::new_v4().to_string();
             let expires_at = chrono::Utc::now()
                 .checked_add_signed(chrono::Duration::days(30))
@@ -345,30 +363,51 @@ pub async fn privy_verify(
                 .to_rfc3339();
             queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
 
-            let short = wallet.as_deref().map(|a| format!("{}...{}", &a[..6.min(a.len())], &a[a.len().saturating_sub(4)..])).unwrap_or_else(|| privy_did[..12.min(privy_did.len())].to_string());
-            state.emit_log("INFO", "auth", &format!("Privy login (returning): {} ({})", short, &user_id[..8]));
+            let display = username
+                .as_deref()
+                .or(email.as_deref())
+                .unwrap_or(&privy_did[..12.min(privy_did.len())]);
+            state.emit_log(
+                "INFO",
+                "auth",
+                &format!("Privy login (returning): {} ({})", display, &user_id[..8]),
+            );
 
             let session_cookie = Cookie::build(("anky_privy_token", session_token))
-                .path("/").http_only(true).secure(true)
-                .max_age(time::Duration::days(30)).build();
+                .path("/")
+                .http_only(true)
+                .secure(true)
+                .max_age(time::Duration::days(30))
+                .build();
             let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
-                .path("/").http_only(false).secure(true)
-                .max_age(time::Duration::days(365)).build();
+                .path("/")
+                .http_only(false)
+                .secure(true)
+                .max_age(time::Duration::days(365))
+                .build();
             let jar = jar.add(session_cookie).add(user_cookie);
 
-            return Ok((jar, Json(serde_json::json!({
-                "ok": true,
-                "user_id": user_id,
-                "wallet_address": wallet,
-            }))));
+            return Ok((
+                jar,
+                Json(serde_json::json!({
+                    "ok": true,
+                    "user_id": user_id,
+                    "email": email,
+                    "wallet_address": wallet,
+                    "username": username,
+                })),
+            ));
         }
     }
 
-    // Step 3: New user — call Privy API to get wallet address from linked_accounts
+    // Step 3: New user — call Privy API to get linked accounts (email, wallet, etc.)
     let client = reqwest::Client::new();
     let encoded_did = urlencoding::encode(&privy_did);
     let resp = client
-        .get(format!("https://auth.privy.io/api/v1/users/{}", encoded_did))
+        .get(format!(
+            "https://auth.privy.io/api/v1/users/{}",
+            encoded_did
+        ))
         .header("privy-app-id", app_id.as_str())
         .basic_auth(app_id, Some(app_secret))
         .send()
@@ -379,41 +418,114 @@ pub async fn privy_verify(
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         tracing::warn!("Privy user fetch failed ({}): {}", status, body);
-        return Err(AppError::Internal("failed to fetch Privy user details".into()));
+        return Err(AppError::Internal(
+            "failed to fetch Privy user details".into(),
+        ));
     }
 
-    let user_data: serde_json::Value = resp.json().await
+    let user_data: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(format!("Privy user parse failed: {}", e)))?;
 
-    // Extract wallet address from linked_accounts
-    let wallet_address = user_data
+    // Extract email and wallet from linked_accounts (both optional)
+    let linked_accounts = user_data
         .get("linked_accounts")
-        .and_then(|la| la.as_array())
-        .and_then(|accounts| {
+        .and_then(|la| la.as_array());
+
+    let email_address = linked_accounts.and_then(|accounts| {
+        accounts.iter().find_map(|acc| {
+            let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            if acct_type == "email" {
+                acc.get("address")
+                    .and_then(|a| a.as_str())
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+    });
+
+    // Also check for Google/Apple email
+    let email_address = email_address.or_else(|| {
+        linked_accounts.and_then(|accounts| {
             accounts.iter().find_map(|acc| {
-                if acc.get("type").and_then(|t| t.as_str()) == Some("wallet") {
-                    acc.get("address").and_then(|a| a.as_str()).map(|s| s.to_string())
+                let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if acct_type == "google_oauth" || acct_type == "apple_oauth" {
+                    acc.get("email")
+                        .and_then(|a| a.as_str())
+                        .map(|s| s.to_string())
                 } else {
                     None
                 }
             })
         })
-        .ok_or_else(|| AppError::BadRequest("no wallet found in privy account".into()))?;
+    });
 
-    // Step 4: Create user with wallet + privy_did
+    let wallet_address = linked_accounts.and_then(|accounts| {
+        accounts.iter().find_map(|acc| {
+            let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            if acct_type == "wallet" {
+                acc.get("address")
+                    .and_then(|a| a.as_str())
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+    });
+
+    // Step 4: Create or find user
     let user_id = {
         let db = state.db.lock().await;
-        // Check wallet first (user might exist from raw ethereum connect)
-        if let Some(uid) = queries::get_user_by_wallet(&db, &wallet_address)? {
+
+        // Try to find existing user by email first
+        let existing_uid = if let Some(ref email) = email_address {
+            queries::get_user_by_email(&db, email)?
+        } else {
+            None
+        };
+
+        // Then try by wallet
+        let existing_uid = existing_uid.or(if let Some(ref addr) = wallet_address {
+            queries::get_user_by_wallet(&db, addr)?
+        } else {
+            None
+        });
+
+        if let Some(uid) = existing_uid {
             // Link privy_did to existing user
             let _ = queries::set_privy_did(&db, &uid, &privy_did);
+            if let Some(ref email) = email_address {
+                let _ = queries::set_email(&db, &uid, email);
+            }
+            if let Some(ref addr) = wallet_address {
+                if queries::get_user_wallet(&db, &uid)?.is_none() {
+                    let _ = queries::set_wallet_address(&db, &uid, addr);
+                }
+            }
             uid
         } else {
             let uid = jar
                 .get("anky_user_id")
                 .map(|c| c.value().to_string())
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-            queries::create_user_with_wallet_and_privy(&db, &uid, &wallet_address, &privy_did)?;
+
+            if let Some(ref email) = email_address {
+                queries::create_user_with_email_and_privy(&db, &uid, email, &privy_did)?;
+            } else if let Some(ref addr) = wallet_address {
+                queries::create_user_with_wallet_and_privy(&db, &uid, addr, &privy_did)?;
+            } else {
+                queries::ensure_user(&db, &uid)?;
+                let _ = queries::set_privy_did(&db, &uid, &privy_did);
+            }
+
+            if let Some(ref addr) = wallet_address {
+                if email_address.is_some() {
+                    let _ = queries::set_wallet_address(&db, &uid, addr);
+                }
+            }
+
             uid
         }
     };
@@ -430,16 +542,188 @@ pub async fn privy_verify(
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
-    let short_addr = format!("{}...{}", &wallet_address[..6], &wallet_address[wallet_address.len()-4..]);
-    state.emit_log("INFO", "auth", &format!("Privy login (new): {} ({})", short_addr, &user_id[..8]));
+    let display = email_address
+        .as_deref()
+        .or(wallet_address.as_deref().map(|a| &a[..6.min(a.len())]))
+        .unwrap_or(&privy_did[..12.min(privy_did.len())]);
+    state.emit_log(
+        "INFO",
+        "auth",
+        &format!("Privy login (new): {} ({})", display, &user_id[..8]),
+    );
 
     // Set cookies
     let session_cookie = Cookie::build(("anky_privy_token", session_token))
-        .path("/").http_only(true).secure(true)
-        .max_age(time::Duration::days(30)).build();
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .max_age(time::Duration::days(30))
+        .build();
     let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
-        .path("/").http_only(false).secure(true)
-        .max_age(time::Duration::days(365)).build();
+        .path("/")
+        .http_only(false)
+        .secure(true)
+        .max_age(time::Duration::days(365))
+        .build();
+    let jar = jar.add(session_cookie).add(user_cookie);
+
+    // Get final username
+    let final_username = {
+        let db = state.db.lock().await;
+        queries::get_user_username(&db, &user_id)?
+    };
+
+    Ok((
+        jar,
+        Json(serde_json::json!({
+            "ok": true,
+            "user_id": user_id,
+            "email": email_address,
+            "wallet_address": wallet_address,
+            "username": final_username,
+        })),
+    ))
+}
+
+/// POST /auth/farcaster/verify — authenticate via Farcaster MiniApp SDK context.
+/// The FID from sdk.context is trusted (comes from Farcaster client's iframe postMessage protocol).
+#[derive(serde::Deserialize)]
+pub struct FarcasterVerifyRequest {
+    pub fid: i64,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+    pub pfp_url: Option<String>,
+    pub wallet_address: Option<String>,
+}
+
+pub async fn farcaster_verify(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<FarcasterVerifyRequest>,
+) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
+    if req.fid == 0 {
+        return Err(AppError::BadRequest("missing fid".into()));
+    }
+
+    let username = req.username.as_deref().unwrap_or("").to_string();
+    let pfp_url = req.pfp_url.clone();
+    let wallet_addr = req.wallet_address.clone();
+
+    // Look up existing user by FID, or create one
+    let user_id = {
+        let db = state.db.lock().await;
+        if let Some(uid) = queries::get_user_by_fid(&db, req.fid)? {
+            // Update Farcaster info in case username/pfp changed
+            let _ = queries::set_farcaster_info(
+                &db,
+                &uid,
+                req.fid as u64,
+                &username,
+                pfp_url.as_deref(),
+            );
+            // Update wallet if provided and not already set
+            if let Some(ref addr) = wallet_addr {
+                if queries::get_user_wallet(&db, &uid)?.is_none() {
+                    let _ = queries::set_wallet_address(&db, &uid, addr);
+                }
+            }
+            uid
+        } else {
+            // Check if there's an existing user by wallet address
+            let uid = if let Some(ref addr) = wallet_addr {
+                if let Some(existing_uid) = queries::get_user_by_wallet(&db, addr)? {
+                    // Link FID to existing wallet user
+                    let _ = queries::set_farcaster_info(
+                        &db,
+                        &existing_uid,
+                        req.fid as u64,
+                        &username,
+                        pfp_url.as_deref(),
+                    );
+                    existing_uid
+                } else {
+                    let new_uid = uuid::Uuid::new_v4().to_string();
+                    queries::create_user_with_farcaster(
+                        &db,
+                        &new_uid,
+                        req.fid,
+                        &username,
+                        pfp_url.as_deref(),
+                        Some(addr),
+                    )?;
+                    new_uid
+                }
+            } else {
+                let new_uid = uuid::Uuid::new_v4().to_string();
+                queries::create_user_with_farcaster(
+                    &db,
+                    &new_uid,
+                    req.fid,
+                    &username,
+                    pfp_url.as_deref(),
+                    None,
+                )?;
+                new_uid
+            };
+
+            // Auto-claim Farcaster username if available
+            if !username.is_empty() {
+                if queries::get_user_username(&db, &uid)?.is_none() {
+                    if queries::check_username_available(&db, &username, &uid).unwrap_or(false) {
+                        let _ = queries::set_username(&db, &uid, &username);
+                    }
+                }
+            }
+
+            uid
+        }
+    };
+
+    // Create auth session
+    let session_token = uuid::Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(30))
+        .unwrap()
+        .to_rfc3339();
+
+    {
+        let db = state.db.lock().await;
+        queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
+    }
+
+    state.emit_log(
+        "INFO",
+        "auth",
+        &format!(
+            "Farcaster login: @{} (fid {}, {})",
+            username,
+            req.fid,
+            &user_id[..8]
+        ),
+    );
+
+    // Get final wallet + username for response
+    let (final_wallet, final_username) = {
+        let db = state.db.lock().await;
+        (
+            queries::get_user_wallet(&db, &user_id)?,
+            queries::get_user_username(&db, &user_id)?,
+        )
+    };
+
+    // Set cookies
+    let session_cookie = Cookie::build(("anky_privy_token", session_token))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .max_age(time::Duration::days(30))
+        .build();
+    let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
+        .path("/")
+        .http_only(false)
+        .secure(true)
+        .max_age(time::Duration::days(365))
+        .build();
     let jar = jar.add(session_cookie).add(user_cookie);
 
     Ok((
@@ -447,7 +731,8 @@ pub async fn privy_verify(
         Json(serde_json::json!({
             "ok": true,
             "user_id": user_id,
-            "wallet_address": wallet_address,
+            "wallet_address": final_wallet,
+            "username": final_username,
         })),
     ))
 }

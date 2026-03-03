@@ -1,0 +1,9 @@
+Implement the following plan:
+
+# Fix FAB Styles + Add Inquiry System
+
+## Context
+
+Two things:
+1. **Fix med FAB** — the meditation button styles aren't working (z-index too low, gets hidden behind the now-visible writing container)
+2. **Add inquiry system** — anky always has a question for the user, shown above the textarea. Starts with "Tell me who you are." (in user's browser language). Each interaction deepens. Whether they answer or ignore is data about them.

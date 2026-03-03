@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}media dashboard — anky{% endblock %}
+
+{% block head %}
+<style>
+  .media-page { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
+  .media-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .media-head h1 { margin: 0; font-size: 24px; color: #f2f2f2; }
+  .media-head .meta { color: #9a9a9a; font-size: 13px; }
+
+  .media-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .media-link {
+    display: inline-block;
+    padding: 7px 10px;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #bbb;
+    font-size: 12px;
+  }
+  .media-link.active { border-color: #d4a853; color: #d4a853; background: rgba(212, 168, 83, 0.08); }
+
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .media-card {
+    border: 1px solid #242424;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #0f0f0f;
+  }
+  .media-preview { background: #070707; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
+  .media-preview img,
+  .media-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .media-info { padding: 10px; display: grid; gap: 6px; }
+  .media-row { font-size: 12px; color: #8f8f8f; word-break: break-all; }
+  .media-kind { color: #d4a853; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
+  .media-open { color: #d4a853; text-decoration: none; font-size: 12px; }
+
+  .media-pagination { display: flex; align-items: center; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .media-page-num { font-size: 12px; color: #999; }
+  .media-empty {
+    margin-top: 18px;
+    border: 1px dashed #333;
+    border-radius: 10px;
+    padding: 24px;
+    text-align: center;
+    color: #8d8d8d;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="media-page">
+  <div class="media-head">
+    <h1>generated media timeline</h1>
+    <div class="meta">{{ total_count }} files total</div>
+  </div>
+
+  <div class="media-controls">
+    <a class="media-link {% if kind == "all" %}active{% endif %}" href="/video-dashboard?kind=all&order={{ order }}&per_page={{ per_page }}">all</a>
+    <a class="media-link {% if kind == "image" %}active{% endif %}" href="/video-dashboard?kind=image&order={{ order }}&per_page={{ per_page }}">images</a>
+    <a class="media-link {% if kind == "video" %}active{% endif %}" href="/video-dashboard?kind=video&order={{ order }}&per_page={{ per_page }}">videos</a>
+    <a class="media-link {% if order == "desc" %}active{% endif %}" href="/video-dashboard?kind={{ kind }}&order=desc&per_page={{ per_page }}">newest first</a>
+    <a class="media-link {% if order == "asc" %}active{% endif %}" href="/video-dashboard?kind={{ kind }}&order=asc&per_page={{ per_page }}">oldest first</a>
+  </div>
+
+  {% if items | length > 0 %}
+  <section class="media-grid">
+    {% for item in items %}
+    <article class="media-card">
+      <div class="media-preview">
+        {% if item.kind == "video" %}
+        <video controls preload="metadata">
+          <source src="{{ item.url }}" type="video/mp4">
+        </video>
+        {% else %}
+        <img src="{{ item.url }}" alt="{{ item.filename }}" loading="lazy">
+        {% endif %}
+      </div>
+      <div class="media-info">
+        <div class="media-kind">{{ item.kind }}</div>
+        <div class="media-row">{{ item.modified_at }}</div>
+        <div class="media-row">{{ item.relative_path }}</div>
+        <div class="media-row">{{ item.size_bytes }} bytes</div>
+        <a class="media-open" href="{{ item.url }}" target="_blank" rel="noopener">open file</a>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% else %}
+  <div class="media-empty">no matching files found in `data/images` or `videos`.</div>
+  {% endif %}
+
+  <div class="media-pagination">
+    {% if has_prev %}
+    <a class="media-link" href="/video-dashboard?kind={{ kind }}&order={{ order }}&page={{ prev_page }}&per_page={{ per_page }}">previous</a>
+    {% endif %}
+    <span class="media-page-num">page {{ page }} of {{ total_pages }}</span>
+    {% if has_next %}
+    <a class="media-link" href="/video-dashboard?kind={{ kind }}&order={{ order }}&page={{ next_page }}&per_page={{ per_page }}">next</a>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

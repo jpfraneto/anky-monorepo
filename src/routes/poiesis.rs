@@ -1,8 +1,8 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::extract::State;
-use axum::response::Html;
 use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::Html;
 use futures::stream::Stream;
 use std::convert::Infallible;
 

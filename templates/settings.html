@@ -39,9 +39,25 @@
   </div>
 
   <div class="settings-group">
+    <label class="settings-label">keyboard layout</label>
+    <select class="settings-select" id="settings-keyboard-layout">
+      <option value="qwerty" {% if keyboard_layout == "qwerty" %}selected{% endif %}>QWERTY</option>
+      <option value="azerty" {% if keyboard_layout == "azerty" %}selected{% endif %}>AZERTY</option>
+      <option value="qwertz" {% if keyboard_layout == "qwertz" %}selected{% endif %}>QWERTZ</option>
+    </select>
+  </div>
+
+  <div class="settings-group">
     <label class="settings-label">preview</label>
     <div class="settings-preview" id="settings-preview">the quick brown fox jumps over the lazy dog. write without stopping and see what emerges.</div>
   </div>
+
+  {% if wallet_address and wallet_address != "" %}
+  <div class="settings-group">
+    <label class="settings-label">wallet address</label>
+    <div class="settings-wallet" style="font-family:monospace; font-size:13px; color:#d4a853; word-break:break-all; padding:10px 14px; background:#111; border:1px solid #222; border-radius:8px; user-select:all;">{{ wallet_address }}</div>
+  </div>
+  {% endif %}
 
   <button class="settings-save" id="settings-save">save settings</button>
   <div class="settings-msg" id="settings-msg"></div>
@@ -62,6 +78,7 @@
   var msg = document.getElementById('settings-msg');
   var usernameInput = document.getElementById('settings-username');
 
+  var layoutSelect = document.getElementById('settings-keyboard-layout');
   var currentTheme = '{{ theme }}';
 
   function updatePreview() {
@@ -104,6 +121,7 @@
         font_size: parseInt(sizeSlider.value),
         theme: currentTheme,
         idle_timeout: parseInt(timeoutSlider.value),
+        keyboard_layout: layoutSelect.value,
       }),
     })
     .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })

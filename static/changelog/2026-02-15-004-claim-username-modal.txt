@@ -1,0 +1,1 @@
+i clicked the go live button and then i was redirected to the settings. on here you need to tell me only CLAIM YOUR USERNAME TO GO LIVE. live a modal or something. a page that makes it simple AF. remmeber that we are using htmx so make it seamless af. and also i then "save settings" but it doesn't work. it says network error. please fix the flow. i want to claim my username.

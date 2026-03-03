@@ -1,0 +1,1 @@
+yeah. i want you to write a script that uses gemini and grok hopefully to create a wide array of prompts for us to genreate 100 more images of anky using gemini (with the pipeline that we already have sending it current anky images as seeds). what else do you need to know before doing this?

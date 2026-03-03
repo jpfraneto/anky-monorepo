@@ -1,0 +1,11 @@
+Implement the following plan:
+
+# Anky UI Overhaul: Keyboard-First Feed App
+
+## Context
+The current UI is a plain textarea with a session bar — functional but forgettable. The user wants Anky to feel like a **keyboard that IS the app**. The bottom 44% is always a custom on-screen keyboard with a rainbow progress border tracing the 8-minute session. The landing page becomes an Instagram-style feed of square anky posts, with the keyboard as the first "post". Scrolling dims the keyboard; tapping it (or a comment button) activates writing. Two visual modes: **anky mode** (violet/white, 8-min freewrite) and **comment mode** (purple/yellow glow, responding to a post). Videos and images switch to **1:1 square** format.
+
+Phase 1: Custom keyboard replacing textarea, progress border, life bar, two writing modes, keyboard layout detection.
+Phase 2: Instagram-style feed, feed API, like system, feed<>keyboard interaction.
+Phase 3: Image optimization - thumbnails, cache headers, lazy loading.
+Phase 4: Square video pipeline - all aspect ratios to 1:1.

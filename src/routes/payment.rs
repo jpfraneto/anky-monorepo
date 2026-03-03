@@ -32,7 +32,10 @@ pub async fn verify_payment(
         state.emit_log(
             "INFO",
             "payment",
-            &format!("Payment verified for collection {}", &req.collection_id[..8]),
+            &format!(
+                "Payment verified for collection {}",
+                &req.collection_id[..8]
+            ),
         );
 
         // Start collection generation in background

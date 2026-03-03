@@ -1,0 +1,1 @@
+ok but i just read the skill and it says that it doesn't need an api key. it should need an api key. if not this can be abused big big time. so please tell the agent that it needs to do something to get their api key. at least that. make this organized and follow best practices please. also, the livestream is working fine

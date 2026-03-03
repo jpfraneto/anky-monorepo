@@ -1,0 +1,5 @@
+this machine has two gpus. can you diagnose what each one of them is being used for?
+
+ok yep gpu 1 is for ollama. can ypu check which model it is serving?
+
+yeah set that up. i want it to be running all the time. and forget about this interview setup. i want gpu 0 to load the fine tuned version of flux so that we can generate anky images of it. this is the hugging face link for the model https://huggingface.co/jpfraneto/anky-flux-lora-v1 . i want you to add a toggle on the generate endpoint and on the route for the user to choose which image generation model to use. the default will be this lora of flux with knowledge of anky (read here https://anky.app/trainings/2026-02-28) and we will also have the current gemini pipeline (only for this ine rhe user has to pay. the generations with flux are free. be specific about yhat on the ui). the other gpu will run the qwen model that ollama is serving, and it will be used to reply to every writing session that vomes from the app that is not an anky (less than 8 minutes). any questions?

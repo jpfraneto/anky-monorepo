@@ -4,5 +4,24 @@
 !.env.example
 data/
 *.log
+.secrets/
 .DS_Store
 .idea
+anky.db
+scripts/__pycache__/
+videos/
+slides/
+
+# Large static binaries
+static/anky-data-part-*
+static/anky-speech-*.mp4
+static/anky-training-data.tar.gz
+static/hf/
+static/ep2/
+static/dca-bot/
+
+# Interview engine
+interview-engine/.venv/
+interview-engine/__pycache__/
+interview-engine/models/
+interview-engine/memory.db

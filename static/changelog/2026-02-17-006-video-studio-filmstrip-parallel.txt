@@ -1,0 +1,64 @@
+Implement the following plan:
+
+# Plan: Video Studio UX Overhaul — Filmstrip UI + Real-Time Feedback + Parallel Generation
+
+## Context
+
+The video studio has minimal feedback during generation. After clicking "generate", users see a progress ring and "scene X of Y". Images are generated but never shown. Scenes can't be expanded. No receipt/project ID is shown. Generation is sequential (slow). This plan fixes all of that.
+
+## Urgent Pre-requisite
+
+- Add `XAI_API_KEY` to systemd service so Grok video gen works
+- Add a "resume" endpoint to retry video gen from the images step for the failed project `af830b6b`
+
+## Files to Modify
+
+### 1. `templates/video.html` — UI overhaul
+
+**New layout changes:**
+- **Receipt**: After POST returns, show project ID (`af830b6b`) prominently + auto-add to left panel project list
+- **Filmstrip**: Below the video viewport — horizontal scrolling strip of scene frames (120px wide, 16:9 ratio, film sprocket aesthetic). Each frame:
+  - Initially: dark placeholder with scene number
+  - After image gen: shows actual image (`/data/images/video_XXXX_NN.png`)
+  - After video gen: green border
+  - Click: opens detail overlay (image full-size, image_prompt, video_prompt, narration, duration, status)
+- **Progress label**: Shows current step ("generating images 3/14...", "generating videos 5/14...", "stitching...")
+- **Remove**: progress ring overlay → replace with filmstrip + step label in-place
+- **Script panel (right)**: Keep but make each scene card expandable (click to toggle full prompts/narration)
+- **Past projects**: Show project short-ID as receipt code
+
+**Polling enhancement (JS):**
+- Existing 3s poll already returns `script.scenes` with per-scene status + `image_url`
+- Update filmstrip frames when `image_path` appears on a scene
+- Show `current_step` from API response
+- Auto-scroll filmstrip to the active scene
+
+### 2. `src/pipeline/video_gen.rs` — Parallel generation
+
+**`generate_scene_images`**: Replace sequential loop with `tokio::JoinSet` + `Arc<Semaphore>` (3 concurrent). After each image completes, update DB `script_json` so poll endpoint picks it up immediately.
+
+**`generate_scene_videos`**: Submit up to 3 Grok jobs concurrently, poll all active jobs in a unified loop (every 5s). As each completes, download clip. Update DB after each.
+
+**Add `current_step` tracking**: Call new `update_video_project_step()` at each phase transition.
+
+### 3. `src/routes/api.rs` — Enhanced poll + resume
+
+**`get_video_project`**: Add `current_step` to response.
+
+**Add `POST /api/v1/video/{id}/resume`**: Resume a failed video project from where it left off (e.g. images done but videos failed → skip to step 2).
+
+### 4. `src/db/queries.rs` + `src/db/migrations.rs`
+
+- Add `current_step TEXT DEFAULT 'script'` column to `video_projects`
+- Add `update_video_project_step(conn, id, step)` function
+
+### 5. `~/.config/systemd/user/anky.service`
+
+- Add `Environment=XAI_API_KEY=...` line
+
+## Verification
+
+1. `cargo build --release`
+2. `systemctl --user daemon-reload && systemctl --user restart anky.service`
+3. Resume the failed project `af830b6b` (images already generated)
+4. New video generation → verify filmstrip shows images, parallel gen works, receipt shown

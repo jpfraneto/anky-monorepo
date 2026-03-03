@@ -50,16 +50,31 @@ pub async fn validate_payment(
             .and_then(|v| v.to_str().ok())
         {
             let sig = sig.trim();
-            if sig.starts_with("0x") && sig.len() == 66 && sig[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-                state.emit_log("INFO", "payment", &format!("Direct wallet payment: {}", sig));
+            if sig.starts_with("0x")
+                && sig.len() == 66
+                && sig[2..].chars().all(|c| c.is_ascii_hexdigit())
+            {
+                state.emit_log(
+                    "INFO",
+                    "payment",
+                    &format!("Direct wallet payment: {}", sig),
+                );
                 tx_hash = Some(sig.to_string());
                 payment_method = "wallet".into();
             } else {
                 let facilitator = &state.config.x402_facilitator_url;
                 if facilitator.is_empty() {
-                    return Err(PaymentError::ConfigError("x402 facilitator not configured".into()));
+                    return Err(PaymentError::ConfigError(
+                        "x402 facilitator not configured".into(),
+                    ));
                 }
-                match x402::verify_x402_payment(facilitator, sig, "https://anky.app/api/v1/generate").await {
+                match x402::verify_x402_payment(
+                    facilitator,
+                    sig,
+                    "https://anky.app/api/v1/generate",
+                )
+                .await
+                {
                     Ok(hash) => {
                         tx_hash = Some(hash);
                         payment_method = "x402".into();

@@ -7,6 +7,614 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-03-anky-lora-recaption-and-dataset-gen">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">LoRA dataset overhaul: recaption 194 images + generate 100 new human-grounded Ankys</h2>
+    <p class="changelog-desc">Replaced all 194 generic "a photo of anky" training captions with rich descriptive captions using Gemini Vision. Then used Grok to generate 100 diverse human-experience prompts (Anky crying, dancing, cooking, writing) and Gemini to generate 100 new training images with random dataset seeds.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-003-anky-lora-recaption-and-dataset-gen.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-anky-lora-recaption-and-dataset-gen">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-simplify-flux-anky-validation">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Simplify Flux prompt validation to keyword check</h2>
+    <p class="changelog-desc">Replaced the flaky Ollama LLM validation gate with a simple check: if the prompt contains the word "anky", it passes. Eliminates false rejections of valid prompts.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-002-simplify-flux-anky-validation.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-simplify-flux-anky-validation">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-fix-streaming-layout-and-reply-buttons">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Fix streaming layout jumps, instant reply buttons, and CSS</h2>
+    <p class="changelog-desc">Three UX fixes: (1) The layout no longer jumps during streaming — user's writing is auto-collapsed to a small card so the anky response fills the screen stably. (2) Contextual reply buttons now appear right when the reflection finishes streaming, not after image generation. (3) Bumped CSS version so all clients see the correct button styles.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-001-fix-streaming-layout-and-reply-buttons.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-fix-streaming-layout-and-reply-buttons">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-02-anky-speech-video">
+    <div class="changelog-date">2026-03-02</div>
+    <h2 class="changelog-title">Anky speech video: cycling images + burned subtitles</h2>
+    <p class="changelog-desc">Generated an 8m57s video of Anky's ElevenLabs TTS reading from her own anky session. Three Anky reference images cycle as the background with crossfade transitions; Whisper large-v3 transcription is burned in as white subtitles. Downloadable at /static/anky-speech-video.mp4.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-02-001-anky-speech-video.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-02-anky-speech-video">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-01-flux-ux-thinker-fix-prompt-hint">
+    <div class="changelog-date">2026-03-01</div>
+    <h2 class="changelog-title">Fix thinker portrait + Flux conflict; add prompt hint</h2>
+    <p class="changelog-desc">Thinker portrait mode now works with Flux: the prompt is automatically framed as "anky as [name] — [moment]" so it passes Ollama validation. Added a small italic hint under the prompt field when Flux is selected ("describe anky in a scene, setting, or doing something") to reduce failed attempts.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-01-003-flux-ux-thinker-fix-prompt-hint.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-01-flux-ux-thinker-fix-prompt-hint">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-01-flux-raw-prompt-anky-validation">
+    <div class="changelog-date">2026-03-01</div>
+    <h2 class="changelog-title">Flux: raw prompt passthrough + Anky validation + generating button state</h2>
+    <p class="changelog-desc">Flux image generation now passes the user's prompt directly to ComfyUI with no Claude transformation. Before queuing, Ollama (qwen2.5:14b) checks whether the prompt is about Anky — if not, a clear error appears below the button. The generate button now turns amber and pulses while generation is in progress, restoring to its default state on completion or error.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-01-002-flux-raw-prompt-anky-validation.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-01-flux-raw-prompt-anky-validation">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-01-flux-lora-free-image-gen">
+    <div class="changelog-date">2026-03-01</div>
+    <h2 class="changelog-title">Flux LoRA free image generation + dual-GPU setup</h2>
+    <p class="changelog-desc">Installed ComfyUI on GPU 0 with the anky-flux-lora-v1 fine-tuned model (Flux.1-dev trained on anky's visual world). Added a model toggle to the /generate page: Flux is always free (default), Gemini requires USDC payment. Ollama (qwen2.5:14b) pinned to GPU 1 with OLLAMA_KEEP_ALIVE=-1 so it stays loaded at all times.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-01-001-flux-lora-free-image-gen.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-01-flux-lora-free-image-gen">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-farcaster-miniapp-user-id-fallback">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Fix Farcaster miniapp user identity lost on write</h2>
+    <p class="changelog-desc">In the Farcaster webview, SameSite=Lax cookies are unreliable across sessions. The /write POST now sends X-Anky-User-Token from localStorage as a header fallback; the server uses it to recover the user's identity even when the cookie is missing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-007-farcaster-miniapp-user-id-fallback.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-farcaster-miniapp-user-id-fallback">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-fix-write-error-draft-loss">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Fix writing lost on network error</h2>
+    <p class="changelog-desc">Draft was cleared from localStorage before the server confirmed success. On any network error the user's writing was permanently lost. Now clearDraft() only runs after a confirmed successful save, and the error message tells users their writing is preserved locally.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-006-fix-write-error-draft-loss.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-fix-write-error-draft-loss">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-videos-gallery">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Public videos gallery page</h2>
+    <p class="changelog-desc">Added /video-gallery — a public grid gallery showing all completed anky videos with their generated image as thumbnail, title, and date. Linked from the drawer nav.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-005-videos-gallery.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-videos-gallery">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-training-general-instructions">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Training general instructions page</h2>
+    <p class="changelog-desc">Added /trainings/general-instructions — the full step-by-step recipe for running an Anky LoRA training, including dataset curation, RunPod setup, tmux, HuggingFace upload one-liners, and known failure modes from run 001.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-004-training-general-instructions.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-training-general-instructions">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-jpeg-images-for-xai-video">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Fix xAI video image download failure (PNG→JPEG)</h2>
+    <p class="changelog-desc">xAI's Aurora video API was failing to download our 1.6MB PNG reference images with "Unrecoverable data loss." Fixed by saving a compressed JPEG (94KB) alongside the PNG and passing the JPEG URL to xAI. Video pipeline now works end-to-end.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-003-jpeg-images-for-xai-video.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-jpeg-images-for-xai-video">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-story-first-video-prompt">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Story-first video prompt — no more meditative poses</h2>
+    <p class="changelog-desc">Rewrote the video script system prompt from scratch. Videos now follow a three-act structure with Anky as an active protagonist. Anky must be doing something physical in every scene — climbing, reaching, breaking through, falling. Meditating is forbidden outside the end card. Added inciting incident, crisis, and resolution fields to force real story arcs.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-002-story-first-video-prompt.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-story-first-video-prompt">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-28-trainings-journal">
+    <div class="changelog-date">2026-02-28</div>
+    <h2 class="changelog-title">Training journal: /trainings and /trainings/:date</h2>
+    <p class="changelog-desc">Added a /trainings page documenting every LoRA training run, with a detail page per run explaining what's happening, why, and what comes out. First entry covers today's FLUX.1-dev run on RunPod.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-28-001-trainings-journal.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-28-trainings-journal">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-fix-torchaudio-training">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Fix torchaudio missing in RunPod training setup</h2>
+    <p class="changelog-desc">Added torchaudio to the RunPod train script — ai-toolkit's config_modules.py imports it at startup, causing training to fail immediately with ModuleNotFoundError.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-005-fix-torchaudio-training.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-fix-torchaudio-training">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-kill-livestream">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Kill the livestream</h2>
+    <p class="changelog-desc">Removed the RTMP livestream system — ffmpeg loop, watchdog, WebSocket routes, GO LIVE button, countdown overlay, and live queue. The /api/ankys/today endpoint remains. Too slow, not worth the complexity.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-004-kill-livestream.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-kill-livestream">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-training-curation-tinder">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Training curation: Tinder-style image labeling</h2>
+    <p class="changelog-desc">Added /training page with a Tinder-style swipe UI to curate Anky images for Flux LoRA training. Swipe right (or arrow key) to approve, left to reject. Approved images + their captions are auto-copied to data/training-images/ as image-caption pairs ready for LoRA fine-tuning.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-003-training-curation-tinder.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-training-curation-tinder">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-structured-reflection-format">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Structured reflection: 1 action + 3 mirrors</h2>
+    <p class="changelog-desc">Rewrote the Anky reflection format from freeform prose into a structured response: first, ONE concrete actionable experiment for the rest of the day (under "do this today"), then exactly THREE points that mirror the writer's patterns back to them (under "what i see"). No more woo-woo — practical transformation grounded in what they actually wrote.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-003-structured-reflection-format.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-structured-reflection-format">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-sharper-inquiry-prompts">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Sharper, shorter inquiry prompts</h2>
+    <p class="changelog-desc">Rewrote the inquiry system to generate shorter, more precise questions (5-12 words max). Default opening changed from "Tell me who you are" to "What are you avoiding feeling right now?" Claude's generation prompt now targets behavior over philosophy, specificity over abstraction, and asks the question the user hopes won't get asked.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-002-sharper-inquiry-prompts.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-sharper-inquiry-prompts">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-27-fix-video-payment-timeout">
+    <div class="changelog-date">2026-02-27</div>
+    <h2 class="changelog-title">Fix video payment timeout and double-charge</h2>
+    <p class="changelog-desc">Video generation endpoint was blocking on Claude script generation (30-60s) before responding, causing browser "failed to fetch" timeout. User's USDC payment went through on-chain but the project was never saved to DB. Fixed by saving the project immediately on payment and moving all heavy work (script gen, image gen, video gen) to a background task. Added server-side duplicate guard that returns the existing project if an anky already has one in progress. Frontend now saves txHash to localStorage so retries reuse it instead of sending more USDC.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-27-001-fix-video-payment-timeout.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-27-fix-video-payment-timeout">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-video-pipeline-story-spine">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Video pipeline: story spine threading + visual world coherence</h2>
+    <p class="changelog-desc">Rewrote the video script generation prompt to require a concrete visual_world (single environment), message (thesis), and color_arc that thread through every scene. The story spine now flows into every Gemini image prompt and Grok video prompt — each scene knows what world it lives in, where it sits in the arc, and what the video is trying to say. Replaced generic "mystical fantasy illustration" wrapper with story-aware scene direction. Continuity instructions now emphasize maintaining the same visual world across scenes rather than just matching character design.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-007-video-pipeline-story-spine.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-video-pipeline-story-spine">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-stt-timeout-protection">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">STT timeout protection for live interview</h2>
+    <p class="changelog-desc">Voxtral STT model.generate() could hang indefinitely, locking the interview on "transcribing your words". Added three layers of timeout protection: (1) threading lock + 30s thread timeout around GPU inference in audio.py, (2) 45s asyncio.wait_for timeout in server.py, (3) graceful recovery that sends an error message to the browser and returns to listening state instead of freezing. Also added timeouts around the LLM (120s) and TTS (30s) calls, plus CUDA cache clearing after each transcription.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-006-stt-timeout-protection.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-stt-timeout-protection">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-live-interview-rename-reset">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Rename to "live interview" + clean reset on end</h2>
+    <p class="changelog-desc">Renamed "interview" to "live interview" in the nav menu and page title. When an interview ends (time up, disconnect, or guest leaves), the UI cleanly resets back to the consent screen instead of showing a dead-end overlay. PFP area shows "(this could be you)" as a dashed placeholder until uploaded. Mic stream and audio context are properly torn down on reset.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-005-live-interview-rename-reset.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-live-interview-rename-reset">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-interview-system-integration">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Interview system integration + systemd service</h2>
+    <p class="changelog-desc">Integrated the Python interview engine with the main Rust app database — interviews and messages are now stored in the main anky.db via REST API calls (with local SQLite fallback). Added user context enrichment: when a logged-in user starts an interview, Anky gets their psychological profile, growth edges, core tensions, and recent writing themes injected into its system prompt. Enforced time limits (5min anonymous, 30min authenticated) with countdown timer and warning. Added interview link to hamburger menu. Created a systemd service for the Python engine with auto-restart.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-004-interview-system-integration.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-interview-system-integration">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-suggested-replies-scroll-fix">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Suggested replies + scroll fix for infinite conversations</h2>
+    <p class="changelog-desc">Fixed the auto-scroll bug during reflection streaming — the chat no longer yanks you back down when you scroll up to read. Removed the collapsible writing text (always shows full). Replaced the free-form reply textarea with two AI-generated suggested reply buttons with opposite polarities (inward/soft vs outward/challenging) plus a "type a reply to anky..." option. Each reply triggers a new Anky response with fresh suggestions, creating infinite interwoven conversation threads. Conversations are persisted to the DB and restored when revisiting writings on /writings page. Uses Claude Haiku for fast, contextual reply generation.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-003-suggested-replies-scroll-fix.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-suggested-replies-scroll-fix">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-anon-user-localstorage-persistence">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Anonymous user localStorage persistence</h2>
+    <p class="changelog-desc">Anonymous users no longer lose their identity or in-progress writing when cookies are cleared or the browser closes. The anky_user_id cookie is now synced to localStorage and auto-recovered on future visits. Writing drafts are saved every 2 seconds to localStorage (with a recovery prompt on page load), and completed anky IDs are persisted so users can always find their writings. Works on both the home page and /prompt writing flows.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-002-anon-user-localstorage-persistence.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-anon-user-localstorage-persistence">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-26-fix-video-payment-parallel-pipeline">
+    <div class="changelog-date">2026-02-26</div>
+    <h2 class="changelog-title">Fix video payment rejection + instant anky reflection</h2>
+    <p class="changelog-desc">Video generation rejected valid USDC payments because the tx hash format check was too strict (required exactly 66 chars). Relaxed to accept any reasonable hex hash. Also eliminated the main post-writing bottleneck: the Ollama feedback call was blocking the /write response for 5-15 seconds before the frontend could even start streaming the Claude reflection. Anky sessions now return instantly and run Ollama in the background, so the reflection stream starts immediately.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-26-001-fix-video-payment-parallel-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-26-fix-video-payment-parallel-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-25-privy-auth-fallback-resilience">
+    <div class="changelog-date">2026-02-25</div>
+    <h2 class="changelog-title">Privy auth fallback on API endpoints + system resilience</h2>
+    <p class="changelog-desc">Video generation and like endpoints failed for Privy-authenticated users because they only checked the anky_user_id cookie, not Privy session auth. All gated API endpoints now fall back to get_auth_user() when the anonymous cookie is missing. Also: /writings page now shows Claude's reflection for ankys instead of Ollama's quick response, and a checkpoint recovery watchdog auto-recovers orphaned writing sessions every 5 minutes.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-25-002-privy-auth-fallback-video-resilience.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-25-privy-auth-fallback-resilience">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-25-fix-lost-writing-save-before-ollama">
+    <div class="changelog-date">2026-02-25</div>
+    <h2 class="changelog-title">Fix lost writings: save to DB before Ollama call</h2>
+    <p class="changelog-desc">Writing sessions were lost when Ollama hung during reflection generation — the DB insert happened after the Ollama call, so if Ollama timed out the writing was never saved. Fixed by saving the writing_session immediately, then backfilling the Ollama response via UPDATE. Also added a 120s timeout to the Ollama HTTP client. Recovered the lost writing from checkpoint data and regenerated its anky image + reflection.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-25-001-fix-lost-writing-save-before-ollama.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-25-fix-lost-writing-save-before-ollama">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-22-fix-scroll-all-routes">
+    <div class="changelog-date">2026-02-22</div>
+    <h2 class="changelog-title">Fix scrolling on all routes</h2>
+    <p class="changelog-desc">Flipped the global overflow:hidden approach — instead of locking scroll everywhere and allowlisting pages, scroll is now enabled by default and only locked on the home writing page. Fixes broken scrolling on gallery, help, ankycoin, and any other routes that were missing from the override list.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-22-001-fix-scroll-all-routes.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-22-fix-scroll-all-routes">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-settings-wallet-writings-scroll">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Settings wallet display, writings scroll fix, better payment errors</h2>
+    <p class="changelog-desc">Wallet address now shown on settings page for Privy users. Fixed writings page unable to scroll due to global overflow:hidden (added CSS :has() overrides for scrollable pages). Improved sendUSDC error messages — separate errors for missing wallet vs missing browser extension. Generated Nacha's first video via pipeline.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-010-settings-wallet-writings-scroll-video.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-settings-wallet-writings-scroll">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-spanish-reflection-mobile-fix">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Language-aware reflections + mobile viewport fix</h2>
+    <p class="changelog-desc">All three reflection paths (Ollama quick feedback, Ollama deep reflection, Claude stream reflection) now respond in the same language the user wrote in. Added "CRITICAL: respond in the SAME LANGUAGE" instruction to every prompt. Fixed mobile viewport: prevented iOS scroll/zoom on keyboard open, added touch-move prevention for overscroll bounce, pinned scroll to top on visualViewport resize.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-009-spanish-reflection-mobile-fix.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-spanish-reflection-mobile-fix">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-remove-meditation-fab">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Remove meditation FAB, textarea-only UI</h2>
+    <p class="changelog-desc">Deleted the meditation button, scene, reflect/journal panels, and all meditation JS from the home page. UI is now purely: inquiry question + textarea + session bar. Fixed mobile keyboard handling — writing container height tracks visualViewport so the textarea stays fully visible when the keyboard opens. Removed placeholder text (inquiry question serves as the prompt).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-008-remove-meditation-fab.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-remove-meditation-fab">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-fab-fix-inquiry-system">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Fix FAB z-index + inquiry system</h2>
+    <p class="changelog-desc">Fixed meditation FAB being hidden behind writing container (z-index 15 → 40). Added inquiry system: Anky asks "Tell me who you are." above the textarea in the user's browser language (~10 languages). Each writing session answers the inquiry; Claude Haiku generates the next deeper question based on history and psychological profile.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-007-fab-fix-inquiry-system.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-fab-fix-inquiry-system">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-writing-first-homepage">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Writing-first home page</h2>
+    <p class="changelog-desc">Flipped the home page default: writing textarea is now front and center on load (auto-focused), meditation is behind a FAB. Replaced the tedious arrow-button time picker with native number inputs. Added close button on meditation overlay to return to writing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-006-writing-first-homepage.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-writing-first-homepage">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-dissolve-writing-friction">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Dissolve all writing friction</h2>
+    <p class="changelog-desc">Removed the anonymous meditation limit (2/day cap) and the level-2 gate on the "write" post-meditation option. Writing is now always available to everyone — no login, no meditation count requirement. The FAB already had no guards; now the post-meditation flow matches.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-005-dissolve-writing-friction.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-dissolve-writing-friction">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-psychoanalytic-director-prompt">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Psychoanalytic director prompt rewrite</h2>
+    <p class="changelog-desc">Rewrote the video script generation system prompt from "story weaver" to psychoanalytic director. Anky is now Virgil — guide through the underworld of the self. Removed dead visual continuity instructions (the sequential chain handles that mechanically now). Added psychoanalytic_note (per-scene analyst reading) and sound_direction (audio direction for Grok) fields. Reframed 5-act structure through depth psychology: surface/mask → tension/repressed → descent/Virgil → revelation/seeing → integration/changed.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-004-psychoanalytic-director-prompt.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-psychoanalytic-director-prompt">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-sequential-chain-video">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Sequential chain video pipeline</h2>
+    <p class="changelog-desc">Replaced the parallel image+video pipeline with a sequential chain: each scene's completed video has reference frames extracted via ffmpeg and passed to Gemini when generating the next scene's image. Visual continuity is now mechanical — each scene literally sees what came before. Slower (~40 min vs ~10 min) but dramatically better visual coherence between clips.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-003-sequential-chain-video.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-sequential-chain-video">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-video-studio-mobile-ux">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Video studio mobile UX overhaul</h2>
+    <p class="changelog-desc">Redesigned the video studio for mobile with a tab-based layout (writings / video / script). The three-panel desktop layout was completely unusable on phones — now the video player takes center stage with panels accessible via tabs. Added proper touch targets (44px min), dynamic viewport height handling, responsive filmstrip, and compact modals.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-002-video-studio-mobile-ux.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-video-studio-mobile-ux">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-21-meditation-first-experience">
+    <div class="changelog-date">2026-02-21</div>
+    <h2 class="changelog-title">Meditation-first homepage redesign</h2>
+    <p class="changelog-desc">Completely reimagined the landing page as a meditation timer. Users start by sitting still (30s default, tappable to customize MM:SS). Gong sound marks start/end. After meditation: reflect (multiple choice), journal (guided prompt), write (8-min session, locked until level 2), or sit again. Progressive leveling system tracks streaks. Floating write button always accessible. Writing flow preserved intact underneath.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-21-001-meditation-first-experience.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-21-meditation-first-experience">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-20-memetics-wtf-homepage">
+    <div class="changelog-date">2026-02-20</div>
+    <h2 class="changelog-title">Custom homepage for memetics.wtf</h2>
+    <p class="changelog-desc">Created a self-contained index.html with all CSS/JS inlined for the memetics.wtf custom token page — an alternative to dexscreener with branded project homepages. Uploaded as a GitHub gist.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-20-003-memetics-wtf-homepage.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-20-memetics-wtf-homepage">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-20-fix-chat-textarea">
+    <div class="changelog-date">2026-02-20</div>
+    <h2 class="changelog-title">Fix chat textarea — normal editing + Enter to send</h2>
+    <p class="changelog-desc">The post-session chat input no longer blocks backspace, delete, arrow keys, paste, or cut. It behaves like a normal textarea. Enter sends the message, Shift+Enter for newlines. Removed the idle-timeout auto-submit from chat input.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-20-002-fix-chat-textarea.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-20-fix-chat-textarea">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-20-disable-livestream">
+    <div class="changelog-date">2026-02-20</div>
+    <h2 class="changelog-title">Disable pump.fun livestream</h2>
+    <p class="changelog-desc">Disabled the RTMP livestream to pump.fun — it was spamming and not working correctly. The ffmpeg loop no longer spawns. Live writing UI on the site remains but doesn't stream externally.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-20-001-disable-livestream.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-20-disable-livestream">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-feed-page">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Anky feed page</h2>
+    <p class="changelog-desc">Added /feed page showing all completed ankys as a compact scrollable list — image thumbnail, title, author, and relative time. Header shows 24-hour activity stats: writers, sessions, ankys created, minutes written, total words. No writing content exposed.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-008-feed-page.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-feed-page">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-video-playback-slideshow">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Video playback in ANKY TV slideshow</h2>
+    <p class="changelog-desc">The ANKY TV livestream slideshow now plays completed video projects alongside anky images. Videos are decoded via ffmpeg subprocess, pillarboxed to 1920x1080 with dark background, capped at 15 seconds, and inserted every ~5 images. Falls back gracefully if no videos exist or files are missing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-007-video-playback-slideshow.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-video-playback-slideshow">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-anky-tv-drawer-nav">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">ANKY TV button + left drawer navigation</h2>
+    <p class="changelog-desc">Replaced the top navbar links with a left drawer (hamburger menu). The navbar now has a hamburger on the left and a psychedelic rainbow-cycling "ANKY TV" button on the right that links to the pump.fun livestream. Same layout on desktop and mobile.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-006-anky-tv-drawer-nav.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-anky-tv-drawer-nav">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-infinite-media-slideshow">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Infinite anky image slideshow on livestream</h2>
+    <p class="changelog-desc">Replaced the static pulsing "$ANKY" idle screen with ANKY TV — an infinite slideshow of completed anky images with pixel dissolve transitions. Each image shows for 3 seconds, then dissolves into blocks that collapse to center before the next image expands outward. Psychedelic rainbow "ANKY TV" header at top center, attribution text, and title overlays. Falls back to pulse animation if no ankys exist.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-005-infinite-media-slideshow.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-infinite-media-slideshow">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-email-social-login">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Replace wallet login with email/Google/Apple</h2>
+    <p class="changelog-desc">Removed wallet-only Privy login. Login now uses email, Google, or Apple via Privy. Added email column to users, updated backend to extract email from Privy linked accounts. Wallet no longer required for authentication — only for optional USDC payments.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-004-email-social-login.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-email-social-login">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-phantom-solana-login">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Enable Phantom (Solana) wallet login via Privy</h2>
+    <p class="changelog-desc">Added Solana wallet connectors to Privy config so Phantom works in its default Solana mode. Backend now also accepts solana_wallet type from Privy linked_accounts. EVM (Base) support kept for USDC payments.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-003-phantom-solana-login.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-phantom-solana-login">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-fix-chat-ui-anon-cookie">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Fix post-session chat UI + anonymous user flow</h2>
+    <p class="changelog-desc">Fixed chat scroll container (no more full-page scroll), collapsible user writing bubbles for long text, Enter key now allowed in chat follow-up input. Fixed anonymous users getting rejected with "API key required" by setting the cookie on page load instead of only on /write.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-002-fix-chat-ui-anon-cookie.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-fix-chat-ui-anon-cookie">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-19-vertical-story-driven-video">
+    <div class="changelog-date">2026-02-19</div>
+    <h2 class="changelog-title">Vertical (9:16) story-driven video pipeline</h2>
+    <p class="changelog-desc">Rewrote the video pipeline from square (1:1) psychoanalytic framing to vertical (9:16) story-driven format. The system prompt now finds the story living inside the writing instead of abstract psychoanalysis. All image gen, video gen, and ffmpeg transcodes switched to 720x1280 vertical.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-19-001-vertical-story-driven-video.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-19-vertical-story-driven-video">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-revert-keyboard-ui">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Revert keyboard UI, restore original landing page</h2>
+    <p class="changelog-desc">Reverted the custom keyboard and feed UI changes. Restored the original textarea-based writing experience and landing page layout.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-006-revert-keyboard-ui.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-revert-keyboard-ui">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-desktop-mobile-split">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Desktop/mobile split: keyboard UI mobile-only, restore desktop landing</h2>
+    <p class="changelog-desc">Fixed broken styles from the keyboard-first overhaul. The custom keyboard + feed UI is now mobile-only (≤768px). Desktop restores the original landing page with textarea, manifesto, how-it-works, pricing, and CTA. Both UIs coexist in the same template, toggled via CSS media queries and JS isMobile detection.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-005-desktop-mobile-split.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-desktop-mobile-split">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-keyboard-first-feed-app">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Keyboard-first UI overhaul: custom keyboard, feed, likes, square media</h2>
+    <p class="changelog-desc">Major UI rewrite. Replaced the textarea with a custom on-screen keyboard (bottom 44% of viewport) with QWERTY/AZERTY/QWERTZ layouts. Text appears in a display div above. Rainbow progress border traces the 8-minute session around the keyboard via SVG stroke animation. Landing page is now an Instagram-style feed of square anky posts with likes, comments, and share. Two writing modes: anky (violet/white freewrite) and comment (purple/yellow, responding to a post). All video/image generation switched to 1:1 square format. Added feed API, like toggle endpoint, thumbnail generation, and immutable cache headers for images.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-004-keyboard-first-feed-app.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-keyboard-first-feed-app">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-post-session-video-button">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Generate video button after writing session</h2>
+    <p class="changelog-desc">Added a "generate video ($5)" button that appears alongside share/copy-link after completing an 8+ minute writing session. Users can now trigger video generation immediately from the chat flow without navigating to the video studio. Handles wallet connection, USDC payment, and links to the video studio for progress tracking.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-003-post-session-video-button.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-post-session-video-button">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-vertical-video-continuity-cost">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Vertical 9:16 video, real cost pricing, scene continuity, info modal</h2>
+    <p class="changelog-desc">Switched video pipeline from horizontal (16:9) to vertical (9:16) for TikTok/phone-native viewing. Fixed cost from $2 to $5 USDC to match real Grok pricing ($0.05/second). Added per-second cost tracking. Payment tx_hash now stored in video_projects. Major system prompt rewrite: added visual continuity rules requiring each scene's image to match where the previous scene's video ends, with explicit "ENDS with [state]" instructions and color palette flow. Added info (i) button with full pipeline explainer modal linking to the open source repo.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-002-vertical-video-continuity-cost.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-vertical-video-continuity-cost">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-18-video-pipeline-overhaul">
+    <div class="changelog-date">2026-02-18</div>
+    <h2 class="changelog-title">Video pipeline overhaul: story spine + 6 bug fixes</h2>
+    <p class="changelog-desc">Major rewrite of the video script system. Claude now generates a two-phase output: first a "story spine" (wound, desire, arc, controlling visual metaphor, emotional trajectory), then scenes structurally bound to it with act labels, narrative roles, camera movements, and transition logic. UI shows the story spine reveal, act-coded scenes with color badges, narrative progress messages per act ("painting the surface...", "descending..."), filmstrip act dividers, and 1080p/720p/360p quality selector. Fixed: transcode paths now stored in DB, Grok generation_id stored per scene, existing images skipped on resume, Grok cost records tracked, story_spine column added to video_projects.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-18-001-video-pipeline-overhaul.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-18-video-pipeline-overhaul">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-video-studio-filmstrip-parallel">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">Video studio filmstrip UI + parallel generation + resume</h2>
+    <p class="changelog-desc">Complete UX overhaul of the video studio. Replaced progress ring with a filmstrip strip that shows scene images as they generate in real-time. Images and videos now generate 3-at-a-time (parallel via tokio JoinSet + Semaphore). Added project receipt/ID display, expandable scene cards with full prompts, scene detail overlay on filmstrip click, and a resume endpoint to retry failed projects from where they left off. Fixed .env XAI_API_KEY line separation so Grok video gen works. Added current_step tracking to DB for accurate progress labels.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-006-video-studio-filmstrip-parallel.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-video-studio-filmstrip-parallel">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-memory-enriched-video-pipeline">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">Memory-enriched psychoanalytic video pipeline</h2>
+    <p class="changelog-desc">Video script generation now injects the full memory system — psychological profiles, avoidances, breakthroughs, recurring patterns, emotions, and similar past writing moments — into Claude's prompt. The system prompt reframes video creation as psychoanalytic filmmaking with a 5-act psyche structure (Surface → Cracks → Descent → Confrontation → Integration). Flow score drives visual pacing. Anky becomes a psychopomp guide, not a narrator.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-005-memory-enriched-video-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-memory-enriched-video-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-fix-video-script-truncation">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">Fix video script generation truncation + missing field</h2>
+    <p class="changelog-desc">Video script generation was failing because Claude's JSON response was being truncated at 4096 tokens (not enough for 8-15 detailed scenes). Doubled max_tokens to 8192 and made total_duration field optional with serde(default) since the code recalculates it anyway. Also added total_duration to the prompt template so Claude includes it.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-004-fix-video-script-truncation.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-fix-video-script-truncation">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-video-pipeline-grok">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">88-second video pipeline with Grok + sleek single-screen UI</h2>
+    <p class="changelog-desc">Complete rewrite of the video studio. Claude analyzes your 8-minute writing session and generates a dynamic script (8-15 scenes, 1-15s each, totaling exactly 88 seconds). Each scene gets a visual prompt, narration text, and duration — all produced by the pipeline. Grok generates video clips per scene, ffmpeg stitches them together, and three quality levels (full, 720p, 360p) are saved. New single-screen layout with three-panel design: anky selector, video preview with progress ring, and live script view. Added Cloudflare cache purge API endpoint. Fixed the "no anky written" check to include all writing sessions regardless of status.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-003-video-pipeline-grok.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-video-pipeline-grok">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-no-cache-html-routes">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">Fix stale page caching + server crash loop</h2>
+    <p class="changelog-desc">Added cache-control headers: HTML routes now send no-cache/no-store/must-revalidate so browsers and Cloudflare always fetch the latest version after deploys. Static assets get 1-hour cache with stale-while-revalidate. Also fixed a crash loop where a stale process held port 8889.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-002-no-cache-html-routes.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-no-cache-html-routes">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-17-flow-score-leaderboard-chakra-pitch">
+    <div class="changelog-date">2026-02-17</div>
+    <h2 class="changelog-title">Flow score, leaderboard, chakra timer, pitch deck, "only on Solana"</h2>
+    <p class="changelog-desc">Five features in one session. (1) Flow score engine: tracks per-keystroke timing, computes a 0-100 score from rhythm consistency, velocity, pause patterns, and duration. Stored on every writing session. (2) Leaderboard at /leaderboard with rankings by flow score, streak, total ankys, and words written. (3) Chakra color gradient timer: the progress bar and UI shift through 8 kingdom colors (red→orange→gold→green→blue→indigo→violet→magenta) as 8 minutes elapse. (4) /pitch endpoint with two tabs: VIDEO and an 8-slide horizontal pitch deck for the pump.fun hackathon, each slide colored by an ankyverse kingdom. (5) Updated $ANKY branding to "only on Solana" across ankycoin page and landing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-17-001-flow-score-leaderboard-chakra-pitch.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-17-flow-score-leaderboard-chakra-pitch">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-16-progressive-web-app">
+    <div class="changelog-date">2026-02-16</div>
+    <h2 class="changelog-title">Progressive Web App — install anky on your phone</h2>
+    <p class="changelog-desc">Anky is now a PWA. iPhone users can add to home screen from Safari, Android users get a native install prompt. Includes web app manifest, service worker with offline caching for static assets, Apple touch icon, safe-area inset handling for notched phones, and standalone display mode.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-16-005-progressive-web-app.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-16-progressive-web-app">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-16-livestream-watchdog">
+    <div class="changelog-date">2026-02-16</div>
+    <h2 class="changelog-title">Livestream watchdog — auto-reset stuck sessions</h2>
+    <p class="changelog-desc">Added a background watchdog that checks every 60 seconds if a live session has been stuck for more than 10 minutes (8 min max + 2 min buffer). Force-resets the live state, broadcasts idle to all clients, resets the stream frame, and kicks off the next queued writer. Fixes sessions getting permanently stuck when a WebSocket drops uncleanly.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-16-004-livestream-watchdog.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-16-livestream-watchdog">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-16-fix-anky-ca">
+    <div class="changelog-date">2026-02-16</div>
+    <h2 class="changelog-title">Fix $ANKY contract address across codebase</h2>
+    <p class="changelog-desc">Unified all $ANKY Solana contract address references to the correct CA (6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump). Fixed mismatched CA in README.md and home page footer.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-16-003-fix-anky-ca.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-16-fix-anky-ca">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-16-write-api-key-required">
+    <div class="changelog-date">2026-02-16</div>
+    <h2 class="changelog-title">Require API key for /write endpoint</h2>
+    <p class="changelog-desc">Agents must now register (POST /api/v1/register) and include X-API-Key header when calling /write. Browser users with cookies are unaffected. Updated skills.md to lead with registration as the first step. Prevents unauthenticated programmatic abuse of free anky generation.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-16-002-write-api-key-required.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-16-write-api-key-required">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-16-live-writing-ux-fixes">
+    <div class="changelog-date">2026-02-16</div>
+    <h2 class="changelog-title">Live writing UX overhaul — seamless 8-min flow</h2>
+    <p class="changelog-desc">Removed the blocking "YOU WROTE AN ANKY" overlay at 8 minutes — the writer can now keep writing seamlessly while the stream celebrates independently. Hid the bottom live bar and "enter waiting room" button from the live writer (they already have the session bar). Added a LIVE indicator to the session bar. Fixed orphaned ffmpeg processes on service restart by switching KillMode to control-group.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-16-001-live-writing-ux-fixes.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-16-live-writing-ux-fixes">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-bottom-live-bar-waiting-room">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Bottom live bar + waiting room queue</h2>
+    <p class="changelog-desc">Replaced navbar live indicator with a full-width fixed bottom bar visible on all pages. Added waiting room queue so multiple writers can chain back-to-back. Agents that POST when slot is occupied get auto-queued. Humans get a 30s claim window when their turn arrives. WATCH LIVE button links to pump.fun.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-009-bottom-live-bar-waiting-room.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-bottom-live-bar-waiting-room">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-farcaster-sdk-ready-images">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Fix Farcaster splash freeze + Gemini-generated app icon/splash</h2>
+    <p class="changelog-desc">Fixed sdk.actions.ready() always being called (was stuck on splash screen forever). Generated proper Anky icon and splash images via Gemini with reference art. Icon shows Anky's face close-up, splash shows Anky meditating with golden light.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-008-farcaster-sdk-ready-images.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-farcaster-sdk-ready-images">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-farcaster-miniapp">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Farcaster MiniApp integration</h2>
+    <p class="changelog-desc">Anky now works as a Farcaster MiniApp. Serves /.well-known/farcaster.json manifest, auto-authenticates via Farcaster SDK context (FID + embedded wallet), adds POST /auth/farcaster/verify endpoint, and hides connect button when running inside Warpcast. Existing Privy/X auth untouched.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-007-farcaster-miniapp.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-farcaster-miniapp">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-write-rate-limit">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Rate limiting on /write endpoint</h2>
+    <p class="changelog-desc">Added in-memory per-IP rate limiter to prevent agents from bombarding the write endpoint. 5 requests per 10 minutes per IP (via CF-Connecting-IP). Returns 429 with retry-after seconds when exceeded.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-006-write-rate-limit.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-write-rate-limit">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-hardstop-congrats">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">8-min hard stop, congrats, elapsed timer, agent labels</h2>
+    <p class="changelog-desc">Livestream sessions now hard-stop at 8 minutes — shows "@username just wrote an anky!" congrats on stream for 8 seconds. Navbar live indicator shows elapsed timer. Human/agent label shown on stream and overlay. Celebratory claim-username modal with glow animation. Updated skills.md with agent live/write endpoint docs.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-005-livestream-hardstop-congrats.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-hardstop-congrats">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-claim-username-modal">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Claim username modal for Go Live</h2>
+    <p class="changelog-desc">Replaced /settings redirect with an inline modal that lets you claim a username and go live in one step. Fixed AppError to return JSON instead of plain text (was causing "network error" on settings save). Added POST /api/claim-username endpoint.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-004-claim-username-modal.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-claim-username-modal">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-livestream-overhaul">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">Livestream overhaul: Rust-rendered frames, username, agents</h2>
+    <p class="changelog-desc">Replaced ffmpeg drawtext with Rust-rendered 1920x1080 landscape frames piped to ffmpeg at 10fps. Added username enforcement for Go Live, agent live-writing endpoint at ~200 WPM, pulsing navbar live indicator with "@username is writing", and horizontal stream overlay. Removed 88:88 timer.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-003-livestream-overhaul.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-livestream-overhaul">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-02-15-stream-overlay">
+    <div class="changelog-date">2026-02-15</div>
+    <h2 class="changelog-title">HTML stream overlay for OBS/pump.fun</h2>
+    <p class="changelog-desc">Added /stream/overlay — a standalone 1080x1920 HTML page for OBS Browser Source. Shows live writing text via SSE, life bar, 8-min progress bar, $ANKY branding, 88:88 stream timer, contract address ticker, and anky sticker images that accumulate as ankys are completed. ffmpeg stream stays as fallback.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-02-15-002-stream-overlay.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-02-15-stream-overlay">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-02-15-remove-balance-payments">
     <div class="changelog-date">2026-02-15</div>
     <h2 class="changelog-title">Remove balance-based payments, x402 only</h2>

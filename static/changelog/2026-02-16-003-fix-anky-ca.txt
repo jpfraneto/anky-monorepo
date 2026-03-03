@@ -1,0 +1,3 @@
+can you please look for all the references to a contract address on solana deployed on pump (the ca ends with pump). what are the ca's?
+
+the correct one is 6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump please update every occurence of the other one to this one and redeploy

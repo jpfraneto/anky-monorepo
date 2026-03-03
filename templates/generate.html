@@ -5,7 +5,20 @@
 {% block content %}
 <div class="container">
   <h1>generate</h1>
-  <p class="subtitle">create ankys from a prompt. connect your wallet to pay with USDC on Base.</p>
+  <p class="subtitle">create ankys from a prompt.</p>
+
+  <div class="gen-section">
+    <label class="gen-label">image model</label>
+    <div class="model-toggle">
+      <button class="model-opt active" data-model="flux" onclick="setModel('flux')">
+        anky flux <span class="model-badge free">free</span>
+      </button>
+      <button class="model-opt" data-model="gemini" onclick="setModel('gemini')">
+        gemini <span class="model-badge paid">$0.25</span>
+      </button>
+    </div>
+    <p class="model-hint" id="model-hint">flux.1-dev fine-tuned on anky's visual world — always free</p>
+  </div>
 
   <div class="gen-section">
     <label class="gen-label">mode</label>
@@ -18,6 +31,7 @@
   <div class="gen-section" id="prompt-section">
     <label class="gen-label">prompt</label>
     <textarea id="gen-prompt" class="gen-input" rows="3" placeholder="a one-line spark or a full paragraph — whatever you want anky to become"></textarea>
+    <p class="gen-prompt-hint" id="flux-prompt-hint">describe anky in a scene, setting, or doing something — flux only knows anky</p>
   </div>
 
   <div class="gen-section" id="thinker-section" style="display:none;">
@@ -40,8 +54,8 @@
   </div>
 
   <div class="gen-cost" id="gen-cost">
-    <span>estimated cost: <strong id="cost-display">$0.25</strong></span>
-    <span class="cost-detail" id="cost-detail">$0.25 per generation</span>
+    <span>estimated cost: <strong id="cost-display">free</strong></span>
+    <span class="cost-detail" id="cost-detail">anky flux generations are always free</span>
   </div>
 
   <div class="gen-balance" id="gen-balance"></div>
@@ -65,6 +79,7 @@
 <script>
 (function() {
   var mode = 'prompt';
+  var model = 'flux'; // 'flux' (free) or 'gemini' (paid)
   var count = 1;
   var costPerAnky = 0.25;
   var userBalance = null;
@@ -75,13 +90,16 @@
     .then(function(d) { if (d.cost_per_anky) costPerAnky = d.cost_per_anky; updateCost(); })
     .catch(function() {});
 
-  // --- USDC balance check ---
   var USDC_ADDR = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
   async function checkBalance() {
     var wallet = localStorage.getItem('wallet_address');
     if (!wallet || !window.ethereum) {
-      balanceEl.innerHTML = '<span class="balance-hint">connect your wallet to pay</span>';
+      if (model === 'gemini') {
+        balanceEl.innerHTML = '<span class="balance-hint">connect your wallet to pay with USDC on Base</span>';
+      } else {
+        balanceEl.innerHTML = '';
+      }
       userBalance = null;
       updateCost();
       return;
@@ -94,16 +112,18 @@
         params: [{ to: USDC_ADDR, data: data }, 'latest'],
       });
       userBalance = parseInt(result, 16) / 1e6;
-      balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
-        userBalance.toFixed(2) + '</strong></span>';
+      if (model === 'gemini') {
+        balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
+          userBalance.toFixed(2) + '</strong></span>';
+      } else {
+        balanceEl.innerHTML = '';
+      }
       updateCost();
     } catch(e) {
-      balanceEl.innerHTML = '<span class="balance-hint">could not read balance</span>';
       userBalance = null;
     }
   }
 
-  // Check balance on load and when wallet changes
   checkBalance();
   if (window.ankyWallet) {
     var origConnect = window.ankyWallet.connect;
@@ -113,8 +133,22 @@
       return result;
     };
   }
-  // Re-check periodically (wallet might change)
   setInterval(checkBalance, 30000);
+
+  window.setModel = function(m) {
+    model = m;
+    document.querySelectorAll('.model-opt').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.model === m);
+    });
+    var hint = document.getElementById('model-hint');
+    hint.textContent = m === 'flux'
+      ? 'flux.1-dev fine-tuned on anky\'s visual world — always free'
+      : 'google\'s image model — requires USDC on Base';
+    var fluxHint = document.getElementById('flux-prompt-hint');
+    if (fluxHint) fluxHint.style.display = m === 'flux' ? '' : 'none';
+    updateCost();
+    checkBalance();
+  };
 
   window.setMode = function(m) {
     mode = m;
@@ -134,24 +168,31 @@
   };
 
   function updateCost() {
-    var total = costPerAnky * count;
-    document.getElementById('cost-display').textContent = '$' + total.toFixed(2);
-    document.getElementById('cost-detail').textContent =
-      '$' + costPerAnky.toFixed(2) + ' x ' + count + (count === 1 ? ' generation' : ' generations');
-
-    // Show warning if insufficient balance
+    var costEl = document.getElementById('cost-display');
+    var detailEl = document.getElementById('cost-detail');
     var btn = document.getElementById('gen-btn');
-    if (userBalance !== null && userBalance < total) {
-      balanceEl.innerHTML = '<span class="balance-low">your USDC balance: <strong>$' +
-        userBalance.toFixed(2) + '</strong> — not enough for this generation ($' +
-        total.toFixed(2) + '). add USDC on Base to your wallet.</span>';
-      btn.disabled = true;
-    } else if (userBalance !== null) {
-      balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
-        userBalance.toFixed(2) + '</strong></span>';
+
+    if (model === 'flux') {
+      costEl.textContent = 'free';
+      detailEl.textContent = 'anky flux generations are always free';
       btn.disabled = false;
     } else {
-      btn.disabled = false;
+      var total = costPerAnky * count;
+      costEl.textContent = '$' + total.toFixed(2);
+      detailEl.textContent = '$' + costPerAnky.toFixed(2) + ' x ' + count +
+        (count === 1 ? ' generation' : ' generations') + ' — paid with USDC on Base';
+      if (userBalance !== null && userBalance < total) {
+        balanceEl.innerHTML = '<span class="balance-low">your USDC balance: <strong>$' +
+          userBalance.toFixed(2) + '</strong> — not enough ($' + total.toFixed(2) +
+          '). add USDC on Base.</span>';
+        btn.disabled = true;
+      } else if (userBalance !== null) {
+        balanceEl.innerHTML = '<span class="balance-ok">your USDC balance: <strong>$' +
+          userBalance.toFixed(2) + '</strong></span>';
+        btn.disabled = false;
+      } else {
+        btn.disabled = false;
+      }
     }
   }
 
@@ -169,14 +210,17 @@
     evtSource.onmessage = function(e) {
       try {
         var data = JSON.parse(e.data);
-        if (data.msg) {
-          addLog('[' + (data.tag || '') + '] ' + data.msg);
-        }
-      } catch(_) {
-        addLog(e.data);
-      }
+        if (data.msg) addLog('[' + (data.tag || '') + '] ' + data.msg);
+      } catch(_) { addLog(e.data); }
     };
     return evtSource;
+  }
+
+  function resetBtn() {
+    var btn = document.getElementById('gen-btn');
+    btn.disabled = false;
+    btn.textContent = 'generate';
+    btn.classList.remove('generating');
   }
 
   function pollAnky(ankyId, evtSource) {
@@ -187,29 +231,25 @@
           if (data.status === 'complete') {
             clearInterval(interval);
             if (evtSource) evtSource.close();
-
-            // Hide skeleton, show result
             document.getElementById('gen-skeleton').style.display = 'none';
             var resultEl = document.getElementById('gen-result');
             resultEl.style.display = 'block';
-
-            var imgHtml = '';
-            if (data.image_url) {
-              imgHtml = '<div class="gen-result-image"><img src="' + data.image_url + '" alt="generated anky" /></div>';
-            }
+            var imgHtml = data.image_url
+              ? '<div class="gen-result-image"><img src="' + data.image_url + '" alt="generated anky" /></div>'
+              : '';
             var promptHtml = data.image_prompt
               ? '<div class="gen-result-prompt">' + data.image_prompt + '</div>'
               : '';
-
             resultEl.innerHTML = imgHtml + promptHtml +
               '<a href="/anky/' + ankyId + '" class="gen-result-link">view full anky</a>';
-
             addLog('done!');
+            resetBtn();
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (evtSource) evtSource.close();
             document.getElementById('gen-skeleton').style.display = 'none';
-            addLog('generation failed. it will be retried automatically.');
+            addLog('generation failed.');
+            resetBtn();
           }
         })
         .catch(function() {});
@@ -219,123 +259,99 @@
   window.generate = async function() {
     var btn = document.getElementById('gen-btn');
     var status = document.getElementById('gen-status');
-    var wallet = localStorage.getItem('wallet_address');
+    var progressEl = document.getElementById('gen-progress');
 
     var payload;
-    var enhancedPrompt = null;
     if (mode === 'thinker') {
       var name = document.getElementById('thinker-name').value.trim();
-      var moment = document.getElementById('thinker-moment').value.trim();
+      var moment = document.getElementById('thinker-moment').value.trim() || 'a quiet moment of deep thought';
       if (!name) { status.innerHTML = '<span class="error">enter a thinker name</span>'; return; }
-      payload = { thinker_name: name, moment: moment || 'a quiet moment of deep thought' };
+      if (model === 'flux') {
+        // For Flux: build an Anky-framed prompt so Ollama validation passes
+        payload = { model: model, writing: 'anky as ' + name + ' — ' + moment };
+      } else {
+        payload = { model: model, thinker_name: name, moment: moment };
+      }
     } else {
       var prompt = document.getElementById('gen-prompt').value.trim();
       if (!prompt) { status.innerHTML = '<span class="error">enter a prompt</span>'; return; }
-
-      // Check prompt before payment
-      btn.disabled = true;
-      btn.textContent = 'checking prompt...';
-      status.innerHTML = '';
-      try {
-        var checkResp = await fetch('/api/v1/check-prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ writing: prompt }),
-        });
-        var checkData = await checkResp.json();
-        if (checkData.status === 'needs_revision') {
-          status.innerHTML = '<span class="error">' + checkData.message + '</span>';
-          btn.disabled = false;
-          btn.textContent = 'generate';
-          return;
-        }
-        enhancedPrompt = checkData.enhanced_prompt || prompt;
-      } catch (e) {
-        // If check fails, proceed with raw prompt
-        enhancedPrompt = null;
-      }
-      btn.textContent = 'generate';
-
-      payload = { writing: prompt, enhanced_prompt: enhancedPrompt };
-    }
-
-    // Pre-flight balance check
-    var total = costPerAnky * count;
-
-    if (!wallet) {
-      status.innerHTML = '<span class="balance-low">connect your wallet first — you need USDC on Base to generate</span>';
-      return;
-    }
-
-    await checkBalance();
-    if (userBalance !== null && userBalance < total) {
-      status.innerHTML = '<span class="balance-low">you need $' + total.toFixed(2) +
-        ' USDC but you have $' + userBalance.toFixed(2) +
-        '. add USDC on Base to continue.</span>';
-      return;
+      payload = { model: model, writing: prompt };
     }
 
     btn.disabled = true;
-    btn.textContent = 'preparing...';
+    btn.classList.add('generating');
     status.innerHTML = '';
-
-    // Reset progress area
-    var progressEl = document.getElementById('gen-progress');
     document.getElementById('gen-skeleton').style.display = '';
     document.getElementById('gen-result').style.display = 'none';
     document.getElementById('gen-logs').innerHTML = '';
 
+    var reqHeaders = { 'Content-Type': 'application/json' };
+
+    if (model === 'gemini') {
+      // Gemini requires USDC payment
+      var wallet = localStorage.getItem('wallet_address');
+      if (!wallet) {
+        status.innerHTML = '<span class="balance-low">connect your wallet to pay with USDC on Base</span>';
+        resetBtn();
+        return;
+      }
+      var total = costPerAnky * count;
+      await checkBalance();
+      if (userBalance !== null && userBalance < total) {
+        status.innerHTML = '<span class="balance-low">you need $' + total.toFixed(2) +
+          ' USDC but have $' + userBalance.toFixed(2) + '. add USDC on Base.</span>';
+        resetBtn();
+        return;
+      }
+      try {
+        btn.textContent = 'preparing...';
+        var treasury = await fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) { return d.address; });
+        btn.textContent = 'approve in wallet...';
+        var txHash = await window.ankyWallet.sendUSDC(treasury, total);
+        btn.textContent = 'confirming...';
+        await new Promise(function(resolve) { setTimeout(resolve, 4000); });
+        reqHeaders['x-payment'] = txHash;
+      } catch(e) {
+        status.innerHTML = '<span class="error">' + (e.message || 'payment failed') + '</span>';
+        resetBtn();
+        return;
+      }
+    } else {
+      btn.textContent = 'generating...';
+    }
+
     try {
-      var headers = { 'Content-Type': 'application/json' };
-
-      // Get treasury address first
-      var treasury = await fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) { return d.address; });
-
-      // Pay first, then send with proof
-      btn.textContent = 'approve in wallet...';
-      var txHash = await window.ankyWallet.sendUSDC(treasury, total);
-      btn.textContent = 'confirming...';
-
-      // Wait for tx to propagate
-      await new Promise(function(resolve) { setTimeout(resolve, 4000); });
-
-      headers['x-payment'] = txHash;
-
-      // Show progress area and start log stream
       progressEl.style.display = 'block';
-      addLog('payment confirmed, starting generation...');
+      addLog(model === 'flux' ? 'sending to flux...' : 'payment confirmed, starting generation...');
       var evtSource = startLogStream();
 
       var resp = await fetch('/api/v1/generate', {
         method: 'POST',
-        headers: headers,
+        headers: reqHeaders,
         body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
-        var errText = await resp.text();
+        var errBody = await resp.text();
+        var errMsg = errBody;
+        try { var j = JSON.parse(errBody); errMsg = j.error || errBody; } catch(_) {}
         evtSource.close();
         progressEl.style.display = 'none';
-        status.innerHTML = '<span class="error">generation failed: ' + errText +
-          '</span><br><span class="stat-dim">your tx: ' + txHash + '</span>';
-        btn.disabled = false;
-        btn.textContent = 'generate';
+        status.innerHTML = '<span class="error">' + errMsg + '</span>';
+        resetBtn();
         return;
       }
 
       var data = await resp.json();
-      addLog('anky ' + data.anky_id.slice(0, 8) + ' queued, generating image...');
-
-      // Start polling for completion
+      addLog('anky ' + data.anky_id.slice(0, 8) + ' queued...');
       pollAnky(data.anky_id, evtSource);
 
-      // For packs, queue remaining with same payment proof
       if (count > 1) {
         addLog('queuing ' + (count - 1) + ' more...');
         for (var i = 1; i < count; i++) {
           fetch('/api/v1/generate', {
             method: 'POST',
-            headers: headers,
+            headers: reqHeaders,
             body: JSON.stringify(payload),
           }).catch(function() {});
           await new Promise(function(resolve) { setTimeout(resolve, 500); });
@@ -343,15 +359,12 @@
         addLog('all ' + count + ' queued');
       }
 
-      // Refresh balance
-      setTimeout(checkBalance, 5000);
+      if (model === 'gemini') setTimeout(checkBalance, 5000);
 
-    } catch (e) {
+    } catch(e) {
       status.innerHTML = '<span class="error">' + (e.message || 'something went wrong') + '</span>';
+      resetBtn();
     }
-
-    btn.disabled = false;
-    btn.textContent = 'generate';
   };
 
   updateCost();

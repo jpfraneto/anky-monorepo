@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}anky — feed{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="anky — feed">
+<meta property="og:description" content="see what's being created on anky right now">
+<meta property="og:image" content="https://anky.app/static/references/anky-1.png">
+<style>
+.feed-page { max-width: 720px; margin: 0 auto; padding: 1rem; }
+.feed-stats {
+  display: flex; gap: 0.5rem; flex-wrap: wrap;
+  margin-bottom: 1.5rem; padding: 1rem;
+  background: rgba(123,47,247,0.08); border-radius: 8px;
+  border: 1px solid rgba(123,47,247,0.15);
+}
+.feed-stat {
+  flex: 1; min-width: 80px; text-align: center; padding: 0.4rem 0;
+}
+.feed-stat-val { font-size: 1.4rem; font-weight: 700; color: #7b2ff7; }
+.feed-stat-label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+.feed-header { margin-bottom: 0.5rem; }
+.feed-header h2 { margin: 0; font-size: 1.3rem; }
+.feed-header p { margin: 0.2rem 0 0; color: #888; font-size: 0.85rem; }
+.feed-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.feed-item {
+  display: flex; gap: 0.75rem; align-items: flex-start;
+  background: rgba(255,255,255,0.03); border-radius: 8px;
+  padding: 0.5rem; text-decoration: none; color: inherit;
+  transition: background 0.15s;
+}
+.feed-item:hover { background: rgba(123,47,247,0.08); }
+.feed-thumb {
+  width: 80px; height: 80px; border-radius: 6px;
+  object-fit: cover; flex-shrink: 0; background: #111;
+}
+.feed-info { flex: 1; min-width: 0; padding: 0.15rem 0; }
+.feed-title {
+  font-size: 0.9rem; font-weight: 600; color: #e8e8e8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 0;
+}
+.feed-meta { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }
+.feed-badge {
+  display: inline-block; font-size: 0.6rem; padding: 0.1rem 0.4rem;
+  border-radius: 3px; text-transform: uppercase; letter-spacing: 0.04em;
+  margin-top: 0.25rem;
+}
+.feed-badge.written { background: rgba(123,47,247,0.2); color: #a87ff0; }
+.feed-badge.generated { background: rgba(68,255,68,0.15); color: #6d6; }
+.feed-more {
+  display: block; text-align: center; padding: 1rem;
+  color: #7b2ff7; text-decoration: none; font-size: 0.9rem;
+}
+.feed-more:hover { text-decoration: underline; }
+.feed-empty { text-align: center; color: #888; padding: 3rem 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="feed-page">
+  <div class="feed-header">
+    <h2>feed</h2>
+    <p>what's happening on anky</p>
+  </div>
+
+  <div class="feed-stats">
+    <div class="feed-stat">
+      <div class="feed-stat-val">{{ stats_writers }}</div>
+      <div class="feed-stat-label">writers</div>
+    </div>
+    <div class="feed-stat">
+      <div class="feed-stat-val">{{ stats_sessions }}</div>
+      <div class="feed-stat-label">sessions</div>
+    </div>
+    <div class="feed-stat">
+      <div class="feed-stat-val">{{ stats_ankys }}</div>
+      <div class="feed-stat-label">ankys</div>
+    </div>
+    <div class="feed-stat">
+      <div class="feed-stat-val">{{ stats_minutes }}</div>
+      <div class="feed-stat-label">minutes</div>
+    </div>
+    <div class="feed-stat">
+      <div class="feed-stat-val">{{ stats_words }}</div>
+      <div class="feed-stat-label">words</div>
+    </div>
+  </div>
+
+  <div class="feed-list">
+    {% for anky in ankys %}
+    <a class="feed-item" href="/anky/{{ anky.id }}">
+      {% if anky.image_path %}
+      <img class="feed-thumb" src="/data/images/{{ anky.image_path }}" alt="{{ anky.title }}" loading="lazy">
+      {% else %}
+      <div class="feed-thumb"></div>
+      {% endif %}
+      <div class="feed-info">
+        <p class="feed-title">{{ anky.title }}</p>
+        <div class="feed-meta">
+          {% if anky.thinker_name and anky.origin == 'written' %}by @{{ anky.thinker_name }} · {% endif %}
+          <span data-ts="{{ anky.created_at }}"></span>
+        </div>
+        <span class="feed-badge {{ anky.origin }}">{{ anky.origin }}</span>
+      </div>
+    </a>
+    {% endfor %}
+
+    {% if ankys | length == 0 %}
+    <div class="feed-empty">
+      <p>no ankys yet. go write for 8 minutes to create your first.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if has_more %}
+  <a class="feed-more" href="/feed?page={{ page + 1 }}">load more</a>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Relative time labels
+document.querySelectorAll('[data-ts]').forEach(function(el) {
+  var ts = el.getAttribute('data-ts');
+  if (!ts) return;
+  var d = new Date(ts.replace(' ', 'T') + 'Z');
+  var diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) el.textContent = 'just now';
+  else if (diff < 3600) el.textContent = Math.floor(diff/60) + 'm ago';
+  else if (diff < 86400) el.textContent = Math.floor(diff/3600) + 'h ago';
+  else if (diff < 2592000) el.textContent = Math.floor(diff/86400) + 'd ago';
+  else el.textContent = Math.floor(diff/2592000) + 'mo ago';
+});
+</script>
+{% endblock %}

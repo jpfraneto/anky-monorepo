@@ -15,7 +15,11 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
     {
         let status = state.gpu_status.read().await;
         if *status != GpuStatus::Idle {
-            state.emit_log("WARN", "orchestrator", &format!("GPUs not idle ({}), skipping training", status));
+            state.emit_log(
+                "WARN",
+                "orchestrator",
+                &format!("GPUs not idle ({}), skipping training", status),
+            );
             return Ok(());
         }
     }
@@ -25,7 +29,10 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
     // Set GPU status
     {
         let mut status = state.gpu_status.write().await;
-        *status = GpuStatus::Training { step: 0, total: 4000 };
+        *status = GpuStatus::Training {
+            step: 0,
+            total: 4000,
+        };
     }
 
     let training_run_id = uuid::Uuid::new_v4().to_string();
@@ -33,8 +40,9 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
     let dataset_out = format!("{}/dataset", run_dir);
 
     // Prepare dataset
-    let base_dataset_str = std::env::var("BASE_DATASET_DIR")
-        .unwrap_or_else(|_| "/home/kithkui/Desktop/code/z-image-turbo/files/anky_lora_training/dataset".into());
+    let base_dataset_str = std::env::var("BASE_DATASET_DIR").unwrap_or_else(|_| {
+        "/home/kithkui/Desktop/code/z-image-turbo/files/anky_lora_training/dataset".into()
+    });
     let base_dataset = Path::new(&base_dataset_str);
     let generated = Path::new("data/images");
 
@@ -51,13 +59,22 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
     // Record training run
     {
         let db = state.db.lock().await;
-        queries::insert_training_run(&db, &training_run_id, "FLUX.1-dev", dataset_size as i32, 4000)?;
+        queries::insert_training_run(
+            &db,
+            &training_run_id,
+            "FLUX.1-dev",
+            dataset_size as i32,
+            4000,
+        )?;
     }
 
     state.emit_log(
         "INFO",
         "orchestrator",
-        &format!("Dataset ready: {} pairs. Starting training...", dataset_size),
+        &format!(
+            "Dataset ready: {} pairs. Starting training...",
+            dataset_size
+        ),
     );
 
     let output_dir = format!("{}/output", run_dir);
@@ -77,7 +94,11 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
                 queries::complete_training_run(&db, &training_run_id, &stable_path)?;
             }
 
-            state.emit_log("INFO", "orchestrator", &format!("Training complete! LoRA: {}", stable_path));
+            state.emit_log(
+                "INFO",
+                "orchestrator",
+                &format!("Training complete! LoRA: {}", stable_path),
+            );
         }
         Err(e) => {
             state.emit_log("ERROR", "orchestrator", &format!("Training failed: {}", e));
@@ -115,7 +136,11 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
         }
     }
 
-    state.emit_log("INFO", "orchestrator", "Training cycle complete. Anky is awake.");
+    state.emit_log(
+        "INFO",
+        "orchestrator",
+        "Training cycle complete. Anky is awake.",
+    );
 
     Ok(())
 }

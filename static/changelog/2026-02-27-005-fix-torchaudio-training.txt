@@ -1,0 +1,8 @@
+oh fuck our training on runpod didn't work :(  ______                 ______            _
+(_____ \               (_____ \          | |
+ _____) ) _   _  ____   _____) )___    __| |
+|  __  / | | | ||  _ \ |  ____// _ \  / _  |
+| |  \ \ | |_| || | | || |    | |_| |( (_| |
+|_|   |_||____/ |_| |_||_|     \___/  \____|
+
+[full runpod output with ModuleNotFoundError: No module named 'torchaudio']

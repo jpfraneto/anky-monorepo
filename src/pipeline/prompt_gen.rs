@@ -18,20 +18,31 @@ pub async fn generate_prompt_image(
         anyhow::bail!("API keys not configured");
     }
 
-    state.emit_log("INFO", "prompt_gen", &format!("Generating prompt image for {}", &prompt_id[..8]));
+    state.emit_log(
+        "INFO",
+        "prompt_gen",
+        &format!("Generating prompt image for {}", &prompt_id[..8]),
+    );
 
     // Step 1: Claude Haiku creates a scene prompt
     let scene_result = claude::generate_prompt_scene(api_key, prompt_text).await?;
     let scene_prompt = scene_result.text;
-    state.emit_log("INFO", "prompt_gen", &format!("Scene prompt: {}", &scene_prompt[..scene_prompt.len().min(80)]));
+    state.emit_log(
+        "INFO",
+        "prompt_gen",
+        &format!(
+            "Scene prompt: {}",
+            &scene_prompt[..scene_prompt.len().min(80)]
+        ),
+    );
 
     // Step 2: Gemini generates wide base image (16:9 — closest supported to 2:1)
     let references = gemini::load_references(std::path::Path::new("src/public"));
-    let image_result = gemini::generate_image_with_aspect(gemini_key, &scene_prompt, &references, "16:9").await?;
+    let image_result =
+        gemini::generate_image_with_aspect(gemini_key, &scene_prompt, &references, "16:9").await?;
 
     // Decode base64 image
-    let image_bytes = base64::engine::general_purpose::STANDARD
-        .decode(&image_result.base64)?;
+    let image_bytes = base64::engine::general_purpose::STANDARD.decode(&image_result.base64)?;
 
     // Step 3: Overlay prompt text on the image
     let final_bytes = overlay_text_on_image(&image_bytes, prompt_text)?;
@@ -42,7 +53,15 @@ pub async fn generate_prompt_image(
     std::fs::create_dir_all("data/images")?;
     std::fs::write(&path, &final_bytes)?;
 
-    state.emit_log("INFO", "prompt_gen", &format!("Prompt image saved: {} ({}KB)", filename, final_bytes.len() / 1024));
+    state.emit_log(
+        "INFO",
+        "prompt_gen",
+        &format!(
+            "Prompt image saved: {} ({}KB)",
+            filename,
+            final_bytes.len() / 1024
+        ),
+    );
 
     Ok(filename)
 }
@@ -120,6 +139,14 @@ fn overlay_text_on_image(image_bytes: &[u8], text: &str) -> Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
+pub fn measure_text_width_pub(
+    font: &ab_glyph::FontRef,
+    scale: ab_glyph::PxScale,
+    text: &str,
+) -> f32 {
+    measure_text_width(font, scale, text)
+}
+
 fn measure_text_width(font: &ab_glyph::FontRef, scale: ab_glyph::PxScale, text: &str) -> f32 {
     use ab_glyph::{Font, ScaleFont};
     let scaled = font.as_scaled(scale);
@@ -136,7 +163,12 @@ fn measure_text_width(font: &ab_glyph::FontRef, scale: ab_glyph::PxScale, text: 
     width
 }
 
-fn word_wrap(text: &str, font: &ab_glyph::FontRef, scale: ab_glyph::PxScale, max_width: usize) -> Vec<String> {
+fn word_wrap(
+    text: &str,
+    font: &ab_glyph::FontRef,
+    scale: ab_glyph::PxScale,
+    max_width: usize,
+) -> Vec<String> {
     let words: Vec<&str> = text.split_whitespace().collect();
     let mut lines = Vec::new();
     let mut current_line = String::new();

@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 pub struct WriteRequest {
     pub text: String,
     pub duration: f64,
+    #[serde(default)]
+    pub keystroke_deltas: Option<Vec<f64>>,
+    #[serde(default)]
+    pub inquiry_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,6 +19,8 @@ pub struct WriteResponse {
     pub anky_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_wait_seconds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -101,4 +107,129 @@ pub struct RegisterResponse {
     pub api_key: String,
     pub free_sessions_remaining: i32,
     pub message: String,
+}
+
+// --- Meditation ---
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StartMeditationResponse {
+    pub session_id: String,
+    pub duration: i32,
+    pub level: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompleteMeditationRequest {
+    pub session_id: String,
+    pub duration_actual: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompleteMeditationResponse {
+    pub completed: bool,
+    pub options: Vec<PostMeditationOption>,
+    pub level: i32,
+    pub total_completed: i32,
+    pub streak: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PostMeditationOption {
+    pub id: String,
+    pub label: String,
+    pub locked: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unlock_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserProgressionInfo {
+    pub level: i32,
+    pub duration: i32,
+    pub total_meditations: i32,
+    pub total_completed: i32,
+    pub write_unlocked: bool,
+    pub current_streak: i32,
+    pub longest_streak: i32,
+    pub next_level_at: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReflectResponse {
+    pub interaction_id: String,
+    pub question: String,
+    pub answers: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReflectAnswerRequest {
+    pub interaction_id: String,
+    pub answer_index: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JournalPromptResponse {
+    pub interaction_id: String,
+    pub prompt: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JournalSubmitRequest {
+    pub interaction_id: String,
+    pub entry: String,
+}
+
+// --- Interview System ---
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InterviewStartRequest {
+    pub id: String,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default = "default_guest_name")]
+    pub guest_name: String,
+    #[serde(default = "default_true")]
+    pub is_anonymous: bool,
+}
+
+fn default_guest_name() -> String {
+    "guest".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InterviewMessageRequest {
+    pub interview_id: String,
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InterviewEndRequest {
+    pub interview_id: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub duration_seconds: Option<f64>,
+    #[serde(default)]
+    pub message_count: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InterviewSummary {
+    pub id: String,
+    pub guest_name: String,
+    pub started_at: String,
+    pub summary: Option<String>,
+    pub duration_seconds: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserInterviewContext {
+    pub username: Option<String>,
+    pub psychological_profile: Option<String>,
+    pub core_tensions: Option<String>,
+    pub growth_edges: Option<String>,
+    pub recent_writings: Vec<String>,
+    pub past_interviews: Vec<InterviewSummary>,
 }

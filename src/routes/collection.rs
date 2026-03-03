@@ -22,13 +22,23 @@ pub async fn create_collection(
     {
         let db = state.db.lock().await;
         crate::db::queries::ensure_user(&db, "anonymous")?;
-        crate::db::queries::insert_collection(&db, &collection_id, "anonymous", &req.mega_prompt, cost_estimate)?;
+        crate::db::queries::insert_collection(
+            &db,
+            &collection_id,
+            "anonymous",
+            &req.mega_prompt,
+            cost_estimate,
+        )?;
     }
 
     state.emit_log(
         "INFO",
         "collection",
-        &format!("Collection created: {} (est. ${:.2})", &collection_id[..8], cost_estimate),
+        &format!(
+            "Collection created: {} (est. ${:.2})",
+            &collection_id[..8],
+            cost_estimate
+        ),
     );
 
     Ok(Json(CollectionCreateResponse {
@@ -52,15 +62,18 @@ pub async fn get_collection(
     };
 
     let mut ctx = tera::Context::new();
-    ctx.insert("collection", &serde_json::json!({
-        "id": collection.id,
-        "mega_prompt": collection.mega_prompt,
-        "status": collection.status,
-        "progress": collection.progress,
-        "total": collection.total,
-        "cost_estimate_usd": collection.cost_estimate_usd,
-        "created_at": collection.created_at,
-    }));
+    ctx.insert(
+        "collection",
+        &serde_json::json!({
+            "id": collection.id,
+            "mega_prompt": collection.mega_prompt,
+            "status": collection.status,
+            "progress": collection.progress,
+            "total": collection.total,
+            "cost_estimate_usd": collection.cost_estimate_usd,
+            "created_at": collection.created_at,
+        }),
+    );
 
     let template = if collection.status == "generating" {
         "collection_progress.html"

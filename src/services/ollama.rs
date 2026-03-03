@@ -14,7 +14,9 @@ struct OllamaResponse {
 }
 
 pub async fn call_ollama(base_url: &str, model: &str, prompt: &str) -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
     let req = OllamaRequest {
         model: model.to_string(),
         prompt: prompt.to_string(),
@@ -60,7 +62,9 @@ pub async fn chat_ollama(
     model: &str,
     messages: Vec<OllamaChatMessage>,
 ) -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
     let req = OllamaChatRequest {
         model: model.to_string(),
         messages,
@@ -79,6 +83,12 @@ pub async fn chat_ollama(
 
     let data: OllamaChatResponse = resp.json().await?;
     Ok(data.message.content)
+}
+
+/// Check whether a prompt is about Anky.
+/// Simple keyword check: if "anky" appears in the prompt (case-insensitive), it passes.
+pub async fn is_anky_prompt(_base_url: &str, prompt: &str) -> bool {
+    prompt.to_lowercase().contains("anky")
 }
 
 pub fn deep_reflection_prompt(text: &str) -> String {
@@ -100,6 +110,8 @@ Respond in a way that:
 - Feels like a conversation with a wise friend, not a therapist
 
 Keep it concise (2-3 paragraphs max), poetic but grounded, and never condescending. The revolution of consciousness starts with seeing what is.
+
+CRITICAL: You MUST respond in the SAME LANGUAGE the writer used. If they wrote in Spanish, respond in Spanish. If they wrote in French, respond in French. Match their language exactly.
 
 Their writing:
 ---
@@ -125,6 +137,8 @@ Your task: Give them sharp, motivating feedback that makes them want to come bac
 - Reference what they wrote to show you're paying attention
 
 Keep it 2-3 sentences max. Make it hit hard.
+
+CRITICAL: You MUST respond in the SAME LANGUAGE the writer used. If they wrote in Spanish, respond in Spanish. If they wrote in French, respond in French. Match their language exactly.
 
 Their writing:
 ---

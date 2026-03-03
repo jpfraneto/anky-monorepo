@@ -13,7 +13,8 @@ pub async fn settings_page(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<Html<String>, AppError> {
-    let user = auth::get_auth_user(&state, &jar).await
+    let user = auth::get_auth_user(&state, &jar)
+        .await
         .ok_or_else(|| AppError::BadRequest("login required — connect your wallet first".into()))?;
 
     let (settings, username) = {
@@ -23,9 +24,7 @@ pub async fn settings_page(
         (settings, username)
     };
 
-    let display_username = username
-        .or(user.username.clone())
-        .unwrap_or_default();
+    let display_username = username.or(user.username.clone()).unwrap_or_default();
 
     let mut ctx = tera::Context::new();
     ctx.insert("username", &display_username);
@@ -33,7 +32,12 @@ pub async fn settings_page(
     ctx.insert("font_size", &settings.font_size);
     ctx.insert("theme", &settings.theme);
     ctx.insert("idle_timeout", &settings.idle_timeout);
+    ctx.insert("keyboard_layout", &settings.keyboard_layout);
     ctx.insert("logged_in", &true);
+    ctx.insert(
+        "wallet_address",
+        &user.wallet_address.clone().unwrap_or_default(),
+    );
 
     let html = state.tera.render("settings.html", &ctx)?;
     Ok(Html(html))
@@ -46,6 +50,12 @@ pub struct SaveSettingsRequest {
     pub font_size: i32,
     pub theme: String,
     pub idle_timeout: i32,
+    #[serde(default = "default_keyboard_layout")]
+    pub keyboard_layout: String,
+}
+
+fn default_keyboard_layout() -> String {
+    "qwerty".to_string()
 }
 
 /// POST /api/settings — save user settings
@@ -54,7 +64,8 @@ pub async fn save_settings(
     jar: CookieJar,
     Json(req): Json<SaveSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user = auth::get_auth_user(&state, &jar).await
+    let user = auth::get_auth_user(&state, &jar)
+        .await
         .ok_or_else(|| AppError::BadRequest("login required".into()))?;
 
     // Validate font_family
@@ -75,6 +86,12 @@ pub async fn save_settings(
     // Validate idle_timeout (5-15)
     let idle_timeout = req.idle_timeout.clamp(5, 15);
 
+    // Validate keyboard_layout
+    let keyboard_layout = match req.keyboard_layout.as_str() {
+        "qwerty" | "azerty" | "qwertz" => req.keyboard_layout.clone(),
+        _ => "qwerty".to_string(),
+    };
+
     {
         let db = state.db.lock().await;
 
@@ -84,10 +101,14 @@ pub async fn save_settings(
             if !uname.is_empty() {
                 // Validate: alphanumeric + underscore, 3-20 chars
                 if uname.len() < 3 || uname.len() > 20 {
-                    return Err(AppError::BadRequest("username must be 3-20 characters".into()));
+                    return Err(AppError::BadRequest(
+                        "username must be 3-20 characters".into(),
+                    ));
                 }
                 if !uname.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                    return Err(AppError::BadRequest("username must be alphanumeric (a-z, 0-9, _)".into()));
+                    return Err(AppError::BadRequest(
+                        "username must be alphanumeric (a-z, 0-9, _)".into(),
+                    ));
                 }
                 if !queries::check_username_available(&db, &uname, &user.user_id)? {
                     return Err(AppError::BadRequest("username already taken".into()));
@@ -103,8 +124,51 @@ pub async fn save_settings(
             font_size,
             &theme,
             idle_timeout,
+            &keyboard_layout,
         )?;
     }
 
     Ok(Json(json!({ "saved": true })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ClaimUsernameRequest {
+    pub username: String,
+}
+
+/// POST /api/claim-username — lightweight endpoint to just claim a username
+pub async fn claim_username(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<ClaimUsernameRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user = auth::get_auth_user(&state, &jar).await.ok_or_else(|| {
+        AppError::Unauthorized("login required — connect your wallet first".into())
+    })?;
+
+    let uname = req.username.trim().to_lowercase();
+
+    if uname.is_empty() {
+        return Err(AppError::BadRequest("username cannot be empty".into()));
+    }
+    if uname.len() < 3 || uname.len() > 20 {
+        return Err(AppError::BadRequest(
+            "username must be 3-20 characters".into(),
+        ));
+    }
+    if !uname.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(AppError::BadRequest(
+            "letters, numbers, and underscores only".into(),
+        ));
+    }
+
+    {
+        let db = state.db.lock().await;
+        if !queries::check_username_available(&db, &uname, &user.user_id)? {
+            return Err(AppError::BadRequest("username already taken".into()));
+        }
+        queries::set_username(&db, &user.user_id, &uname)?;
+    }
+
+    Ok(Json(json!({ "ok": true, "username": uname })))
 }

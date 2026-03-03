@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}anky — training runs{% endblock %}
+{% block content %}
+<style>
+  .trainings-page {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .trainings-page h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  .trainings-subtitle {
+    color: #888;
+    margin-bottom: 2.5rem;
+    font-size: 0.95rem;
+  }
+  .training-run {
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    background: #0d0d0d;
+    transition: border-color 0.2s;
+  }
+  .training-run:hover {
+    border-color: #444;
+  }
+  .run-date {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 0.4rem;
+    font-family: monospace;
+  }
+  .run-title {
+    font-size: 1.3rem;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+  .run-desc {
+    color: #aaa;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+  }
+  .run-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .run-tag {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    background: #1a1a1a;
+    color: #888;
+    border: 1px solid #333;
+    font-family: monospace;
+  }
+  .run-status {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-family: monospace;
+  }
+  .status-running {
+    background: rgba(76, 175, 80, 0.1);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+  }
+  .status-complete {
+    background: rgba(33, 150, 243, 0.1);
+    color: #2196f3;
+    border: 1px solid rgba(33, 150, 243, 0.3);
+  }
+  .status-failed {
+    background: rgba(244, 67, 54, 0.1);
+    color: #f44336;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+  }
+  .run-link {
+    display: inline-block;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #444;
+    padding-bottom: 1px;
+  }
+  .run-link:hover {
+    border-color: #fff;
+  }
+</style>
+
+<div class="trainings-page">
+  <h1>training runs</h1>
+  <p class="trainings-subtitle">every attempt to teach FLUX.1 who anky is. the successes, the failures, and what we learned. &nbsp;·&nbsp; <a href="/trainings/general-instructions" style="color:#666; font-size:0.85rem;">how to run a training →</a></p>
+
+  <div class="training-run">
+    <div class="run-date">2026-02-28</div>
+    <div class="run-title">run 001 — first LoRA</div>
+    <p class="run-desc">
+      The first attempt to fine-tune FLUX.1-dev on Anky. 112 curated images, 3000 steps, rank-16 LoRA.
+      Getting the machine to dream of a character that lives between worlds.
+    </p>
+    <div class="run-tags">
+      <span class="run-tag">FLUX.1-dev</span>
+      <span class="run-tag">LoRA rank-16</span>
+      <span class="run-tag">3000 steps</span>
+      <span class="run-tag">112 images</span>
+      <span class="run-tag">RunPod A100</span>
+      <span class="run-status status-complete">complete</span>
+    </div>
+    <a class="run-link" href="/trainings/2026-02-28">read more →</a>
+  </div>
+</div>
+{% endblock %}

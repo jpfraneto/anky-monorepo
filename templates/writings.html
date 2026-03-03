@@ -52,6 +52,8 @@
       {% if writings.0.response %}
       <div class="writings-detail-response" id="writings-detail-response">{{ writings.0.response }}</div>
       {% endif %}
+      <div class="writings-conversation" id="writings-conversation"></div>
+      <div class="writings-reply-options" id="writings-reply-options"></div>
     </div>
     {% else %}
     <div class="writings-detail-empty">
@@ -75,6 +77,186 @@
 
   // Data embedded from server
   var writings = {{ writings | json_encode() | safe }};
+
+  var conversationEl = document.getElementById('writings-conversation');
+  var replyOptionsEl = document.getElementById('writings-reply-options');
+  var activeAnkyId = null;
+  var activeChatHistory = [];
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function renderMarkdown(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+      .replace(/\n\n+/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
+
+  function renderConversation(conv, ankyId) {
+    conversationEl.innerHTML = '';
+    replyOptionsEl.innerHTML = '';
+    activeAnkyId = ankyId;
+    activeChatHistory = [];
+
+    if (!conv || !conv.messages || conv.messages.length === 0) {
+      // No conversation yet — show reply options if it's an anky
+      if (ankyId) {
+        fetchAndShowReplies(ankyId);
+      }
+      return;
+    }
+
+    // Render all messages
+    conv.messages.forEach(function(m) {
+      var bubble = document.createElement('div');
+      bubble.className = 'chat-bubble ' + (m.role === 'user' ? 'user' : 'anky');
+      if (m.role === 'user') {
+        bubble.innerHTML = escapeHtml(m.content);
+      } else {
+        bubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(m.content) + '</span>';
+      }
+      conversationEl.appendChild(bubble);
+      activeChatHistory.push({ role: m.role, content: m.content });
+    });
+
+    // Show pending replies or fetch new ones
+    if (conv.pending_replies && conv.pending_replies.length >= 2) {
+      showReplyButtons(conv.pending_replies[0], conv.pending_replies[1]);
+    } else if (ankyId) {
+      fetchAndShowReplies(ankyId);
+    }
+  }
+
+  function fetchAndShowReplies(ankyId) {
+    replyOptionsEl.innerHTML = '<div class="reply-options-loading"><span class="processing">...</span></div>';
+    fetch('/api/suggest-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: ankyId, history: activeChatHistory }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        showReplyButtons(data.reply1, data.reply2);
+      })
+      .catch(function() {
+        replyOptionsEl.innerHTML = '';
+        showCustomReplyOnly();
+      });
+  }
+
+  function showReplyButtons(r1, r2) {
+    replyOptionsEl.innerHTML = '';
+    replyOptionsEl.className = 'writings-reply-options reply-options';
+
+    var btn1 = document.createElement('button');
+    btn1.className = 'reply-option-btn';
+    btn1.textContent = r1;
+    btn1.onclick = function() { sendWritingsReply(r1); };
+    replyOptionsEl.appendChild(btn1);
+
+    var btn2 = document.createElement('button');
+    btn2.className = 'reply-option-btn';
+    btn2.textContent = r2;
+    btn2.onclick = function() { sendWritingsReply(r2); };
+    replyOptionsEl.appendChild(btn2);
+
+    var customBtn = document.createElement('button');
+    customBtn.className = 'reply-option-custom';
+    customBtn.textContent = 'type a reply to anky...';
+    customBtn.onclick = function() {
+      replyOptionsEl.innerHTML = '';
+      var inputWrap = document.createElement('div');
+      inputWrap.className = 'reply-custom-input';
+      inputWrap.innerHTML =
+        '<textarea class="chat-input" placeholder="write your reply..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+        '<button class="chat-send-btn" disabled>send</button>';
+      replyOptionsEl.appendChild(inputWrap);
+      var ta = inputWrap.querySelector('textarea');
+      var sendBtn = inputWrap.querySelector('button');
+      ta.addEventListener('input', function() {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+        sendBtn.disabled = !ta.value.trim();
+      });
+      ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (ta.value.trim()) sendBtn.click();
+        }
+      });
+      sendBtn.onclick = function() {
+        var msg = ta.value.trim();
+        if (msg) sendWritingsReply(msg);
+      };
+      ta.focus();
+    };
+    replyOptionsEl.appendChild(customBtn);
+  }
+
+  function showCustomReplyOnly() {
+    var customBtn = document.createElement('button');
+    customBtn.className = 'reply-option-custom';
+    customBtn.textContent = 'type a reply to anky...';
+    customBtn.onclick = function() {
+      replyOptionsEl.innerHTML = '';
+      var inputWrap = document.createElement('div');
+      inputWrap.className = 'reply-custom-input';
+      inputWrap.innerHTML =
+        '<textarea class="chat-input" placeholder="write your reply..." rows="1"></textarea>' +
+        '<button class="chat-send-btn" disabled>send</button>';
+      replyOptionsEl.appendChild(inputWrap);
+      var ta = inputWrap.querySelector('textarea');
+      var sendBtn = inputWrap.querySelector('button');
+      ta.addEventListener('input', function() { sendBtn.disabled = !ta.value.trim(); });
+      ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) sendBtn.click(); }
+      });
+      sendBtn.onclick = function() { var msg = ta.value.trim(); if (msg) sendWritingsReply(msg); };
+      ta.focus();
+    };
+    replyOptionsEl.appendChild(customBtn);
+  }
+
+  function sendWritingsReply(msg) {
+    if (!msg || !activeAnkyId) return;
+    replyOptionsEl.innerHTML = '';
+
+    var userBubble = document.createElement('div');
+    userBubble.className = 'chat-bubble user';
+    userBubble.innerHTML = escapeHtml(msg);
+    conversationEl.appendChild(userBubble);
+
+    var thinking = document.createElement('div');
+    thinking.className = 'chat-bubble anky';
+    thinking.innerHTML = '<span class="processing">thinking...</span>';
+    conversationEl.appendChild(thinking);
+
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: activeAnkyId, message: msg, history: activeChatHistory }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        activeChatHistory.push({ role: 'user', content: msg });
+        activeChatHistory.push({ role: 'assistant', content: data.response });
+        thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+        fetchAndShowReplies(activeAnkyId);
+      })
+      .catch(function() {
+        thinking.innerHTML = '<span class="error">something went wrong.</span>';
+      });
+  }
 
   function selectItem(idx) {
     if (idx < 0 || idx >= items.length) return;
@@ -109,6 +291,13 @@
         detailResponse.style.display = 'none';
       }
     }
+
+    // Render conversation
+    var conv = null;
+    if (w.conversation_json) {
+      try { conv = JSON.parse(w.conversation_json); } catch(e) {}
+    }
+    renderConversation(conv, w.anky_id);
 
     // Mobile: show detail panel
     layout.classList.add('detail-open');

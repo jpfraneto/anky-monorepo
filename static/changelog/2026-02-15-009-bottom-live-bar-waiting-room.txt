@@ -1,0 +1,15 @@
+Implement the following plan:
+
+# Bottom Live Bar + Waiting Room Queue
+
+## Context
+Replace the navbar live indicator with a full-width fixed bottom bar visible on all pages. Add a waiting room queue so multiple writers can chain back-to-back, creating an infinite thread of consciousness. When someone is live, everyone sees "WATCH LIVE" linking to pump.fun. After 8 minutes, next queued writer auto-starts.
+
+## Files to modify
+- `src/state.rs` — QueueEntry struct, WaitingRoom, extend LiveStatusEvent, add to AppState
+- `src/routes/live.rs` — queue endpoints, auto-chain logic, modify agent queueing
+- `src/routes/mod.rs` — register queue routes
+- `src/main.rs` — init waiting_room
+- `templates/base.html` — bottom bar HTML + JS (replaces navbar indicator)
+- `templates/home.html` — expose `startCountdown` for auto-trigger
+- `static/style.css` — bottom bar styles

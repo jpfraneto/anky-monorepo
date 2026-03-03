@@ -10,19 +10,14 @@ pub fn init_start_time() {
     START_TIME.get_or_init(std::time::Instant::now);
 }
 
-pub async fn health_check(
-    State(state): State<AppState>,
-) -> Result<Json<HealthResponse>, AppError> {
+pub async fn health_check(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
     let gpu_status = state.gpu_status.read().await;
     let total_cost = {
         let db = state.db.lock().await;
         crate::db::queries::get_total_cost(&db).unwrap_or(0.0)
     };
 
-    let uptime = START_TIME
-        .get()
-        .map(|t| t.elapsed().as_secs())
-        .unwrap_or(0);
+    let uptime = START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
 
     Ok(Json(HealthResponse {
         status: "ok".into(),

@@ -18,7 +18,11 @@ pub async fn send_telegram_notification(
     message: &str,
     _bot_token: Option<&str>,
 ) -> Result<()> {
-    tracing::info!("Telegram notification to {}: {}", chat_id, &message[..message.len().min(100)]);
+    tracing::info!(
+        "Telegram notification to {}: {}",
+        chat_id,
+        &message[..message.len().min(100)]
+    );
     // TODO: Integrate with Telegram Bot API
     Ok(())
 }

@@ -6,6 +6,7 @@ use axum::response::Html;
 use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path as FsPath, PathBuf};
 use std::time::SystemTime;
 
@@ -21,15 +22,15 @@ fn video_public_url(path: &str) -> String {
 
 fn default_inquiry_for_lang(lang: &str) -> &'static str {
     match lang {
-        "es" => "Dime quién eres.",
-        "fr" => "Dis-moi qui tu es.",
-        "pt" => "Me diz quem você é.",
-        "de" => "Sag mir, wer du bist.",
-        "it" => "Dimmi chi sei.",
-        "ja" => "あなたは誰か、教えてください。",
-        "ko" => "당신이 누구인지 말해주세요.",
-        "zh" => "告诉我你是谁。",
-        _ => "Tell me who you are.",
+        "es" => "¿Qué estás evitando sentir ahora mismo?",
+        "fr" => "Qu'est-ce que tu évites de ressentir en ce moment ?",
+        "pt" => "O que você está evitando sentir agora?",
+        "de" => "Was vermeidest du gerade zu fühlen?",
+        "it" => "Cosa stai evitando di sentire adesso?",
+        "ja" => "今、何を感じることを避けていますか？",
+        "ko" => "지금 어떤 감정을 피하고 있나요?",
+        "zh" => "你现在在回避什么感受？",
+        _ => "What are you avoiding feeling right now?",
     }
 }
 
@@ -271,6 +272,9 @@ pub async fn home(
         ctx.insert("username", uname);
     }
     ctx.insert("logged_in", &logged_in);
+    if let Some(ref uid) = cookie_user_id {
+        ctx.insert("user_token", uid);
+    }
     ctx.insert("inquiry_id", &inquiry_id);
     ctx.insert("inquiry_question", &inquiry_question);
     // Keep landing lightweight: image/gif-first and no MP4 tiles on initial route load.
@@ -347,6 +351,189 @@ pub async fn gallery(
 pub async fn help(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ctx = tera::Context::new();
     let html = state.tera.render("help.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn dca_bot_code(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let mut ctx = tera::Context::new();
+    ctx.insert(
+        "dca_bot_one_liner",
+        &"curl -fsSL https://anky.app/static/dca-bot/install.sh | bash",
+    );
+    ctx.insert(
+        "dca_bot_github_url",
+        &"https://github.com/jpfraneto/anky-monorepo",
+    );
+    let html = state.tera.render("dca_bot_code.html", &ctx)?;
+    Ok(Html(html))
+}
+
+fn read_key_value_env(path: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let content = fs::read_to_string(path).unwrap_or_default();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            out.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+    out
+}
+
+fn tail_lines(path: &str, max_lines: usize) -> String {
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.len() > max_lines {
+        lines = lines.split_off(lines.len() - max_lines);
+    }
+    lines.join("\n")
+}
+
+fn file_modified_epoch(path: &str) -> i64 {
+    fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+async fn fetch_sol_balance(rpc_url: &str, wallet: &str) -> Result<f64, String> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getBalance",
+        "params": [wallet, {"commitment": "confirmed"}]
+    });
+    let res = client
+        .post(rpc_url)
+        .json(&payload)
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let v: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    let lamports = v["result"]["value"].as_i64().unwrap_or(0) as f64;
+    Ok(lamports / 1_000_000_000.0)
+}
+
+async fn fetch_token_balance(rpc_url: &str, wallet: &str, mint: &str) -> Result<f64, String> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getTokenAccountsByOwner",
+        "params": [
+            wallet,
+            {"mint": mint},
+            {"encoding": "jsonParsed", "commitment": "confirmed"}
+        ]
+    });
+    let res = client
+        .post(rpc_url)
+        .json(&payload)
+        .timeout(std::time::Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let v: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    let mut total = 0.0f64;
+    if let Some(accounts) = v["result"]["value"].as_array() {
+        for account in accounts {
+            let ui = &account["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"];
+            if let Some(amount) = ui.as_f64() {
+                total += amount;
+            }
+        }
+    }
+    Ok(total)
+}
+
+pub async fn dca_dashboard(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let env = read_key_value_env(".secrets/anky_dca.env");
+    let wallet = env
+        .get("DCA_WALLET_PUBKEY")
+        .cloned()
+        .unwrap_or_else(|| "not configured".to_string());
+    let rpc_url = env
+        .get("SOLANA_RPC_URL")
+        .cloned()
+        .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".to_string());
+    let anky_mint = env
+        .get("ANKY_TOKEN_MINT")
+        .cloned()
+        .unwrap_or_else(|| "6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump".to_string());
+    let buy_per_run = env
+        .get("ANKY_BUY_SOL_PER_RUN")
+        .cloned()
+        .unwrap_or_else(|| "0.00002".to_string());
+    let slippage = env
+        .get("ANKY_SLIPPAGE_BPS")
+        .cloned()
+        .unwrap_or_else(|| "300".to_string());
+    let reserve = env
+        .get("ANKY_MIN_SOL_RESERVE")
+        .cloned()
+        .unwrap_or_else(|| "0.02".to_string());
+    let dry_run = env
+        .get("ANKY_DRY_RUN")
+        .cloned()
+        .unwrap_or_else(|| "true".to_string());
+
+    let logs = tail_lines("logs/anky_dca.log", 180);
+    let og_version = file_modified_epoch("logs/anky_dca.log");
+    let sol_balance = if wallet == "not configured" {
+        Err("DCA_WALLET_PUBKEY missing in .secrets/anky_dca.env".to_string())
+    } else {
+        fetch_sol_balance(&rpc_url, &wallet).await
+    };
+    let anky_balance = if wallet == "not configured" {
+        Err("DCA_WALLET_PUBKEY missing in .secrets/anky_dca.env".to_string())
+    } else {
+        fetch_token_balance(&rpc_url, &wallet, &anky_mint).await
+    };
+
+    let mut ctx = tera::Context::new();
+    ctx.insert("dca_wallet", &wallet);
+    ctx.insert("dca_rpc_url", &rpc_url);
+    ctx.insert("dca_anky_mint", &anky_mint);
+    ctx.insert("dca_buy_per_run", &buy_per_run);
+    ctx.insert("dca_slippage_bps", &slippage);
+    ctx.insert("dca_min_sol_reserve", &reserve);
+    ctx.insert("dca_dry_run", &dry_run);
+    ctx.insert("dca_logs", &logs);
+    ctx.insert("dca_og_version", &og_version);
+    ctx.insert(
+        "dca_bot_one_liner",
+        &"curl -fsSL https://anky.app/static/dca-bot/install.sh | bash",
+    );
+    ctx.insert("dca_bot_code_url", &"/dca-bot-code");
+    match sol_balance {
+        Ok(v) => {
+            ctx.insert("dca_sol_balance", &format!("{:.6}", v));
+            ctx.insert("dca_sol_error", &"");
+        }
+        Err(e) => {
+            ctx.insert("dca_sol_balance", &"n/a");
+            ctx.insert("dca_sol_error", &e);
+        }
+    }
+    match anky_balance {
+        Ok(v) => {
+            ctx.insert("dca_anky_balance", &format!("{:.6}", v));
+            ctx.insert("dca_anky_error", &"");
+        }
+        Err(e) => {
+            ctx.insert("dca_anky_balance", &"n/a");
+            ctx.insert("dca_anky_error", &e);
+        }
+    }
+
+    let html = state.tera.render("dca.html", &ctx)?;
     Ok(Html(html))
 }
 
@@ -841,5 +1028,52 @@ pub async fn anky_detail(
     }
 
     let html = state.tera.render("anky.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn videos_gallery(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Html<String>, AppError> {
+    let logged_in = crate::routes::auth::get_auth_user(&state, &jar)
+        .await
+        .is_some();
+    let items = {
+        let db = state.db.lock().await;
+        crate::db::queries::get_all_complete_video_projects(&db)?
+    };
+    let mut ctx = tera::Context::new();
+    ctx.insert("logged_in", &logged_in);
+    ctx.insert(
+        "videos",
+        &serde_json::to_value(
+            items
+                .iter()
+                .map(|v| {
+                    let image = v
+                        .image_webp
+                        .as_deref()
+                        .or(v.image_path.as_deref())
+                        .unwrap_or("");
+                    let thumb = v
+                        .image_thumb
+                        .as_deref()
+                        .or(v.image_webp.as_deref())
+                        .or(v.image_path.as_deref())
+                        .unwrap_or("");
+                    serde_json::json!({
+                        "id": v.project_id,
+                        "video_url": video_public_url(&v.video_path),
+                        "created_at": v.created_at,
+                        "title": v.anky_title,
+                        "image": if image.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(format!("/data/images/{}", image)) },
+                        "thumb": if thumb.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(format!("/data/images/{}", thumb)) },
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_or_default(),
+    );
+    let html = state.tera.render("videos.html", &ctx)?;
     Ok(Html(html))
 }

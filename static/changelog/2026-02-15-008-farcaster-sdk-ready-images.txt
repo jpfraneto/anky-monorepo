@@ -1,0 +1,1 @@
+you are not calling sdk.actions.ready() when the page loads so we are on the loading screen forever. and also please change that icon for the splash and for the icon of the app. you come up with the prompts to genreate both, use gemini to generate them, and then serve them on those points. thanks

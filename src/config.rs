@@ -29,6 +29,15 @@ pub struct Config {
     // Livestream (pump.fun)
     pub pumpfun_rtmp_url: String,
     pub pumpfun_stream_key: String,
+    // OpenAI (embeddings for memory)
+    pub openai_api_key: String,
+    // Neynar (Farcaster)
+    pub neynar_api_key: String,
+    // xAI (Grok video generation)
+    pub xai_api_key: String,
+    // Cloudflare (cache purge)
+    pub cloudflare_api_token: String,
+    pub cloudflare_zone_id: String,
 }
 
 impl Config {
@@ -42,8 +51,7 @@ impl Config {
                 .context("PORT must be a number")?,
             ollama_base_url: std::env::var("OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
-            ollama_model: std::env::var("OLLAMA_MODEL")
-                .unwrap_or_else(|_| "qwen2.5:72b".into()),
+            ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5:72b".into()),
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             base_rpc_url: std::env::var("BASE_RPC_URL")
@@ -61,7 +69,8 @@ impl Config {
             twitter_bot_api_key: std::env::var("TWITTER_BOT_API_KEY").unwrap_or_default(),
             twitter_bot_api_secret: std::env::var("TWITTER_BOT_API_SECRET").unwrap_or_default(),
             twitter_bot_access_token: std::env::var("TWITTER_BOT_ACCESS_TOKEN").unwrap_or_default(),
-            twitter_bot_access_secret: std::env::var("TWITTER_BOT_ACCESS_SECRET").unwrap_or_default(),
+            twitter_bot_access_secret: std::env::var("TWITTER_BOT_ACCESS_SECRET")
+                .unwrap_or_default(),
             twitter_bot_user_id: std::env::var("TWITTER_BOT_USER_ID").unwrap_or_default(),
             privy_app_id: std::env::var("PRIVY_APP_ID").unwrap_or_default(),
             privy_app_secret: std::env::var("PRIVY_APP_SECRET").unwrap_or_default(),
@@ -70,6 +79,11 @@ impl Config {
                 .replace("\\n", "\n"),
             pumpfun_rtmp_url: std::env::var("PUMPFUN_RTMP_URL").unwrap_or_default(),
             pumpfun_stream_key: std::env::var("PUMPFUN_STREAM_KEY").unwrap_or_default(),
+            openai_api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
+            neynar_api_key: std::env::var("NEYNAR_API_KEY").unwrap_or_default(),
+            xai_api_key: std::env::var("XAI_API_KEY").unwrap_or_default(),
+            cloudflare_api_token: std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default(),
+            cloudflare_zone_id: std::env::var("CLOUDFLARE_ZONE_ID").unwrap_or_default(),
         })
     }
 }

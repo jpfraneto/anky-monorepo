@@ -52,6 +52,10 @@ pub fn prepare_dataset(
         }
     }
 
-    tracing::info!("Prepared dataset: {} image-caption pairs in {}", count, output_dir.display());
+    tracing::info!(
+        "Prepared dataset: {} image-caption pairs in {}",
+        count,
+        output_dir.display()
+    );
     Ok((output_dir.to_string_lossy().to_string(), count))
 }

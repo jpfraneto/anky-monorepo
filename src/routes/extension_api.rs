@@ -6,7 +6,10 @@ use crate::db::queries;
 use crate::error::AppError;
 use crate::middleware::api_auth::ApiKeyInfo;
 use crate::middleware::x402;
-use crate::models::{BalanceResponse, RegisterRequest, RegisterResponse, TransformRequest, TransformResponse, TransformSummary};
+use crate::models::{
+    BalanceResponse, RegisterRequest, RegisterResponse, TransformRequest, TransformResponse,
+    TransformSummary,
+};
 use crate::pipeline::cost;
 use crate::services::claude;
 use crate::state::AppState;
@@ -65,7 +68,9 @@ pub async fn transform(
     }
 
     if req.writing.len() > 50_000 {
-        return Err(AppError::BadRequest("writing too long (max 50000 chars)".into()));
+        return Err(AppError::BadRequest(
+            "writing too long (max 50000 chars)".into(),
+        ));
     }
 
     // Payment: check for x402/wallet payment header
@@ -76,20 +81,32 @@ pub async fn transform(
         .and_then(|v| v.to_str().ok())
     {
         let sig = sig.trim();
-        if sig.starts_with("0x") && sig.len() == 66 && sig[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-            state.emit_log("INFO", "payment", &format!("Transform wallet payment: {}", sig));
+        if sig.starts_with("0x")
+            && sig.len() == 66
+            && sig[2..].chars().all(|c| c.is_ascii_hexdigit())
+        {
+            state.emit_log(
+                "INFO",
+                "payment",
+                &format!("Transform wallet payment: {}", sig),
+            );
             payment_method = "wallet".to_string();
         } else {
             let facilitator = &state.config.x402_facilitator_url;
             if facilitator.is_empty() {
                 return Err(AppError::Internal("x402 facilitator not configured".into()));
             }
-            match x402::verify_x402_payment(facilitator, sig, "https://anky.app/api/v1/transform").await {
+            match x402::verify_x402_payment(facilitator, sig, "https://anky.app/api/v1/transform")
+                .await
+            {
                 Ok(_) => {
                     payment_method = "x402".to_string();
                 }
                 Err(reason) => {
-                    return Err(AppError::PaymentRequired(format!("payment verification failed: {}", reason)));
+                    return Err(AppError::PaymentRequired(format!(
+                        "payment verification failed: {}",
+                        reason
+                    )));
                 }
             }
         }
@@ -114,7 +131,10 @@ pub async fn transform(
     // Record transformation
     let db = state.db.lock().await;
     let transform_id = uuid::Uuid::new_v4().to_string();
-    let api_key_str = api_key_info.as_ref().map(|ext| ext.key.clone()).unwrap_or_default();
+    let api_key_str = api_key_info
+        .as_ref()
+        .map(|ext| ext.key.clone())
+        .unwrap_or_default();
     queries::insert_transformation(
         &db,
         &transform_id,

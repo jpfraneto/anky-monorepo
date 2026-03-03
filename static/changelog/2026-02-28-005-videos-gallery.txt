@@ -1,0 +1,6 @@
+Implement the following plan:
+
+# Plan: /videos Public Gallery Page
+
+## Context
+User wants a public `/videos` page listing all completed anky videos — with the anky's generated image as thumbnail, plus title and date. Should be visually cohesive with the rest of the site.

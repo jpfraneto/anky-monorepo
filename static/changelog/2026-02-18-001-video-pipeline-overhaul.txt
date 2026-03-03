@@ -1,0 +1,17 @@
+Implement the following plan:
+
+# Video Pipeline Overhaul Plan
+
+## Context
+The video generation pipeline works end-to-end but has 6 known bugs/gaps and the storytelling system needs a major upgrade. The user wants each 88-second video to tell a precise, structured story where every scene exists for a specific narrative reason, with video prompts that describe exact motion from the starting image through to the scene's role in the arc.
+
+## Changes Overview
+
+### 1. Fix: Store 720p/360p paths in DB after transcode
+### 2. Fix: Store Grok generation_id back into scene struct
+### 3. Fix: Skip existing images on resume
+### 4. Fix: Add cost records for Grok video generation
+### 5. Fix: Store Grok cost in VideoResult and record it
+### 6. Rewrite: Psychoanalytic Script System (Major) - Two-phase story spine + scene-by-scene
+### 7. UI Overhaul: Real-time Narrative Feedback - story spine reveal, act-coded scenes, narrative progress, quality selector
+### 8. Migration: Add new DB columns

@@ -1,0 +1,8 @@
+Implement the following plan:
+
+# Plan: Enable Phantom (Solana) Wallet Login via Privy
+
+## Context
+Phantom wallet users can't log in because the Privy config only supports EVM chains (Base). Phantom defaults to Solana mode and Privy rejects the connection with "couldn't connect to phantom". The $ANKY community is Solana-native, so most users will have Phantom.
+
+Fix: Add Solana wallet connectors to Privy config so Phantom works in its default Solana mode. Keep EVM (Base) support for USDC payments.

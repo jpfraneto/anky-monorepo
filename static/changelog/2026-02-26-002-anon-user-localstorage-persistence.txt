@@ -1,0 +1,41 @@
+Implement the following plan:
+
+# Plan: Anonymous User Writing Pipeline Persistence
+
+## Context
+Anonymous users (not logged in) can write ankys today — the full pipeline works (cookie-based user ID, no auth guards). But if the browser closes or cookies are cleared, the user loses:
+1. Their `anky_user_id` cookie → can't find their writings
+2. The `currentAnkyId` JS variable → can't see their anky being generated
+3. Any in-progress writing between 30-second checkpoint intervals
+
+We need localStorage persistence so anonymous users never lose their work, and can recover it even after closing the browser.
+
+## Changes
+
+### 1. `templates/home.html` — Client-side localStorage persistence
+
+**a) Save user token to localStorage on page load:**
+- Read `anky_user_id` from cookie (it's not httpOnly, so JS can access it)
+- Store it in `localStorage.setItem('anky_user_token', userId)`
+- On future visits, if cookie is missing but localStorage has the token, restore the cookie
+
+**b) Save active writing to localStorage during session:**
+- On every keystroke (debounced to 2 seconds), save current text + elapsed time to `localStorage.setItem('anky_draft', JSON.stringify({text, elapsed, timestamp}))`
+- Clear the draft on successful `/write` submission
+
+**c) Save anky IDs to localStorage after successful /write:**
+- After `/write` returns `anky_id`, save to localStorage
+
+**d) Draft recovery on page load:**
+- On page load, check `localStorage.getItem('anky_draft')`
+- If a draft exists and is < 1 hour old, offer to restore it into the textarea
+- Show a subtle "resume your writing?" prompt
+
+**e) Cookie recovery from localStorage:**
+- On page load, if `anky_user_id` cookie is missing but `anky_user_token` exists in localStorage, set the cookie back via JS
+
+### 2. `src/routes/pages.rs` — Pass user token to template
+
+- In the `home()` handler, pass the `user_id` to the template context so the JS can use it as a fallback
+
+### Same persistence for prompt.html flow

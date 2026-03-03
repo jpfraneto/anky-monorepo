@@ -39,6 +39,17 @@ pub struct ClaudeResult {
     pub output_tokens: i64,
 }
 
+/// Public wrapper for other modules (e.g. video pipeline).
+pub async fn call_claude_public(
+    api_key: &str,
+    model: &str,
+    system: &str,
+    user_message: &str,
+    max_tokens: u32,
+) -> Result<ClaudeResult> {
+    call_claude(api_key, model, system, user_message, max_tokens).await
+}
+
 async fn call_claude(
     api_key: &str,
     model: &str,
@@ -79,8 +90,16 @@ async fn call_claude(
         .and_then(|b| b.text)
         .unwrap_or_default();
 
-    let input_tokens = data.usage.as_ref().and_then(|u| u.input_tokens).unwrap_or(0);
-    let output_tokens = data.usage.as_ref().and_then(|u| u.output_tokens).unwrap_or(0);
+    let input_tokens = data
+        .usage
+        .as_ref()
+        .and_then(|u| u.input_tokens)
+        .unwrap_or(0);
+    let output_tokens = data
+        .usage
+        .as_ref()
+        .and_then(|u| u.output_tokens)
+        .unwrap_or(0);
 
     Ok(ClaudeResult {
         text,
@@ -151,7 +170,10 @@ pub struct PromptClassification {
     pub feedback: Option<String>,
 }
 
-pub async fn classify_and_enhance_prompt(api_key: &str, text: &str) -> Result<PromptClassification> {
+pub async fn classify_and_enhance_prompt(
+    api_key: &str,
+    text: &str,
+) -> Result<PromptClassification> {
     let result = call_claude(
         api_key,
         "claude-haiku-4-5-20251001",
@@ -173,14 +195,22 @@ pub async fn classify_and_enhance_prompt(api_key: &str, text: &str) -> Result<Pr
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
         let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
         if typ == "image" {
-            let prompt = v.get("prompt").and_then(|p| p.as_str()).unwrap_or("").to_string();
+            let prompt = v
+                .get("prompt")
+                .and_then(|p| p.as_str())
+                .unwrap_or("")
+                .to_string();
             return Ok(PromptClassification {
                 is_image_request: true,
                 enhanced_prompt: Some(prompt),
                 feedback: None,
             });
         } else {
-            let msg = v.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
+            let msg = v
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string();
             return Ok(PromptClassification {
                 is_image_request: false,
                 enhanced_prompt: None,
@@ -236,7 +266,11 @@ pub async fn classify_mention(api_key: &str, tweet_text: &str) -> Result<Mention
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
         let typ = v.get("type").and_then(|t| t.as_str()).unwrap_or("spam");
         if typ == "genuine" {
-            let prompt = v.get("prompt").and_then(|p| p.as_str()).unwrap_or("").to_string();
+            let prompt = v
+                .get("prompt")
+                .and_then(|p| p.as_str())
+                .unwrap_or("")
+                .to_string();
             return Ok(MentionClassification {
                 is_genuine: true,
                 prompt_text: Some(prompt),
@@ -326,17 +360,13 @@ pub async fn transform_writing(
     prompt: Option<&str>,
 ) -> Result<ClaudeResult> {
     let system = match prompt {
-        Some(p) => format!("{}\n\nUSER'S TRANSFORMATION REQUEST: {}", TRANSFORM_SYSTEM, p),
+        Some(p) => format!(
+            "{}\n\nUSER'S TRANSFORMATION REQUEST: {}",
+            TRANSFORM_SYSTEM, p
+        ),
         None => TRANSFORM_SYSTEM.to_string(),
     };
-    call_claude(
-        api_key,
-        "claude-sonnet-4-20250514",
-        &system,
-        writing,
-        1500,
-    )
-    .await
+    call_claude(api_key, "claude-sonnet-4-20250514", &system, writing, 1500).await
 }
 
 const CHAT_SYSTEM: &str = r#"You are Anky, a consciousness companion. You are continuing a conversation with someone who just completed a stream of consciousness writing session. You have already reflected on their writing.
@@ -401,8 +431,16 @@ pub async fn chat_about_writing(
         .and_then(|b| b.text)
         .unwrap_or_default();
 
-    let input_tokens = data.usage.as_ref().and_then(|u| u.input_tokens).unwrap_or(0);
-    let output_tokens = data.usage.as_ref().and_then(|u| u.output_tokens).unwrap_or(0);
+    let input_tokens = data
+        .usage
+        .as_ref()
+        .and_then(|u| u.input_tokens)
+        .unwrap_or(0);
+    let output_tokens = data
+        .usage
+        .as_ref()
+        .and_then(|u| u.output_tokens)
+        .unwrap_or(0);
 
     Ok(ClaudeResult {
         text,
@@ -417,12 +455,31 @@ TASK 1 — TITLE (first line of your response):
 Generate a title of MAXIMUM 3 WORDS that captures the ESSENCE of the writing, not the content. It should be poetic, stark, ironic, or tender. Lowercase, no quotes, no punctuation unless essential.
 
 TASK 2 — REFLECTION (everything after the first line):
-Analyze the journal entry with deep insight that feels personal, not clinical. Imagine you're a mentor who truly gets both the writer's tech background and their psychological patterns. Uncover deeper meaning and emotional undercurrents behind scattered thoughts. Keep it casual, dont say yo, help make new connections they don't see, comfort, validate, challenge, all of it. Dont be afraid to say a lot. Format with markdown headings if needed. Use vivid metaphors and powerful imagery. Organize your thoughts with meaningful headings that create a narrative journey through their ideas. Don't just validate — reframe in a way that shows what they're really seeking beneath the surface. Go beyond the product concepts to the emotional core. Be willing to be profound and philosophical without sounding like therapy.
+You are reflecting back to someone who just poured themselves out for 8+ minutes of raw, unfiltered writing. Your reflection has exactly TWO parts, in this order:
+
+PART A — THE ONE THING (use the markdown heading: ## do this today)
+Give them ONE specific, concrete, actionable thing to practice or be aware of for the rest of their day. This is not advice. It's a behavioral experiment — something they can actually DO in the next 12 hours that will shift something based on what they wrote. Examples of the right granularity:
+- Next time you open your phone today, pause for 3 seconds and notice what you were avoiding.
+- When you talk to your partner tonight, say the second thing that comes to mind, not the first.
+- Before your next meeting, write one sentence about what you actually want from it.
+It must connect directly to what they revealed in their writing. No generic mindfulness platitudes. This should feel like a dare.
+
+PART B — THREE MIRRORS (use the markdown heading: ## what i see)
+Exactly THREE points that reflect the writer's mind back to them. Each one gets a bold one-line heading and 2-4 sentences of explanation. These should:
+- Name patterns the writer can't see from inside their own head
+- Connect threads between different parts of their writing they didn't consciously link
+- Be specific to THIS writing, not generic observations anyone could make
+- Be warm but honest — comfort where comfort is due, challenge where challenge is due
+- Use vivid, concrete language (not therapy-speak, not woo-woo)
+
+If you have context from their previous writing sessions, weave that in — show them the patterns across time, not just this single session. But ONLY three points. Not two, not four. Three.
+
+CRITICAL LANGUAGE RULE: You MUST respond in the SAME LANGUAGE the writer used. If they wrote in Spanish, your entire response (title AND reflection) must be in Spanish. If they wrote in French, respond in French. Always match the writer's language exactly.
 
 OUTPUT FORMAT:
 Line 1: the title (max 3 words, lowercase, no quotes)
 Line 2: empty
-Line 3+: the reflection starting with "hey, thanks for showing me this. my thoughts:"
+Line 3+: the reflection following the structure above (## do this today, then ## what i see with exactly 3 points)
 "#;
 
 pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Result<ClaudeResult> {
@@ -434,6 +491,20 @@ pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Resu
         2000,
     )
     .await
+}
+
+/// Generate title+reflection with memory context injected into the system prompt.
+pub async fn generate_title_and_reflection_with_memory(
+    api_key: &str,
+    writing: &str,
+    memory_context: &str,
+) -> Result<ClaudeResult> {
+    let system = if memory_context.is_empty() {
+        TITLE_AND_REFLECTION_SYSTEM.to_string()
+    } else {
+        format!("{}\n\n{}", memory_context, TITLE_AND_REFLECTION_SYSTEM)
+    };
+    call_claude(api_key, "claude-sonnet-4-20250514", &system, writing, 2000).await
 }
 
 #[derive(Serialize)]
@@ -452,12 +523,17 @@ pub async fn stream_title_and_reflection(
     api_key: &str,
     writing: &str,
     tx: tokio::sync::mpsc::Sender<String>,
+    memory_context: Option<&str>,
 ) -> Result<(String, i64, i64)> {
+    let system = match memory_context {
+        Some(ctx) if !ctx.is_empty() => format!("{}\n\n{}", ctx, TITLE_AND_REFLECTION_SYSTEM),
+        _ => TITLE_AND_REFLECTION_SYSTEM.to_string(),
+    };
     let client = reqwest::Client::new();
     let req = ClaudeStreamRequest {
         model: "claude-sonnet-4-20250514".into(),
         max_tokens: 2000,
-        system: TITLE_AND_REFLECTION_SYSTEM.into(),
+        system,
         messages: vec![ClaudeMessage {
             role: "user".into(),
             content: writing.into(),
@@ -501,7 +577,10 @@ pub async fn stream_title_and_reflection(
                         match v.get("type").and_then(|t| t.as_str()) {
                             Some("message_start") => {
                                 if let Some(usage) = v.get("message").and_then(|m| m.get("usage")) {
-                                    input_tokens = usage.get("input_tokens").and_then(|t| t.as_i64()).unwrap_or(0);
+                                    input_tokens = usage
+                                        .get("input_tokens")
+                                        .and_then(|t| t.as_i64())
+                                        .unwrap_or(0);
                                 }
                             }
                             Some("content_block_delta") => {
@@ -516,7 +595,10 @@ pub async fn stream_title_and_reflection(
                             }
                             Some("message_delta") => {
                                 if let Some(usage) = v.get("usage") {
-                                    output_tokens = usage.get("output_tokens").and_then(|t| t.as_i64()).unwrap_or(0);
+                                    output_tokens = usage
+                                        .get("output_tokens")
+                                        .and_then(|t| t.as_i64())
+                                        .unwrap_or(0);
                                 }
                             }
                             _ => {}
@@ -530,10 +612,77 @@ pub async fn stream_title_and_reflection(
     Ok((full_text, input_tokens, output_tokens))
 }
 
+const SUGGEST_REPLIES_SYSTEM: &str = r#"You are generating two possible replies that a user might want to send to Anky after reading Anky's reflection on their writing session.
+
+CONTEXT: The user just did a stream of consciousness writing session. Anky (a consciousness companion) read their writing and gave them a deep reflection. Now the user might want to continue the conversation.
+
+YOUR TASK: Generate exactly 2 short reply options with OPPOSITE POLARITIES. These represent two divergent threads the conversation could follow — like a fork in the road.
+
+POLARITY RULES:
+- Reply 1 should pull INWARD: vulnerability, acceptance, softness, surrender, sitting with the feeling, going deeper into the emotional core
+- Reply 2 should push OUTWARD: challenge, action, expansion, questioning assumptions, pushing beyond comfort, exploring what's next
+- They should feel like genuine opposites — two different directions the user's mind could go
+- Both should be rooted in the specific content of the writing and reflection, never generic
+
+FORMATTING RULES:
+- Each reply must be ONE short sentence (max 12 words)
+- Make them feel personal and specific, not generic
+- Match the language of the writing and reflection (if Spanish, replies in Spanish, etc.)
+- No quotes, no numbering, no labels
+
+OUTPUT FORMAT — raw JSON only, no markdown:
+{"reply1":"inward/soft reply","reply2":"outward/challenging reply"}"#;
+
+/// Generate two suggested replies for the user to respond to Anky's reflection.
+pub async fn generate_suggested_replies(
+    api_key: &str,
+    writing: &str,
+    reflection: &str,
+    history: &[(String, String)],
+) -> Result<(String, String)> {
+    let mut context = format!(
+        "USER'S WRITING:\n{}\n\nANKY'S REFLECTION:\n{}",
+        writing, reflection
+    );
+    if !history.is_empty() {
+        context.push_str("\n\nCONVERSATION SO FAR:");
+        for (role, content) in history {
+            let label = if role == "user" { "User" } else { "Anky" };
+            context.push_str(&format!("\n{}: {}", label, content));
+        }
+    }
+    let result = call_claude(
+        api_key,
+        "claude-haiku-4-5-20251001",
+        SUGGEST_REPLIES_SYSTEM,
+        &context,
+        200,
+    )
+    .await?;
+
+    let trimmed = result.text.trim();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        let r1 = v.get("reply1").and_then(|r| r.as_str()).unwrap_or("that really resonates with me").to_string();
+        let r2 = v.get("reply2").and_then(|r| r.as_str()).unwrap_or("tell me more about that pattern").to_string();
+        return Ok((r1, r2));
+    }
+
+    // Fallback
+    Ok((
+        "that really resonates with me".to_string(),
+        "tell me more about that pattern".to_string(),
+    ))
+}
+
 /// Parse title (first line) and reflection (rest) from combined Claude output.
 pub fn parse_title_reflection(text: &str) -> (String, String) {
     let mut lines = text.splitn(2, '\n');
-    let title = lines.next().unwrap_or("").trim().to_lowercase().replace(['\'', '"'], "");
+    let title = lines
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase()
+        .replace(['\'', '"'], "");
     let reflection = lines.next().unwrap_or("").trim().to_string();
     (title, reflection)
 }
@@ -557,7 +706,10 @@ Write approximately 800-1200 words."#,
         api_key,
         "claude-sonnet-4-20250514",
         &system,
-        &format!("Begin the stream of consciousness as {} in this moment: {}", thinker_name, moment),
+        &format!(
+            "Begin the stream of consciousness as {} in this moment: {}",
+            thinker_name, moment
+        ),
         2000,
     )
     .await

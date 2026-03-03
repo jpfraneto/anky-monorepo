@@ -1,0 +1,8 @@
+Implement the following plan:
+
+# Video Pipeline: Vertical + Story-Driven
+
+## Context
+The video pipeline currently generates square (1:1) 720x720 videos with a psychoanalytic/abstract framing. The user wants:
+1. **Vertical (9:16)** format optimized for phone viewing
+2. **Story-driven** — the video should tell the story *of* the writing, not abstract psychoanalytic imagery. The pipeline should feel the writing, embody it, and generate a video that reflects it back as a narrative.

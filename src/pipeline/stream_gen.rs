@@ -20,8 +20,7 @@ pub async fn generate_for_thinker(
     );
 
     // Generate the stream of consciousness
-    let stream_result =
-        claude::generate_stream_for_thinker(api_key, thinker_name, moment).await?;
+    let stream_result = claude::generate_stream_for_thinker(api_key, thinker_name, moment).await?;
 
     let stream_text = stream_result.text.clone();
 
@@ -98,7 +97,11 @@ pub async fn generate_for_thinker(
                 &id,
                 &session_id,
                 "system",
-                None, None, None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 Some(thinker_name),
                 Some(moment),
                 "generating",
@@ -109,13 +112,7 @@ pub async fn generate_for_thinker(
     };
 
     // Run the image-only pipeline (generated ankys skip reflection/title)
-    crate::pipeline::image_gen::generate_image_only(
-        state,
-        &anky_id,
-        &stream_text,
-        None,
-    )
-    .await?;
+    crate::pipeline::image_gen::generate_image_only(state, &anky_id, &stream_text, None).await?;
 
     Ok(anky_id)
 }

@@ -1,0 +1,1 @@
+ok something that i don't like now is how the conversation hat interface has the anky mode associated with that textarea in the sense that in subsequent converesations i can't backspace or nothing really. i dont like that. and i also want to be able to hit enter and send a message. like claude works on the website etc. please fix that

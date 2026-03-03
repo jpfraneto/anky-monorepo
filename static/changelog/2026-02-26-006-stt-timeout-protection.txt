@@ -1,0 +1,3 @@
+yes please. add all what you need to add to make this work please
+
+(context: Voxtral STT model.generate() was hanging indefinitely, causing the interview to get stuck on "transcribing your words". Added timeout protection at multiple levels.)

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}anky - dca{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="$ANKY DCA — latest buys">
+<meta property="og:description" content="live chronological feed of recent $ANKY DCA buys from anky.app">
+<meta property="og:image" content="https://anky.app/og/dca?v={{ dca_og_version }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://anky.app/dca">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="$ANKY DCA — latest buys">
+<meta name="twitter:description" content="live chronological feed of recent $ANKY DCA buys from anky.app">
+<meta name="twitter:image" content="https://anky.app/og/dca?v={{ dca_og_version }}">
+<style>
+  .dca-shell {
+    max-width: 1040px;
+    margin: 28px auto;
+    border: 1px solid #163628;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(5, 15, 11, 0.95) 0%, rgba(3, 10, 8, 0.98) 100%);
+    box-shadow: 0 0 0 1px rgba(66, 255, 157, 0.08), 0 16px 44px rgba(0, 0, 0, 0.45);
+  }
+  .dca-shell h2, .dca-shell h3 {
+    color: #7cffbc;
+    text-shadow: 0 0 8px rgba(124, 255, 188, 0.2);
+  }
+  .dca-shell p, .dca-shell li {
+    color: #b6f3d0;
+  }
+  .dca-shell code {
+    color: #96ffd0;
+    background: rgba(8, 22, 17, 0.8);
+    border: 1px solid rgba(124, 255, 188, 0.18);
+  }
+  .dca-wallet {
+    background: #07140f;
+    border: 1px solid rgba(124, 255, 188, 0.28);
+    color: #8cffc7;
+    font-family: 'Courier New', Consolas, monospace;
+  }
+  .dca-log-wrap {
+    border: 1px solid rgba(124, 255, 188, 0.25);
+    border-radius: 10px;
+    background: radial-gradient(circle at 50% 0%, rgba(20, 80, 54, 0.25), rgba(3, 10, 8, 0.96) 62%);
+    overflow: hidden;
+  }
+  .dca-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(124, 255, 188, 0.2);
+    background: rgba(7, 24, 17, 0.9);
+    color: #8fffcf;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .dca-log-state {
+    color: #6cffba;
+    opacity: 0.9;
+  }
+  .dca-log-state.paused {
+    color: #f6d26f;
+  }
+  #dca-log {
+    margin: 0;
+    white-space: pre-wrap;
+    max-height: 560px;
+    overflow: auto;
+    padding: 12px;
+    background: transparent;
+    color: #88ffbe;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="help-content dca-shell" style="display:block;">
+  <p><a href="https://x.com/jpfraneto" target="_blank" rel="noopener noreferrer">dm @jpfraneto on x for how to do it</a></p>
+
+  <h2>$ANKY dca dashboard</h2>
+  <p>this bot runs every minute and buys small amounts of $ANKY from the configured wallet using Jupiter swaps on Solana mainnet.</p>
+
+  <h3>wallet</h3>
+  <pre class="dca-wallet"><code>{{ dca_wallet }}</code></pre>
+
+  <h3>live balances</h3>
+  <ul>
+    <li><strong>sol remaining:</strong> {{ dca_sol_balance }} SOL {% if dca_sol_error and dca_sol_error != "" %}<em>(error: {{ dca_sol_error }})</em>{% endif %}</li>
+    <li><strong>$ANKY balance:</strong> {{ dca_anky_balance }} ANKY {% if dca_anky_error and dca_anky_error != "" %}<em>(error: {{ dca_anky_error }})</em>{% endif %}</li>
+  </ul>
+
+  <h3>run configuration</h3>
+  <ul>
+    <li><strong>mode:</strong> {% if dca_dry_run == "true" %}dry-run (no swaps){% else %}live trading{% endif %}</li>
+    <li><strong>buy per run:</strong> {{ dca_buy_per_run }} SOL</li>
+    <li><strong>min reserve:</strong> {{ dca_min_sol_reserve }} SOL</li>
+    <li><strong>slippage:</strong> {{ dca_slippage_bps }} bps</li>
+    <li><strong>rpc:</strong> <code>{{ dca_rpc_url }}</code></li>
+    <li><strong>mint:</strong> <code>{{ dca_anky_mint }}</code></li>
+    <li><strong>scheduler:</strong> systemd user timer <code>anky-dca.timer</code> every minute</li>
+  </ul>
+
+  <h3>how this works</h3>
+  <ol>
+    <li>minute timer triggers <code>scripts/run_anky_dca.sh</code></li>
+    <li>runner acquires a lock so jobs cannot overlap</li>
+    <li><code>scripts/anky_dca_buy.py</code> checks SOL balance and reserve guard</li>
+    <li>if enough SOL, it requests quote+swap from Jupiter and submits on-chain tx</li>
+    <li>all events are appended to <code>logs/anky_dca.log</code></li>
+  </ol>
+
+  <h3>recent logs</h3>
+  <div class="dca-log-wrap">
+    <div class="dca-log-header">
+      <span>terminal stream</span>
+      <span class="dca-log-state" id="dca-log-state">auto-follow</span>
+    </div>
+    <pre id="dca-log">{{ dca_logs }}</pre>
+  </div>
+
+  <p><a href="/dca">refresh</a></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var log = document.getElementById('dca-log');
+  var state = document.getElementById('dca-log-state');
+  if (!log || !state) return;
+
+  var follow = true;
+  function atBottom() {
+    return log.scrollHeight - log.scrollTop - log.clientHeight < 28;
+  }
+  function syncLabel() {
+    state.textContent = follow ? 'auto-follow' : 'manual scroll';
+    state.classList.toggle('paused', !follow);
+  }
+
+  // Always start pinned to latest logs.
+  log.scrollTop = log.scrollHeight;
+  syncLabel();
+
+  log.addEventListener('scroll', function() {
+    follow = atBottom();
+    syncLabel();
+  });
+
+  // Re-pin only if user kept auto-follow active.
+  window.addEventListener('resize', function() {
+    if (follow) log.scrollTop = log.scrollHeight;
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1">
+  <title>$ANKY Stream Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .overlay {
+      width: 1920px;
+      height: 1080px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header row: @username left, $ANKY center */
+    .header {
+      display: flex;
+      align-items: center;
+      padding: 16px 40px;
+      flex-shrink: 0;
+      height: 60px;
+    }
+
+    .writer-name {
+      font-size: 28px;
+      color: #7b2ff7;
+      font-weight: 700;
+    }
+
+    .header-title {
+      font-family: 'Righteous', cursive;
+      font-size: 36px;
+      color: #7b2ff7;
+      text-shadow: 0 0 20px rgba(123, 47, 247, 0.4);
+      letter-spacing: 4px;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    /* Life bar */
+    .life-bar-container {
+      padding: 0 40px;
+      flex-shrink: 0;
+    }
+
+    .life-bar {
+      height: 8px;
+      background: #1a1a2e;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .life-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff4444, #ff8800, #44ff44);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+      width: 100%;
+    }
+
+    /* Sticker border area */
+    .sticker-border {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1920px;
+      height: 1080px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .sticker {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      border-radius: 12px;
+      border: 2px solid #7b2ff7;
+      object-fit: cover;
+      box-shadow: 0 0 16px rgba(123, 47, 247, 0.4);
+      animation: stickerPop 0.5s ease-out;
+    }
+
+    @keyframes stickerPop {
+      0% { transform: scale(0); opacity: 0; }
+      60% { transform: scale(1.2); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Text area */
+    .text-area {
+      flex: 1;
+      margin: 12px 40px;
+      padding: 24px;
+      background: #0f0f1a;
+      border: 2px solid #1a1a2e;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .text-content {
+      font-size: 26px;
+      line-height: 1.5;
+      color: #e8e8e8;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .idle-message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+    }
+
+    .idle-message .waiting {
+      font-family: 'Righteous', cursive;
+      font-size: 48px;
+      color: #7b2ff7;
+      margin-bottom: 16px;
+    }
+
+    .idle-message .cta {
+      font-size: 24px;
+      color: #c4a0ff;
+      opacity: 0.6;
+    }
+
+    .congrats-message {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+    }
+
+    .congrats-message .congrats-user {
+      font-family: 'Righteous', cursive;
+      font-size: 64px;
+      color: #7b2ff7;
+      margin-bottom: 16px;
+    }
+
+    .congrats-message .congrats-text {
+      font-family: 'Righteous', cursive;
+      font-size: 52px;
+      color: #e8e8e8;
+      margin-bottom: 24px;
+    }
+
+    .congrats-message .congrats-url {
+      font-size: 28px;
+      color: #c4a0ff;
+    }
+
+    .writer-type-badge {
+      font-size: 16px;
+      color: #888;
+      margin-left: 12px;
+      padding: 2px 8px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 3px;
+      height: 1em;
+      background: #7b2ff7;
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+      vertical-align: text-bottom;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    /* Stats + progress row */
+    .bottom-row {
+      display: flex;
+      align-items: center;
+      padding: 0 40px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+      gap: 24px;
+    }
+
+    .stat {
+      font-size: 24px;
+      color: #c4a0ff;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .progress-bar-wrap {
+      flex: 1;
+      height: 12px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7b2ff7, #c4a0ff);
+      border-radius: 6px;
+      transition: width 0.5s ease;
+      width: 0%;
+    }
+
+    .progress-pct {
+      font-size: 20px;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    /* Ticker */
+    .ticker {
+      background: #111;
+      border-top: 1px solid #222;
+      padding: 12px 0;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .ticker-content {
+      display: flex;
+      animation: scroll 25s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker-item {
+      font-size: 18px;
+      color: #c4a0ff;
+      padding: 0 60px;
+      flex-shrink: 0;
+    }
+
+    .ticker-item .ca-label {
+      color: #666;
+      margin-right: 12px;
+    }
+
+    @keyframes scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <!-- Sticker border -->
+    <div class="sticker-border" id="stickerBorder"></div>
+
+    <!-- Header: @username + $ANKY -->
+    <div class="header">
+      <div class="writer-name" id="writerName"></div>
+      <div class="header-title">$ANKY</div>
+    </div>
+
+    <!-- Life bar (idle countdown) -->
+    <div class="life-bar-container">
+      <div class="life-bar">
+        <div class="life-bar-fill" id="lifeBarFill"></div>
+      </div>
+    </div>
+
+    <!-- Text area -->
+    <div class="text-area">
+      <div class="text-content" id="textContent">
+        <div class="idle-message" id="idleMessage">
+          <div class="waiting">waiting for a writer...</div>
+          <div class="cta">anky.app</div>
+        </div>
+        <div class="congrats-message" id="congratsMessage">
+          <div class="congrats-user" id="congratsUser"></div>
+          <div class="congrats-text">just wrote an anky!</div>
+          <div class="congrats-url">anky.app</div>
+        </div>
+        <span id="liveText" style="display:none;"></span><span class="cursor" id="cursor" style="display:none;"></span>
+      </div>
+    </div>
+
+    <!-- Stats + progress -->
+    <div class="bottom-row" id="bottomRow" style="visibility:hidden;">
+      <div class="stat" id="wordCount">0 words</div>
+      <div class="stat" id="elapsedTime">0:00</div>
+      <div class="progress-bar-wrap">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-pct" id="progressPct">0%</div>
+    </div>
+
+    <!-- Ticker -->
+    <div class="ticker">
+      <div class="ticker-content">
+        <div class="ticker-item"><span class="ca-label">CA:</span>{{ contract_address }}</div>
+        <div class="ticker-item">$ANKY on pump.fun</div>
+        <div class="ticker-item">write for 8 minutes. become an anky.</div>
+        <div class="ticker-item"><span class="ca-label">CA:</span>{{ contract_address }}</div>
+        <div class="ticker-item">$ANKY on pump.fun</div>
+        <div class="ticker-item">write for 8 minutes. become an anky.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Sticker positions along the border (landscape) ---
+    const STICKER_POSITIONS = [
+      // Top edge
+      { x: 200, y: 5 }, { x: 400, y: 5 }, { x: 600, y: 5 },
+      { x: 1200, y: 5 }, { x: 1400, y: 5 }, { x: 1600, y: 5 },
+      // Bottom edge
+      { x: 200, y: 970 }, { x: 400, y: 970 }, { x: 600, y: 970 },
+      { x: 1200, y: 970 }, { x: 1400, y: 970 }, { x: 1600, y: 970 },
+      // Left edge
+      { x: 5, y: 150 }, { x: 5, y: 350 }, { x: 5, y: 550 }, { x: 5, y: 750 },
+      // Right edge
+      { x: 1815, y: 150 }, { x: 1815, y: 350 }, { x: 1815, y: 550 }, { x: 1815, y: 750 },
+    ];
+
+    let knownAnkyIds = new Set();
+    let stickerCount = 0;
+
+    const initialAnkys = {{ ankys | json_encode() | safe }};
+    initialAnkys.forEach(a => {
+      if (a.image_url) addSticker(a);
+    });
+
+    function addSticker(anky) {
+      if (knownAnkyIds.has(anky.id)) return;
+      knownAnkyIds.add(anky.id);
+      const pos = STICKER_POSITIONS[stickerCount % STICKER_POSITIONS.length];
+      stickerCount++;
+      const img = document.createElement('img');
+      img.className = 'sticker';
+      img.src = '/' + anky.image_url;
+      img.style.left = pos.x + 'px';
+      img.style.top = pos.y + 'px';
+      img.alt = anky.title || 'anky';
+      document.getElementById('stickerBorder').appendChild(img);
+    }
+
+    // --- SSE for live text ---
+    let sse = null;
+    let reconnectTimer = null;
+
+    function connectSSE() {
+      if (sse) { sse.close(); }
+      sse = new EventSource('/api/stream-text');
+
+      sse.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          updateOverlay(data);
+        } catch(e) {}
+      };
+
+      sse.onerror = function() {
+        sse.close();
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connectSSE, 3000);
+      };
+    }
+
+    function updateOverlay(data) {
+      const idleMsg = document.getElementById('idleMessage');
+      const congratsMsg = document.getElementById('congratsMessage');
+      const congratsUser = document.getElementById('congratsUser');
+      const liveText = document.getElementById('liveText');
+      const cursor = document.getElementById('cursor');
+      const bottomRow = document.getElementById('bottomRow');
+      const lifeBarFill = document.getElementById('lifeBarFill');
+      const writerName = document.getElementById('writerName');
+
+      if (data.congrats) {
+        // Congratulations screen
+        idleMsg.style.display = 'none';
+        liveText.style.display = 'none';
+        cursor.style.display = 'none';
+        bottomRow.style.visibility = 'hidden';
+        congratsMsg.style.display = 'flex';
+        congratsUser.textContent = '@' + (data.writer_username || '');
+        lifeBarFill.style.width = '0%';
+        isCurrentlyLive = false;
+        lastUpdateTime = 0;
+        writerName.textContent = '';
+      } else if (data.is_live) {
+        congratsMsg.style.display = 'none';
+        idleMsg.style.display = 'none';
+        liveText.style.display = 'inline';
+        cursor.style.display = 'inline-block';
+        bottomRow.style.visibility = 'visible';
+
+        // @username + type badge
+        let nameStr = data.writer_username ? '@' + data.writer_username : '';
+        if (data.writer_type === 'agent') nameStr += ' [agent]';
+        writerName.textContent = nameStr;
+
+        // Update text (show last ~1200 chars for wider landscape)
+        const content = data.content || '';
+        const displayText = content.length > 1200 ? content.slice(-1200) : content;
+        liveText.textContent = displayText;
+
+        const textArea = document.getElementById('textContent');
+        textArea.scrollTop = textArea.scrollHeight;
+
+        // Stats
+        document.getElementById('wordCount').textContent = (data.words || 0) + ' words';
+        const mins = Math.floor((data.elapsed || 0) / 60);
+        const secs = Math.floor((data.elapsed || 0) % 60);
+        document.getElementById('elapsedTime').textContent = mins + ':' + String(secs).padStart(2, '0');
+
+        // Life bar — feed client-side drain timer
+        const idleRatio = Math.max(0, Math.min(1, data.idle_ratio || 0));
+        lastIdleRatio = idleRatio;
+        lastUpdateTime = Date.now();
+        isCurrentlyLive = true;
+        lifeBarFill.style.width = (idleRatio * 100) + '%';
+
+        // Progress bar
+        const progress = Math.max(0, Math.min(1, data.progress || 0));
+        document.getElementById('progressFill').style.width = (progress * 100) + '%';
+        document.getElementById('progressPct').textContent = Math.round(progress * 100) + '%';
+      } else {
+        congratsMsg.style.display = 'none';
+        idleMsg.style.display = 'flex';
+        liveText.style.display = 'none';
+        cursor.style.display = 'none';
+        bottomRow.style.visibility = 'hidden';
+        lifeBarFill.style.width = '0%';
+        isCurrentlyLive = false;
+        lastUpdateTime = 0;
+        writerName.textContent = '';
+      }
+    }
+
+    connectSSE();
+
+    // --- Client-side life bar drain between SSE updates ---
+    let lastIdleRatio = 0;
+    let lastUpdateTime = 0;
+    let isCurrentlyLive = false;
+
+    function drainLifeBar() {
+      if (!isCurrentlyLive || lastUpdateTime === 0) return;
+      const elapsed = (Date.now() - lastUpdateTime) / 1000;
+      // Drain at 1/8 per second (8s timeout)
+      const drained = lastIdleRatio - (elapsed / 8);
+      const clamped = Math.max(0, Math.min(1, drained));
+      document.getElementById('lifeBarFill').style.width = (clamped * 100) + '%';
+    }
+
+    setInterval(drainLifeBar, 100);
+
+    // --- Poll for new ankys every 30s ---
+    setInterval(async () => {
+      try {
+        const resp = await fetch('/api/ankys/today');
+        const data = await resp.json();
+        if (data.ankys) {
+          data.ankys.forEach(a => {
+            if (a.image_url) addSticker(a);
+          });
+        }
+      } catch(e) {}
+    }, 30000);
+  </script>
+</body>
+</html>

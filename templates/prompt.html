@@ -59,6 +59,22 @@
 
 {% block scripts %}
 <script>
+// --- localStorage persistence for anonymous users ---
+(function() {
+  function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+  var cookieUserId = getCookie('anky_user_id');
+  var storedToken = localStorage.getItem('anky_user_token');
+  if (cookieUserId) {
+    localStorage.setItem('anky_user_token', cookieUserId);
+  } else if (storedToken) {
+    document.cookie = 'anky_user_id=' + storedToken + '; path=/; max-age=31536000; SameSite=Lax';
+  }
+})();
+</script>
+<script>
 // Global — needed by share card onclick handlers
 var lastStreamedTitle = '';
 var lastStreamedReflection = '';
@@ -98,6 +114,27 @@ var lastStreamedReflection = '';
   var currentAnkyId = null;
   var chatHistory = [];
   var currentWritingText = '';
+
+  // --- Draft saving (debounced 2s) ---
+  var draftSaveTimer = null;
+  var draftKey = 'anky_draft_prompt_' + promptId;
+  function saveDraftToStorage() {
+    if (!sessionActive || !textarea.value) return;
+    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    localStorage.setItem(draftKey, JSON.stringify({
+      text: textarea.value,
+      elapsed: elapsed,
+      timestamp: Date.now()
+    }));
+  }
+  function clearDraft() {
+    localStorage.removeItem(draftKey);
+  }
+  function saveAnkyId(ankyId) {
+    var myAnkys = JSON.parse(localStorage.getItem('anky_my_ankys') || '[]');
+    myAnkys.unshift({ id: ankyId, timestamp: Date.now() });
+    localStorage.setItem('anky_my_ankys', JSON.stringify(myAnkys.slice(0, 50)));
+  }
 
   // Challenge overlay dismiss
   function dismissChallenge() {
@@ -251,6 +288,7 @@ var lastStreamedReflection = '';
         }
         if (data.is_anky && data.anky_id) {
           currentAnkyId = data.anky_id;
+          saveAnkyId(data.anky_id);
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
           streamAnkyReflection(data.anky_id);
@@ -550,6 +588,9 @@ var lastStreamedReflection = '';
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
 
+    // Clear draft from localStorage — writing is being submitted
+    clearDraft();
+
     // Fire-and-forget: save prompt-specific session data
     fetch('/api/v1/prompt/' + promptId + '/write', {
       method: 'POST',
@@ -608,6 +649,7 @@ var lastStreamedReflection = '';
 
         if (data.is_anky && data.anky_id) {
           currentAnkyId = data.anky_id;
+          saveAnkyId(data.anky_id);
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
           streamAnkyReflection(data.anky_id);
@@ -640,6 +682,9 @@ var lastStreamedReflection = '';
 
     var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
     statWords.textContent = words + (words === 1 ? ' word' : ' words');
+    // Debounced draft save to localStorage
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(saveDraftToStorage, 2000);
   });
 
   // Blocked keys

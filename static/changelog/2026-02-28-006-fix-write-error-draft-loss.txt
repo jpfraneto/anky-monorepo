@@ -1,0 +1,40 @@
+Implement the following plan:
+
+# Plan: Fix "something went wrong" / writing not saved bug
+
+## Context
+A Farcaster user reported: after writing, they saw "something went wrong" and their text wasn't saved.
+
+Root cause: **`clearDraft()` is called at `home.html:1015` BEFORE the fetch fires**. If anything goes wrong — network error, Farcaster webview hiccup, slow connection — the draft is wiped from localStorage before the server even responds. The user's writing is permanently lost with no recovery path.
+
+## Bug locations
+
+**`templates/home.html` around line 1013–1051:**
+
+```js
+// Clear draft from localStorage — writing is being submitted
+clearDraft();  // ← BUG: clears BEFORE server confirms success
+
+fetch('/write', { method: 'POST', ... })
+  .then(function(r) { return r.json(); })
+  .then(function(data) { ... })
+  .catch(function() {
+    ankyBubble.innerHTML = '<span class="error">something went wrong.</span>';
+    // text is gone, no retry possible
+  });
+```
+
+Secondary bug: `.catch()` gives no recovery info and no retry path.
+
+## Fix — `templates/home.html` only
+
+**1. Remove `clearDraft()` from before the fetch.**
+
+**2. Add `clearDraft()` inside the success `.then()`, only after `!data.error`.**
+
+**3. In `.catch()`, since the draft was never cleared (fix 1), the draft is still in localStorage. Update the error message to tell the user their writing is preserved:**
+```
+"something went wrong — your writing is saved locally. reload to try again."
+```
+
+**4. Handle non-OK HTTP status** (e.g. 413 body too large) before calling `.json()` to avoid silent JSON parse failures.

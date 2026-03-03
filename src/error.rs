@@ -33,6 +33,9 @@ pub enum AppError {
     #[error("Payment required: {0}")]
     PaymentRequired(String),
 
+    #[error("Rate limited — try again in {0} seconds")]
+    RateLimited(u64),
+
     #[error("Service unavailable: {0}")]
     Unavailable(String),
 
@@ -47,12 +50,22 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
-        tracing::error!(%status, error = %self);
+        let msg = self.to_string();
+        if let AppError::Template(e) = &self {
+            tracing::error!(template_error_debug = ?e, "template render failure");
+        }
+        tracing::error!(%status, error = %msg);
 
-        (status, self.to_string()).into_response()
+        (
+            status,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({"error": msg}).to_string(),
+        )
+            .into_response()
     }
 }

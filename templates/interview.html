@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>anky — live interview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #e0e0e8;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    h1 { font-size: 28px; color: #c8a0ff; margin: 20px 0 10px; font-weight: 700; }
+    .subtitle { color: #888; font-size: 14px; margin-bottom: 30px; }
+
+    /* Consent screen */
+    #consent-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .consent-icon { font-size: 48px; margin-bottom: 10px; }
+    .consent-title { font-size: 22px; font-weight: 700; color: #ff6b6b; }
+    .consent-text { font-size: 15px; line-height: 1.7; color: #ccc; max-width: 400px; }
+    .consent-text strong { color: #ff6b6b; }
+    .consent-checkbox {
+      display: flex; align-items: flex-start; gap: 12px;
+      background: rgba(255, 107, 107, 0.08);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      border-radius: 12px; padding: 16px; max-width: 400px; text-align: left;
+    }
+    .consent-checkbox input[type="checkbox"] {
+      width: 22px; height: 22px; margin-top: 2px; flex-shrink: 0; accent-color: #ff6b6b;
+    }
+    .consent-checkbox label { font-size: 14px; line-height: 1.5; color: #ddd; cursor: pointer; }
+
+    /* Username + PFP section */
+    .setup-section {
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+      margin-top: 10px; width: 100%; max-width: 400px;
+    }
+    .input-field {
+      width: 100%; padding: 12px 16px; border-radius: 10px;
+      border: 2px solid #333; background: #1a1a25; color: #e0e0e8;
+      font-size: 16px; text-align: center; outline: none; transition: border-color 0.2s;
+    }
+    .input-field:focus { border-color: #c8a0ff; }
+    .input-field::placeholder { color: #555; }
+    .pfp-row { display: flex; align-items: center; gap: 12px; }
+    .pfp-preview {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: #1a1a25; border: 3px solid #333;
+      overflow: hidden; cursor: pointer; transition: border-color 0.2s; flex-shrink: 0;
+    }
+    .pfp-preview:hover { border-color: #c8a0ff; }
+    .pfp-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .pfp-label { font-size: 13px; color: #888; }
+    #pfp-input { display: none; }
+
+    /* Buttons */
+    .btn {
+      padding: 14px 36px; border-radius: 12px; border: none;
+      font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: linear-gradient(135deg, #a060ff, #c8a0ff); color: #0a0a0f; }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px); box-shadow: 0 4px 20px rgba(160, 96, 255, 0.4);
+    }
+
+    /* Interview screen */
+    #interview-screen { display: none; width: 100%; }
+    .status-bar {
+      text-align: center; padding: 12px; border-radius: 10px;
+      margin-bottom: 20px; font-size: 14px; font-weight: 600; transition: all 0.3s;
+    }
+    .status-waiting { background: rgba(100, 100, 120, 0.2); color: #888; }
+    .status-listening { background: rgba(80, 200, 120, 0.15); color: #50c878; }
+    .status-thinking { background: rgba(200, 160, 255, 0.15); color: #c8a0ff; }
+    .status-speaking { background: rgba(160, 96, 255, 0.2); color: #a060ff; }
+
+    .transcript {
+      flex: 1; overflow-y: auto; margin: 10px 0;
+      min-height: 200px; max-height: 50vh;
+    }
+    .msg {
+      margin-bottom: 16px; padding: 12px 16px; border-radius: 12px;
+      font-size: 15px; line-height: 1.6; animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-anky { background: rgba(160, 96, 255, 0.1); border-left: 3px solid #a060ff; }
+    .msg-anky .msg-name { color: #c8a0ff; }
+    .msg-guest { background: rgba(200, 200, 220, 0.08); border-left: 3px solid #555; }
+    .msg-guest .msg-name { color: #aaa; }
+    .msg-name {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 4px;
+    }
+    .msg-processing {
+      background: rgba(200, 160, 255, 0.05); border-left: 3px solid #333;
+      color: #888; font-style: italic;
+    }
+
+    .mic-controls { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 20px 0; }
+    .mic-btn {
+      width: 72px; height: 72px; border-radius: 50%;
+      border: 3px solid #333; background: #1a1a25; color: #888;
+      font-size: 28px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mic-btn.active-mic {
+      border-color: #50c878; background: rgba(80, 200, 120, 0.12); color: #50c878;
+      animation: pulse-green 2s infinite;
+    }
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(80, 200, 120, 0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(80, 200, 120, 0); }
+    }
+    .mic-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .exit-btn {
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 2px solid #444; background: rgba(255, 68, 68, 0.08); color: #ff6b6b;
+      font-size: 18px; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .exit-btn:hover { background: rgba(255, 68, 68, 0.2); border-color: #ff6b6b; }
+    .volume-bar {
+      width: 60%; max-width: 240px; height: 4px; border-radius: 2px;
+      background: #1a1a25; margin: 0 auto 4px; overflow: hidden;
+    }
+    .volume-bar-fill {
+      height: 100%; width: 0%; border-radius: 2px;
+      background: linear-gradient(90deg, #50c878, #80ff80);
+      transition: width 0.1s;
+    }
+
+    .recording-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255, 50, 50, 0.15); border: 1px solid rgba(255, 50, 50, 0.3);
+      color: #ff6b6b; padding: 6px 14px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; margin-bottom: 16px;
+    }
+    .recording-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #ff4444;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .footer { margin-top: auto; padding: 20px 0; text-align: center; color: #444; font-size: 13px; }
+
+    .error-banner {
+      display: none; background: rgba(255, 68, 68, 0.15);
+      border: 1px solid rgba(255, 68, 68, 0.3); color: #ff6b6b;
+      padding: 10px 16px; border-radius: 8px; font-size: 13px;
+      text-align: center; margin-bottom: 16px; width: 100%;
+    }
+
+    /* Timer */
+    .timer-bar {
+      display: none; text-align: center; padding: 8px 16px;
+      border-radius: 8px; margin-bottom: 12px; font-size: 13px;
+      font-weight: 600; font-variant-numeric: tabular-nums;
+      background: rgba(200, 160, 255, 0.08); color: #aaa;
+    }
+    .timer-bar.warning {
+      background: rgba(255, 160, 50, 0.15); color: #ffaa33;
+      animation: timer-pulse 1s infinite;
+    }
+    @keyframes timer-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .timer-bar .timer-label { font-size: 11px; color: #666; margin-right: 8px; }
+
+    /* PFP placeholder text */
+    .pfp-placeholder-text {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: #1a1a25; border: 3px dashed #444;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; color: #666; text-align: center; line-height: 1.3;
+      padding: 6px; cursor: pointer; transition: border-color 0.2s; flex-shrink: 0;
+    }
+    .pfp-placeholder-text:hover { border-color: #c8a0ff; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>live interview</h1>
+    <p class="subtitle">sit down with anky — streamed live on pump.fun</p>
+
+    <!-- CONSENT SCREEN -->
+    <div id="consent-screen">
+      <div class="consent-icon">&#127909;</div>
+      <div class="consent-title">This interview is recorded and streamed live</div>
+      <p class="consent-text">
+        You are about to join a <strong>live interview with Anky</strong> that is
+        <strong>broadcast in real-time</strong> on pump.fun.<br><br>
+        Your voice, your words, and everything you say will be
+        <strong>recorded, streamed publicly, and may be stored</strong>.<br><br>
+        By proceeding, you acknowledge and consent to this.
+      </p>
+
+      <div class="consent-checkbox">
+        <input type="checkbox" id="consent-check">
+        <label for="consent-check">
+          I understand this is a <strong>live public broadcast</strong>.
+          I consent to my voice and responses being recorded, streamed, and stored.
+        </label>
+      </div>
+
+      <div class="setup-section">
+        <input type="text" class="input-field" id="username-input"
+               placeholder="your name (shown on stream)" maxlength="30">
+
+        <div class="pfp-row">
+          <div id="pfp-wrap" onclick="document.getElementById('pfp-input').click()">
+            <div class="pfp-placeholder-text" id="pfp-placeholder">(this could be you)</div>
+            <div class="pfp-preview" id="pfp-preview-box" style="display:none;">
+              <img id="pfp-img" src="" alt="Your avatar">
+            </div>
+          </div>
+          <span class="pfp-label">tap to upload your profile picture (optional)</span>
+        </div>
+        <input type="file" id="pfp-input" accept="image/*">
+      </div>
+
+      <button class="btn btn-primary" id="consent-btn" disabled onclick="giveConsent()">
+        I consent — let's go
+      </button>
+    </div>
+
+    <!-- INTERVIEW SCREEN -->
+    <div id="interview-screen">
+      <div class="recording-badge">
+        <span class="recording-dot"></span>
+        LIVE — being recorded and streamed
+      </div>
+
+      <div class="timer-bar" id="timer-bar">
+        <span class="timer-label">time remaining:</span>
+        <span id="timer-display">--:--</span>
+      </div>
+
+      <div class="error-banner" id="error-banner"></div>
+
+      <div class="status-bar status-waiting" id="status-bar">connecting...</div>
+
+      <div class="transcript" id="transcript"></div>
+
+      <div class="volume-bar" id="volume-bar" style="display:none;">
+        <div class="volume-bar-fill" id="volume-fill"></div>
+      </div>
+
+      <div class="mic-controls">
+        <button class="mic-btn" id="mic-btn" disabled>
+          &#127908;
+        </button>
+        <button class="exit-btn" id="exit-btn" title="Leave interview" onclick="leaveInterview()">
+          &#10005;
+        </button>
+      </div>
+      <p style="text-align:center; color:#555; font-size:12px; margin-top:4px;" id="mic-hint">
+        mic activates automatically — just talk
+      </p>
+    </div>
+
+    <div class="footer">anky.app</div>
+  </div>
+
+
+  <script>
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const WS_URL = `${wsProto}//${location.host}/ws/interview`;
+    const TARGET_SAMPLE_RATE = 16000;
+    let ws = null;
+    let audioStream = null;
+    let audioCtx = null;
+    let micSource = null;
+    let state = 'waiting';
+    let pfpData = null;
+    let guestName = '';
+    let isRecording = false;
+    let sendingAudio = false;
+    let maxDuration = 0;
+    let timerInterval = null;
+    let interviewStartTime = null;
+
+    // Injected by server if user is logged in
+    const LOGGED_IN = {{ logged_in | default(value="false") }};
+    const AUTH_USER_ID = '{{ user_id | default(value="") }}';
+    const AUTH_USERNAME = '{{ username | default(value="") }}';
+    const AUTH_PFP_URL = '{{ pfp_url | default(value="") }}';
+
+    const DEFAULT_PFP_PLACEHOLDER = '(this could be you)';
+
+    function showPfpImage(src) {
+      document.getElementById('pfp-placeholder').style.display = 'none';
+      var box = document.getElementById('pfp-preview-box');
+      box.style.display = '';
+      document.getElementById('pfp-img').src = src;
+    }
+
+    function resetPfp() {
+      document.getElementById('pfp-preview-box').style.display = 'none';
+      document.getElementById('pfp-placeholder').style.display = 'flex';
+      document.getElementById('pfp-img').src = '';
+      pfpData = null;
+    }
+
+    // Auto-fill from auth if logged in
+    if (LOGGED_IN && AUTH_USERNAME) {
+      document.getElementById('username-input').value = AUTH_USERNAME;
+    }
+    if (LOGGED_IN && AUTH_PFP_URL) {
+      showPfpImage(AUTH_PFP_URL);
+    }
+
+    // Consent checkbox enables button
+    document.getElementById('consent-check').addEventListener('change', function() {
+      document.getElementById('consent-btn').disabled = !this.checked;
+    });
+
+    // PFP upload
+    document.getElementById('pfp-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        showPfpImage(ev.target.result);
+        pfpData = ev.target.result.split(',')[1];
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function giveConsent() {
+      // Unlock AudioContext on user gesture (required by browsers)
+      // Use browser's native sample rate — we downsample to 16kHz in JS
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+
+      guestName = document.getElementById('username-input').value.trim() || 'guest';
+
+      document.getElementById('consent-screen').style.display = 'none';
+      document.getElementById('interview-screen').style.display = 'flex';
+      document.getElementById('interview-screen').style.flexDirection = 'column';
+      document.getElementById('interview-screen').style.flex = '1';
+      connectWebSocket();
+    }
+
+    function connectWebSocket() {
+      ws = new WebSocket(WS_URL);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        // Send identity first if logged in
+        if (LOGGED_IN && AUTH_USER_ID) {
+          ws.send(JSON.stringify({ type: 'identity', user_id: AUTH_USER_ID, username: AUTH_USERNAME }));
+        }
+        ws.send(JSON.stringify({ type: 'consent' }));
+        if (guestName && guestName !== 'guest') {
+          ws.send(JSON.stringify({ type: 'username', name: guestName }));
+        }
+        if (pfpData) {
+          ws.send(JSON.stringify({ type: 'pfp', data: pfpData }));
+        }
+        setupMicPipeline().then(() => {
+          ws.send(JSON.stringify({ type: 'start' }));
+        }).catch(err => {
+          console.error('Mic setup failed:', err);
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            showError('Microphone access denied. Please allow mic access and refresh.');
+          } else {
+            showError('Mic setup error: ' + err.message + '. Try refreshing.');
+          }
+        });
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          handleMessage(data);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket closed');
+        updateState('disconnected');
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error', err);
+        showError('Cannot connect to interview engine. Is it running?');
+      };
+    }
+
+    // Downsample float32 audio from srcRate to targetRate
+    function downsample(float32, srcRate, targetRate) {
+      if (srcRate === targetRate) return float32;
+      const ratio = srcRate / targetRate;
+      const newLen = Math.round(float32.length / ratio);
+      const result = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        const srcIdx = i * ratio;
+        const idx = Math.floor(srcIdx);
+        const frac = srcIdx - idx;
+        const a = float32[idx] || 0;
+        const b = float32[Math.min(idx + 1, float32.length - 1)] || 0;
+        result[i] = a + frac * (b - a);
+      }
+      return result;
+    }
+
+    let scriptProcessor = null;
+
+    async function setupMicPipeline() {
+      // Step 1: Get mic access
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true }
+      });
+      console.log('Mic access granted');
+
+      const nativeSampleRate = audioCtx.sampleRate;
+      console.log('Native sample rate:', nativeSampleRate);
+
+      // Step 2: Create pipeline using ScriptProcessorNode
+      // (CSP blocks blob: URLs needed for AudioWorklet)
+      micSource = audioCtx.createMediaStreamSource(audioStream);
+      scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+      scriptProcessor.onaudioprocess = (e) => {
+        if (!sendingAudio || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const float32 = e.inputBuffer.getChannelData(0);
+
+        // Calculate RMS for volume meter
+        let sum = 0;
+        for (let i = 0; i < float32.length; i++) sum += float32[i] * float32[i];
+        const rms = Math.sqrt(sum / float32.length);
+        const volumePct = Math.min(100, Math.round(rms * 500));
+        const fill = document.getElementById('volume-fill');
+        if (fill) fill.style.width = volumePct + '%';
+
+        // Downsample from native rate to 16000Hz
+        const downsampled = downsample(float32, nativeSampleRate, TARGET_SAMPLE_RATE);
+        // Convert float32 → int16
+        const int16 = new Int16Array(downsampled.length);
+        for (let i = 0; i < downsampled.length; i++) {
+          const s = Math.max(-1, Math.min(1, downsampled[i]));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ws.send(int16.buffer);
+      };
+
+      micSource.connect(scriptProcessor);
+      // Must connect to destination for processing to run (output is silent)
+      scriptProcessor.connect(audioCtx.destination);
+
+      console.log('Mic pipeline ready (ScriptProcessor)');
+    }
+
+    function handleMessage(data) {
+      switch (data.type) {
+        case 'state':
+          updateState(data.state);
+          break;
+        case 'anky_says':
+          addMessage('anky', data.text);
+          if (data.audio) playAudio(data.audio);
+          break;
+        case 'guest_transcript':
+          removeProcessingMsg();
+          addMessage('guest', data.text);
+          break;
+        case 'processing':
+          showProcessing(data.stage);
+          break;
+        case 'pfp_ack':
+          console.log('PFP received by server');
+          break;
+        case 'error':
+          showError(data.message);
+          break;
+        case 'time_config':
+          maxDuration = data.max_duration || 300;
+          interviewStartTime = Date.now();
+          startTimer();
+          break;
+        case 'time_warning':
+          handleTimeWarning(data.remaining);
+          break;
+        case 'time_up':
+          handleTimeUp(data.message);
+          break;
+      }
+    }
+
+    function startTimer() {
+      var timerBar = document.getElementById('timer-bar');
+      timerBar.style.display = 'block';
+      updateTimerDisplay();
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    function updateTimerDisplay() {
+      if (!interviewStartTime || !maxDuration) return;
+      var elapsed = Math.floor((Date.now() - interviewStartTime) / 1000);
+      var remaining = Math.max(0, maxDuration - elapsed);
+      var m = Math.floor(remaining / 60);
+      var s = remaining % 60;
+      document.getElementById('timer-display').textContent = m + ':' + String(s).padStart(2, '0');
+      if (remaining <= 60 && remaining > 0) {
+        document.getElementById('timer-bar').classList.add('warning');
+      }
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+      }
+    }
+
+    function handleTimeWarning(remaining) {
+      var timerBar = document.getElementById('timer-bar');
+      timerBar.classList.add('warning');
+      addMessage('anky', 'one minute remaining...');
+    }
+
+    function handleTimeUp(message) {
+      // Show the message briefly in transcript, then reset to consent
+      if (message) addMessage('anky', message);
+      setTimeout(function() { resetToConsent(); }, 4000);
+    }
+
+    function updateState(newState) {
+      state = newState;
+      const bar = document.getElementById('status-bar');
+      const micBtn = document.getElementById('mic-btn');
+      const hint = document.getElementById('mic-hint');
+      const volBar = document.getElementById('volume-bar');
+      bar.className = 'status-bar';
+
+      switch (newState) {
+        case 'waiting':
+        case 'consented':
+          bar.classList.add('status-waiting');
+          bar.textContent = 'connecting...';
+          micBtn.disabled = true;
+          volBar.style.display = 'none';
+          break;
+        case 'listening':
+          bar.classList.add('status-listening');
+          bar.textContent = 'your turn — just speak naturally';
+          micBtn.disabled = false;
+          hint.textContent = 'mic is live — tap to force-send early';
+          volBar.style.display = 'block';
+          // Auto-start listening
+          autoStartListening();
+          break;
+        case 'thinking':
+          bar.classList.add('status-thinking');
+          bar.textContent = 'processing your words...';
+          micBtn.disabled = true;
+          volBar.style.display = 'none';
+          stopSendingAudio();
+          break;
+        case 'speaking':
+          bar.classList.add('status-speaking');
+          bar.textContent = 'anky is speaking...';
+          micBtn.disabled = true;
+          volBar.style.display = 'none';
+          stopSendingAudio();
+          break;
+        case 'disconnected':
+          // Interview ended — reset back to consent screen after brief pause
+          stopSendingAudio();
+          setTimeout(function() { resetToConsent(); }, 1500);
+          break;
+      }
+    }
+
+    function autoStartListening() {
+      if (!scriptProcessor || !ws || ws.readyState !== WebSocket.OPEN) return;
+      sendingAudio = true;
+      isRecording = true;
+      const micBtn = document.getElementById('mic-btn');
+      micBtn.classList.add('active-mic');
+      micBtn.innerHTML = '&#9993;'; // send icon
+    }
+
+    function stopSendingAudio() {
+      sendingAudio = false;
+      isRecording = false;
+      const micBtn = document.getElementById('mic-btn');
+      micBtn.classList.remove('active-mic');
+      micBtn.innerHTML = '&#127908;';
+      document.getElementById('volume-fill').style.width = '0%';
+    }
+
+    function addMessage(role, text) {
+      const transcript = document.getElementById('transcript');
+      const div = document.createElement('div');
+      const name = role === 'anky' ? 'anky' : guestName;
+      div.className = `msg msg-${role}`;
+      div.innerHTML = `<div class="msg-name">${escapeHtml(name)}</div><div>${escapeHtml(text)}</div>`;
+      transcript.appendChild(div);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function showProcessing(stage) {
+      removeProcessingMsg();
+      const transcript = document.getElementById('transcript');
+      const div = document.createElement('div');
+      div.className = 'msg msg-processing';
+      div.id = 'processing-msg';
+      const stages = {
+        'transcribing': 'transcribing your words...',
+        'thinking': 'anky is thinking...',
+      };
+      div.innerHTML = `<div>${stages[stage] || 'processing...'}</div>`;
+      transcript.appendChild(div);
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function removeProcessingMsg() {
+      const el = document.getElementById('processing-msg');
+      if (el) el.remove();
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Mic button = manual "send now" override
+    const micBtn = document.getElementById('mic-btn');
+    micBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (state !== 'listening' || !isRecording) return;
+      // Force-send: tell server to process what we have so far
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'audio_end' }));
+      }
+    });
+
+    function leaveInterview() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'leave' }));
+        ws.close();
+      }
+      resetToConsent();
+    }
+
+    function resetToConsent() {
+      // Stop all audio/timers
+      stopSendingAudio();
+      clearInterval(timerInterval);
+      timerInterval = null;
+      interviewStartTime = null;
+      maxDuration = 0;
+
+      // Close websocket if still open
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.close(); } catch(_) {}
+      }
+      ws = null;
+
+      // Stop mic stream
+      if (audioStream) {
+        audioStream.getTracks().forEach(function(t) { t.stop(); });
+        audioStream = null;
+      }
+      if (scriptProcessor) {
+        try { scriptProcessor.disconnect(); } catch(_) {}
+        scriptProcessor = null;
+      }
+      if (micSource) {
+        try { micSource.disconnect(); } catch(_) {}
+        micSource = null;
+      }
+
+      // Reset UI
+      document.getElementById('interview-screen').style.display = 'none';
+      document.getElementById('consent-screen').style.display = 'flex';
+      document.getElementById('transcript').innerHTML = '';
+      document.getElementById('error-banner').style.display = 'none';
+      document.getElementById('timer-bar').style.display = 'none';
+      document.getElementById('timer-bar').classList.remove('warning');
+      document.getElementById('timer-display').textContent = '--:--';
+
+      // Reset consent checkbox
+      document.getElementById('consent-check').checked = false;
+      document.getElementById('consent-btn').disabled = true;
+
+      // Reset PFP to placeholder
+      resetPfp();
+
+      // Reset username field (keep auth username if logged in)
+      if (!LOGGED_IN) {
+        document.getElementById('username-input').value = '';
+      }
+      // Re-fill auth PFP if logged in
+      if (LOGGED_IN && AUTH_PFP_URL) {
+        showPfpImage(AUTH_PFP_URL);
+      }
+
+      guestName = '';
+      state = 'waiting';
+    }
+
+    function playAudio(base64Wav) {
+      if (!base64Wav) return;
+      try {
+        const raw = atob(base64Wav);
+        const buffer = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) buffer[i] = raw.charCodeAt(i);
+
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        ctx.decodeAudioData(buffer.buffer.slice(0), (audioBuffer) => {
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.start(0);
+        }, (err) => {
+          console.warn('AudioContext decode failed, falling back to Audio element', err);
+          playAudioFallback(buffer);
+        });
+      } catch (e) {
+        console.warn('Audio play error:', e);
+      }
+    }
+
+    function playAudioFallback(uint8Array) {
+      const blob = new Blob([uint8Array], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play().catch(e => console.warn('Audio fallback failed:', e));
+    }
+
+    function showError(msg) {
+      const banner = document.getElementById('error-banner');
+      banner.textContent = msg;
+      banner.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}anky — leaderboard{% endblock %}
+
+{% block content %}
+<div class="leaderboard-page">
+  <div class="leaderboard-header">
+    <h1>leaderboard</h1>
+    <p class="leaderboard-subtitle">who flows the deepest?</p>
+    <div class="leaderboard-tabs">
+      <a href="/leaderboard?sort=flow" class="lb-tab {% if sort == 'flow' %}active{% endif %}" style="--tab-color:#e74c3c;">flow score</a>
+      <a href="/leaderboard?sort=streak" class="lb-tab {% if sort == 'streak' %}active{% endif %}" style="--tab-color:#f39c12;">streak</a>
+      <a href="/leaderboard?sort=ankys" class="lb-tab {% if sort == 'ankys' %}active{% endif %}" style="--tab-color:#2ecc71;">ankys</a>
+      <a href="/leaderboard?sort=words" class="lb-tab {% if sort == 'words' %}active{% endif %}" style="--tab-color:#3498db;">words</a>
+    </div>
+  </div>
+
+  {% if entries | length == 0 %}
+  <div class="leaderboard-empty">
+    <p>no sessions yet. be the first to write an anky and claim the top spot.</p>
+    <a href="/" class="land-btn">start writing</a>
+  </div>
+  {% else %}
+  <div class="leaderboard-table">
+    <div class="lb-row lb-header-row">
+      <span class="lb-rank">#</span>
+      <span class="lb-name">writer</span>
+      <span class="lb-stat">flow</span>
+      <span class="lb-stat">avg</span>
+      <span class="lb-stat">ankys</span>
+      <span class="lb-stat lb-hide-mobile">words</span>
+      <span class="lb-stat">streak</span>
+    </div>
+    {% for entry in entries %}
+    <div class="lb-row {% if entry.rank <= 3 %}lb-top-{{ entry.rank }}{% endif %}">
+      <span class="lb-rank">
+        {% if entry.rank == 1 %}🥇{% elif entry.rank == 2 %}🥈{% elif entry.rank == 3 %}🥉{% else %}{{ entry.rank }}{% endif %}
+      </span>
+      <span class="lb-name">{{ entry.username }}</span>
+      <span class="lb-stat lb-flow" style="--flow-pct:{{ entry.best_flow_score }}%;">{{ entry.best_flow_score }}</span>
+      <span class="lb-stat">{{ entry.avg_flow_score }}</span>
+      <span class="lb-stat">{{ entry.total_ankys }}</span>
+      <span class="lb-stat lb-hide-mobile">{{ entry.total_words }}</span>
+      <span class="lb-stat lb-streak">
+        {% if entry.current_streak > 0 %}🔥{{ entry.current_streak }}{% else %}{{ entry.longest_streak }}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

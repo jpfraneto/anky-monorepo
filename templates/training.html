@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}anky — training curation{% endblock %}
+{% block content %}
+<style>
+  .training-container {
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 1rem;
+    text-align: center;
+    min-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .training-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.85rem;
+    color: #888;
+  }
+  .training-stats .stat-val {
+    font-size: 1.4rem;
+    font-weight: bold;
+    display: block;
+  }
+  .stat-yes .stat-val { color: #4caf50; }
+  .stat-no .stat-val { color: #f44336; }
+  .stat-remaining .stat-val { color: #ff9800; }
+  .training-card {
+    position: relative;
+    width: 100%;
+    max-width: 450px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #111;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    transition: transform 0.3s, opacity 0.3s;
+  }
+  .training-card.swipe-left {
+    transform: translateX(-120%) rotate(-15deg);
+    opacity: 0;
+  }
+  .training-card.swipe-right {
+    transform: translateX(120%) rotate(15deg);
+    opacity: 0;
+  }
+  .training-card img {
+    width: 100%;
+    display: block;
+    min-height: 300px;
+    object-fit: contain;
+    background: #0a0a0a;
+  }
+  .training-card-info {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.8rem;
+    color: #aaa;
+    max-height: 80px;
+    overflow: hidden;
+  }
+  .training-card-info .card-title {
+    color: #fff;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+  .training-buttons {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1.5rem;
+    justify-content: center;
+  }
+  .training-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid;
+    background: transparent;
+    font-size: 2rem;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .training-btn:active {
+    transform: scale(0.9);
+  }
+  .btn-no {
+    border-color: #f44336;
+    color: #f44336;
+  }
+  .btn-no:hover {
+    background: rgba(244, 67, 54, 0.15);
+  }
+  .btn-yes {
+    border-color: #4caf50;
+    color: #4caf50;
+  }
+  .btn-yes:hover {
+    background: rgba(76, 175, 80, 0.15);
+  }
+  .training-done {
+    font-size: 1.2rem;
+    color: #4caf50;
+    margin-top: 2rem;
+  }
+  .training-done p {
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+  .training-keyboard-hint {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: #555;
+  }
+</style>
+
+<div class="training-container">
+  <h1 style="margin-bottom: 0.5rem;">training curation</h1>
+  <p style="color: #888; margin-bottom: 1.5rem; font-size: 0.9rem;">select the images that best represent anky</p>
+
+  <div class="training-stats">
+    <div class="stat-yes"><span class="stat-val" id="stat-yes">0</span> approved</div>
+    <div class="stat-no"><span class="stat-val" id="stat-no">0</span> rejected</div>
+    <div class="stat-remaining"><span class="stat-val" id="stat-remaining">0</span> remaining</div>
+  </div>
+
+  <div id="card-area">
+    <div class="training-card" id="training-card">
+      <img id="card-image" src="" alt="anky image">
+      <div class="training-card-info">
+        <div class="card-title" id="card-title"></div>
+        <div id="card-prompt"></div>
+      </div>
+    </div>
+
+    <div class="training-buttons">
+      <button class="training-btn btn-no" id="btn-no" title="Reject (left arrow)">&#10007;</button>
+      <button class="training-btn btn-yes" id="btn-yes" title="Approve (right arrow)">&#10003;</button>
+    </div>
+
+    <div class="training-keyboard-hint">
+      keyboard: <b>&larr;</b> reject &nbsp;&middot;&nbsp; <b>&rarr;</b> approve
+    </div>
+  </div>
+
+  <div class="training-done" id="training-done" style="display:none;">
+    all images reviewed!
+    <p>approved images copied to <code>data/training-images/</code></p>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var currentAnky = null;
+  var busy = false;
+
+  function loadNext() {
+    fetch('/api/training/next')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        document.getElementById('stat-yes').textContent = data.approved || 0;
+        document.getElementById('stat-no').textContent = data.rejected || 0;
+        document.getElementById('stat-remaining').textContent = data.remaining || 0;
+
+        if (!data.anky) {
+          document.getElementById('card-area').style.display = 'none';
+          document.getElementById('training-done').style.display = '';
+          return;
+        }
+
+        currentAnky = data.anky;
+        var img = document.getElementById('card-image');
+        img.src = data.anky.image_url;
+        document.getElementById('card-title').textContent = data.anky.title || 'untitled';
+        document.getElementById('card-prompt').textContent = (data.anky.image_prompt || '').substring(0, 120);
+
+        // Reset card animation
+        var card = document.getElementById('training-card');
+        card.classList.remove('swipe-left', 'swipe-right');
+        card.style.display = '';
+        busy = false;
+      })
+      .catch(function(err) {
+        console.error('load error', err);
+        busy = false;
+      });
+  }
+
+  function vote(approved) {
+    if (busy || !currentAnky) return;
+    busy = true;
+
+    var card = document.getElementById('training-card');
+    card.classList.add(approved ? 'swipe-right' : 'swipe-left');
+
+    fetch('/api/training/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: currentAnky.id, approved: approved })
+    })
+    .then(function() {
+      setTimeout(loadNext, 300);
+    })
+    .catch(function() {
+      busy = false;
+      card.classList.remove('swipe-left', 'swipe-right');
+    });
+  }
+
+  document.getElementById('btn-yes').addEventListener('click', function() { vote(true); });
+  document.getElementById('btn-no').addEventListener('click', function() { vote(false); });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight') { e.preventDefault(); vote(true); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); vote(false); }
+  });
+
+  loadNext();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}anky - dca bot code{% endblock %}
+
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #e8fff3;
+    --muted: #9cc0b1;
+    --mint: #70ffbc;
+    --purple: #b891ff;
+    --blue: #7cb9ff;
+    --panel: rgba(8, 17, 21, 0.86);
+    --line: rgba(112, 255, 188, 0.22);
+  }
+  .dca-code-page {
+    position: relative;
+    max-width: 1060px;
+    margin: 18px auto 28px;
+    padding: 14px;
+    color: var(--ink);
+    font-family: "Space Grotesk", sans-serif;
+  }
+  .dca-code-page::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(900px 500px at 8% 2%, rgba(124, 185, 255, 0.11), transparent 58%),
+      radial-gradient(920px 520px at 95% 15%, rgba(184, 145, 255, 0.12), transparent 62%),
+      linear-gradient(180deg, #05090d 0%, #060f13 100%);
+  }
+  .dca-hero {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    background: linear-gradient(145deg, rgba(9, 20, 25, 0.92), rgba(7, 14, 18, 0.9));
+    box-shadow: 0 0 0 1px rgba(112, 255, 188, 0.08), 0 26px 60px rgba(0, 0, 0, 0.42);
+  }
+  .dca-kicker {
+    margin: 0 0 8px;
+    color: var(--mint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .dca-hero h2 {
+    margin: 0;
+    font-size: clamp(28px, 6.2vw, 44px);
+    line-height: 1.04;
+  }
+  .dca-hero p {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .dca-command {
+    margin-top: 14px;
+    border: 1px solid rgba(124, 185, 255, 0.24);
+    border-radius: 12px;
+    padding: 12px;
+    background: rgba(9, 17, 28, 0.72);
+  }
+  .dca-command-label {
+    margin: 0 0 6px;
+    color: var(--blue);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .dca-command code {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    font-family: "JetBrains Mono", monospace;
+    color: #d6e8ff;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: 13px;
+  }
+  .dca-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .dca-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    background: var(--panel);
+  }
+  .dca-card h3 {
+    margin: 0 0 10px;
+    color: var(--mint);
+    font-size: 16px;
+  }
+  .dca-card ol,
+  .dca-card ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+  }
+  .dca-card li + li {
+    margin-top: 8px;
+  }
+  .dca-card code {
+    font-family: "JetBrains Mono", monospace;
+    color: #d6ffe8;
+    background: rgba(15, 30, 25, 0.84);
+    border: 1px solid rgba(112, 255, 188, 0.18);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .dca-links {
+    margin-top: 12px;
+    border: 1px solid rgba(184, 145, 255, 0.28);
+    border-radius: 12px;
+    padding: 14px;
+    background: rgba(13, 12, 26, 0.66);
+  }
+  .dca-links h3 {
+    margin: 0 0 9px;
+    color: var(--purple);
+    font-size: 16px;
+  }
+  .dca-links ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .dca-links li + li {
+    margin-top: 7px;
+  }
+  .dca-links a {
+    color: #cfb7ff;
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(207, 183, 255, 0.45);
+  }
+  .dca-links a:hover {
+    color: #eadbff;
+    border-bottom-color: rgba(234, 219, 255, 0.9);
+  }
+  @media (max-width: 860px) {
+    .dca-grid {
+      grid-template-columns: 1fr;
+    }
+    .dca-code-page {
+      padding: 8px;
+    }
+    .dca-hero,
+    .dca-card,
+    .dca-links {
+      padding: 12px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dca-code-page">
+  <section class="dca-hero">
+    <p class="dca-kicker">One Command Launch</p>
+    <h2>Run your own DCA bot in under a minute.</h2>
+    <p>Interactive setup. New wallet. Token mint input. Scheduler. Live logs.</p>
+    <div class="dca-command">
+      <p class="dca-command-label">Terminal</p>
+      <code>{{ dca_bot_one_liner }}</code>
+    </div>
+  </section>
+
+  <section class="dca-grid">
+    <article class="dca-card">
+      <h3>Setup Prompts</h3>
+      <ol>
+        <li><code>FUND THIS WALLET WITH SOL</code></li>
+        <li><code>HOW OFTEN?</code> (1m / 15m / 60m)</li>
+        <li><code>HOW MUCH SOL PER BUY?</code></li>
+        <li><code>TOKEN CONTRACT ADDRESS</code> (Solana CA)</li>
+        <li><code>Do you want to send 1% of each buy to the dev?</code> (yes/no)</li>
+      </ol>
+    </article>
+
+    <article class="dca-card">
+      <h3>What Gets Installed</h3>
+      <ul>
+        <li>Directory: <code>~/.dca-bot</code></li>
+        <li>Wallet + env config</li>
+        <li>Python venv + required packages</li>
+        <li>Scheduler: systemd timer (or cron fallback)</li>
+        <li>Local log monitor on <code>http://localhost:6969</code></li>
+        <li>Logs: <code>~/.dca-bot/logs/anky_dca.log</code></li>
+        <li>Optional dev fee wallet: <code>CUJQnwHYzv2ohp4J8NgqveNJWG14Ys4Fbc2mSvgTuwd6</code></li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="dca-links">
+    <h3>Source</h3>
+    <ul>
+      <li>github: <a href="{{ dca_bot_github_url }}" target="_blank" rel="noopener noreferrer">{{ dca_bot_github_url }}</a></li>
+      <li>installer: <a href="/static/dca-bot/install.sh" target="_blank" rel="noopener noreferrer">/static/dca-bot/install.sh</a></li>
+      <li>bot: <a href="/static/dca-bot/anky_dca_buy.py" target="_blank" rel="noopener noreferrer">/static/dca-bot/anky_dca_buy.py</a></li>
+      <li>log monitor: <a href="/static/dca-bot/log_monitor.py" target="_blank" rel="noopener noreferrer">/static/dca-bot/log_monitor.py</a></li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

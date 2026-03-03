@@ -1,0 +1,1 @@
+ok cool. she is in. the thing is that the meditation button is not working properly so just please deete it. it is mandatory that the ui is focused only on the textarea always, and that it accounts for the keyboard when it is opened. make everything very seamless.

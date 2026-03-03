@@ -15,7 +15,11 @@ pub async fn start_scheduler(state: AppState) -> anyhow::Result<()> {
                 state.emit_log("INFO", "scheduler", "Daily training cycle triggered (3 AM)");
                 if let Err(e) = crate::training::orchestrator::run_training_cycle(&state).await {
                     tracing::error!("Training cycle error: {}", e);
-                    state.emit_log("ERROR", "scheduler", &format!("Training cycle error: {}", e));
+                    state.emit_log(
+                        "ERROR",
+                        "scheduler",
+                        &format!("Training cycle error: {}", e),
+                    );
                 }
             })
         })?)

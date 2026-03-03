@@ -22,21 +22,24 @@ If the prompt describes fewer than 88, extrapolate similar beings to reach 88 to
 
 OUTPUT: A JSON array only. No markdown, no explanation."#;
 
-    let result = crate::services::claude::generate_prompt(api_key, &format!("SYSTEM: {}\n\nMEGA-PROMPT:\n{}", system, mega_prompt)).await?;
+    let result = crate::services::claude::generate_prompt(
+        api_key,
+        &format!("SYSTEM: {}\n\nMEGA-PROMPT:\n{}", system, mega_prompt),
+    )
+    .await?;
 
-    let beings: Vec<Being> = serde_json::from_str(&result.text)
-        .unwrap_or_else(|_| {
-            // Fallback: try to extract JSON from response
-            if let Some(start) = result.text.find('[') {
-                if let Some(end) = result.text.rfind(']') {
-                    serde_json::from_str(&result.text[start..=end]).unwrap_or_default()
-                } else {
-                    Vec::new()
-                }
+    let beings: Vec<Being> = serde_json::from_str(&result.text).unwrap_or_else(|_| {
+        // Fallback: try to extract JSON from response
+        if let Some(start) = result.text.find('[') {
+            if let Some(end) = result.text.rfind(']') {
+                serde_json::from_str(&result.text[start..=end]).unwrap_or_default()
             } else {
                 Vec::new()
             }
-        });
+        } else {
+            Vec::new()
+        }
+    });
 
     Ok(beings)
 }
@@ -50,7 +53,11 @@ pub async fn generate_collection(
     state.emit_log(
         "INFO",
         "collection",
-        &format!("Starting collection {} with {} beings", &collection_id[..8], beings.len()),
+        &format!(
+            "Starting collection {} with {} beings",
+            &collection_id[..8],
+            beings.len()
+        ),
     );
 
     {
@@ -62,7 +69,13 @@ pub async fn generate_collection(
         state.emit_log(
             "INFO",
             "collection",
-            &format!("[{}/{}] Generating: {} — {}", i + 1, beings.len(), being.name, being.moment),
+            &format!(
+                "[{}/{}] Generating: {} — {}",
+                i + 1,
+                beings.len(),
+                being.name,
+                being.moment
+            ),
         );
 
         match stream_gen::generate_for_thinker(
@@ -78,14 +91,26 @@ pub async fn generate_collection(
                 state.emit_log(
                     "INFO",
                     "collection",
-                    &format!("[{}/{}] Complete: {} (anky {})", i + 1, beings.len(), being.name, &anky_id[..8]),
+                    &format!(
+                        "[{}/{}] Complete: {} (anky {})",
+                        i + 1,
+                        beings.len(),
+                        being.name,
+                        &anky_id[..8]
+                    ),
                 );
             }
             Err(e) => {
                 state.emit_log(
                     "ERROR",
                     "collection",
-                    &format!("[{}/{}] Failed: {} — {}", i + 1, beings.len(), being.name, e),
+                    &format!(
+                        "[{}/{}] Failed: {} — {}",
+                        i + 1,
+                        beings.len(),
+                        being.name,
+                        e
+                    ),
                 );
             }
         }

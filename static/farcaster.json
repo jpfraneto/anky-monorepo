@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjE2MDk4LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4YUIyMERlOGY1QTRmOGUxNDdCYWFDOUQxZjZlMjM2ODYxNDg1NTE2QSJ9",
+    "payload": "eyJkb21haW4iOiJhbmt5LmFwcCJ9",
+    "signature": "9Vir6YMUEvaiPmAJHAhiZvsR26j1mzGWYiFEAyDn9Ts6XRb9cqNAff4o1Ja5xY/C2dY9E4PeAZPHsLvtSHW6ehw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "anky",
+    "homeUrl": "https://anky.app",
+    "iconUrl": "https://anky.app/static/icon.png",
+    "imageUrl": "https://anky.app/api/v1/og-embed",
+    "buttonTitle": "write with anky",
+    "splashImageUrl": "https://anky.app/static/splash.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "webhookUrl": "https://anky.app/api/webhook"
+  }
+}

@@ -1,0 +1,10 @@
+Implement the following plan:
+
+# Plan: Reimagine Anky as Meditation-First Experience
+
+## Context
+Anky's 8-minute stream of consciousness writing is transformative but too hard as an entry point. We're redesigning the app around a progressive meditation practice where "doing nothing" is step 0. Anky is a mirror — the user's own awareness reflected back. The writing practice becomes the deep end, unlocked through relationship.
+
+**New flow:** Land → "Sit with me" → 30s meditation timer → 4 post-meditation options (Reflect / Journal / Write / Sit Again) → progression system deepens over time.
+
+please be very minimal with the copy. this needs yo be engaging and interactive. use a free open source gong sound for thr beginning and end of the timer. allow the user, if they tap the timer, to change the HH:MM settings so that users can use this as the default meditation timer. its the core functionality now. but there is also a very straughtforward and noticeable "write" button floating on the right left that if the user taps it the writing session starts

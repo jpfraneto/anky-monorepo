@@ -1,617 +1,941 @@
 {% extends "base.html" %}
 
-{% block title %}ANKY — Video Production Studio{% endblock %}
+{% block title %}video — anky{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="ANKY — Learn How To Focus">
-<meta property="og:description" content="A 2:22 video about writing yourself free. pump.fun Build in Public hackathon.">
+<meta property="og:title" content="ANKY — 88-Second Video">
+<meta property="og:description" content="Turn your 8-minute writing session into an 88-second cinematic video.">
 <meta property="og:image" content="https://anky.app/og/video">
-<meta property="og:type" content="video.other">
 <meta property="og:url" content="https://anky.app/generate/video">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:site" content="@jpfraneto">
-<meta name="twitter:title" content="ANKY — Learn How To Focus">
-<meta name="twitter:description" content="A 2:22 video about writing yourself free. pump.fun Build in Public hackathon.">
-<meta name="twitter:image" content="https://anky.app/og/video">
+<style>
+  .vid-root { display:flex; flex-direction:column; height:calc(100vh - 60px); padding:16px; gap:12px; overflow:hidden; }
+  .vid-header { display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .vid-header h1 { font-size:20px; margin:0; }
+  .vid-header .vid-sub { color:#888; font-size:13px; }
+
+  .vid-main { display:flex; gap:16px; flex:1; min-height:0; overflow:hidden; }
+
+  /* Left panel: anky selector + past projects */
+  .vid-left { width:280px; flex-shrink:0; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .vid-left-title { font-size:13px; color:#888; text-transform:uppercase; letter-spacing:1px; }
+  .vid-ankys { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .vid-ankys::-webkit-scrollbar { width:4px; }
+  .vid-ankys::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+  .vid-anky-card { display:flex; gap:10px; padding:10px; border:1px solid #222; border-radius:8px; cursor:pointer; transition:border-color 0.15s; }
+  .vid-anky-card:hover, .vid-anky-card.selected { border-color:#d4a853; }
+  .vid-anky-card.selected { background:#1a1812; }
+  .vid-anky-thumb { width:48px; height:48px; border-radius:6px; background:#1a1a2e; flex-shrink:0; object-fit:cover; }
+  .vid-anky-info { min-width:0; flex:1; }
+  .vid-anky-title { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vid-anky-excerpt { font-size:11px; color:#666; margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+  /* Past projects section */
+  .vid-projects-title { font-size:13px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-top:12px; }
+  .vid-past { display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto; }
+  .vid-past::-webkit-scrollbar { width:4px; }
+  .vid-past::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+  .vid-past-card { display:flex; align-items:center; gap:8px; padding:8px; border:1px solid #222; border-radius:6px; cursor:pointer; transition:border-color 0.15s; }
+  .vid-past-card:hover { border-color:#555; }
+  .vid-past-id { font-family:monospace; font-size:11px; color:#d4a853; }
+  .vid-past-status { font-size:10px; padding:2px 6px; border-radius:3px; }
+  .vid-past-status.complete { color:#2a6; background:rgba(42,102,68,0.15); }
+  .vid-past-status.generating { color:#d4a853; background:rgba(212,168,83,0.15); }
+  .vid-past-status.failed { color:#c44; background:rgba(204,68,68,0.15); }
+  .vid-past-info { font-size:10px; color:#555; margin-left:auto; }
+
+  /* Center panel: preview + filmstrip + status */
+  .vid-center { flex:1; display:flex; flex-direction:column; gap:8px; min-width:0; }
+  .vid-preview { flex:1; background:#0a0a12; border-radius:12px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; min-height:0; }
+  .vid-preview video { max-width:100%; max-height:100%; border-radius:8px; }
+  .vid-preview-placeholder { text-align:center; color:#444; }
+  .vid-preview-placeholder .pp-icon { font-size:48px; opacity:0.3; }
+  .vid-preview-placeholder p { font-size:13px; margin-top:8px; }
+
+  /* Story spine reveal */
+  .vid-spine { display:none; background:#0d0d1a; border:1px solid #2a2a3e; border-radius:10px; padding:16px 20px; flex-shrink:0; }
+  .vid-spine-title { font-size:11px; color:#d4a853; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; }
+  .vid-spine-row { display:flex; gap:8px; margin-bottom:6px; font-size:12px; }
+  .vid-spine-label { color:#666; min-width:80px; flex-shrink:0; }
+  .vid-spine-value { color:#c8c8d4; }
+  .vid-spine-arc { color:#d4a853; font-style:italic; margin-top:4px; font-size:13px; }
+  .vid-spine-metaphor { color:#8a7fd4; font-weight:600; }
+  .vid-spine-emotions { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .vid-spine-emotion { font-size:10px; padding:2px 8px; border-radius:10px; background:#1a1a2e; border:1px solid #333; color:#999; }
+
+  /* Receipt banner */
+  .vid-receipt { display:none; background:#1a1812; border:1px solid #333; border-radius:8px; padding:8px 14px; font-size:12px; color:#c8c8d4; flex-shrink:0; }
+  .vid-receipt-id { font-family:monospace; color:#d4a853; font-weight:700; font-size:14px; }
+  .vid-receipt-step { color:#888; margin-left:12px; }
+
+  /* Filmstrip */
+  .vid-filmstrip { display:none; flex-shrink:0; overflow-x:auto; padding:4px 0; gap:6px; scroll-behavior:smooth; }
+  .vid-filmstrip::-webkit-scrollbar { height:4px; }
+  .vid-filmstrip::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+  .vid-frame { width:120px; height:68px; flex-shrink:0; border-radius:4px; background:#111; border:2px solid #222; position:relative; cursor:pointer; overflow:hidden; transition:border-color 0.3s; }
+  .vid-frame img { width:100%; height:100%; object-fit:cover; }
+  .vid-frame.has-video { border-color:#2a6; }
+  .vid-frame.active { border-color:#d4a853; }
+  .vid-frame-num { position:absolute; bottom:2px; left:4px; font-size:10px; color:#888; font-weight:600; background:rgba(0,0,0,0.7); padding:1px 4px; border-radius:2px; }
+  /* Film sprocket holes */
+  .vid-filmstrip::before, .vid-filmstrip::after { content:''; display:block; width:8px; flex-shrink:0; }
+
+  /* Scene detail overlay */
+  .vid-scene-overlay { display:none; position:fixed; inset:0; z-index:100; background:rgba(0,0,0,0.9); padding:20px; overflow-y:auto; }
+  .vid-scene-overlay-inner { max-width:700px; margin:0 auto; }
+  .vid-scene-overlay img { width:100%; border-radius:8px; margin-bottom:12px; }
+  .vid-scene-overlay h3 { color:#d4a853; margin:0 0 8px; }
+  .vid-scene-overlay .field-label { font-size:11px; color:#666; text-transform:uppercase; margin-top:12px; }
+  .vid-scene-overlay .field-value { font-size:13px; color:#c8c8d4; margin-top:2px; }
+  .vid-scene-overlay-close { position:absolute; top:16px; right:16px; font-size:24px; color:#888; cursor:pointer; background:none; border:none; }
+
+  /* Controls bar */
+  .vid-controls { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .vid-btn { padding:10px 24px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.15s; font-family:inherit; }
+  .vid-btn-primary { background:#d4a853; color:#000; }
+  .vid-btn-primary:hover { background:#e0b85e; }
+  .vid-btn-primary:disabled { background:#333; color:#666; cursor:not-allowed; }
+  .vid-btn-secondary { background:#1a1a2e; color:#c8c8d4; border:1px solid #333; }
+  .vid-btn-secondary:hover { border-color:#555; }
+  .vid-btn-resume { background:transparent; color:#d4a853; border:1px solid #d4a853; font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer; }
+  .vid-btn-resume:hover { background:#1a1812; }
+  .vid-cost { font-size:12px; color:#666; margin-left:auto; }
+
+  /* Quality selector */
+  .vid-quality { display:none; gap:6px; align-items:center; }
+  .vid-quality-btn { font-size:11px; padding:4px 10px; border-radius:4px; border:1px solid #333; background:transparent; color:#888; cursor:pointer; font-family:inherit; }
+  .vid-quality-btn:hover { border-color:#d4a853; color:#d4a853; }
+  .vid-quality-btn.active { border-color:#d4a853; color:#d4a853; background:#1a1812; }
+
+  /* Right panel: script */
+  .vid-right { width:280px; flex-shrink:0; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .vid-right-title { font-size:13px; color:#888; text-transform:uppercase; letter-spacing:1px; }
+  .vid-script { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:4px; }
+  .vid-script::-webkit-scrollbar { width:4px; }
+  .vid-script::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
+  .vid-scene { padding:8px 10px; border-radius:6px; border-left:3px solid #222; transition:border-color 0.3s; cursor:pointer; }
+  .vid-scene.active { border-color:#d4a853; background:#1a1812; }
+  .vid-scene.done { border-color:#2a6; }
+  .vid-scene.image-done { border-color:#446; }
+  .vid-scene-head { display:flex; justify-content:space-between; align-items:center; }
+  .vid-scene-title { font-size:12px; font-weight:600; }
+  .vid-scene-dur { font-size:11px; color:#666; }
+  .vid-scene-meta { display:flex; gap:6px; align-items:center; margin-top:3px; }
+  .vid-scene-role { font-size:10px; color:#555; font-style:italic; }
+  .vid-scene-narration { font-size:11px; color:#555; margin-top:3px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .vid-scene-detail { display:none; margin-top:6px; padding-top:6px; border-top:1px solid #222; }
+  .vid-scene.expanded .vid-scene-detail { display:block; }
+  .vid-scene.expanded .vid-scene-narration { -webkit-line-clamp:unset; }
+  .vid-scene-detail-field { font-size:10px; color:#555; margin-top:4px; }
+  .vid-scene-detail-field strong { color:#888; }
+
+  /* Empty / login states */
+  .vid-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; gap:12px; color:#666; }
+  .vid-empty h2 { font-size:18px; color:#c8c8d4; margin:0; }
+  .vid-empty p { font-size:13px; max-width:320px; }
+  .vid-empty a { color:#d4a853; text-decoration:none; }
+
+  /* Info button */
+  .vid-info-btn { width:28px; height:28px; border-radius:50%; border:1px solid #444; background:transparent; color:#888; font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; font-family:serif; }
+  .vid-info-btn:hover { border-color:#d4a853; color:#d4a853; }
+
+  /* Info modal */
+  .vid-info-modal { display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,0.92); padding:20px; overflow-y:auto; }
+  .vid-info-modal-inner { max-width:640px; margin:40px auto; background:#111; border:1px solid #2a2a3e; border-radius:12px; padding:28px 32px; }
+  .vid-info-modal-close { position:absolute; top:16px; right:20px; font-size:24px; color:#888; cursor:pointer; background:none; border:none; }
+  .vid-info-modal h2 { font-size:18px; color:#d4a853; margin:0 0 16px; }
+  .vid-info-modal h3 { font-size:14px; color:#c8c8d4; margin:18px 0 8px; }
+  .vid-info-modal p, .vid-info-modal li { font-size:13px; color:#999; line-height:1.6; }
+  .vid-info-modal ul { padding-left:20px; margin:6px 0; }
+  .vid-info-modal a { color:#d4a853; text-decoration:none; }
+  .vid-info-modal a:hover { text-decoration:underline; }
+  .vid-info-modal code { background:#1a1a2e; padding:1px 5px; border-radius:3px; font-size:12px; color:#8a7fd4; }
+  .vid-info-modal .pipeline-step { display:flex; gap:10px; margin:8px 0; align-items:flex-start; }
+  .vid-info-modal .pipeline-num { min-width:24px; height:24px; border-radius:50%; background:#1a1a2e; color:#d4a853; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .vid-info-modal .pipeline-desc { font-size:12px; color:#999; }
+
+  /* Mobile tabs navigation */
+  .vid-tabs { display:none; flex-shrink:0; }
+  .vid-tab { flex:1; padding:10px; border:none; background:transparent; color:#666; font-size:12px; font-weight:600; font-family:inherit; cursor:pointer; border-bottom:2px solid transparent; text-transform:uppercase; letter-spacing:0.5px; }
+  .vid-tab.active { color:#d4a853; border-bottom-color:#d4a853; }
+
+  @media (max-width: 768px) {
+    .vid-root { padding:8px; gap:8px; height:calc(100dvh - 52px); height:calc(var(--vh, 100dvh) - 52px); }
+    .vid-header h1 { font-size:16px; }
+    .vid-header .vid-sub { display:none; }
+
+    .vid-tabs { display:flex; border-bottom:1px solid #222; }
+
+    .vid-main { flex-direction:column; gap:0; }
+
+    /* Hide side panels by default on mobile, show via tabs */
+    .vid-left, .vid-right { display:none; width:100%; flex-shrink:0; }
+    .vid-left.mob-visible, .vid-right.mob-visible { display:flex; max-height:40vh; overflow-y:auto; }
+
+    .vid-center { min-height:0; }
+    .vid-center.mob-hidden { display:none; }
+
+    /* When script panel is visible on mobile, make scenes full width */
+    .vid-right.mob-visible .vid-script { flex:1; overflow-y:auto; }
+
+    /* Preview area fills available space */
+    .vid-preview { min-height:200px; border-radius:8px; }
+
+    /* Filmstrip smaller on mobile */
+    .vid-frame { width:80px; height:45px; }
+
+    /* Story spine compact */
+    .vid-spine { padding:10px 12px; }
+    .vid-spine-row { flex-direction:column; gap:2px; }
+    .vid-spine-label { min-width:auto; font-size:10px; }
+    .vid-spine-value { font-size:11px; }
+
+    /* Receipt compact */
+    .vid-receipt { padding:6px 10px; font-size:11px; }
+
+    /* Controls bar */
+    .vid-controls { flex-wrap:wrap; gap:8px; }
+    .vid-btn { padding:12px 20px; font-size:13px; min-height:44px; }
+    .vid-cost { width:100%; text-align:center; font-size:11px; margin:0; }
+
+    /* Anky cards */
+    .vid-anky-card { padding:8px; }
+    .vid-anky-thumb { width:40px; height:40px; }
+
+    /* Scene overlay */
+    .vid-scene-overlay { padding:12px; }
+    .vid-scene-overlay-inner { margin-top:16px; }
+    .vid-scene-overlay-close { top:8px; right:12px; font-size:28px; min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center; }
+
+    /* Info modal */
+    .vid-info-modal { padding:12px; }
+    .vid-info-modal-inner { margin:12px auto; padding:20px 16px; }
+    .vid-info-modal-close { min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:center; }
+  }
+
+  @media (max-width: 420px) {
+    .vid-root { padding:4px; gap:6px; }
+    .vid-btn { padding:12px 16px; width:100%; }
+    .vid-controls { flex-direction:column; }
+    .vid-frame { width:64px; height:36px; }
+  }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="studio-container" id="studio">
-
-<!-- ==================== PHASE: PREP ==================== -->
-<div class="studio-phase" id="phase-prep">
-  <h1 class="studio-title">ANKY — Video Production Studio</h1>
-  <p class="studio-subtitle">Generate images, then record yourself reading the script with teleprompter.</p>
-
-  <div class="studio-actions-top">
-    <button class="studio-btn studio-btn-primary" id="btn-start-recording">START RECORDING</button>
-    <button class="studio-btn studio-btn-secondary" id="btn-generate-all" style="margin-left:12px;">GENERATE ALL IMAGES</button>
+<div class="vid-root">
+  <div class="vid-header">
+    <div>
+      <h1>video studio</h1>
+      <span class="vid-sub">turn your writing into an 88-second cinematic video</span>
+    </div>
+    <button class="vid-info-btn" onclick="document.getElementById('info-modal').style.display='block'" title="how it works">i</button>
   </div>
 
-  <!-- Script -->
-  <div class="studio-section">
-    <h2 class="studio-section-title">Script</h2>
+  <!-- Info modal -->
+  <div class="vid-info-modal" id="info-modal">
+    <button class="vid-info-modal-close" onclick="document.getElementById('info-modal').style.display='none'">&times;</button>
+    <div class="vid-info-modal-inner">
+      <h2>how the video pipeline works</h2>
+      <p>every 88-second video is generated through a multi-stage AI pipeline that turns your stream-of-consciousness writing into a psychoanalytic film. the entire codebase is open source.</p>
 
-    <details class="studio-act" open>
-      <summary>
-        <span><span class="studio-act-title">Act 1: The Savior Pattern</span><span class="studio-act-time">0:00 — 0:50</span></span>
-      </summary>
-      <div class="studio-act-content">
-        <p class="direction">[Live-action. Jorge talking directly to camera. Tight frame on face. Intensity building.]</p>
-        <p>You sit down to write and the first thing that comes is: "I need to save the world."</p>
-        <p>Every time. The savior pattern. You can't just write — you have to matter. You have to be special. You have to have a mission.</p>
-        <p>And so you write about saving the world instead of actually writing. Instead of actually being here. Instead of actually feeling what's happening right now.</p>
-        <p>What if the whole point was never to save anyone?</p>
-        <p>What if the whole point was to sit with yourself long enough that the self dissolves?</p>
-        <p class="direction">[Camera slowly pushes in. Background starts glitching subtly.]</p>
-        <p>Eight minutes. That's all it takes. Eight minutes of pure stream of consciousness and something cracks open.</p>
-        <p>Not because eight minutes is magic. But because eight minutes is long enough that your ego runs out of things to say.</p>
+      <h3>the pipeline</h3>
+      <div class="pipeline-step">
+        <span class="pipeline-num">1</span>
+        <span class="pipeline-desc"><strong>script generation</strong> &mdash; Claude reads your writing as a psychoanalytic director &mdash; reading for structure, repetition, avoidance, and breakthrough. it generates a <em>story spine</em> (the wound, the desire, a transformation arc, a controlling visual metaphor) then directs 8-15 scenes. the structure is free-form &mdash; the writing dictates the form.</span>
       </div>
-    </details>
-
-    <details class="studio-act">
-      <summary>
-        <span><span class="studio-act-title">Act 2: The Crack</span><span class="studio-act-time">0:50 — 0:55</span></span>
-      </summary>
-      <div class="studio-act-content">
-        <p class="direction">[5-second psychedelic glitch transition. Reality cracks open. Visual: fractal patterns, the screen tears, reality dissolves into the Ankyverse.]</p>
-        <p class="direction">[Sound: a deep resonant hum, glass shattering in reverse, then silence.]</p>
+      <div class="pipeline-step">
+        <span class="pipeline-num">2</span>
+        <span class="pipeline-desc"><strong>sequential chain</strong> &mdash; each scene is generated one at a time: Gemini creates the image using Anky reference images + continuity frames extracted from the <em>previous scene's completed video</em>. then Grok generates the video clip from that image with directed sound. finally, ffmpeg extracts reference frames from the completed clip and passes them to the next scene. visual continuity is mechanical &mdash; each scene literally sees what came before.</span>
       </div>
-    </details>
-
-    <details class="studio-act">
-      <summary>
-        <span><span class="studio-act-title">Act 3: The Ankyverse</span><span class="studio-act-time">0:55 — 1:55</span></span>
-      </summary>
-      <div class="studio-act-content">
-        <p class="direction">[Two small blue Ankys sitting in a cosmic living room. They're watching Jorge on a screen embedded in what looks like a living crystal. The room breathes. Stars drift through the walls.]</p>
-        <p><strong>Anky 1:</strong> There he goes again.</p>
-        <p><strong>Anky 2:</strong> The savior thing?</p>
-        <p><strong>Anky 1:</strong> Always the savior thing. He sits down, and the first thought is always "I need to change everything."</p>
-        <p><strong>Anky 2:</strong> <em>(laughing softly)</em> He doesn't see it yet, does he?</p>
-        <p><strong>Anky 1:</strong> That the writing IS the transformation? No. He thinks he needs to produce something. Ship something. Build something that matters.</p>
-        <p><strong>Anky 2:</strong> And the whole time, the sitting IS the thing.</p>
-        <p><strong>Anky 1:</strong> Eight minutes of just... being. No agenda. No product. No audience. Just consciousness meeting itself on the page.</p>
-        <p><strong>Anky 2:</strong> He'll get it. He always gets it. It just takes him the full eight minutes every time.</p>
-        <p><strong>Anky 1:</strong> <em>(cosmic laughter)</em> That's the beautiful part. The pattern has to play itself out completely before it can dissolve.</p>
-        <p class="direction">[The Ankys watch as Jorge on the screen starts to soften. His writing changes. The intensity drops. Something real starts coming through.]</p>
-        <p><strong>Anky 2:</strong> There it is.</p>
-        <p><strong>Anky 1:</strong> There it is.</p>
+      <div class="pipeline-step">
+        <span class="pipeline-num">3</span>
+        <span class="pipeline-desc"><strong>stitching</strong> &mdash; ffmpeg concatenates all clips into a single 88-second video, then encodes at 1080p, 720p, and 360p.</span>
       </div>
-    </details>
 
-    <details class="studio-act">
-      <summary>
-        <span><span class="studio-act-title">Act 4: The Return</span><span class="studio-act-time">1:55 — 2:15</span></span>
-      </summary>
-      <div class="studio-act-content">
-        <p class="direction">[Back to live footage. Jorge's face is different now. Relaxed. Soft. The intensity is gone. He's just... here.]</p>
-        <p>You don't need to save the world.</p>
-        <p>You just need to write for eight minutes.</p>
-        <p>The rest takes care of itself.</p>
-        <p class="direction">[Gentle smile. Looks directly at camera. Pause.]</p>
-        <p>anky.app</p>
-      </div>
-    </details>
+      <h3>the story spine</h3>
+      <p>before generating scenes, the system finds:</p>
+      <ul>
+        <li><strong>the wound</strong> &mdash; what the writing orbits without landing on (from avoidances + patterns)</li>
+        <li><strong>the desire</strong> &mdash; what the writing itself reaches toward (from breakthroughs + themes)</li>
+        <li><strong>the arc</strong> &mdash; the psychic journey: "from X, through Y, to Z"</li>
+        <li><strong>the visual metaphor</strong> &mdash; the dream-image the writing produces</li>
+      </ul>
 
-    <details class="studio-act">
-      <summary>
-        <span><span class="studio-act-title">Act 5: End Card</span><span class="studio-act-time">2:15 — 2:22</span></span>
-      </summary>
-      <div class="studio-act-content">
-        <p class="direction">[Black background. Single Anky meditating in center frame. Golden spiral patterns emanating outward. Breathing light.]</p>
-        <p style="text-align:center; color:#d4a853; font-size:20px;">ANKY</p>
-        <p style="text-align:center; color:#c8c8d4;">learn how to focus</p>
-        <p style="text-align:center; color:#666; font-size:12px;">anky.app</p>
-      </div>
-    </details>
-  </div>
+      <h3>the psychoanalytic reading</h3>
+      <p>each scene includes an analyst's margin note &mdash; what the system sees in your writing that you might not see yourself. defenses, desires, repetition patterns, moments of genuine breakthrough. this is visible in the scene overlay when you click any frame.</p>
 
-  <!-- Image Generation Grid -->
-  <div class="studio-section">
-    <h2 class="studio-section-title">Image Generation <span class="studio-gen-count" id="gen-count">0/17</span></h2>
-    <div class="studio-image-grid" id="image-grid"></div>
-  </div>
-</div>
+      <h3>memory system</h3>
+      <p>if you've written before, the pipeline accesses your accumulated memory: psychological profile, recurring patterns, avoidances, breakthroughs, emotional signatures, and echoes from similar past sessions. this means your videos get more personal and insightful over time.</p>
 
-<!-- ==================== PHASE: RECORD ==================== -->
-<div class="studio-phase" id="phase-record" style="display:none;">
-  <!-- Countdown overlay -->
-  <div class="studio-countdown" id="countdown-overlay" style="display:none;">
-    <span class="studio-countdown-number" id="countdown-number">3</span>
-  </div>
+      <h3>cost</h3>
+      <p>$5.00 USDC per video. Grok charges $0.05/second of video (~$4.40 for 88s), plus Gemini images (~$0.40) and Claude script (~$0.05). paid via wallet transaction on Base.</p>
 
-  <!-- Camera PIP -->
-  <video class="studio-camera-pip" id="camera-pip" autoplay muted playsinline></video>
-
-  <!-- Timer overlay -->
-  <div class="studio-timer-overlay">
-    <div class="studio-timer-elapsed" id="timer-elapsed">0:00</div>
-    <div class="studio-timer-act" id="timer-act">Act 1: The Savior Pattern</div>
-    <div class="studio-progress-bar">
-      <div class="studio-progress-fill" id="progress-fill"></div>
+      <h3>open source</h3>
+      <p>the entire pipeline is written in Rust (Axum + Tera + HTMX). you can read, fork, and modify every part of it:</p>
+      <p><a href="https://github.com/jpfraneto/anky-monorepo" target="_blank">github.com/jpfraneto/anky-monorepo</a></p>
+      <p>key files:</p>
+      <ul>
+        <li><code>src/pipeline/video_gen.rs</code> &mdash; the full pipeline: script generation, image gen, video gen, stitching</li>
+        <li><code>src/routes/api.rs</code> &mdash; API endpoints for generation, polling, resume</li>
+        <li><code>src/services/grok.rs</code> &mdash; Grok image-to-video integration</li>
+        <li><code>src/services/gemini.rs</code> &mdash; Gemini image generation</li>
+        <li><code>src/memory/</code> &mdash; the memory system (embeddings, recall, profiles)</li>
+        <li><code>templates/video.html</code> &mdash; this page you're looking at</li>
+      </ul>
     </div>
   </div>
 
-  <!-- Teleprompter -->
-  <div class="studio-teleprompter" id="teleprompter">
-    <div class="studio-teleprompter-text" id="teleprompter-text"></div>
+  {% if not logged_in %}
+  <div class="vid-empty" style="flex:1;">
+    <h2>sign in to create videos</h2>
+    <p>write for 8 minutes to create an anky, then transform it into an 88-second video powered by Grok.</p>
+    <a href="/login">sign in</a>
   </div>
 
-  <!-- Stop button -->
-  <button class="studio-btn studio-btn-stop" id="btn-stop">STOP</button>
-</div>
-
-<!-- ==================== PHASE: REVIEW ==================== -->
-<div class="studio-phase" id="phase-review" style="display:none;">
-  <h1 class="studio-title">Review Recording</h1>
-
-  <div class="studio-review-player">
-    <video class="studio-review-video" id="review-video" controls playsinline></video>
+  {% elif ankys is defined and ankys | length == 0 %}
+  <div class="vid-empty" style="flex:1;">
+    <h2>write your first anky</h2>
+    <p>go to the <a href="/">home page</a> and write for 8 minutes without stopping. your stream of consciousness becomes the script for a cinematic 88-second video.</p>
   </div>
 
-  <!-- Timeline -->
-  <div class="studio-timeline" id="timeline">
-    <div class="studio-timeline-bar">
-      <div class="studio-timeline-marker" style="left:0%" title="Act 1">1</div>
-      <div class="studio-timeline-marker" style="left:35.2%" title="Act 2">2</div>
-      <div class="studio-timeline-marker" style="left:38.7%" title="Act 3">3</div>
-      <div class="studio-timeline-marker" style="left:81%" title="Act 4">4</div>
-      <div class="studio-timeline-marker" style="left:95%" title="Act 5">5</div>
+  {% else %}
+  <!-- Mobile tabs -->
+  <div class="vid-tabs" id="vid-tabs">
+    <button class="vid-tab" data-panel="left" onclick="switchTab('left')">writings</button>
+    <button class="vid-tab active" data-panel="center" onclick="switchTab('center')">video</button>
+    <button class="vid-tab" data-panel="right" onclick="switchTab('right')">script</button>
+  </div>
+
+  <div class="vid-main">
+    <!-- Left: Anky selector + past projects -->
+    <div class="vid-left" id="panel-left">
+      <div class="vid-left-title">your writings</div>
+      <div class="vid-ankys" id="anky-list">
+        {% if ankys is defined %}
+        {% for a in ankys %}
+        <div class="vid-anky-card{% if loop.first %} selected{% endif %}" data-id="{{ a.id }}" data-title="{{ a.title }}" onclick="selectAnky(this)">
+          {% if a.image %}
+          <img class="vid-anky-thumb" src="/data/images/{{ a.image }}" alt="">
+          {% else %}
+          <div class="vid-anky-thumb"></div>
+          {% endif %}
+          <div class="vid-anky-info">
+            <div class="vid-anky-title">{{ a.title }}</div>
+            <div class="vid-anky-excerpt">{{ a.excerpt }}</div>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+
+      {% if projects is defined and projects | length > 0 %}
+      <div class="vid-projects-title">past projects</div>
+      <div class="vid-past" id="past-videos">
+        {% for p in projects %}
+        <div class="vid-past-card" onclick="loadProject('{{ p.id }}')">
+          <span class="vid-past-id">{{ p.id | truncate(length=8, end="") }}</span>
+          <span class="vid-past-status {{ p.status }}">{{ p.status }}</span>
+          {% if p.status == "failed" %}
+          <button class="vid-btn-resume" onclick="event.stopPropagation(); resumeProject('{{ p.id }}')">resume</button>
+          {% endif %}
+          <span class="vid-past-info">{{ p.completed_scenes }}/{{ p.total_scenes }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Center: Preview + filmstrip -->
+    <div class="vid-center" id="panel-center">
+      <!-- Receipt banner -->
+      <div class="vid-receipt" id="receipt">
+        project <span class="vid-receipt-id" id="receipt-id"></span>
+        <span class="vid-receipt-step" id="receipt-step"></span>
+      </div>
+
+      <!-- Story spine reveal -->
+      <div class="vid-spine" id="story-spine">
+        <div class="vid-spine-title">the system sees you</div>
+        <div id="spine-content"></div>
+      </div>
+
+      <div class="vid-preview" id="preview">
+        <div class="vid-preview-placeholder" id="placeholder">
+          <div class="pp-icon">&#9654;</div>
+          <p>select a writing &amp; generate</p>
+        </div>
+        <video id="video-player" style="display:none;" controls></video>
+      </div>
+
+      <!-- Filmstrip -->
+      <div class="vid-filmstrip" id="filmstrip"></div>
+
+      <div class="vid-controls">
+        <button class="vid-btn vid-btn-primary" id="btn-generate" onclick="startGeneration()">generate video</button>
+        <div class="vid-quality" id="quality-selector">
+          <button class="vid-quality-btn active" data-quality="1080p" onclick="switchQuality(this)">1080p</button>
+          <button class="vid-quality-btn" data-quality="720p" onclick="switchQuality(this)">720p</button>
+          <button class="vid-quality-btn" data-quality="360p" onclick="switchQuality(this)">360p</button>
+        </div>
+        <button class="vid-btn vid-btn-secondary" id="btn-download" style="display:none;" onclick="downloadVideo()">download</button>
+        <span class="vid-cost">88 seconds &middot; $5.00 USDC</span>
+      </div>
+    </div>
+
+    <!-- Right: Script preview -->
+    <div class="vid-right" id="panel-right">
+      <div class="vid-right-title">script <span id="script-duration"></span></div>
+      <div class="vid-script" id="script-list">
+        <div style="color:#444; font-size:12px; padding:20px 0; text-align:center;">script appears after generation starts</div>
+      </div>
     </div>
   </div>
 
-  <div class="studio-review-actions">
-    <button class="studio-btn studio-btn-primary" id="btn-upload">UPLOAD</button>
-    <button class="studio-btn studio-btn-secondary" id="btn-restart">RESTART</button>
+  <!-- Scene detail overlay -->
+  <div class="vid-scene-overlay" id="scene-overlay">
+    <button class="vid-scene-overlay-close" onclick="closeOverlay()">&times;</button>
+    <div class="vid-scene-overlay-inner" id="scene-overlay-content"></div>
   </div>
-
-  <div class="studio-upload-status" id="upload-status" style="display:none;"></div>
-</div>
-
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function() {
-  // ===== Script Data =====
-  var SCRIPT = {
-    target_duration: 142,
-    acts: [
-      { id: "act-1", title: "The Savior Pattern", start: 0, end: 50, lines: [
-        "You sit down to write and the first thing that comes is: \"I need to save the world.\"",
-        "Every time. The savior pattern. You can't just write — you have to matter. You have to be special. You have to have a mission.",
-        "And so you write about saving the world instead of actually writing. Instead of actually being here. Instead of actually feeling what's happening right now.",
-        "What if the whole point was never to save anyone?",
-        "What if the whole point was to sit with yourself long enough that the self dissolves?",
-        "Eight minutes. That's all it takes. Eight minutes of pure stream of consciousness and something cracks open.",
-        "Not because eight minutes is magic. But because eight minutes is long enough that your ego runs out of things to say."
-      ]},
-      { id: "act-2", title: "The Crack", start: 50, end: 55, lines: [
-        "[5-second psychedelic glitch transition]"
-      ]},
-      { id: "act-3", title: "The Ankyverse", start: 55, end: 115, lines: [
-        "Anky 1: There he goes again.",
-        "Anky 2: The savior thing?",
-        "Anky 1: Always the savior thing. He sits down, and the first thought is always \"I need to change everything.\"",
-        "Anky 2: He doesn't see it yet, does he?",
-        "Anky 1: That the writing IS the transformation? No. He thinks he needs to produce something. Ship something. Build something that matters.",
-        "Anky 2: And the whole time, the sitting IS the thing.",
-        "Anky 1: Eight minutes of just... being. No agenda. No product. No audience. Just consciousness meeting itself on the page.",
-        "Anky 2: He'll get it. He always gets it. It just takes him the full eight minutes every time.",
-        "Anky 1: That's the beautiful part. The pattern has to play itself out completely before it can dissolve.",
-        "Anky 2: There it is.",
-        "Anky 1: There it is."
-      ]},
-      { id: "act-4", title: "The Return", start: 115, end: 135, lines: [
-        "You don't need to save the world.",
-        "You just need to write for eight minutes.",
-        "The rest takes care of itself.",
-        "anky.app"
-      ]},
-      { id: "act-5", title: "End Card", start: 135, end: 142, lines: [
-        "ANKY",
-        "learn how to focus",
-        "anky.app"
-      ]}
-    ],
-    prompts: [
-      { id: "01-reality-crack", name: "Reality Crack", act: "act-2", priority: "critical", text: "A photorealistic close-up of a human face (Jorge, Latino man, short dark hair, slight beard) as reality cracks around him. The skin begins to fragment like broken glass, revealing swirling cosmic purple and gold energy beneath. Fractal patterns emerge from the cracks. The background dissolves into psychedelic geometry. Dramatic lighting, cinematic, 8K detail. The expression is one of surrender, not fear. Aspect ratio 16:9." },
-      { id: "02-fractal-dissolution", name: "Fractal Dissolution", act: "act-2", priority: "important", text: "Abstract psychedelic fractal art. Deep space blues and purples fragmenting into golden spiral patterns. No recognizable forms — pure geometric dissolution. Sacred geometry emerging from chaos. Think Alex Grey meets deep space telescope imagery. Bioluminescent tendrils of light weaving through crystalline structures. 16:9 aspect ratio, ultra-detailed." },
-      { id: "03-portal-opening", name: "Portal Opening", act: "act-2", priority: "important", text: "A circular portal opening in the fabric of reality. The edges are made of golden spiral fractals. Through the portal, a warm cosmic living room is visible — soft glowing furniture, stars drifting through walls, bioluminescent plants. The portal itself emits a deep purple light. The surrounding space is fragmenting and dissolving. Cinematic, painterly style. 16:9." },
-      { id: "04-cosmic-living-room-wide", name: "Cosmic Living Room — Wide", act: "act-3", priority: "critical", text: "A wide shot of a cosmic living room floating in deep space. The room has no walls — instead, nebulae and star fields serve as boundaries. Furniture is made of living crystal that breathes with soft light. In the center, two small blue goblin-like creatures with large round expressive eyes, bulbous noses, and distinctive purple brain-caps covered in intricate golden spiral patterns sit on a glowing couch. They face a large crystalline screen showing a human face. Bioluminescent plants float nearby. Warm amber and purple lighting. Fantasy art style, highly detailed, painterly. 16:9." },
-      { id: "05-anky1-closeup", name: "Anky 1 Close-up", act: "act-3", priority: "critical", text: "Close-up portrait of a small blue goblin-like creature with large round expressive eyes, a bulbous nose, and a distinctive purple brain-cap covered in intricate golden spiral patterns. The expression is one of loving amusement — a gentle smirk, eyes twinkling with cosmic knowing. The creature sits in a cosmic living room, stars reflecting in its golden/amber glowing eyes. Soft purple and gold lighting. The background is out of focus — nebulae and floating crystals. Fantasy art, painterly, highly detailed. 16:9." },
-      { id: "06-anky2-closeup", name: "Anky 2 Close-up", act: "act-3", priority: "critical", text: "Close-up portrait of a small blue goblin-like creature with large round expressive eyes, a bulbous nose, and a distinctive purple brain-cap covered in intricate golden spiral patterns. This one is laughing softly — mouth slightly open, eyes crinkled with joy. Cosmic laughter. The creature has slightly different golden jewelry patterns than its companion. Stars and nebulae reflect in its eyes. Warm amber lighting from nearby bioluminescent plants. Fantasy art, painterly, highly detailed. 16:9." },
-      { id: "07-two-ankys-couch", name: "Two Ankys on Couch", act: "act-3", priority: "critical", text: "Medium shot of two small blue goblin-like creatures with large round expressive eyes, bulbous noses, and distinctive purple brain-caps covered in intricate golden spiral patterns. They sit side by side on a living crystal couch that glows with soft amber light. One leans toward the other conspiratorially. They're having an intimate, amused conversation. The cosmic living room surrounds them — no walls, just space and stars. A crystalline screen glows nearby showing a human face. Warm, intimate lighting. Fantasy art, painterly, highly detailed. 16:9." },
-      { id: "08-crystal-screen-jorge", name: "Crystal Screen — Jorge", act: "act-3", priority: "important", text: "A living crystal screen embedded in space, showing a close-up of a human man (Latino, short dark hair, slight beard) writing intensely. The screen's edges are organic, crystalline, breathing with light. The image on the screen has a slight ethereal quality — as if seen through water or glass. Around the screen, the cosmic living room is visible in soft focus. Golden light emanates from the crystal. The human's expression is intense, focused, slightly agitated — caught in the savior pattern. 16:9." },
-      { id: "09-transformation-moment", name: "The Transformation Moment", act: "act-3", priority: "critical", text: "Split composition: foreground shows two small blue goblin-like creatures with large round expressive eyes, bulbous noses, and distinctive purple brain-caps covered in intricate golden spiral patterns leaning forward with recognition and joy. Background shows a crystal screen where a human face is visibly softening — the intensity melting away, replaced by peace. Golden light radiates from the screen outward, washing over the Ankys. The cosmic living room responds — bioluminescent plants pulse brighter, stars seem to align. A moment of cosmic recognition. Fantasy art, painterly, emotional, 16:9." },
-      { id: "10-cosmic-laughter", name: "Cosmic Laughter", act: "act-3", priority: "important", text: "Two small blue goblin-like creatures with large round expressive eyes, bulbous noses, and distinctive purple brain-caps covered in intricate golden spiral patterns, laughing together. True cosmic laughter — golden light particles emanate from their mouths. The laughter creates visible ripples in space around them. Stars dance in response. Their eyes are closed with joy, bodies shaking with mirth. The cosmic living room vibrates with their amusement. Warm, joyful, transcendent. Fantasy art, painterly, luminous. 16:9." },
-      { id: "11-ankyverse-wide", name: "Ankyverse Wide", act: "act-3", priority: "optional", text: "Ultra-wide establishing shot of the Ankyverse. An infinite cosmic space where living rooms, libraries, and gardens float like islands in a sea of stars. No ground, no sky — just space in every direction. Each island glows with warm amber light. Bioluminescent pathways connect them like bridges of light. In one of the closer islands, two tiny blue figures are barely visible on a glowing couch. The scale is vast — consciousness made visible. Deep blues, purples, and golds. Fantasy art, painterly, awe-inspiring. 16:9." },
-      { id: "12-there-it-is", name: "\"There It Is\" — Recognition", act: "act-3", priority: "critical", text: "Two small blue goblin-like creatures with large round expressive eyes, bulbous noses, and distinctive purple brain-caps covered in intricate golden spiral patterns. They sit still, no longer laughing. Soft, knowing smiles. They look at the crystal screen with deep tenderness. One places a small blue hand on the other's shoulder. The cosmic living room is quiet — even the stars seem to pause. Golden light from the screen illuminates their faces. The moment is sacred, intimate, timeless. Fantasy art, painterly, emotionally rich. 16:9." },
-      { id: "13-screen-softening", name: "Screen Softening", act: "act-3", priority: "important", text: "A living crystal screen showing a close-up of a human man's face (Latino, short dark hair, slight beard). But now his expression is completely different from before — soft, relaxed, at peace. Eyes slightly unfocused, a gentle half-smile. The writing has changed him. The crystal screen itself seems to glow warmer in response. Golden particles drift from the screen into the cosmic living room. The image suggests surrender, presence, arrival. 16:9." },
-      { id: "14-bioluminescent-details", name: "Bioluminescent Details", act: "act-3", priority: "optional", text: "Macro close-up of bioluminescent plants and living crystals in a cosmic environment. Golden spiral patterns grow like natural fractals on crystalline surfaces. Tiny glowing organisms float like underwater plankton but in space. The colors are deep purples, electric blues, and warm ambers. Dew-like droplets of light cling to petal-shaped crystal formations. Everything breathes with a slow, organic rhythm. Ultra-detailed, macro photography style meets fantasy art. 16:9." },
-      { id: "15-golden-spirals", name: "Golden Spirals Emanating", act: "act-3", priority: "optional", text: "Abstract art of golden spiral patterns emanating outward from a central point. The spirals are mathematical, precise, but organic — like nautilus shells made of light. They radiate through deep purple and midnight blue space. As the spirals extend outward, they begin to form recognizable shapes — a face, hands typing, a pen on paper. The outer edges dissolve into reality. Fibonacci sequences visible in the geometry. Luminous, transcendent, bridging worlds. 16:9." },
-      { id: "16-meditating-anky", name: "Meditating Anky — End Card", act: "act-5", priority: "critical", text: "A single small blue goblin-like creature with large round expressive eyes (closed in meditation), a bulbous nose, and a distinctive purple brain-cap covered in intricate golden spiral patterns. The creature sits in lotus position on pure black background. Golden spiral patterns emanate outward from the brain-cap, creating concentric rings of sacred geometry. The creature's body glows faintly with inner light — deep blue skin luminescent. Complete stillness. Complete peace. The golden spirals extend to the edges of the frame. Breathing light pulses softly. Simple, powerful, iconic. 16:9." },
-      { id: "17-anky-logo", name: "ANKY Logo Treatment", act: "act-5", priority: "important", text: "The word \"ANKY\" rendered in golden light against pure black. The letters are formed from golden spiral patterns — each letter contains visible Fibonacci spirals and sacred geometry. The \"A\" has a small meditating figure silhouette at its peak. The text glows with warm amber light, casting subtle golden reflections below. Below the main text, in much smaller, softer white light: \"learn how to focus\". Minimalist, powerful, logo-quality. 16:9." }
-    ]
+  var selectedAnkyId = null;
+  var currentProjectId = null;
+  var pollInterval = null;
+  var currentScenes = null;
+  var currentVideoUrls = {};
+
+  var firstCard = document.querySelector('.vid-anky-card');
+  if (firstCard) selectedAnkyId = firstCard.dataset.id;
+
+  window.selectAnky = function(el) {
+    document.querySelectorAll('.vid-anky-card').forEach(function(c) { c.classList.remove('selected'); });
+    el.classList.add('selected');
+    selectedAnkyId = el.dataset.id;
   };
 
-  // ===== State =====
-  var phase = 'prep'; // prep | record | review
-  var mediaStream = null;
-  var mediaRecorder = null;
-  var recordedChunks = [];
-  var recordedBlob = null;
-  var recordStartTime = 0;
-  var timerRaf = null;
-  var generatedImages = {}; // prompt_id -> image_url
+  function showReceipt(id, step) {
+    var el = document.getElementById('receipt');
+    el.style.display = 'block';
+    document.getElementById('receipt-id').textContent = id.slice(0, 8);
+    updateStep(step || 'script');
+  }
 
-  // ===== DOM =====
-  var phasePrep = document.getElementById('phase-prep');
-  var phaseRecord = document.getElementById('phase-record');
-  var phaseReview = document.getElementById('phase-review');
-  var btnStart = document.getElementById('btn-start-recording');
-  var btnStop = document.getElementById('btn-stop');
-  var btnUpload = document.getElementById('btn-upload');
-  var btnRestart = document.getElementById('btn-restart');
-  var countdownOverlay = document.getElementById('countdown-overlay');
-  var countdownNumber = document.getElementById('countdown-number');
-  var cameraPip = document.getElementById('camera-pip');
-  var timerElapsed = document.getElementById('timer-elapsed');
-  var timerAct = document.getElementById('timer-act');
-  var progressFill = document.getElementById('progress-fill');
-  var teleprompterText = document.getElementById('teleprompter-text');
-  var reviewVideo = document.getElementById('review-video');
-  var uploadStatus = document.getElementById('upload-status');
-  var genCount = document.getElementById('gen-count');
-  var imageGrid = document.getElementById('image-grid');
+  function updateStep(step) {
+    var labels = {
+      'script': 'generating script...',
+      'generating': 'generating scenes...',
+      'images': 'generating images...',
+      'videos': 'generating videos...',
+      'stitching': 'stitching final video...',
+      'complete': 'complete',
+    };
+    var stepEl = document.getElementById('receipt-step');
+    if (stepEl) stepEl.textContent = labels[step] || step;
+  }
 
-  // ===== Build Image Grid =====
-  function buildImageGrid() {
+  function narrativeProgress(scenes, step) {
+    if (step !== 'images' && step !== 'videos' && step !== 'generating') return;
+    var currentScene = null;
+    for (var i = 0; i < scenes.length; i++) {
+      if (scenes[i].status === 'generating' || scenes[i].status !== 'complete') {
+        currentScene = i;
+        break;
+      }
+    }
+    if (currentScene !== null) {
+      var s = scenes[currentScene];
+      var subStep = '';
+      if (s.status === 'generating') {
+        subStep = (!s.image_path || s.image_path.length === 0) ? 'image' : 'video';
+      }
+      var role = s.narrative_role ? s.narrative_role : '';
+      var msg = 'scene ' + (currentScene + 1) + '/' + scenes.length;
+      if (subStep) msg += ' (' + subStep + ')';
+      if (role) msg += ' — ' + role;
+      var stepEl = document.getElementById('receipt-step');
+      if (stepEl) stepEl.textContent = msg;
+    }
+  }
+
+  function showStorySpine(spine) {
+    if (!spine) return;
+    var el = document.getElementById('story-spine');
     var html = '';
-    SCRIPT.prompts.forEach(function(p) {
-      html += '<div class="studio-img-card" id="img-' + p.id + '">'
-        + '<div class="studio-img-header">'
-        + '<span class="studio-img-id">#' + p.id.split('-')[0] + '</span>'
-        + '<span class="studio-img-name">' + p.name + '</span>'
-        + '<span class="studio-img-badge ' + p.priority + '">' + p.priority + '</span>'
-        + '</div>'
-        + '<div class="studio-img-preview" id="preview-' + p.id + '"></div>'
-        + '<button class="studio-gen-btn" data-prompt-id="' + p.id + '" data-prompt-text="' + escapeAttr(p.text) + '">generate</button>'
-        + '</div>';
-    });
-    imageGrid.innerHTML = html;
-  }
-
-  function escapeAttr(s) {
-    return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;');
-  }
-
-  function updateGenCount() {
-    var count = Object.keys(generatedImages).length;
-    genCount.textContent = count + '/17';
-  }
-
-  // ===== Payment + Image Generation =====
-  var FRAME_COST_USD = 0.10;
-  var treasuryAddress = '';
-
-  // Fetch treasury address on load
-  fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) {
-    treasuryAddress = d.address || '';
-  });
-
-  function generateFrame(promptId, promptText, txHash, btn) {
-    var headers = { 'Content-Type': 'application/json' };
-    if (txHash) headers['payment-signature'] = txHash;
-
-    return fetch('/api/v1/generate/video-frame', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify({ prompt_id: promptId, prompt_text: promptText })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.image_url) {
-        generatedImages[promptId] = data.image_url;
-        var preview = document.getElementById('preview-' + promptId);
-        preview.innerHTML = '<img src="' + data.image_url + '" alt="' + promptId + '">';
-        if (btn) { btn.textContent = 'regenerate'; btn.disabled = false; }
-        updateGenCount();
-        return true;
-      } else {
-        if (btn) { btn.textContent = 'failed — retry'; btn.disabled = false; }
-        return false;
-      }
-    })
-    .catch(function() {
-      if (btn) { btn.textContent = 'failed — retry'; btn.disabled = false; }
-      return false;
-    });
-  }
-
-  // Single image generate (click on individual button)
-  imageGrid.addEventListener('click', function(e) {
-    var btn = e.target.closest('.studio-gen-btn');
-    if (!btn || btn.disabled) return;
-
-    var promptId = btn.dataset.promptId;
-    var promptText = btn.dataset.promptText;
-
-    if (!window.ankyWallet.isLoggedIn()) {
-      alert('Connect your wallet first to pay for image generation.');
-      window.ankyWallet.connect();
-      return;
+    if (spine.wound) {
+      html += '<div class="vid-spine-row"><span class="vid-spine-label">the wound</span><span class="vid-spine-value">' + spine.wound + '</span></div>';
     }
-
-    btn.disabled = true;
-    btn.textContent = 'paying...';
-
-    window.ankyWallet.sendUSDC(treasuryAddress, FRAME_COST_USD)
-    .then(function(txHash) {
-      btn.textContent = 'generating...';
-      return generateFrame(promptId, promptText, txHash, btn);
-    })
-    .catch(function(err) {
-      btn.textContent = 'generate';
-      btn.disabled = false;
-      if (err.message !== 'wallet not connected') {
-        alert('Payment failed: ' + err.message);
-      }
-    });
-  });
-
-  // Generate All button
-  var btnGenerateAll = document.getElementById('btn-generate-all');
-  btnGenerateAll.addEventListener('click', function() {
-    // Find prompts that haven't been generated yet
-    var remaining = SCRIPT.prompts.filter(function(p) {
-      return !generatedImages[p.id];
-    });
-
-    if (remaining.length === 0) {
-      alert('All images already generated!');
-      return;
+    if (spine.desire) {
+      html += '<div class="vid-spine-row"><span class="vid-spine-label">the desire</span><span class="vid-spine-value">' + spine.desire + '</span></div>';
     }
-
-    if (!window.ankyWallet.isLoggedIn()) {
-      alert('Connect your wallet first to pay for image generation.');
-      window.ankyWallet.connect();
-      return;
+    if (spine.arc) {
+      html += '<div class="vid-spine-arc">' + spine.arc + '</div>';
     }
-
-    var totalCost = remaining.length * FRAME_COST_USD;
-    var msg = 'Generate ' + remaining.length + ' images for $' + totalCost.toFixed(2) + ' USDC?';
-    if (!confirm(msg)) return;
-
-    btnGenerateAll.disabled = true;
-    btnGenerateAll.textContent = 'PAYING...';
-
-    window.ankyWallet.sendUSDC(treasuryAddress, totalCost)
-    .then(function(txHash) {
-      btnGenerateAll.textContent = 'GENERATING 0/' + remaining.length + '...';
-
-      // Disable all individual generate buttons
-      imageGrid.querySelectorAll('.studio-gen-btn').forEach(function(b) { b.disabled = true; });
-
-      // Generate sequentially to avoid overwhelming the server
-      var completed = 0;
-      function generateNext(index) {
-        if (index >= remaining.length) {
-          btnGenerateAll.textContent = 'ALL GENERATED';
-          btnGenerateAll.disabled = false;
-          // Re-enable individual buttons
-          imageGrid.querySelectorAll('.studio-gen-btn').forEach(function(b) { b.disabled = false; b.textContent = 'regenerate'; });
-          return;
-        }
-        var p = remaining[index];
-        var btn = imageGrid.querySelector('[data-prompt-id="' + p.id + '"]');
-        if (btn) { btn.textContent = 'generating...'; }
-
-        generateFrame(p.id, p.text, txHash, btn).then(function() {
-          completed++;
-          btnGenerateAll.textContent = 'GENERATING ' + completed + '/' + remaining.length + '...';
-          generateNext(index + 1);
-        });
-      }
-      generateNext(0);
-    })
-    .catch(function(err) {
-      btnGenerateAll.disabled = false;
-      btnGenerateAll.textContent = 'GENERATE ALL IMAGES';
-      if (err.message !== 'wallet not connected') {
-        alert('Payment failed: ' + err.message);
-      }
-    });
-  });
-
-  // ===== Phase Transitions =====
-  function showPhase(p) {
-    phase = p;
-    phasePrep.style.display = p === 'prep' ? '' : 'none';
-    phaseRecord.style.display = p === 'record' ? '' : 'none';
-    phaseReview.style.display = p === 'review' ? '' : 'none';
-
-    if (p === 'record') {
-      document.body.classList.add('studio-recording-active');
-    } else {
-      document.body.classList.remove('studio-recording-active');
+    if (spine.visual_world) {
+      html += '<div class="vid-spine-row" style="margin-top:6px"><span class="vid-spine-label">world</span><span class="vid-spine-value vid-spine-metaphor">' + spine.visual_world + '</span></div>';
     }
-  }
-
-  // ===== Build Teleprompter Text =====
-  function buildTeleprompterText() {
-    var html = '';
-    SCRIPT.acts.forEach(function(act) {
-      html += '<div class="teleprompter-act" data-act="' + act.id + '">';
-      html += '<div class="teleprompter-act-label">' + act.title + '</div>';
-      act.lines.forEach(function(line) {
-        html += '<p>' + line + '</p>';
+    if (spine.message) {
+      html += '<div class="vid-spine-row"><span class="vid-spine-label">message</span><span class="vid-spine-value">' + spine.message + '</span></div>';
+    }
+    if (spine.color_arc) {
+      html += '<div class="vid-spine-row"><span class="vid-spine-label">colors</span><span class="vid-spine-value">' + spine.color_arc + '</span></div>';
+    }
+    if (spine.visual_metaphor) {
+      html += '<div class="vid-spine-row"><span class="vid-spine-label">metaphor</span><span class="vid-spine-value vid-spine-metaphor">' + spine.visual_metaphor + '</span></div>';
+    }
+    if (spine.emotional_trajectory && spine.emotional_trajectory.length > 0) {
+      html += '<div class="vid-spine-emotions">';
+      spine.emotional_trajectory.forEach(function(e) {
+        html += '<span class="vid-spine-emotion">' + e + '</span>';
       });
       html += '</div>';
-    });
-    teleprompterText.innerHTML = html;
+    }
+    document.getElementById('spine-content').innerHTML = html;
+    el.style.display = 'block';
   }
 
-  // ===== Recording Flow =====
-  btnStart.addEventListener('click', function() {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true })
-    .then(function(stream) {
-      mediaStream = stream;
-      cameraPip.srcObject = stream;
-      startCountdown();
-    })
-    .catch(function(err) {
-      alert('Camera access required: ' + err.message);
-    });
-  });
-
-  function startCountdown() {
-    showPhase('record');
-    countdownOverlay.style.display = 'flex';
-    var count = 3;
-    countdownNumber.textContent = count;
-
-    var interval = setInterval(function() {
-      count--;
-      if (count > 0) {
-        countdownNumber.textContent = count;
-      } else {
-        clearInterval(interval);
-        countdownOverlay.style.display = 'none';
-        startRecording();
+  function buildFilmstrip(scenes) {
+    currentScenes = scenes;
+    var strip = document.getElementById('filmstrip');
+    strip.style.display = 'flex';
+    var html = '';
+    scenes.forEach(function(s) {
+      var hasImage = s.image_path && s.image_path.length > 0;
+      var hasVideo = s.status === 'complete';
+      var cls = hasVideo ? 'has-video' : '';
+      html += '<div class="vid-frame ' + cls + '" id="frame-' + s.index + '" onclick="openSceneOverlay(' + s.index + ')">';
+      if (hasImage) {
+        html += '<img src="/data/images/' + s.image_path + '" alt="scene ' + (s.index + 1) + '">';
       }
-    }, 1000);
-  }
-
-  function startRecording() {
-    recordedChunks = [];
-    buildTeleprompterText();
-
-    // Start teleprompter scroll
-    var teleprompter = document.getElementById('teleprompter');
-    var textEl = teleprompterText;
-    // Reset position
-    textEl.style.transform = 'translateY(50vh)';
-
-    mediaRecorder = new MediaRecorder(mediaStream, {
-      mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : 'video/webm'
+      html += '<span class="vid-frame-num">' + (s.index + 1) + '</span>';
+      html += '</div>';
     });
-
-    mediaRecorder.ondataavailable = function(e) {
-      if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = function() {
-      recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
-      reviewVideo.src = URL.createObjectURL(recordedBlob);
-      showPhase('review');
-    };
-
-    mediaRecorder.start(1000); // chunk every second
-    recordStartTime = performance.now();
-
-    // Start timer loop
-    timerRaf = requestAnimationFrame(updateTimer);
+    strip.innerHTML = html;
   }
 
-  function updateTimer() {
-    var elapsed = (performance.now() - recordStartTime) / 1000;
-    var min = Math.floor(elapsed / 60);
-    var sec = Math.floor(elapsed % 60);
-    timerElapsed.textContent = min + ':' + (sec < 10 ? '0' : '') + sec;
-
-    // Update progress bar
-    var pct = Math.min(100, (elapsed / SCRIPT.target_duration) * 100);
-    progressFill.style.width = pct + '%';
-
-    // Update current act
-    var currentAct = SCRIPT.acts[0];
-    for (var i = 0; i < SCRIPT.acts.length; i++) {
-      if (elapsed >= SCRIPT.acts[i].start) currentAct = SCRIPT.acts[i];
-    }
-    timerAct.textContent = 'Act ' + currentAct.id.split('-')[1] + ': ' + currentAct.title;
-
-    // Teleprompter scroll — translate text upward over target_duration
-    var scrollPct = elapsed / SCRIPT.target_duration;
-    var totalHeight = teleprompterText.scrollHeight;
-    var viewHeight = document.getElementById('teleprompter').offsetHeight;
-    var startOffset = viewHeight * 0.5;
-    var endOffset = -totalHeight;
-    var currentOffset = startOffset + (endOffset - startOffset) * scrollPct;
-    teleprompterText.style.transform = 'translateY(' + currentOffset + 'px)';
-
-    timerRaf = requestAnimationFrame(updateTimer);
+  function updateFilmstrip(scenes) {
+    currentScenes = scenes;
+    scenes.forEach(function(s) {
+      var frame = document.getElementById('frame-' + s.index);
+      if (!frame) return;
+      var hasImage = s.image_path && s.image_path.length > 0;
+      var hasVideo = s.status === 'complete';
+      if (hasImage && !frame.querySelector('img')) {
+        var img = document.createElement('img');
+        img.src = '/data/images/' + s.image_path;
+        img.alt = 'scene ' + (s.index + 1);
+        frame.insertBefore(img, frame.firstChild);
+      }
+      frame.classList.toggle('has-video', hasVideo);
+    });
   }
 
-  btnStop.addEventListener('click', function() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
+  function scrollToActiveFrame(scenes) {
+    var strip = document.getElementById('filmstrip');
+    for (var i = scenes.length - 1; i >= 0; i--) {
+      if (scenes[i].image_path && scenes[i].image_path.length > 0) {
+        var frame = document.getElementById('frame-' + scenes[i].index);
+        if (frame) {
+          frame.classList.add('active');
+          frame.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+        break;
+      }
     }
-    if (timerRaf) cancelAnimationFrame(timerRaf);
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(function(t) { t.stop(); });
+    // Remove active from others
+    scenes.forEach(function(s) {
+      var f = document.getElementById('frame-' + s.index);
+      if (f && s.index !== i) f.classList.remove('active');
+    });
+  }
+
+  // Get spoken words from scene — handles both old (narration) and new (spoken_words) field names
+  function getSpokenWords(s) {
+    return s.spoken_words || s.narration || '';
+  }
+
+  window.openSceneOverlay = function(idx) {
+    if (!currentScenes || !currentScenes[idx]) return;
+    var s = currentScenes[idx];
+    var html = '';
+    if (s.image_path) {
+      html += '<img src="/data/images/' + s.image_path + '">';
     }
-  });
-
-  // ===== Review Phase =====
-  btnRestart.addEventListener('click', function() {
-    if (recordedBlob) {
-      URL.revokeObjectURL(reviewVideo.src);
-      recordedBlob = null;
+    html += '<h3>' + (s.index + 1) + '. ' + s.title + '</h3>';
+    if (s.narrative_role) {
+      html += '<div class="field-label">narrative role</div><div class="field-value" style="font-style:italic;color:#d4a853;">' + s.narrative_role + '</div>';
     }
-    uploadStatus.style.display = 'none';
-    showPhase('prep');
-  });
+    html += '<div class="field-label">status</div><div class="field-value">' + (s.status || 'pending') + ' &middot; ' + s.duration + 's</div>';
+    if (s.psychoanalytic_note) {
+      html += '<div class="field-label" style="color:#8a7fd4;">the system sees you</div><div class="field-value" style="color:#b0a8e8;font-style:italic;border-left:2px solid #8a7fd4;padding-left:10px;margin:6px 0;">' + s.psychoanalytic_note + '</div>';
+    }
+    if (s.sound_direction) {
+      html += '<div class="field-label">sound</div><div class="field-value" style="color:#a8c8b8;">' + s.sound_direction + '</div>';
+    }
+    if (s.camera_movement) {
+      html += '<div class="field-label">camera</div><div class="field-value">' + s.camera_movement + '</div>';
+    }
+    html += '<div class="field-label">image prompt</div><div class="field-value">' + s.image_prompt + '</div>';
+    html += '<div class="field-label">video prompt</div><div class="field-value">' + s.video_prompt + '</div>';
+    var words = getSpokenWords(s);
+    if (words) {
+      html += '<div class="field-label">spoken words</div><div class="field-value">' + words + '</div>';
+    }
+    document.getElementById('scene-overlay-content').innerHTML = html;
+    document.getElementById('scene-overlay').style.display = 'block';
+  };
 
-  btnUpload.addEventListener('click', function() {
-    if (!recordedBlob) return;
-    btnUpload.disabled = true;
-    btnUpload.textContent = 'UPLOADING...';
-    uploadStatus.style.display = 'block';
-    uploadStatus.textContent = 'Uploading video...';
-    uploadStatus.className = 'studio-upload-status';
+  window.closeOverlay = function() {
+    document.getElementById('scene-overlay').style.display = 'none';
+  };
 
-    var duration = (performance.now() - recordStartTime) / 1000;
-    var formData = new FormData();
-    formData.append('video', recordedBlob, 'studio-recording.webm');
-    formData.append('metadata', JSON.stringify({
-      title: 'ANKY — Learn How To Focus',
-      duration_seconds: duration,
-      scenes: SCRIPT.acts.map(function(a) {
-        return { id: a.id, title: a.title, start: a.start, end: a.end };
-      })
-    }));
+  function renderScript(scenes) {
+    var html = '';
+    scenes.forEach(function(s) {
+      var statusCls = s.status === 'complete' ? 'done' : (s.image_path ? 'image-done' : '');
+      var words = getSpokenWords(s);
+      html += '<div class="vid-scene ' + statusCls + '" id="scene-' + s.index + '" onclick="toggleScene(this)">'
+        + '<div class="vid-scene-head">'
+        + '<span class="vid-scene-title">' + (s.index + 1) + '. ' + s.title + '</span>'
+        + '<span class="vid-scene-dur">' + s.duration + 's</span>'
+        + '</div>'
+        + '<div class="vid-scene-meta">'
+        + (s.narrative_role ? '<span class="vid-scene-role">' + s.narrative_role + '</span>' : '')
+        + '</div>'
+        + '<div class="vid-scene-narration">' + words + '</div>'
+        + '<div class="vid-scene-detail">'
+        + (s.psychoanalytic_note ? '<div class="vid-scene-detail-field" style="color:#b0a8e8;font-style:italic;border-left:2px solid #8a7fd4;padding-left:8px;margin:4px 0 8px;"><strong style="color:#8a7fd4;">reading:</strong> ' + s.psychoanalytic_note + '</div>' : '')
+        + (s.sound_direction ? '<div class="vid-scene-detail-field"><strong style="color:#a8c8b8;">sound:</strong> ' + s.sound_direction + '</div>' : '')
+        + (s.camera_movement ? '<div class="vid-scene-detail-field"><strong>camera:</strong> ' + s.camera_movement + '</div>' : '')
+        + '<div class="vid-scene-detail-field"><strong>image prompt:</strong> ' + s.image_prompt + '</div>'
+        + '<div class="vid-scene-detail-field"><strong>video prompt:</strong> ' + s.video_prompt + '</div>'
+        + '</div>'
+        + '</div>';
+    });
+    document.getElementById('script-list').innerHTML = html;
+  }
 
-    fetch('/api/v1/studio/upload', {
-      method: 'POST',
-      body: formData
-    })
+  window.toggleScene = function(el) {
+    el.classList.toggle('expanded');
+  };
+
+  function addProjectToList(id) {
+    var past = document.getElementById('past-videos');
+    if (!past) {
+      var left = document.querySelector('.vid-left');
+      if (!left) return;
+      var title = document.createElement('div');
+      title.className = 'vid-projects-title';
+      title.textContent = 'past projects';
+      left.appendChild(title);
+      past = document.createElement('div');
+      past.className = 'vid-past';
+      past.id = 'past-videos';
+      left.appendChild(past);
+    }
+    var card = document.createElement('div');
+    card.className = 'vid-past-card';
+    card.onclick = function() { loadProject(id); };
+    card.innerHTML = '<span class="vid-past-id">' + id.slice(0,8) + '</span>'
+      + '<span class="vid-past-status generating">generating</span>'
+      + '<span class="vid-past-info">0/?</span>';
+    past.insertBefore(card, past.firstChild);
+  }
+
+  window.switchQuality = function(btn) {
+    document.querySelectorAll('.vid-quality-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var quality = btn.dataset.quality;
+    var player = document.getElementById('video-player');
+    var url = currentVideoUrls[quality] || currentVideoUrls['1080p'];
+    if (url && player.src !== url) {
+      var currentTime = player.currentTime;
+      player.src = url;
+      player.currentTime = currentTime;
+    }
+  };
+
+  window.startGeneration = async function() {
+    if (!selectedAnkyId) return;
+    var btn = document.getElementById('btn-generate');
+    btn.disabled = true;
+    btn.textContent = 'preparing...';
+
+    try {
+      // Check if we already have a saved txHash for this anky (from a previous
+      // attempt that timed out — avoids double-charging)
+      var savedKey = 'anky_video_tx_' + selectedAnkyId;
+      var savedTx = localStorage.getItem(savedKey);
+
+      var txHash;
+      if (savedTx) {
+        // We already paid — reuse the tx hash
+        txHash = savedTx;
+        btn.textContent = 'resuming...';
+      } else {
+        var treasury = await fetch('/api/treasury').then(function(r) { return r.json(); }).then(function(d) { return d.address; });
+        btn.textContent = 'approve in wallet...';
+        txHash = await window.ankyWallet.sendUSDC(treasury, 5.00);
+        // Save tx hash IMMEDIATELY so we never lose track of this payment
+        localStorage.setItem(savedKey, txHash);
+      }
+
+      btn.textContent = 'starting generation...';
+
+      // Small delay for tx confirmation, then tell the server
+      await new Promise(function(r) { setTimeout(r, 3000); });
+
+      var resp = await fetch('/api/v1/generate/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-payment': txHash },
+        body: JSON.stringify({ anky_id: selectedAnkyId }),
+      });
+
+      if (!resp.ok) {
+        var err = await resp.json().catch(function() { return {}; });
+        throw new Error(err.error || 'generation failed');
+      }
+
+      var data = await resp.json();
+      currentProjectId = data.project_id;
+
+      // Clear saved tx — project is now tracked server-side
+      localStorage.removeItem(savedKey);
+
+      // Show receipt
+      showReceipt(currentProjectId, data.status === 'pending' ? 'script' : (data.current_step || 'script'));
+      addProjectToList(currentProjectId);
+
+      // Hide placeholder
+      document.getElementById('placeholder').style.display = 'none';
+
+      // If server returned script inline (legacy), render it
+      if (data.script && data.script.scenes) {
+        if (data.script.story_spine) {
+          showStorySpine(data.script.story_spine);
+        }
+        renderScript(data.script.scenes);
+        buildFilmstrip(data.script.scenes);
+        document.getElementById('script-duration').textContent = '(' + data.script.total_duration + 's)';
+      }
+
+      // Start polling — works for both 'pending' (script gen) and 'generating' (video gen)
+      pollInterval = setInterval(pollProject, 3000);
+
+    } catch(e) {
+      btn.disabled = false;
+      // If we saved a tx, show "retry" instead of "generate" so user knows
+      // they won't be charged again
+      var hasSavedTx = localStorage.getItem('anky_video_tx_' + selectedAnkyId);
+      btn.textContent = hasSavedTx ? 'retry (no extra charge)' : 'generate video';
+      alert(e.message || 'something went wrong');
+    }
+  };
+
+  window.resumeProject = function(id) {
+    fetch('/api/v1/video/' + id + '/resume', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.video_id) {
-        uploadStatus.textContent = 'Uploaded! Video ID: ' + data.video_id + ' (' + data.size_mb + ' MB)';
-        uploadStatus.classList.add('success');
-        btnUpload.textContent = 'UPLOADED';
-      } else {
-        throw new Error(data.error || 'upload failed');
+      if (data.project_id) {
+        loadProject(data.project_id);
       }
     })
-    .catch(function(err) {
-      uploadStatus.textContent = 'Upload failed: ' + err.message;
-      uploadStatus.classList.add('error');
-      btnUpload.disabled = false;
-      btnUpload.textContent = 'RETRY UPLOAD';
-    });
-  });
+    .catch(function(e) { alert('Resume failed: ' + e.message); });
+  };
 
-  // ===== Init =====
-  buildImageGrid();
-  updateGenCount();
-  showPhase('prep');
+  function pollProject() {
+    if (!currentProjectId) return;
+    fetch('/api/v1/video/' + currentProjectId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var step = data.current_step || 'script';
+
+      // Show story spine if available
+      if (data.story_spine) {
+        showStorySpine(data.story_spine);
+      } else if (data.script && data.script.story_spine) {
+        showStorySpine(data.script.story_spine);
+      }
+
+      if (data.script && data.script.scenes) {
+        var scenes = data.script.scenes;
+
+        // Narrative progress messages
+        narrativeProgress(scenes, step);
+
+        // Update filmstrip
+        if (document.getElementById('filmstrip').style.display === 'flex') {
+          updateFilmstrip(scenes);
+          scrollToActiveFrame(scenes);
+        } else {
+          buildFilmstrip(scenes);
+        }
+
+        // Update script panel scene states
+        scenes.forEach(function(s) {
+          var el = document.getElementById('scene-' + s.index);
+          if (!el) return;
+          el.classList.toggle('done', s.status === 'complete');
+          el.classList.toggle('image-done', !!(s.image_path && s.status !== 'complete'));
+          el.classList.toggle('active', s.status === 'generating');
+        });
+      }
+
+      // Fallback to generic step label if no scenes
+      if (!data.script || !data.script.scenes) {
+        updateStep(step);
+      }
+
+      if (data.status === 'complete') {
+        clearInterval(pollInterval);
+        updateStep('complete');
+        var player = document.getElementById('video-player');
+
+        // Store all quality URLs
+        currentVideoUrls = {};
+        if (data.video_url) currentVideoUrls['1080p'] = data.video_url;
+        if (data.video_url_720p) currentVideoUrls['720p'] = data.video_url_720p;
+        if (data.video_url_360p) currentVideoUrls['360p'] = data.video_url_360p;
+
+        player.src = data.video_url;
+        player.style.display = 'block';
+        document.getElementById('btn-download').style.display = '';
+        document.getElementById('btn-generate').textContent = 'generate another';
+        document.getElementById('btn-generate').disabled = false;
+
+        // Show quality selector if we have multiple qualities
+        if (data.video_url_720p || data.video_url_360p) {
+          document.getElementById('quality-selector').style.display = 'flex';
+        }
+      } else if (data.status === 'failed') {
+        clearInterval(pollInterval);
+        updateStep('failed');
+        document.getElementById('btn-generate').textContent = 'retry';
+        document.getElementById('btn-generate').disabled = false;
+      }
+    })
+    .catch(function() {});
+  }
+
+  window.loadProject = function(id) {
+    currentProjectId = id;
+    showReceipt(id, 'loading...');
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('video-player').style.display = 'none';
+    document.getElementById('quality-selector').style.display = 'none';
+
+    fetch('/api/v1/video/' + id)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      // Show story spine
+      if (data.story_spine) {
+        showStorySpine(data.story_spine);
+      } else if (data.script && data.script.story_spine) {
+        showStorySpine(data.script.story_spine);
+      }
+
+      if (data.script && data.script.scenes) {
+        renderScript(data.script.scenes);
+        buildFilmstrip(data.script.scenes);
+        document.getElementById('script-duration').textContent = '(' + (data.script.total_duration || 88) + 's)';
+      }
+      updateStep(data.current_step || data.status);
+
+      if (data.status === 'complete' && data.video_url) {
+        currentVideoUrls = {};
+        if (data.video_url) currentVideoUrls['1080p'] = data.video_url;
+        if (data.video_url_720p) currentVideoUrls['720p'] = data.video_url_720p;
+        if (data.video_url_360p) currentVideoUrls['360p'] = data.video_url_360p;
+
+        var player = document.getElementById('video-player');
+        player.src = data.video_url;
+        player.style.display = 'block';
+        document.getElementById('btn-download').style.display = '';
+
+        if (data.video_url_720p || data.video_url_360p) {
+          document.getElementById('quality-selector').style.display = 'flex';
+        }
+      } else if (data.status === 'generating') {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(pollProject, 3000);
+      }
+    });
+  };
+
+  window.downloadVideo = function() {
+    if (!currentProjectId) return;
+    // Download whichever quality is selected
+    var activeBtn = document.querySelector('.vid-quality-btn.active');
+    var quality = activeBtn ? activeBtn.dataset.quality : '1080p';
+    var url = currentVideoUrls[quality] || currentVideoUrls['1080p'];
+    if (url) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'anky-video-' + currentProjectId.slice(0,8) + '-' + quality + '.mp4';
+      a.click();
+    } else {
+      // Fallback: fetch from API
+      fetch('/api/v1/video/' + currentProjectId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.video_url) {
+          var a = document.createElement('a');
+          a.href = data.video_url;
+          a.download = 'anky-video-' + currentProjectId.slice(0,8) + '.mp4';
+          a.click();
+        }
+      });
+    }
+  };
+
+  // Mobile tab switching
+  window.switchTab = function(panel) {
+    var tabs = document.querySelectorAll('.vid-tab');
+    tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.panel === panel); });
+
+    var left = document.getElementById('panel-left');
+    var center = document.getElementById('panel-center');
+    var right = document.getElementById('panel-right');
+    if (!left || !center || !right) return;
+
+    left.classList.remove('mob-visible');
+    right.classList.remove('mob-visible');
+    center.classList.remove('mob-hidden');
+
+    if (panel === 'left') {
+      left.classList.add('mob-visible');
+      center.classList.add('mob-hidden');
+    } else if (panel === 'right') {
+      right.classList.add('mob-visible');
+      center.classList.add('mob-hidden');
+    }
+  };
+
+  // Auto-switch to video tab when generation starts
+  var origStart = window.startGeneration;
+  window.startGeneration = function() {
+    if (window.innerWidth <= 768) switchTab('center');
+    return origStart.apply(this, arguments);
+  };
+
+  // Mobile viewport height fix (address bar)
+  function setVH() {
+    document.documentElement.style.setProperty('--vh', window.innerHeight + 'px');
+  }
+  setVH();
+  window.addEventListener('resize', setVH);
+
+  // Close overlays on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeOverlay();
+      document.getElementById('info-modal').style.display = 'none';
+    }
+  });
 })();
 </script>
 {% endblock %}

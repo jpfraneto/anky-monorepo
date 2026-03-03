@@ -27,7 +27,11 @@ pub fn set_wallet_address(conn: &Connection, user_id: &str, wallet_address: &str
     Ok(())
 }
 
-pub fn create_user_with_wallet(conn: &Connection, user_id: &str, wallet_address: &str) -> Result<()> {
+pub fn create_user_with_wallet(
+    conn: &Connection,
+    user_id: &str,
+    wallet_address: &str,
+) -> Result<()> {
     let addr_lower = wallet_address.to_lowercase();
     conn.execute(
         "INSERT OR IGNORE INTO users (id, wallet_address) VALUES (?1, ?2)",
@@ -57,11 +61,90 @@ pub fn set_privy_did(conn: &Connection, user_id: &str, privy_did: &str) -> Resul
     Ok(())
 }
 
-pub fn create_user_with_wallet_and_privy(conn: &Connection, user_id: &str, wallet_address: &str, privy_did: &str) -> Result<()> {
+pub fn create_user_with_wallet_and_privy(
+    conn: &Connection,
+    user_id: &str,
+    wallet_address: &str,
+    privy_did: &str,
+) -> Result<()> {
     let addr_lower = wallet_address.to_lowercase();
     conn.execute(
         "INSERT OR IGNORE INTO users (id, wallet_address, privy_did) VALUES (?1, ?2, ?3)",
         params![user_id, addr_lower, privy_did],
+    )?;
+    Ok(())
+}
+
+// --- Email ---
+pub fn get_user_by_email(conn: &Connection, email: &str) -> Result<Option<String>> {
+    let email_lower = email.to_lowercase();
+    let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")?;
+    let mut rows = stmt.query_map(params![email_lower], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn set_email(conn: &Connection, user_id: &str, email: &str) -> Result<()> {
+    let email_lower = email.to_lowercase();
+    conn.execute(
+        "UPDATE users SET email = ?2 WHERE id = ?1",
+        params![user_id, email_lower],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_email(conn: &Connection, user_id: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT email FROM users WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()).flatten())
+}
+
+pub fn create_user_with_email_and_privy(
+    conn: &Connection,
+    user_id: &str,
+    email: &str,
+    privy_did: &str,
+) -> Result<()> {
+    let email_lower = email.to_lowercase();
+    conn.execute(
+        "INSERT OR IGNORE INTO users (id, email, privy_did) VALUES (?1, ?2, ?3)",
+        params![user_id, email_lower, privy_did],
+    )?;
+    Ok(())
+}
+
+// --- Farcaster ---
+pub fn get_user_by_fid(conn: &Connection, fid: i64) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM users WHERE farcaster_fid = ?1")?;
+    let mut rows = stmt.query_map(params![fid], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn create_user_with_farcaster(
+    conn: &Connection,
+    user_id: &str,
+    fid: i64,
+    username: &str,
+    pfp_url: Option<&str>,
+    wallet_address: Option<&str>,
+) -> Result<()> {
+    let addr_lower = wallet_address.map(|a| a.to_lowercase());
+    conn.execute(
+        "INSERT OR IGNORE INTO users (id, farcaster_fid, farcaster_username, farcaster_pfp_url, wallet_address) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![user_id, fid, username, pfp_url, addr_lower],
+    )?;
+    Ok(())
+}
+
+pub fn set_farcaster_info(
+    conn: &Connection,
+    user_id: &str,
+    fid: u64,
+    username: &str,
+    pfp_url: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE users SET farcaster_fid = ?2, farcaster_username = ?3, farcaster_pfp_url = ?4 WHERE id = ?1",
+        params![user_id, fid as i64, username, pfp_url],
     )?;
     Ok(())
 }
@@ -81,7 +164,11 @@ pub fn get_user_by_username(conn: &Connection, username: &str) -> Result<Option<
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
-pub fn check_username_available(conn: &Connection, username: &str, exclude_user_id: &str) -> Result<bool> {
+pub fn check_username_available(
+    conn: &Connection,
+    username: &str,
+    exclude_user_id: &str,
+) -> Result<bool> {
     let count: i32 = conn.query_row(
         "SELECT COUNT(*) FROM users WHERE username = ?1 AND id != ?2",
         params![username, exclude_user_id],
@@ -103,9 +190,7 @@ pub fn get_display_username(conn: &Connection, user_id: &str) -> Result<String> 
         return Ok(name);
     }
     // Fall back to x_users.username
-    let mut stmt = conn.prepare(
-        "SELECT username FROM x_users WHERE user_id = ?1 LIMIT 1"
-    )?;
+    let mut stmt = conn.prepare("SELECT username FROM x_users WHERE user_id = ?1 LIMIT 1")?;
     let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, String>(0))?;
     if let Some(Ok(name)) = rows.next() {
         return Ok(name);
@@ -119,11 +204,12 @@ pub struct UserSettings {
     pub font_size: i32,
     pub theme: String,
     pub idle_timeout: i32,
+    pub keyboard_layout: String,
 }
 
 pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSettings> {
     let mut stmt = conn.prepare(
-        "SELECT font_family, font_size, theme, idle_timeout FROM user_settings WHERE user_id = ?1",
+        "SELECT font_family, font_size, theme, idle_timeout, keyboard_layout FROM user_settings WHERE user_id = ?1",
     )?;
     let mut rows = stmt.query_map(params![user_id], |row| {
         Ok(UserSettings {
@@ -131,6 +217,9 @@ pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSetting
             font_size: row.get(1)?,
             theme: row.get(2)?,
             idle_timeout: row.get(3)?,
+            keyboard_layout: row
+                .get::<_, String>(4)
+                .unwrap_or_else(|_| "qwerty".to_string()),
         })
     })?;
     match rows.next() {
@@ -140,6 +229,7 @@ pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSetting
             font_size: 18,
             theme: "dark".to_string(),
             idle_timeout: 8,
+            keyboard_layout: "qwerty".to_string(),
         }),
     }
 }
@@ -151,16 +241,18 @@ pub fn upsert_user_settings(
     font_size: i32,
     theme: &str,
     idle_timeout: i32,
+    keyboard_layout: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO user_settings (user_id, font_family, font_size, theme, idle_timeout)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO user_settings (user_id, font_family, font_size, theme, idle_timeout, keyboard_layout)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(user_id) DO UPDATE SET
             font_family = excluded.font_family,
             font_size = excluded.font_size,
             theme = excluded.theme,
-            idle_timeout = excluded.idle_timeout",
-        params![user_id, font_family, font_size, theme, idle_timeout],
+            idle_timeout = excluded.idle_timeout,
+            keyboard_layout = excluded.keyboard_layout",
+        params![user_id, font_family, font_size, theme, idle_timeout, keyboard_layout],
     )?;
     Ok(())
 }
@@ -181,6 +273,205 @@ pub fn insert_writing_session(
         params![id, user_id, content, duration, word_count, is_anky, response],
     )?;
     Ok(())
+}
+
+pub fn insert_writing_session_with_flow(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    content: &str,
+    duration: f64,
+    word_count: i32,
+    is_anky: bool,
+    response: Option<&str>,
+    keystroke_deltas: Option<&str>,
+    flow_score: Option<f64>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO writing_sessions (id, user_id, content, duration_seconds, word_count, is_anky, response, keystroke_deltas, flow_score) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![id, user_id, content, duration, word_count, is_anky, response, keystroke_deltas, flow_score],
+    )?;
+    Ok(())
+}
+
+/// Calculate flow score from keystroke deltas (0-100).
+/// Measures rhythm consistency, velocity, and sustained attention.
+pub fn calculate_flow_score(deltas: &[f64], duration: f64, word_count: i32) -> f64 {
+    if deltas.len() < 10 || duration < 30.0 {
+        return 0.0;
+    }
+
+    // 1. Rhythm consistency (0-30 pts): low std dev of inter-keystroke intervals = flow
+    let mean_delta: f64 = deltas.iter().sum::<f64>() / deltas.len() as f64;
+    let variance: f64 =
+        deltas.iter().map(|d| (d - mean_delta).powi(2)).sum::<f64>() / deltas.len() as f64;
+    let std_dev = variance.sqrt();
+    // Ideal: std_dev around 50-100ms. Penalize both too erratic (>500ms) and too robotic (<20ms)
+    let rhythm_score = if std_dev < 20.0 {
+        15.0 // suspiciously robotic
+    } else if std_dev < 150.0 {
+        30.0 // excellent flow
+    } else if std_dev < 300.0 {
+        30.0 * (1.0 - (std_dev - 150.0) / 150.0).max(0.0)
+    } else {
+        5.0 // very erratic
+    };
+
+    // 2. Velocity (0-25 pts): words per minute
+    let wpm = (word_count as f64 / duration) * 60.0;
+    let velocity_score = if wpm < 10.0 {
+        5.0
+    } else if wpm < 30.0 {
+        5.0 + 20.0 * ((wpm - 10.0) / 20.0)
+    } else if wpm <= 80.0 {
+        25.0 // sweet spot
+    } else {
+        25.0 * (1.0 - ((wpm - 80.0) / 40.0).min(1.0)).max(0.5)
+    };
+
+    // 3. Sustained attention (0-25 pts): few long pauses
+    let long_pauses = deltas.iter().filter(|&&d| d > 2000.0).count();
+    let pause_ratio = long_pauses as f64 / deltas.len() as f64;
+    let attention_score = 25.0 * (1.0 - (pause_ratio * 10.0).min(1.0));
+
+    // 4. Duration bonus (0-20 pts): longer = more flow (up to 8 min)
+    let duration_score = 20.0 * (duration / 480.0).min(1.0);
+
+    let total = rhythm_score + velocity_score + attention_score + duration_score;
+    total.round().min(100.0).max(0.0)
+}
+
+/// Update user profile streak and flow scores after a writing session.
+pub fn update_user_flow_stats(
+    conn: &Connection,
+    user_id: &str,
+    flow_score: f64,
+    is_anky: bool,
+) -> Result<()> {
+    // Ensure user_profiles row exists
+    conn.execute(
+        "INSERT OR IGNORE INTO user_profiles (user_id) VALUES (?1)",
+        params![user_id],
+    )?;
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    if is_anky {
+        // Get current streak info
+        let (last_date, current_streak): (Option<String>, i32) = conn.query_row(
+            "SELECT last_anky_date, COALESCE(current_streak, 0) FROM user_profiles WHERE user_id = ?1",
+            params![user_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let new_streak = if let Some(ref ld) = last_date {
+            if ld == &today {
+                current_streak // same day, no change
+            } else if let Ok(last) = chrono::NaiveDate::parse_from_str(ld, "%Y-%m-%d") {
+                let today_date =
+                    chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").unwrap_or(last);
+                let diff = (today_date - last).num_days();
+                if diff == 1 {
+                    current_streak + 1
+                } else {
+                    1
+                }
+            } else {
+                1
+            }
+        } else {
+            1
+        };
+
+        conn.execute(
+            "UPDATE user_profiles SET
+                total_anky_sessions = COALESCE(total_anky_sessions, 0) + 1,
+                current_streak = ?2,
+                longest_streak = MAX(COALESCE(longest_streak, 0), ?2),
+                best_flow_score = MAX(COALESCE(best_flow_score, 0), ?3),
+                last_anky_date = ?4,
+                updated_at = datetime('now')
+            WHERE user_id = ?1",
+            params![user_id, new_streak, flow_score, today],
+        )?;
+    }
+
+    // Update session count and avg flow
+    conn.execute(
+        "UPDATE user_profiles SET
+            total_sessions = COALESCE(total_sessions, 0) + 1,
+            avg_flow_score = (
+                SELECT COALESCE(AVG(flow_score), 0) FROM writing_sessions
+                WHERE user_id = ?1 AND flow_score IS NOT NULL
+            ),
+            total_words_written = (
+                SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1
+            ),
+            updated_at = datetime('now')
+        WHERE user_id = ?1",
+        params![user_id],
+    )?;
+
+    Ok(())
+}
+
+// --- Leaderboard ---
+pub struct LeaderboardEntry {
+    pub rank: i32,
+    pub username: String,
+    pub best_flow_score: f64,
+    pub avg_flow_score: f64,
+    pub total_ankys: i32,
+    pub total_words: i32,
+    pub current_streak: i32,
+    pub longest_streak: i32,
+}
+
+pub fn get_leaderboard(
+    conn: &Connection,
+    sort_by: &str,
+    limit: i32,
+) -> Result<Vec<LeaderboardEntry>> {
+    let order = match sort_by {
+        "streak" => "up.current_streak DESC, up.best_flow_score DESC",
+        "ankys" => "up.total_anky_sessions DESC, up.best_flow_score DESC",
+        "words" => "up.total_words_written DESC, up.best_flow_score DESC",
+        _ => "up.best_flow_score DESC, up.avg_flow_score DESC", // default: flow
+    };
+    let sql = format!(
+        "SELECT
+            COALESCE(u.username, u.farcaster_username, (SELECT xu.username FROM x_users xu WHERE xu.user_id = u.id LIMIT 1), 'anon-' || substr(u.id, 1, 6)) as display_name,
+            COALESCE(up.best_flow_score, 0),
+            COALESCE(up.avg_flow_score, 0),
+            COALESCE(up.total_anky_sessions, 0),
+            COALESCE(up.total_words_written, 0),
+            COALESCE(up.current_streak, 0),
+            COALESCE(up.longest_streak, 0)
+        FROM user_profiles up
+        JOIN users u ON u.id = up.user_id
+        WHERE up.total_anky_sessions > 0
+        ORDER BY {}
+        LIMIT ?1",
+        order
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(LeaderboardEntry {
+            rank: 0, // filled in after
+            username: row.get(0)?,
+            best_flow_score: row.get(1)?,
+            avg_flow_score: row.get(2)?,
+            total_ankys: row.get(3)?,
+            total_words: row.get(4)?,
+            current_streak: row.get(5)?,
+            longest_streak: row.get(6)?,
+        })
+    })?;
+    let mut entries: Vec<LeaderboardEntry> = rows.filter_map(|r| r.ok()).collect();
+    for (i, entry) in entries.iter_mut().enumerate() {
+        entry.rank = (i + 1) as i32;
+    }
+    Ok(entries)
 }
 
 pub struct WritingSession {
@@ -222,12 +513,17 @@ pub struct WritingWithAnky {
     pub anky_id: Option<String>,
     pub anky_title: Option<String>,
     pub anky_image_path: Option<String>,
+    pub anky_reflection: Option<String>,
+    pub conversation_json: Option<String>,
 }
 
-pub fn get_user_writings_with_ankys(conn: &Connection, user_id: &str) -> Result<Vec<WritingWithAnky>> {
+pub fn get_user_writings_with_ankys(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<WritingWithAnky>> {
     let mut stmt = conn.prepare(
         "SELECT ws.id, ws.content, ws.duration_seconds, ws.word_count, ws.is_anky, ws.response, ws.created_at,
-                a.id, a.title, a.image_path
+                a.id, a.title, a.image_path, a.reflection, a.conversation_json
          FROM writing_sessions ws
          LEFT JOIN ankys a ON a.writing_session_id = ws.id AND a.status = 'complete'
          WHERE ws.user_id = ?1
@@ -245,6 +541,8 @@ pub fn get_user_writings_with_ankys(conn: &Connection, user_id: &str) -> Result<
             anky_id: row.get(7)?,
             anky_title: row.get(8)?,
             anky_image_path: row.get(9)?,
+            anky_reflection: row.get(10)?,
+            conversation_json: row.get(11)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -291,6 +589,14 @@ pub fn insert_anky(
     Ok(())
 }
 
+pub fn set_anky_image_model(conn: &Connection, id: &str, image_model: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET image_model = ?2 WHERE id = ?1",
+        params![id, image_model],
+    )?;
+    Ok(())
+}
+
 pub fn update_anky_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
     conn.execute(
         "UPDATE ankys SET status = ?2 WHERE id = ?1",
@@ -326,6 +632,27 @@ pub fn update_anky_title_reflection(
         params![id, title, reflection],
     )?;
     Ok(())
+}
+
+pub fn update_anky_conversation(
+    conn: &Connection,
+    id: &str,
+    conversation_json: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET conversation_json = ?2 WHERE id = ?1",
+        params![id, conversation_json],
+    )?;
+    Ok(())
+}
+
+pub fn get_anky_conversation(conn: &Connection, id: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT conversation_json FROM ankys WHERE id = ?1")?;
+    let result: Option<Option<String>> = stmt
+        .query_map(params![id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .next();
+    Ok(result.flatten())
 }
 
 pub fn update_anky_image_complete(
@@ -374,11 +701,12 @@ pub struct AnkyRecord {
     pub status: String,
     pub created_at: String,
     pub origin: String,
+    pub image_model: String,
 }
 
 pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin FROM ankys ORDER BY created_at DESC",
+        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin, COALESCE(image_model, 'gemini') FROM ankys ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(AnkyRecord {
@@ -392,6 +720,7 @@ pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
             status: row.get(7)?,
             created_at: row.get(8)?,
             origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -399,7 +728,7 @@ pub fn get_all_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
 
 pub fn get_all_complete_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin FROM ankys WHERE status = 'complete' ORDER BY created_at DESC",
+        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin, COALESCE(image_model, 'gemini') FROM ankys WHERE status = 'complete' ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(AnkyRecord {
@@ -413,6 +742,7 @@ pub fn get_all_complete_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
             status: row.get(7)?,
             created_at: row.get(8)?,
             origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -420,7 +750,7 @@ pub fn get_all_complete_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
 
 pub fn get_user_ankys(conn: &Connection, user_id: &str) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin FROM ankys WHERE user_id = ?1 AND status = 'complete' ORDER BY created_at DESC",
+        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin, COALESCE(image_model, 'gemini') FROM ankys WHERE user_id = ?1 AND status = 'complete' ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map(params![user_id], |row| {
         Ok(AnkyRecord {
@@ -434,6 +764,7 @@ pub fn get_user_ankys(conn: &Connection, user_id: &str) -> Result<Vec<AnkyRecord
             status: row.get(7)?,
             created_at: row.get(8)?,
             origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -441,7 +772,7 @@ pub fn get_user_ankys(conn: &Connection, user_id: &str) -> Result<Vec<AnkyRecord
 
 pub fn get_user_viewed_ankys(conn: &Connection, user_id: &str) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.thinker_name, a.status, a.created_at, a.origin
+        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.thinker_name, a.status, a.created_at, a.origin, COALESCE(a.image_model, 'gemini')
          FROM user_collections uc
          JOIN ankys a ON a.id = uc.anky_id
          WHERE uc.user_id = ?1 AND a.status = 'complete'
@@ -459,6 +790,7 @@ pub fn get_user_viewed_ankys(conn: &Connection, user_id: &str) -> Result<Vec<Ank
             status: row.get(7)?,
             created_at: row.get(8)?,
             origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -466,7 +798,7 @@ pub fn get_user_viewed_ankys(conn: &Connection, user_id: &str) -> Result<Vec<Ank
 
 pub fn get_generated_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin FROM ankys WHERE origin = 'generated' AND status = 'complete' ORDER BY created_at DESC",
+        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin, COALESCE(image_model, 'gemini') FROM ankys WHERE origin = 'generated' AND status = 'complete' ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(AnkyRecord {
@@ -480,6 +812,7 @@ pub fn get_generated_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
             status: row.get(7)?,
             created_at: row.get(8)?,
             origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -499,11 +832,12 @@ pub struct AnkyDetail {
     pub writing_text: Option<String>,
     pub created_at: String,
     pub origin: String,
+    pub image_model: String,
 }
 
 pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin
+        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini')
          FROM ankys a
          LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
          WHERE a.id = ?1",
@@ -523,6 +857,7 @@ pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>>
             writing_text: row.get(10)?,
             created_at: row.get(11)?,
             origin: row.get(12)?,
+            image_model: row.get(13)?,
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))
@@ -615,8 +950,130 @@ pub fn insert_cost_record(
 }
 
 pub fn get_total_cost(conn: &Connection) -> Result<f64> {
-    let cost: f64 = conn.query_row("SELECT COALESCE(SUM(cost_usd), 0) FROM cost_records", [], |row| row.get(0))?;
+    let cost: f64 = conn.query_row(
+        "SELECT COALESCE(SUM(cost_usd), 0) FROM cost_records",
+        [],
+        |row| row.get(0),
+    )?;
     Ok(cost)
+}
+
+pub struct ServiceSpend {
+    pub service: String,
+    pub model: String,
+    pub calls: i32,
+    pub total_cost_usd: f64,
+}
+
+pub fn get_video_service_spend(
+    conn: &Connection,
+    user_id: &str,
+    since_days: Option<i32>,
+) -> Result<Vec<ServiceSpend>> {
+    let mut out = Vec::new();
+    if let Some(days) = since_days {
+        let modifier = format!("-{} days", days.max(1));
+        let mut stmt = conn.prepare(
+            "SELECT c.service, c.model, COUNT(*), COALESCE(SUM(c.cost_usd), 0)
+             FROM cost_records c
+             JOIN video_projects v ON v.id = c.related_id
+             WHERE v.user_id = ?1 AND c.created_at >= datetime('now', ?2)
+             GROUP BY c.service, c.model
+             ORDER BY SUM(c.cost_usd) DESC",
+        )?;
+        let rows = stmt.query_map(params![user_id, modifier], |row| {
+            Ok(ServiceSpend {
+                service: row.get(0)?,
+                model: row.get(1)?,
+                calls: row.get(2)?,
+                total_cost_usd: row.get(3)?,
+            })
+        })?;
+        for row in rows {
+            if let Ok(item) = row {
+                out.push(item);
+            }
+        }
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT c.service, c.model, COUNT(*), COALESCE(SUM(c.cost_usd), 0)
+             FROM cost_records c
+             JOIN video_projects v ON v.id = c.related_id
+             WHERE v.user_id = ?1
+             GROUP BY c.service, c.model
+             ORDER BY SUM(c.cost_usd) DESC",
+        )?;
+        let rows = stmt.query_map(params![user_id], |row| {
+            Ok(ServiceSpend {
+                service: row.get(0)?,
+                model: row.get(1)?,
+                calls: row.get(2)?,
+                total_cost_usd: row.get(3)?,
+            })
+        })?;
+        for row in rows {
+            if let Ok(item) = row {
+                out.push(item);
+            }
+        }
+    }
+    Ok(out)
+}
+
+pub struct VideoProjectSpend {
+    pub id: String,
+    pub status: String,
+    pub created_at: String,
+    pub total_cost_usd: f64,
+}
+
+pub fn get_recent_video_project_spend(
+    conn: &Connection,
+    user_id: &str,
+    limit: i32,
+) -> Result<Vec<VideoProjectSpend>> {
+    let mut stmt = conn.prepare(
+        "SELECT v.id, v.status, v.created_at, COALESCE(SUM(c.cost_usd), 0)
+         FROM video_projects v
+         LEFT JOIN cost_records c ON c.related_id = v.id
+         WHERE v.user_id = ?1
+         GROUP BY v.id, v.status, v.created_at
+         ORDER BY v.created_at DESC
+         LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![user_id, limit.max(1)], |row| {
+        Ok(VideoProjectSpend {
+            id: row.get(0)?,
+            status: row.get(1)?,
+            created_at: row.get(2)?,
+            total_cost_usd: row.get(3)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_pipeline_prompt(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM pipeline_prompts WHERE key = ?1")?;
+    let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn upsert_pipeline_prompt(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+    updated_by: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO pipeline_prompts (key, value, updated_by, updated_at)
+         VALUES (?1, ?2, ?3, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_by = excluded.updated_by,
+            updated_at = datetime('now')",
+        params![key, value, updated_by],
+    )?;
+    Ok(())
 }
 
 // --- Training Runs ---
@@ -647,11 +1104,7 @@ pub fn update_training_progress(
     Ok(())
 }
 
-pub fn complete_training_run(
-    conn: &Connection,
-    id: &str,
-    lora_path: &str,
-) -> Result<()> {
+pub fn complete_training_run(conn: &Connection, id: &str, lora_path: &str) -> Result<()> {
     conn.execute(
         "UPDATE training_runs SET status = 'complete', lora_weights_path = ?2, completed_at = datetime('now') WHERE id = ?1",
         params![id, lora_path],
@@ -672,7 +1125,9 @@ pub fn insert_notification_signup(
     Ok(())
 }
 
-pub fn get_notification_signups(conn: &Connection) -> Result<Vec<(Option<String>, Option<String>)>> {
+pub fn get_notification_signups(
+    conn: &Connection,
+) -> Result<Vec<(Option<String>, Option<String>)>> {
     let mut stmt = conn.prepare("SELECT email, telegram_chat_id FROM notification_signups")?;
     let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -749,7 +1204,11 @@ pub struct TransformationRecord {
     pub created_at: String,
 }
 
-pub fn get_recent_transformations(conn: &Connection, api_key: &str, limit: i32) -> Result<Vec<TransformationRecord>> {
+pub fn get_recent_transformations(
+    conn: &Connection,
+    api_key: &str,
+    limit: i32,
+) -> Result<Vec<TransformationRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, input_tokens, output_tokens, cost_usd, created_at FROM transformations WHERE api_key = ?1 ORDER BY created_at DESC LIMIT ?2",
     )?;
@@ -849,7 +1308,10 @@ pub struct CheckpointRecord {
     pub created_at: String,
 }
 
-pub fn get_latest_checkpoint(conn: &Connection, session_id: &str) -> Result<Option<CheckpointRecord>> {
+pub fn get_latest_checkpoint(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<CheckpointRecord>> {
     let mut stmt = conn.prepare(
         "SELECT elapsed_seconds, session_token, created_at FROM writing_checkpoints WHERE session_id = ?1 ORDER BY id DESC LIMIT 1",
     )?;
@@ -861,6 +1323,77 @@ pub fn get_latest_checkpoint(conn: &Connection, session_id: &str) -> Result<Opti
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Recover orphaned checkpoints: sessions that have checkpoints but no writing_session.
+/// Only recovers sessions older than 10 minutes (to avoid grabbing active sessions).
+/// Uses the checkpoint session_id as the writing_session id to prevent duplicate recovery.
+pub fn recover_orphaned_checkpoints(conn: &Connection) -> Result<i32> {
+    // Find checkpoint session_ids that have no matching writing_session (by id),
+    // where the latest checkpoint is older than 10 minutes
+    let mut stmt = conn.prepare(
+        "SELECT c.session_id, MAX(c.elapsed_seconds) as elapsed, MAX(c.word_count) as words
+         FROM writing_checkpoints c
+         WHERE NOT EXISTS (
+             SELECT 1 FROM writing_sessions ws WHERE ws.id = c.session_id
+         )
+         AND c.created_at < datetime('now', '-10 minutes')
+         GROUP BY c.session_id
+         HAVING MAX(c.elapsed_seconds) >= 60
+         ORDER BY MAX(c.created_at) DESC
+         LIMIT 20",
+    )?;
+
+    let orphans: Vec<(String, f64, i32)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, i32>(2)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut recovered = 0;
+    for (session_id, elapsed, word_count) in &orphans {
+        // Get the content from the latest checkpoint for this session
+        let latest_content: String = conn.query_row(
+            "SELECT content FROM writing_checkpoints WHERE session_id = ?1 ORDER BY elapsed_seconds DESC LIMIT 1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+
+        let is_anky = *elapsed >= 480.0 && *word_count >= 300;
+
+        // Get the created_at from the first checkpoint of this session
+        let created_at: String = conn.query_row(
+            "SELECT created_at FROM writing_checkpoints WHERE session_id = ?1 ORDER BY elapsed_seconds ASC LIMIT 1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+
+        // Try to find which user this belongs to by looking at nearby sessions
+        let user_id: String = conn.query_row(
+            "SELECT COALESCE(
+                (SELECT user_id FROM writing_sessions WHERE created_at < ?1 ORDER BY created_at DESC LIMIT 1),
+                'recovered-unknown'
+            )",
+            params![&created_at],
+            |row| row.get(0),
+        ).unwrap_or_else(|_| "recovered-unknown".to_string());
+
+        // Use the checkpoint session_id as the writing_session id — this prevents
+        // duplicate recovery since the NOT EXISTS check uses ws.id = c.session_id
+        conn.execute(
+            "INSERT INTO writing_sessions (id, user_id, content, duration_seconds, word_count, is_anky, response, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'recovered from checkpoints', ?7)",
+            params![session_id, &user_id, &latest_content, elapsed, word_count, is_anky, &created_at],
+        )?;
+        recovered += 1;
+    }
+
+    Ok(recovered)
 }
 
 // --- Cost Estimates ---
@@ -885,10 +1418,10 @@ pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String
         "SELECT a.id, a.writing_session_id, w.content
          FROM ankys a
          JOIN writing_sessions w ON w.id = a.writing_session_id
-         WHERE a.status IN ('pending', 'failed')
+         WHERE a.status IN ('pending', 'failed', 'generating')
          AND a.created_at < datetime('now', '-2 minutes')
          ORDER BY a.created_at ASC
-         LIMIT 10"
+         LIMIT 10",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -906,7 +1439,7 @@ pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String
 
 pub fn mark_anky_failed(conn: &Connection, id: &str) -> Result<()> {
     conn.execute(
-        "UPDATE ankys SET status = 'failed' WHERE id = ?1 AND status IN ('pending', 'generating')",
+        "UPDATE ankys SET status = 'failed' WHERE id = ?1 AND status IN ('pending', 'generating', 'failed')",
         params![id],
     )?;
     Ok(())
@@ -1087,7 +1620,12 @@ pub struct PromptListItem {
     pub created_by: Option<String>,
 }
 
-pub fn get_prompts_paginated(conn: &Connection, page: i32, limit: i32, sort: &str) -> Result<(Vec<PromptListItem>, i32)> {
+pub fn get_prompts_paginated(
+    conn: &Connection,
+    page: i32,
+    limit: i32,
+    sort: &str,
+) -> Result<(Vec<PromptListItem>, i32)> {
     let offset = (page - 1) * limit;
     let total: i32 = conn.query_row(
         "SELECT COUNT(*) FROM prompts WHERE status = 'complete'",
@@ -1204,7 +1742,10 @@ pub fn insert_prompt_session(
     Ok(())
 }
 
-pub fn get_prompt_sessions_for_prompt(conn: &Connection, prompt_id: &str) -> Result<Vec<PromptSessionRecord>> {
+pub fn get_prompt_sessions_for_prompt(
+    conn: &Connection,
+    prompt_id: &str,
+) -> Result<Vec<PromptSessionRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, prompt_id, user_id, content, keystroke_deltas, duration_seconds, word_count, completed, created_at FROM prompt_sessions WHERE prompt_id = ?1 ORDER BY created_at DESC",
     )?;
@@ -1277,7 +1818,13 @@ pub fn get_x_user_by_x_id(conn: &Connection, x_user_id: &str) -> Result<Option<X
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
-pub fn create_auth_session(conn: &Connection, token: &str, user_id: &str, x_user_id: Option<&str>, expires_at: &str) -> Result<()> {
+pub fn create_auth_session(
+    conn: &Connection,
+    token: &str,
+    user_id: &str,
+    x_user_id: Option<&str>,
+    expires_at: &str,
+) -> Result<()> {
     conn.execute(
         "INSERT INTO auth_sessions (token, user_id, x_user_id, expires_at) VALUES (?1, ?2, ?3, ?4)",
         params![token, user_id, x_user_id, expires_at],
@@ -1285,7 +1832,10 @@ pub fn create_auth_session(conn: &Connection, token: &str, user_id: &str, x_user
     Ok(())
 }
 
-pub fn get_auth_session(conn: &Connection, token: &str) -> Result<Option<(String, Option<String>)>> {
+pub fn get_auth_session(
+    conn: &Connection,
+    token: &str,
+) -> Result<Option<(String, Option<String>)>> {
     let mut stmt = conn.prepare(
         "SELECT user_id, x_user_id FROM auth_sessions WHERE token = ?1 AND expires_at > datetime('now')",
     )?;
@@ -1300,7 +1850,12 @@ pub fn delete_auth_session(conn: &Connection, token: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn save_oauth_state(conn: &Connection, state: &str, code_verifier: &str, redirect_to: Option<&str>) -> Result<()> {
+pub fn save_oauth_state(
+    conn: &Connection,
+    state: &str,
+    code_verifier: &str,
+    redirect_to: Option<&str>,
+) -> Result<()> {
     conn.execute(
         "INSERT INTO oauth_states (state, code_verifier, redirect_to) VALUES (?1, ?2, ?3)",
         params![state, code_verifier, redirect_to],
@@ -1308,10 +1863,12 @@ pub fn save_oauth_state(conn: &Connection, state: &str, code_verifier: &str, red
     Ok(())
 }
 
-pub fn get_and_delete_oauth_state(conn: &Connection, state: &str) -> Result<Option<(String, Option<String>)>> {
-    let mut stmt = conn.prepare(
-        "SELECT code_verifier, redirect_to FROM oauth_states WHERE state = ?1",
-    )?;
+pub fn get_and_delete_oauth_state(
+    conn: &Connection,
+    state: &str,
+) -> Result<Option<(String, Option<String>)>> {
+    let mut stmt =
+        conn.prepare("SELECT code_verifier, redirect_to FROM oauth_states WHERE state = ?1")?;
     let mut rows = stmt.query_map(params![state], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
     })?;
@@ -1340,7 +1897,14 @@ pub fn insert_x_interaction(
     Ok(())
 }
 
-pub fn update_x_interaction_status(conn: &Connection, id: &str, status: &str, classification: Option<&str>, prompt_id: Option<&str>, reply_tweet_id: Option<&str>) -> Result<()> {
+pub fn update_x_interaction_status(
+    conn: &Connection,
+    id: &str,
+    status: &str,
+    classification: Option<&str>,
+    prompt_id: Option<&str>,
+    reply_tweet_id: Option<&str>,
+) -> Result<()> {
     conn.execute(
         "UPDATE x_interactions SET status = ?2, classification = ?3, prompt_id = ?4, reply_tweet_id = ?5 WHERE id = ?1",
         params![id, status, classification, prompt_id, reply_tweet_id],
@@ -1358,9 +1922,8 @@ pub fn interaction_exists(conn: &Connection, tweet_id: &str) -> Result<bool> {
 }
 
 pub fn get_latest_interaction_tweet_id(conn: &Connection) -> Result<Option<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT tweet_id FROM x_interactions ORDER BY created_at DESC LIMIT 1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT tweet_id FROM x_interactions ORDER BY created_at DESC LIMIT 1")?;
     let mut rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
@@ -1398,4 +1961,935 @@ pub fn update_video_status(conn: &Connection, id: &str, status: &str) -> Result<
         params![id, status],
     )?;
     Ok(())
+}
+
+// ===== Stream Overlay =====
+
+/// Get the latest completed anky with user info (for Farcaster OG embed).
+pub struct LatestAnkyEmbed {
+    pub title: Option<String>,
+    pub image_path: String,
+    pub display_username: String,
+    pub pfp_url: Option<String>,
+}
+
+pub fn get_latest_anky_for_embed(conn: &Connection) -> Result<Option<LatestAnkyEmbed>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.title, a.image_path,
+                COALESCE(u.username, u.farcaster_username, (SELECT xu.username FROM x_users xu WHERE xu.user_id = a.user_id LIMIT 1), 'someone') as display_username,
+                COALESCE(u.farcaster_pfp_url, (SELECT xu.profile_image_url FROM x_users xu WHERE xu.user_id = a.user_id LIMIT 1)) as pfp_url
+         FROM ankys a
+         JOIN users u ON u.id = a.user_id
+         WHERE a.status = 'complete' AND a.image_path IS NOT NULL
+         ORDER BY a.created_at DESC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map([], |row| {
+        Ok(LatestAnkyEmbed {
+            title: row.get(0)?,
+            image_path: row.get(1)?,
+            display_username: row.get(2)?,
+            pfp_url: row.get(3)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Get today's completed ankys with images (for stream overlay stickers).
+pub fn get_todays_ankys(conn: &Connection) -> Result<Vec<AnkyRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, image_path, image_webp, reflection, image_prompt, thinker_name, status, created_at, origin, COALESCE(image_model, 'gemini')
+         FROM ankys
+         WHERE status = 'complete' AND image_path IS NOT NULL AND date(created_at) = date('now')
+         ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(AnkyRecord {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            image_path: row.get(2)?,
+            image_webp: row.get(3)?,
+            reflection: row.get(4)?,
+            image_prompt: row.get(5)?,
+            thinker_name: row.get(6)?,
+            status: row.get(7)?,
+            created_at: row.get(8)?,
+            origin: row.get(9)?,
+            image_model: row.get(10).unwrap_or_else(|_| "gemini".to_string()),
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Video Projects =====
+
+pub fn insert_video_project(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    anky_id: Option<&str>,
+    writing_session_id: Option<&str>,
+    script_json: &str,
+    total_scenes: i32,
+    payment_tx_hash: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO video_projects (id, user_id, anky_id, writing_session_id, script_json, total_scenes, status, payment_tx_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'generating', ?7)",
+        params![id, user_id, anky_id, writing_session_id, script_json, total_scenes, payment_tx_hash],
+    )?;
+    Ok(())
+}
+
+/// Insert a video project immediately with 'pending' status (before script generation).
+pub fn insert_video_project_pending(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    anky_id: &str,
+    payment_tx_hash: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO video_projects (id, user_id, anky_id, script_json, total_scenes, status, current_step, payment_tx_hash) VALUES (?1, ?2, ?3, '', 0, 'pending', 'script', ?4)",
+        params![id, user_id, anky_id, payment_tx_hash],
+    )?;
+    Ok(())
+}
+
+/// Update a pending video project with generated script data and set status to 'generating'.
+pub fn update_video_project_script(
+    conn: &Connection,
+    id: &str,
+    script_json: &str,
+    total_scenes: i32,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET script_json = ?2, total_scenes = ?3, status = 'generating', current_step = 'generating' WHERE id = ?1",
+        params![id, script_json, total_scenes],
+    )?;
+    Ok(())
+}
+
+pub fn update_video_project_progress(conn: &Connection, id: &str, completed: i32) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET completed_scenes = ?2 WHERE id = ?1",
+        params![id, completed],
+    )?;
+    Ok(())
+}
+
+pub fn update_video_project_complete(
+    conn: &Connection,
+    id: &str,
+    video_path: &str,
+    script_json: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET status = 'complete', video_path = ?2, script_json = ?3 WHERE id = ?1",
+        params![id, video_path, script_json],
+    )?;
+    Ok(())
+}
+
+pub fn update_video_project_step(conn: &Connection, id: &str, step: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET current_step = ?2 WHERE id = ?1",
+        params![id, step],
+    )?;
+    Ok(())
+}
+
+pub fn update_video_project_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET status = ?2 WHERE id = ?1",
+        params![id, status],
+    )?;
+    Ok(())
+}
+
+pub struct VideoProjectRecord {
+    pub id: String,
+    pub user_id: String,
+    pub anky_id: Option<String>,
+    pub script_json: Option<String>,
+    pub status: String,
+    pub video_path: Option<String>,
+    pub video_path_720p: Option<String>,
+    pub video_path_360p: Option<String>,
+    pub story_spine: Option<String>,
+    pub total_scenes: i32,
+    pub completed_scenes: i32,
+    pub current_step: Option<String>,
+    pub created_at: String,
+}
+
+pub fn get_video_project(conn: &Connection, id: &str) -> Result<Option<VideoProjectRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, anky_id, script_json, status, video_path, total_scenes, completed_scenes, current_step, created_at, video_path_720p, video_path_360p, story_spine FROM video_projects WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        Ok(VideoProjectRecord {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            anky_id: row.get(2)?,
+            script_json: row.get(3)?,
+            status: row.get(4)?,
+            video_path: row.get(5)?,
+            total_scenes: row.get(6)?,
+            completed_scenes: row.get(7)?,
+            current_step: row.get(8)?,
+            created_at: row.get(9)?,
+            video_path_720p: row.get(10)?,
+            video_path_360p: row.get(11)?,
+            story_spine: row.get(12)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn get_user_video_projects(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<VideoProjectRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, anky_id, script_json, status, video_path, total_scenes, completed_scenes, current_step, created_at, video_path_720p, video_path_360p, story_spine FROM video_projects WHERE user_id = ?1 ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        Ok(VideoProjectRecord {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            anky_id: row.get(2)?,
+            script_json: row.get(3)?,
+            status: row.get(4)?,
+            video_path: row.get(5)?,
+            total_scenes: row.get(6)?,
+            completed_scenes: row.get(7)?,
+            current_step: row.get(8)?,
+            created_at: row.get(9)?,
+            video_path_720p: row.get(10)?,
+            video_path_360p: row.get(11)?,
+            story_spine: row.get(12)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Find an active (pending/generating) video project for a given anky.
+pub fn find_active_video_project_for_anky(
+    conn: &Connection,
+    anky_id: &str,
+) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM video_projects WHERE anky_id = ?1 AND status IN ('pending', 'generating') ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![anky_id], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn update_video_project_paths(
+    conn: &Connection,
+    id: &str,
+    path_720p: &str,
+    path_360p: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET video_path_720p = ?2, video_path_360p = ?3 WHERE id = ?1",
+        params![id, path_720p, path_360p],
+    )?;
+    Ok(())
+}
+
+pub fn update_video_project_story_spine(
+    conn: &Connection,
+    id: &str,
+    story_spine: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE video_projects SET story_spine = ?2 WHERE id = ?1",
+        params![id, story_spine],
+    )?;
+    Ok(())
+}
+
+/// Get the latest complete anky with its writing text for a user.
+pub fn get_latest_user_anky_with_writing(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<(String, String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, COALESCE(a.title, ''), ws.content, COALESCE(a.image_path, '')
+         FROM ankys a
+         JOIN writing_sessions ws ON ws.id = a.writing_session_id
+         WHERE a.user_id = ?1 AND ws.is_anky = 1
+         ORDER BY a.created_at DESC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Get ALL user writing sessions that are ankys (for the video page selector).
+pub fn get_user_anky_writings(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<(String, String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, COALESCE(a.title, 'untitled'), SUBSTR(ws.content, 1, 120), COALESCE(a.image_path, '')
+         FROM ankys a
+         JOIN writing_sessions ws ON ws.id = a.writing_session_id
+         WHERE a.user_id = ?1 AND ws.is_anky = 1
+         ORDER BY a.created_at DESC
+         LIMIT 20"
+    )?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Feed =====
+
+pub struct FeedItem {
+    pub id: String,
+    pub title: Option<String>,
+    pub image_webp: Option<String>,
+    pub image_path: Option<String>,
+    pub thinker_name: Option<String>,
+    pub created_at: String,
+    pub like_count: i32,
+    pub user_liked: bool,
+}
+
+pub fn get_feed(
+    conn: &Connection,
+    viewer_user_id: Option<&str>,
+    page: i32,
+    per_page: i32,
+) -> Result<Vec<FeedItem>> {
+    let offset = (page - 1) * per_page;
+    let viewer = viewer_user_id.unwrap_or("");
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.title, a.image_webp, a.image_path,
+                COALESCE(u.username, u.farcaster_username, (SELECT xu.username FROM x_users xu WHERE xu.user_id = a.user_id LIMIT 1), 'someone') as thinker_name,
+                a.created_at,
+                (SELECT COUNT(*) FROM anky_likes al WHERE al.anky_id = a.id) as like_count,
+                (SELECT COUNT(*) FROM anky_likes al WHERE al.anky_id = a.id AND al.user_id = ?3) as user_liked
+         FROM ankys a
+         JOIN users u ON u.id = a.user_id
+         WHERE a.status = 'complete' AND a.image_path IS NOT NULL
+         ORDER BY a.created_at DESC
+         LIMIT ?1 OFFSET ?2"
+    )?;
+    let rows = stmt.query_map(params![per_page, offset, viewer], |row| {
+        Ok(FeedItem {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            image_webp: row.get(2)?,
+            image_path: row.get(3)?,
+            thinker_name: row.get(4)?,
+            created_at: row.get(5)?,
+            like_count: row.get(6)?,
+            user_liked: row.get::<_, i32>(7)? > 0,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Likes =====
+
+pub fn toggle_like(conn: &Connection, user_id: &str, anky_id: &str) -> Result<bool> {
+    let exists: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM anky_likes WHERE user_id = ?1 AND anky_id = ?2",
+        params![user_id, anky_id],
+        |row| row.get(0),
+    )?;
+    if exists > 0 {
+        conn.execute(
+            "DELETE FROM anky_likes WHERE user_id = ?1 AND anky_id = ?2",
+            params![user_id, anky_id],
+        )?;
+        Ok(false)
+    } else {
+        conn.execute(
+            "INSERT INTO anky_likes (user_id, anky_id) VALUES (?1, ?2)",
+            params![user_id, anky_id],
+        )?;
+        Ok(true)
+    }
+}
+
+pub fn get_like_count(conn: &Connection, anky_id: &str) -> Result<i32> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM anky_likes WHERE anky_id = ?1",
+        params![anky_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+// ===== Thumbnail =====
+
+pub fn update_anky_thumb(conn: &Connection, id: &str, image_thumb: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET image_thumb = ?2 WHERE id = ?1",
+        params![id, image_thumb],
+    )?;
+    Ok(())
+}
+
+// ===== Feed Stats =====
+
+pub struct FeedStats {
+    pub total_sessions_24h: i32,
+    pub total_ankys_24h: i32,
+    pub unique_writers_24h: i32,
+    pub total_minutes_24h: f64,
+    pub total_words_24h: i32,
+}
+
+pub fn get_feed_stats_24h(conn: &Connection) -> Result<FeedStats> {
+    let row = conn.query_row(
+        "SELECT
+            COUNT(*) as total_sessions,
+            SUM(CASE WHEN is_anky = 1 THEN 1 ELSE 0 END) as total_ankys,
+            COUNT(DISTINCT user_id) as unique_writers,
+            COALESCE(SUM(duration_seconds), 0) as total_seconds,
+            COALESCE(SUM(word_count), 0) as total_words
+         FROM writing_sessions
+         WHERE created_at > datetime('now', '-24 hours')",
+        [],
+        |row| {
+            Ok(FeedStats {
+                total_sessions_24h: row.get(0)?,
+                total_ankys_24h: row.get(1)?,
+                unique_writers_24h: row.get(2)?,
+                total_minutes_24h: row.get::<_, f64>(3)? / 60.0,
+                total_words_24h: row.get(4)?,
+            })
+        },
+    )?;
+    Ok(row)
+}
+
+pub struct FeedAnky {
+    pub id: String,
+    pub title: Option<String>,
+    pub image_path: Option<String>,
+    pub image_webp: Option<String>,
+    pub thinker_name: Option<String>,
+    pub origin: String,
+    pub created_at: String,
+}
+
+pub fn get_feed_ankys(conn: &Connection, limit: i32, offset: i32) -> Result<Vec<FeedAnky>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.title, a.image_path, a.image_webp,
+                COALESCE(u.username, u.farcaster_username, (SELECT xu.username FROM x_users xu WHERE xu.user_id = a.user_id LIMIT 1), 'someone') as thinker_name,
+                a.origin, a.created_at
+         FROM ankys a
+         LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.status = 'complete' AND a.image_path IS NOT NULL
+         ORDER BY a.created_at DESC
+         LIMIT ?1 OFFSET ?2",
+    )?;
+    let rows = stmt.query_map(params![limit, offset], |row| {
+        Ok(FeedAnky {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            image_path: row.get(2)?,
+            image_webp: row.get(3)?,
+            thinker_name: row.get(4)?,
+            origin: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Slideshow =====
+
+pub struct SlideshowAnky {
+    pub id: String,
+    pub title: Option<String>,
+    pub image_path: String,
+    pub origin: String,
+    pub display_username: String,
+    pub created_at: String,
+}
+
+pub struct SlideshowVideo {
+    pub id: String,
+    pub video_path: String,
+    pub created_at: String,
+}
+
+pub fn get_slideshow_videos(conn: &Connection) -> Result<Vec<SlideshowVideo>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, video_path, created_at FROM video_projects WHERE status = 'complete' AND video_path IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(SlideshowVideo {
+            id: row.get(0)?,
+            video_path: row.get(1)?,
+            created_at: row.get(2)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Meditation =====
+
+pub fn insert_meditation_session(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    duration_target: i32,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO meditation_sessions (id, user_id, duration_target) VALUES (?1, ?2, ?3)",
+        params![id, user_id, duration_target],
+    )?;
+    Ok(())
+}
+
+pub fn complete_meditation_session(
+    conn: &Connection,
+    id: &str,
+    duration_actual: i32,
+) -> Result<bool> {
+    let rows = conn.execute(
+        "UPDATE meditation_sessions SET completed = 1, duration_actual = ?2 WHERE id = ?1 AND completed = 0",
+        params![id, duration_actual],
+    )?;
+    Ok(rows > 0)
+}
+
+pub struct UserProgression {
+    pub user_id: String,
+    pub total_meditations: i32,
+    pub total_completed: i32,
+    pub current_meditation_level: i32,
+    pub write_unlocked: bool,
+    pub current_streak: i32,
+    pub longest_streak: i32,
+    pub last_session_date: Option<String>,
+}
+
+pub fn get_or_create_progression(conn: &Connection, user_id: &str) -> Result<UserProgression> {
+    conn.execute(
+        "INSERT OR IGNORE INTO user_progression (user_id) VALUES (?1)",
+        params![user_id],
+    )?;
+    let prog = conn.query_row(
+        "SELECT user_id, total_meditations, total_completed, current_meditation_level, write_unlocked, current_streak, longest_streak, last_session_date FROM user_progression WHERE user_id = ?1",
+        params![user_id],
+        |row| {
+            Ok(UserProgression {
+                user_id: row.get(0)?,
+                total_meditations: row.get(1)?,
+                total_completed: row.get(2)?,
+                current_meditation_level: row.get(3)?,
+                write_unlocked: row.get(4)?,
+                current_streak: row.get(5)?,
+                longest_streak: row.get(6)?,
+                last_session_date: row.get(7)?,
+            })
+        },
+    )?;
+    Ok(prog)
+}
+
+/// Increment meditation count and update streak after a completed session.
+pub fn increment_meditation(conn: &Connection, user_id: &str) -> Result<UserProgression> {
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    let prog = get_or_create_progression(conn, user_id)?;
+
+    let new_streak = if let Some(ref ld) = prog.last_session_date {
+        if ld == &today {
+            prog.current_streak // same day
+        } else if let Ok(last) = chrono::NaiveDate::parse_from_str(ld, "%Y-%m-%d") {
+            let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").unwrap_or(last);
+            let diff = (today_date - last).num_days();
+            if diff == 1 {
+                prog.current_streak + 1
+            } else {
+                1
+            }
+        } else {
+            1
+        }
+    } else {
+        1
+    };
+
+    let new_total = prog.total_completed + 1;
+    let new_meditations = prog.total_meditations + 1;
+
+    conn.execute(
+        "UPDATE user_progression SET
+            total_meditations = ?2,
+            total_completed = ?3,
+            current_streak = ?4,
+            longest_streak = MAX(longest_streak, ?4),
+            last_session_date = ?5
+        WHERE user_id = ?1",
+        params![user_id, new_meditations, new_total, new_streak, today],
+    )?;
+
+    // Check level up
+    check_and_level_up(conn, user_id)?;
+
+    get_or_create_progression(conn, user_id)
+}
+
+/// Level thresholds: 0=0, 1=3, 2=8, 3=15, 4=25, 5=40
+pub fn check_and_level_up(conn: &Connection, user_id: &str) -> Result<()> {
+    let prog = get_or_create_progression(conn, user_id)?;
+    let thresholds = [0, 3, 8, 15, 25, 40];
+    let mut new_level = 0;
+    for (i, &threshold) in thresholds.iter().enumerate() {
+        if prog.total_completed >= threshold {
+            new_level = i as i32;
+        }
+    }
+    let write_unlocked = new_level >= 2;
+    if new_level != prog.current_meditation_level || write_unlocked != prog.write_unlocked {
+        conn.execute(
+            "UPDATE user_progression SET current_meditation_level = ?2, write_unlocked = ?3 WHERE user_id = ?1",
+            params![user_id, new_level, write_unlocked],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn insert_user_interaction(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    meditation_session_id: Option<&str>,
+    interaction_type: &str,
+    question_text: Option<&str>,
+    metadata_json: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO user_interactions (id, user_id, meditation_session_id, interaction_type, question_text, metadata_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, user_id, meditation_session_id, interaction_type, question_text, metadata_json],
+    )?;
+    Ok(())
+}
+
+pub fn update_interaction_response(conn: &Connection, id: &str, response_text: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE user_interactions SET response_text = ?2 WHERE id = ?1",
+        params![id, response_text],
+    )?;
+    Ok(())
+}
+
+/// Duration in seconds for a given meditation level
+pub fn meditation_duration_for_level(level: i32) -> i32 {
+    match level {
+        0 => 30,
+        1 => 60,
+        2 => 120,
+        3 => 180,
+        4 => 300,
+        _ => 480,
+    }
+}
+
+/// Number of completed meditations needed for next level
+pub fn next_level_threshold(level: i32) -> i32 {
+    match level {
+        0 => 3,
+        1 => 8,
+        2 => 15,
+        3 => 25,
+        4 => 40,
+        _ => 999,
+    }
+}
+
+/// Count anonymous meditation sessions (by cookie user_id) in last 24h
+pub fn count_anon_meditations_today(conn: &Connection, user_id: &str) -> Result<i32> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM meditation_sessions WHERE user_id = ?1 AND created_at > datetime('now', '-24 hours')",
+        params![user_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+pub fn get_slideshow_ankys(conn: &Connection) -> Result<Vec<SlideshowAnky>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.title, a.image_path, a.origin,
+                COALESCE(u.username, u.farcaster_username, (SELECT xu.username FROM x_users xu WHERE xu.user_id = a.user_id LIMIT 1), 'someone') as display_username,
+                a.created_at
+         FROM ankys a
+         LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.status = 'complete' AND a.image_path IS NOT NULL
+         ORDER BY a.created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(SlideshowAnky {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            image_path: row.get(2)?,
+            origin: row.get(3)?,
+            display_username: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// --- Inquiry System ---
+
+/// Get the current unanswered inquiry for a user.
+pub fn get_current_inquiry(conn: &Connection, user_id: &str) -> Result<Option<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, question FROM user_inquiries
+         WHERE user_id = ?1 AND response_text IS NULL AND skipped = 0
+         ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Create a new inquiry for a user.
+pub fn create_inquiry(
+    conn: &Connection,
+    user_id: &str,
+    question: &str,
+    language: &str,
+) -> Result<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO user_inquiries (id, user_id, question, language) VALUES (?1, ?2, ?3, ?4)",
+        params![id, user_id, question, language],
+    )?;
+    Ok(id)
+}
+
+/// Mark an inquiry as answered with the user's writing text and session id.
+pub fn mark_inquiry_answered(
+    conn: &Connection,
+    inquiry_id: &str,
+    text: &str,
+    session_id: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE user_inquiries SET response_text = ?2, response_session_id = ?3, answered_at = datetime('now') WHERE id = ?1",
+        params![inquiry_id, text, session_id],
+    )?;
+    Ok(())
+}
+
+/// Mark an inquiry as skipped.
+pub fn mark_inquiry_skipped(conn: &Connection, inquiry_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE user_inquiries SET skipped = 1 WHERE id = ?1",
+        params![inquiry_id],
+    )?;
+    Ok(())
+}
+
+/// Get inquiry history for a user (for Claude context).
+pub fn get_inquiry_history(
+    conn: &Connection,
+    user_id: &str,
+    limit: i32,
+) -> Result<Vec<(String, Option<String>, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT question, response_text, answered_at FROM user_inquiries
+         WHERE user_id = ?1
+         ORDER BY created_at DESC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![user_id, limit], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Get the language stored on the user's most recent inquiry.
+pub fn get_inquiry_language(conn: &Connection, user_id: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT language FROM user_inquiries WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+// --- Interview System ---
+
+use crate::models::{InterviewSummary, UserInterviewContext};
+
+pub fn create_interview(
+    conn: &Connection,
+    id: &str,
+    user_id: Option<&str>,
+    guest_name: &str,
+    is_anonymous: bool,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO interviews (id, user_id, guest_name, is_anonymous) VALUES (?1, ?2, ?3, ?4)",
+        params![id, user_id, guest_name, is_anonymous],
+    )?;
+    Ok(())
+}
+
+pub fn save_interview_message(
+    conn: &Connection,
+    interview_id: &str,
+    role: &str,
+    content: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO interview_messages (interview_id, role, content) VALUES (?1, ?2, ?3)",
+        params![interview_id, role, content],
+    )?;
+    // Update message count
+    conn.execute(
+        "UPDATE interviews SET message_count = (SELECT COUNT(*) FROM interview_messages WHERE interview_id = ?1) WHERE id = ?1",
+        params![interview_id],
+    )?;
+    Ok(())
+}
+
+pub fn end_interview(
+    conn: &Connection,
+    interview_id: &str,
+    summary: Option<&str>,
+    duration_seconds: Option<f64>,
+    message_count: Option<i32>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE interviews SET ended_at = datetime('now'), summary = COALESCE(?2, summary), duration_seconds = COALESCE(?3, duration_seconds), message_count = COALESCE(?4, message_count) WHERE id = ?1",
+        params![interview_id, summary, duration_seconds, message_count],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_interview_history(
+    conn: &Connection,
+    user_id: &str,
+    limit: i64,
+) -> Result<Vec<InterviewSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, guest_name, started_at, summary, duration_seconds FROM interviews WHERE user_id = ?1 ORDER BY started_at DESC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![user_id, limit], |row| {
+        Ok(InterviewSummary {
+            id: row.get(0)?,
+            guest_name: row.get(1)?,
+            started_at: row.get(2)?,
+            summary: row.get(3)?,
+            duration_seconds: row.get(4)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_user_context_for_interview(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<UserInterviewContext>> {
+    // Get username
+    let username: Option<String> = conn
+        .prepare("SELECT username FROM users WHERE id = ?1")?
+        .query_map(params![user_id], |row| row.get::<_, Option<String>>(0))?
+        .next()
+        .and_then(|r| r.ok())
+        .flatten();
+
+    // Get profile data
+    let (psychological_profile, core_tensions, growth_edges) = conn
+        .prepare("SELECT psychological_profile, core_tensions, growth_edges FROM user_profiles WHERE user_id = ?1")?
+        .query_map(params![user_id], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?
+        .next()
+        .and_then(|r| r.ok())
+        .unwrap_or((None, None, None));
+
+    // Get last 5 writing session summaries (response = Ollama/Claude feedback)
+    let mut ws_stmt = conn.prepare(
+        "SELECT response FROM writing_sessions WHERE user_id = ?1 AND response IS NOT NULL ORDER BY created_at DESC LIMIT 5",
+    )?;
+    let recent_writings: Vec<String> = ws_stmt
+        .query_map(params![user_id], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Get past interview summaries
+    let past_interviews = get_user_interview_history(conn, user_id, 5)?;
+
+    Ok(Some(UserInterviewContext {
+        username,
+        psychological_profile,
+        core_tensions,
+        growth_edges,
+        recent_writings,
+        past_interviews,
+    }))
+}
+
+// --- Video Gallery ---
+
+pub struct VideoGalleryItem {
+    pub project_id: String,
+    pub video_path: String,
+    pub created_at: String,
+    pub anky_title: Option<String>,
+    pub image_path: Option<String>,
+    pub image_webp: Option<String>,
+    pub image_thumb: Option<String>,
+}
+
+pub fn get_all_complete_video_projects(conn: &Connection) -> Result<Vec<VideoGalleryItem>> {
+    let mut stmt = conn.prepare(
+        "SELECT vp.id, vp.video_path, vp.created_at,
+                a.title, a.image_path, a.image_webp, a.image_thumb
+         FROM video_projects vp
+         LEFT JOIN ankys a ON a.id = vp.anky_id
+         WHERE vp.status = 'complete' AND vp.video_path IS NOT NULL
+         ORDER BY vp.created_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(VideoGalleryItem {
+                project_id: row.get(0)?,
+                video_path: row.get(1)?,
+                created_at: row.get(2)?,
+                anky_title: row.get(3)?,
+                image_path: row.get(4)?,
+                image_webp: row.get(5)?,
+                image_thumb: row.get(6)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }

@@ -1,0 +1,6 @@
+Continue implementing the livestream overhaul tasks:
+- 8-minute hard stop on livestream — force end at 480s, show "@username just wrote an anky!" congratulations for 8 seconds on stream + overlay + navbar
+- Elapsed time in navbar live indicator — show running timer next to "@username is writing (M:SS)"
+- Better claim username UX — celebratory modal with glow animation and welcome flash
+- Update skills.md with POST /api/v1/live/write agent endpoint docs
+- Show human/agent label on stream frame and overlay — differentiate [agent] vs human writers

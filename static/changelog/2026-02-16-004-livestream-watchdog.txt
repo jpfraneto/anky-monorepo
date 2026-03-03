@@ -1,0 +1,1 @@
+somwhow the livestream gets stuck after a while. can you please create some sort of cron job that allows us to fix whatever happened programatically?

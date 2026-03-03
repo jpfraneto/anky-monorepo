@@ -56,7 +56,11 @@ pub fn authorization_url(
 }
 
 fn urlencoding(s: &str) -> String {
-    s.replace(':', "%3A").replace('/', "%2F").replace('?', "%3F").replace('=', "%3D").replace('&', "%26")
+    s.replace(':', "%3A")
+        .replace('/', "%2F")
+        .replace('?', "%3F")
+        .replace('=', "%3D")
+        .replace('&', "%26")
 }
 
 #[derive(Deserialize, Debug)]
@@ -108,10 +112,7 @@ pub async fn refresh_token(
     let resp = client
         .post("https://api.x.com/2/oauth2/token")
         .basic_auth(client_id, Some(client_secret))
-        .form(&[
-            ("refresh_token", refresh),
-            ("grant_type", "refresh_token"),
-        ])
+        .form(&[("refresh_token", refresh), ("grant_type", "refresh_token")])
         .send()
         .await?;
 

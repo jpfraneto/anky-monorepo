@@ -22,8 +22,7 @@ pub fn calculate_transform_cost(input_tokens: i64, output_tokens: i64) -> f64 {
 /// Estimate cost for a full 88-being collection.
 pub fn estimate_collection_cost(num_beings: usize) -> f64 {
     // Each being: stream generation + prompt + reflection + title + image
-    let per_being = estimate_single_anky_cost()
-        + estimate_claude_cost(500, 2000); // stream generation
+    let per_being = estimate_single_anky_cost() + estimate_claude_cost(500, 2000); // stream generation
     let generation_cost = per_being * num_beings as f64;
     // Training cost estimate
     let training_cost = 2.0; // Electricity cost estimate for 4000 steps on 2x4090

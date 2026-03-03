@@ -1,0 +1,62 @@
+Implement the following plan:
+
+# Livestream Overhaul: Rust-Rendered Frames + Username + Agents
+
+## Context
+Replace the current ffmpeg drawtext livestream with Rust-rendered 1920x1080 landscape frames piped to ffmpeg. Add username enforcement for going live, agent live-writing at ~200 WPM, and navbar live indicator. Remove the 88:88 timer concept.
+
+## Architecture
+
+**Frame pipeline**: Render frames using `image`/`imageproc`/`ab_glyph` (already in Cargo.toml). Store current frame in `Arc<RwLock<RgbaImage>>`. Background task pumps frame to ffmpeg stdin at 10fps as raw RGBA. Frame only re-renders on text change.
+
+**Fonts**: Righteous at `static/fonts/Righteous-Regular.ttf`, LiberationMono at `/usr/share/fonts/liberation-mono-fonts/LiberationMono-Regular.ttf`. Load once at startup via `Box::leak`.
+
+## Steps
+
+### 1. `src/state.rs` — Add fields
+- `LiveState`: add `writer_username: Option<String>`, `writer_type: Option<String>`
+- `LiveStatusEvent::WentLive`: add `writer_username: String`
+- `LiveTextEvent`: add `writer_username: Option<String>`
+- `AppState`: add `frame_buffer: services::stream::FrameBuffer`
+
+### 2. `src/services/stream.rs` — Full rewrite
+- Remove text-file approach (`write_live_text`, `write_idle_text`, `write_live_frame`, `LIVE_TEXT_PATH`)
+- Add `FrameBuffer = Arc<RwLock<RgbaImage>>` + `new_frame_buffer()`
+- Font loading with `Box::leak` (same pattern as `pipeline/prompt_gen.rs`)
+- `render_idle_frame()`: 1920x1080, #0a0a0a bg, "$ANKY" header in Righteous, "waiting for a writer..." message
+- `render_live_frame(username, text, words, elapsed, idle_ratio, progress)`: @username top-left, life bar, scrolling text area, stats row, progress bar
+- `update_live_frame()` / `set_idle_frame()`: async wrappers updating the shared buffer
+- `spawn_ffmpeg_loop(rtmp_url, stream_key, frame_buf, live_state)`: ffmpeg with `-f rawvideo -pixel_format rgba -video_size 1920x1080 -framerate 10 -i pipe:0`, reads frame at 10fps from buffer, writes to stdin
+
+### 3. `src/main.rs` — Init frame buffer
+- Create `frame_buffer` via `stream::new_frame_buffer()`, add to AppState
+- Pass `frame_buf.clone()` to `spawn_ffmpeg_loop`
+
+### 4. `src/routes/live.rs` — Auth + username + agent endpoint
+- **WS handler**: Accept `CookieJar`, call `auth::get_auth_user()` (exists at `src/routes/auth.rs:200`), reject if no user/username. Store username in `LiveState`. Call `stream::update_live_frame()` on each text message.
+- **Agent endpoint** `POST /api/v1/live/write`: Extract API key from `X-API-Key` header directly in handler (no middleware needed — just call `get_agent_by_key`). Claim live slot as agent. Spawn tokio task: tick through text word-by-word at 300ms/word (~200 WPM), updating frame + broadcasting SSE each tick.
+- **SSE/JSON handlers**: Include `writer_username` in all events
+
+### 5. `src/routes/mod.rs` — Register `/api/v1/live/write`
+
+### 6. `src/routes/pages.rs` — Pass username to home template
+- `home()`: Accept `CookieJar`, call `get_auth_user`, insert username into Tera context
+
+### 7. `templates/base.html` — Navbar live indicator
+- Add `<span class="live-writing-indicator">` with pulsing red dot + "@username is writing"
+- Inline SSE listener for `/api/live-status`
+
+### 8. `templates/home.html` — Username enforcement
+- Add `{% if username %}<meta name="anky-username">{% endif %}`
+- `goLive()`: check meta tag, redirect to /settings if no username
+
+### 9. `templates/stream_overlay.html` — Horizontal + username + no timer
+- 1920x1080 viewport, remove 88:88 timer, add @username display, update sticker positions
+
+## Verification
+1. `cargo build --release` compiles clean
+2. ffmpeg starts with rawvideo pipe (check logs)
+3. `/stream/overlay` shows horizontal idle message
+4. Go Live without username → redirected to /settings
+5. Go Live with username → "@username is writing" on stream + navbar
+6. Agent API → text streams at readable pace

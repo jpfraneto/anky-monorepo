@@ -1,0 +1,1 @@
+ser we need to talk about the video genreation pipeline so that we can evolve it from what we have now, to what it can actually become. first of all, i need you to know that in mobile the ui/ux SUCKS. please fix that while i write the massive prompt for you to rewrite the pipeline based on what ive seen from the videos that have been generated

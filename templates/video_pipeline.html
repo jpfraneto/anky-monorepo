@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}video pipeline control — anky{% endblock %}
+
+{% block head %}
+<style>
+  .pipe-wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
+  .pipe-head h1 { margin: 0; font-size: 28px; }
+  .pipe-sub { color: #888; margin-top: 6px; font-size: 14px; }
+  .pipe-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+  .card { background: #101017; border: 1px solid #262638; border-radius: 10px; padding: 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: #d4a853; }
+  .card p { margin: 0; font-size: 13px; color: #b6b6c6; }
+  .stage { grid-column: span 4; }
+  .editor { grid-column: span 12; }
+  .editor label { display: block; font-size: 12px; color: #8d8da3; margin: 8px 0 5px; }
+  .editor textarea { width: 100%; min-height: 110px; resize: vertical; background: #0b0b12; border: 1px solid #2d2d44; color: #e9e9f2; border-radius: 8px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.35; }
+  .actions { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .btn { border: 1px solid #3a3a5a; background: #17172a; color: #f2f2f7; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-family: inherit; font-size: 13px; }
+  .btn:hover { border-color: #d4a853; color: #d4a853; }
+  .status { font-size: 12px; color: #8d8da3; }
+  .table-card { grid-column: span 6; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border-bottom: 1px solid #242438; padding: 8px 6px; text-align: left; }
+  th { color: #8d8da3; font-weight: 600; }
+  td { color: #c8c8d4; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { font-size: 11px; border: 1px solid #43435e; border-radius: 999px; padding: 2px 8px; color: #c2c2d0; }
+  @media (max-width: 900px) {
+    .stage, .table-card { grid-column: span 12; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pipe-wrap">
+  <div class="pipe-head">
+    <h1>8m → 88s pipeline control</h1>
+    <div class="pipe-sub">see each stage, edit core prompts, and track service spend for video generation.</div>
+  </div>
+
+  {% if not logged_in %}
+    <div class="card" style="margin-top:16px;">
+      <h2>Login Required</h2>
+      <p>sign in to view and edit pipeline controls.</p>
+    </div>
+  {% else %}
+    <div class="pipe-grid">
+      <div class="card stage">
+        <h2>Stage 1: Script</h2>
+        <p><span class="pill">Claude</span> reads the 8-minute writing and outputs story spine + 8-15 scene plan.</p>
+      </div>
+      <div class="card stage">
+        <h2>Stage 2: Scene Images</h2>
+        <p><span class="pill">Gemini</span> renders each scene image (9:16), with Anky refs + continuity frames.</p>
+      </div>
+      <div class="card stage">
+        <h2>Stage 3: Scene Videos + Stitch</h2>
+        <p><span class="pill">Grok + ffmpeg</span> creates per-scene clips, then stitches final 88-second video.</p>
+      </div>
+
+      <div class="card editor">
+        <h2>Prompt Controls</h2>
+        <label for="script-prompt">script system prompt (Claude)</label>
+        <textarea id="script-prompt"></textarea>
+
+        <label for="image-template">scene image prompt template (Gemini)</label>
+        <textarea id="image-template" placeholder="Use {image_prompt} placeholder."></textarea>
+
+        <label for="sound-template">scene sound/video prompt template (Grok)</label>
+        <textarea id="sound-template" placeholder="Use {video_prompt} and {sound_direction} placeholders."></textarea>
+
+        <div class="actions">
+          <button class="btn" id="save-btn" onclick="saveConfig()">save pipeline prompts</button>
+          <span class="status" id="save-status"></span>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <h2>Service Spend (Last 7 Days)</h2>
+        <table>
+          <thead><tr><th>service</th><th>model</th><th class="num">calls</th><th class="num">usd</th></tr></thead>
+          <tbody id="spend-7d"></tbody>
+        </table>
+      </div>
+
+      <div class="card table-card">
+        <h2>Service Spend (All Time)</h2>
+        <table>
+          <thead><tr><th>service</th><th>model</th><th class="num">calls</th><th class="num">usd</th></tr></thead>
+          <tbody id="spend-all"></tbody>
+        </table>
+      </div>
+
+      <div class="card table-card">
+        <h2>Recent Video Projects</h2>
+        <table>
+          <thead><tr><th>project</th><th>status</th><th class="num">usd</th></tr></thead>
+          <tbody id="recent-projects"></tbody>
+        </table>
+      </div>
+
+      <div class="card table-card">
+        <h2>Cost Model</h2>
+        <table>
+          <tbody id="cost-model"></tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if logged_in %}
+<script>
+(function() {
+  function money(v) { return '$' + (Number(v || 0)).toFixed(4); }
+  function text(v) { return (v === null || v === undefined) ? '' : String(v); }
+
+  function fillSpendRows(targetId, rows) {
+    var el = document.getElementById(targetId);
+    if (!el) return;
+    if (!rows || !rows.length) {
+      el.innerHTML = '<tr><td colspan="4">no data</td></tr>';
+      return;
+    }
+    el.innerHTML = rows.map(function(r) {
+      return '<tr><td>' + text(r.service) + '</td><td>' + text(r.model) + '</td><td class="num">' + text(r.calls) + '</td><td class="num">' + money(r.total_cost_usd) + '</td></tr>';
+    }).join('');
+  }
+
+  function fillProjects(rows) {
+    var el = document.getElementById('recent-projects');
+    if (!rows || !rows.length) {
+      el.innerHTML = '<tr><td colspan="3">no projects</td></tr>';
+      return;
+    }
+    el.innerHTML = rows.map(function(p) {
+      return '<tr><td><a href="/api/v1/video/' + text(p.id) + '" target="_blank">' + text(p.id).slice(0, 8) + '</a></td><td>' + text(p.status) + '</td><td class="num">' + money(p.total_cost_usd) + '</td></tr>';
+    }).join('');
+  }
+
+  function fillCostModel(model) {
+    var el = document.getElementById('cost-model');
+    if (!model) return;
+    el.innerHTML =
+      '<tr><td>claude script</td><td class="num">' + text(model.claude_script) + '</td></tr>' +
+      '<tr><td>gemini per scene</td><td class="num">' + money(model.gemini_per_scene_usd) + '</td></tr>' +
+      '<tr><td>grok per second</td><td class="num">' + money(model.grok_per_second_usd) + '</td></tr>' +
+      '<tr><td>target duration</td><td class="num">' + text(model.target_seconds) + 's</td></tr>';
+  }
+
+  async function loadConfig() {
+    var res = await fetch('/api/v1/video/pipeline/config');
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'failed to load');
+
+    document.getElementById('script-prompt').value = text(data.prompts && data.prompts.script_system_prompt);
+    document.getElementById('image-template').value = text(data.prompts && data.prompts.scene_image_prompt_template);
+    document.getElementById('sound-template').value = text(data.prompts && data.prompts.scene_sound_prompt_template);
+    fillSpendRows('spend-7d', data.spend_7d || []);
+    fillSpendRows('spend-all', data.spend_all_time || []);
+    fillProjects(data.recent_projects || []);
+    fillCostModel(data.estimated_cost_model || {});
+  }
+
+  window.saveConfig = async function() {
+    var btn = document.getElementById('save-btn');
+    var status = document.getElementById('save-status');
+    btn.disabled = true;
+    status.textContent = 'saving...';
+    try {
+      var payload = {
+        script_system_prompt: document.getElementById('script-prompt').value,
+        scene_image_prompt_template: document.getElementById('image-template').value,
+        scene_sound_prompt_template: document.getElementById('sound-template').value
+      };
+      var res = await fetch('/api/v1/video/pipeline/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json().catch(function() { return {}; });
+      if (!res.ok) throw new Error(data.error || 'save failed');
+      status.textContent = 'saved';
+      loadConfig();
+    } catch (e) {
+      status.textContent = e.message || 'save failed';
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  loadConfig().catch(function(e) {
+    var status = document.getElementById('save-status');
+    if (status) status.textContent = e.message || 'failed to load config';
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,5 @@
+Dissolve All Writing Friction
+
+Writing is anky's core function — an 8-minute stream of consciousness session. Currently, the post-meditation "write" option is locked until 8 meditations (level 2), and anonymous users are capped at 2 meditations/day. The FAB (floating write button) already bypasses these gates — it calls enterWriteMode() with no checks, and the /write backend endpoint has no meditation/auth requirements. But the gates create confusion and friction for new visitors.
+
+Writing should ALWAYS be available, zero friction, no login required. Anonymous sessions already save to the DB via a 365-day cookie UUID. Remove the gates entirely.
