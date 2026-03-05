@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}anky — training live{% endblock %}
+{% block content %}
+<style>
+  .live-wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+  .live-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+  .live-header h1 { font-size: 1.3rem; margin: 0; }
+  .live-badge {
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .badge-waiting  { background: #222; color: #666; }
+  .badge-training { background: #1a3a1a; color: #4caf50; animation: pulse 2s infinite; }
+  .badge-done     { background: #1a2a3a; color: #7c9fcf; }
+  .badge-failed   { background: #3a1a1a; color: #f44336; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  .live-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #1a1a1a;
+    border-radius: 3px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  .live-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #8bc34a);
+    border-radius: 3px;
+    transition: width 1s ease;
+  }
+
+  .live-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .live-stat {
+    background: #0f0f0f;
+    border: 1px solid #1e1e1e;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .live-stat-label { font-size: 0.7rem; color: #555; margin-bottom: 4px; }
+  .live-stat-value { font-size: 1.4rem; font-weight: bold; color: #fff; }
+  .live-stat-value.green { color: #4caf50; }
+  .live-stat-value.orange { color: #ff9800; }
+
+  .live-samples {
+    margin-bottom: 1.5rem;
+  }
+  .live-samples h3 { font-size: 0.85rem; color: #666; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+  .samples-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+  .sample-card {
+    background: #0f0f0f;
+    border: 1px solid #1e1e1e;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .sample-card img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; background: #0a0a0a; }
+  .sample-card-label { font-size: 0.65rem; color: #444; padding: 4px 8px; font-family: monospace; }
+
+  .live-log {
+    background: #080808;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: #555;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .live-log h3 { font-size: 0.75rem; color: #444; margin: 0 0 0.5rem; font-family: sans-serif; text-transform: uppercase; letter-spacing: 1px; }
+
+  .loss-chart-wrap {
+    margin-bottom: 1.5rem;
+  }
+  .loss-chart-wrap h3 { font-size: 0.85rem; color: #666; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+  #loss-chart {
+    width: 100%;
+    height: 100px;
+    background: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    display: block;
+  }
+
+  .test-wrap {
+    margin-top: 2rem;
+    background: #0f0f0f;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .test-wrap h3 { font-size: 0.9rem; color: #aaa; margin: 0 0 1rem; }
+  .test-row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .test-input {
+    flex: 1;
+    background: #111;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    color: #fff;
+    font-size: 0.85rem;
+  }
+  .test-input:focus { outline: none; border-color: #444; }
+  .test-btn {
+    background: #1a3a1a;
+    border: 1px solid #2a5a2a;
+    color: #4caf50;
+    border-radius: 6px;
+    padding: 0.6rem 1.2rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .test-btn:hover { background: #234a23; }
+  .test-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .test-result img { width: 100%; max-width: 400px; border-radius: 8px; margin-top: 0.75rem; display: block; }
+  .test-url-row { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .test-url-label { font-size: 0.72rem; color: #555; margin-bottom: 0.4rem; }
+
+  .no-data {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #444;
+  }
+  .no-data p { margin-top: 0.5rem; font-size: 0.85rem; }
+</style>
+
+<div class="live-wrap">
+  <div class="live-header">
+    <h1>training live</h1>
+    <span class="live-badge badge-waiting" id="status-badge">waiting</span>
+  </div>
+
+  <div class="live-progress-bar">
+    <div class="live-progress-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+
+  <div class="live-stats">
+    <div class="live-stat">
+      <div class="live-stat-label">step</div>
+      <div class="live-stat-value" id="stat-step">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-stat-label">loss</div>
+      <div class="live-stat-value orange" id="stat-loss">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-stat-label">progress</div>
+      <div class="live-stat-value green" id="stat-pct">0%</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-stat-label">last update</div>
+      <div class="live-stat-value" id="stat-time" style="font-size:0.8rem">—</div>
+    </div>
+  </div>
+
+  <div class="loss-chart-wrap" id="loss-chart-section" style="display:none">
+    <h3>loss curve</h3>
+    <canvas id="loss-chart"></canvas>
+  </div>
+
+  <div class="live-samples" id="samples-section" style="display:none">
+    <h3>sample images</h3>
+    <div class="samples-grid" id="samples-grid"></div>
+  </div>
+
+  <div class="live-log" id="log-wrap" style="display:none">
+    <h3>log</h3>
+    <div id="log-tail"></div>
+  </div>
+
+  <div class="no-data" id="no-data">
+    <div style="font-size:2rem">⏳</div>
+    <p>waiting for training to start…</p>
+    <p style="color:#333; font-size:0.75rem; margin-top:0.5rem">updates every 10s</p>
+  </div>
+
+  <div class="test-wrap" id="test-wrap" style="display:none">
+    <h3>test model</h3>
+    <div class="test-url-label">inference server URL (paste from RunPod)</div>
+    <div class="test-url-row">
+      <input class="test-input" id="inference-url" placeholder="http://xxx.runpod.net:8000" value="">
+      <button class="test-btn" onclick="saveUrl()">save</button>
+    </div>
+    <div class="test-row">
+      <input class="test-input" id="test-prompt" placeholder="anky sitting at a café in the rain, amber eyes, painterly style" value="anky sitting at a kitchen table at dawn, blue skin, amber glowing eyes, purple hair, warm light, painterly">
+      <button class="test-btn" id="test-btn" onclick="testModel()">generate</button>
+    </div>
+    <div class="test-result" id="test-result"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var lossHistory = [];
+  var knownSamples = new Set();
+
+  function timeSince(ts) {
+    if (!ts) return '—';
+    var d = new Date(ts + (ts.endsWith('Z') ? '' : 'Z'));
+    var secs = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (secs < 60) return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+    return Math.floor(secs/3600) + 'h ago';
+  }
+
+  function drawLoss() {
+    if (lossHistory.length < 2) return;
+    var canvas = document.getElementById('loss-chart');
+    var ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    var W = canvas.offsetWidth, H = canvas.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+
+    var vals = lossHistory.map(function(p) { return p.loss; });
+    var min = Math.min.apply(null, vals) * 0.95;
+    var max = Math.max.apply(null, vals) * 1.05;
+
+    ctx.strokeStyle = '#ff9800';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    lossHistory.forEach(function(p, i) {
+      var x = (i / (lossHistory.length - 1)) * W;
+      var y = H - ((p.loss - min) / (max - min)) * H;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  function setBadge(status) {
+    var el = document.getElementById('status-badge');
+    el.className = 'live-badge';
+    if (status === 'training') { el.classList.add('badge-training'); el.textContent = 'training'; }
+    else if (status === 'done') { el.classList.add('badge-done'); el.textContent = 'done'; }
+    else if (status === 'failed') { el.classList.add('badge-failed'); el.textContent = 'failed'; }
+    else { el.classList.add('badge-waiting'); el.textContent = 'waiting'; }
+  }
+
+  function addSample(filename) {
+    if (knownSamples.has(filename)) return;
+    knownSamples.add(filename);
+    var grid = document.getElementById('samples-grid');
+    var card = document.createElement('div');
+    card.className = 'sample-card';
+    // Extract step from filename e.g. "samples_0500_..."
+    var label = filename.replace('.png','').split('_').slice(0,2).join(' step ') || filename;
+    card.innerHTML = '<img src="/training/live/samples/' + encodeURIComponent(filename) + '" loading="lazy"><div class="sample-card-label">' + label + '</div>';
+    grid.appendChild(card);
+    document.getElementById('samples-section').style.display = '';
+  }
+
+  function poll() {
+    fetch('/api/training/state')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var hasData = data.step || data.status;
+        document.getElementById('no-data').style.display = hasData ? 'none' : '';
+
+        if (!hasData) return;
+
+        var status = data.status || (data.step ? 'training' : 'waiting');
+        setBadge(status);
+
+        var step = data.step || 0;
+        var total = data.total_steps || 4500;
+        var pct = total > 0 ? ((step / total) * 100).toFixed(1) : 0;
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('stat-step').textContent = step + ' / ' + total;
+        document.getElementById('stat-pct').textContent = pct + '%';
+        document.getElementById('stat-time').textContent = timeSince(data.timestamp);
+
+        if (data.loss != null) {
+          document.getElementById('stat-loss').textContent = data.loss.toFixed(4);
+          lossHistory.push({ step: step, loss: data.loss });
+          if (lossHistory.length > 200) lossHistory.shift();
+          document.getElementById('loss-chart-section').style.display = '';
+          drawLoss();
+        }
+
+        if (data.log_tail) {
+          document.getElementById('log-tail').textContent = data.log_tail;
+          document.getElementById('log-wrap').style.display = '';
+          var logEl = document.getElementById('log-wrap');
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        if (data.sample_files && data.sample_files.length > 0) {
+          data.sample_files.forEach(addSample);
+        }
+
+        // Show test panel once done or if inference_url is set
+        if (status === 'done' || data.inference_url) {
+          document.getElementById('test-wrap').style.display = '';
+          if (data.inference_url) {
+            var urlEl = document.getElementById('inference-url');
+            if (!urlEl.value) urlEl.value = data.inference_url;
+          }
+        }
+      })
+      .catch(function(e) { console.error('poll error', e); });
+  }
+
+  function saveUrl() {
+    var url = document.getElementById('inference-url').value.trim();
+    if (url) localStorage.setItem('inference_url', url);
+  }
+
+  function testModel() {
+    var url = document.getElementById('inference-url').value.trim() || localStorage.getItem('inference_url');
+    var prompt = document.getElementById('test-prompt').value.trim();
+    if (!url || !prompt) return;
+
+    var btn = document.getElementById('test-btn');
+    btn.disabled = true;
+    btn.textContent = 'generating…';
+    document.getElementById('test-result').innerHTML = '';
+
+    fetch(url + '/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: prompt })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.image) {
+        document.getElementById('test-result').innerHTML = '<img src="data:image/png;base64,' + data.image + '">';
+      } else if (data.error) {
+        document.getElementById('test-result').innerHTML = '<p style="color:#f44">' + data.error + '</p>';
+      }
+    })
+    .catch(function(e) {
+      document.getElementById('test-result').innerHTML = '<p style="color:#f44">Error: ' + e.message + '</p>';
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'generate';
+    });
+  }
+
+  // Restore saved inference URL
+  var saved = localStorage.getItem('inference_url');
+  if (saved) document.getElementById('inference-url').value = saved;
+
+  poll();
+  setInterval(poll, 10000);
+})();
+</script>
+{% endblock %}

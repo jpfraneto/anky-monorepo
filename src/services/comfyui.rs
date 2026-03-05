@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde_json::{json, Value};
+use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -11,7 +12,9 @@ const FLUX_UNET: &str = "flux1-dev.safetensors";
 const FLUX_VAE: &str = "ae.safetensors";
 const FLUX_CLIP_L: &str = "clip_l.safetensors";
 const FLUX_T5: &str = "t5xxl_fp8_e4m3fn.safetensors";
-const LORA_MODEL: &str = "anky_flux_lora.safetensors";
+const COMFY_LORAS_DIR: &str = "/home/kithkui/ComfyUI/models/loras";
+const DEFAULT_LORA_MODEL: &str = "anky_flux_lora_v2.safetensors";
+const FALLBACK_LORA_MODEL: &str = "anky_flux_lora.safetensors";
 const LORA_STRENGTH: f64 = 0.85;
 const STEPS: u32 = 20;
 const GUIDANCE: f64 = 3.5;
@@ -19,6 +22,7 @@ const GUIDANCE: f64 = 3.5;
 /// Build the ComfyUI workflow for Flux.1-dev + anky LoRA.
 /// Uses separate UNETLoader + DualCLIPLoader + VAELoader (correct setup for flux1-dev.safetensors).
 fn build_workflow(prompt: &str, client_id: &str) -> Value {
+    let lora_name = resolve_lora_model_name();
     json!({
         "client_id": client_id,
         "prompt": {
@@ -50,7 +54,7 @@ fn build_workflow(prompt: &str, client_id: &str) -> Value {
                 "inputs": {
                     "model": ["1", 0],
                     "clip": ["3", 0],
-                    "lora_name": LORA_MODEL,
+                    "lora_name": lora_name,
                     "strength_model": LORA_STRENGTH,
                     "strength_clip": LORA_STRENGTH
                 }
@@ -106,6 +110,26 @@ fn build_workflow(prompt: &str, client_id: &str) -> Value {
             }
         }
     })
+}
+
+/// Pick LoRA filename with this priority:
+/// 1) COMFYUI_LORA_MODEL env override
+/// 2) anky_flux_lora_v2.safetensors if present
+/// 3) legacy anky_flux_lora.safetensors
+fn resolve_lora_model_name() -> String {
+    if let Ok(override_name) = std::env::var("COMFYUI_LORA_MODEL") {
+        let trimmed = override_name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let preferred = Path::new(COMFY_LORAS_DIR).join(DEFAULT_LORA_MODEL);
+    if preferred.exists() {
+        return DEFAULT_LORA_MODEL.to_string();
+    }
+
+    FALLBACK_LORA_MODEL.to_string()
 }
 
 fn rand_seed() -> u64 {

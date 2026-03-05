@@ -14,23 +14,35 @@ import argparse
 import base64
 import json
 import os
-import random
 import sys
-import time
 import uuid
 from pathlib import Path
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 GEMINI_KEY  = os.environ["GEMINI_API_KEY"]
-DATASET_DIR = Path("/home/kithkui/Desktop/code/z-image-turbo/files/anky_lora_training/dataset")
 REFS_DIR    = Path("/home/kithkui/anky/src/public")
 GEN_BASE    = Path("/home/kithkui/anky/data/generations")
 
 GEMINI_GEN_URL    = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={GEMINI_KEY}"
 GEMINI_VISION_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_KEY}"
 
+# Rich character spec — same as /generate page in the Rust app
+CHARACTER_SPEC = """
+CHARACTER — ANKY (follow exactly):
+- Blue-skinned creature with large expressive pointed ears
+- Purple swirling hair with golden spiral accents
+- Golden/amber glowing eyes
+- Golden jewelry and decorative accents on body
+- Compact round body, short limbs, ancient yet childlike quality — a cosmic messenger, inner child deity
+
+STYLE:
+- Painterly, atmospheric, with strong emotional presence
+- Highly detailed, expressive face
+- Consistent character design — Anky must be clearly recognizable
+- Follow the art style and mood specified in the scene description"""
+
 CAPTION_PROMPT = """Caption this training image for an AI character named "anky".
-Anky is a small chubby creature with big pointed ears, large glowing eyes, round compact body, blue or colorful skin — like a cosmic goblin or inner child deity.
+Anky is a small creature with blue skin, big pointed ears, large golden/amber glowing eyes, purple swirling hair, golden jewelry, round compact body — a cosmic inner child deity.
 Write ONE caption. Start with "anky, ". Describe appearance, expression, pose, setting, art style. Max 2 sentences. No meta-language.
 Caption:"""
 
@@ -47,10 +59,6 @@ def get_canonical_refs() -> list[str]:
             refs.append(load_b64(p))
     return refs
 
-def get_random_seed() -> str:
-    pngs = list(DATASET_DIR.glob("*.png"))
-    return load_b64(random.choice(pngs))
-
 def write_progress(batch_dir: Path, progress: dict):
     tmp = batch_dir / "progress.tmp.json"
     out = batch_dir / "progress.json"
@@ -59,12 +67,14 @@ def write_progress(batch_dir: Path, progress: dict):
 
 # ── API calls ────────────────────────────────────────────────────────────────────
 
-async def generate_image(session: aiohttp.ClientSession, prompt: str, seed_b64: str, refs: list[str]) -> bytes | None:
+async def generate_image(session: aiohttp.ClientSession, prompt: str, refs: list[str]) -> bytes | None:
     parts = []
     for r in refs:
         parts.append({"inlineData": {"mimeType": "image/png", "data": r}})
-    parts.append({"inlineData": {"mimeType": "image/png", "data": seed_b64}})
-    parts.append({"text": "The images above show Anky — use them as character references. Generate a new image:\n\n" + prompt})
+    if refs:
+        parts.append({"text": "The images above show Anky's exact character design — match these visual details precisely when Anky appears in the scene."})
+    full_prompt = f"{prompt}\n\n{CHARACTER_SPEC}"
+    parts.append({"text": full_prompt})
 
     payload = {
         "contents": [{"parts": parts}],
@@ -134,8 +144,7 @@ async def process_prompt(
         progress[str(idx)]["status"] = "generating"
         write_progress(batch_dir, progress)
 
-        seed_b64 = get_random_seed()
-        image_bytes = await generate_image(session, prompt, seed_b64, refs)
+        image_bytes = await generate_image(session, prompt, refs)
 
         if not image_bytes:
             print(f"[{idx+1}] FAILED image gen")

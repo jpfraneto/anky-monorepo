@@ -7,6 +7,86 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-04-round-two-runbook-and-v2-serving">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">Round-two runbook tab + one-shot docs + serve LoRA v2 on /generate</h2>
+    <p class="changelog-desc">Expanded /training into two tabs (curation + round-two one-shot) with exact runpod setup/upload commands and artifact links. Updated /trainings/general-instructions to match the proven round-two flow (465-pair dataset, robust upload, metadata capture). Added training journal entry for 2026-03-04. Switched ComfyUI LoRA resolution to prefer anky_flux_lora_v2.safetensors (with fallback), so /generate uses the new model on GPU0 while Ollama stays on GPU1.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-003-round-two-runbook-and-v2-serving.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-round-two-runbook-and-v2-serving">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-04-well-known-agent">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">/.well-known/agent endpoint for 8004 registry</h2>
+    <p class="changelog-desc">Added /.well-known/agent serving OASF-compliant JSON describing Anky's capabilities, API, payment model, skills, and on-chain asset address. Enables agent discovery via the 8004 Solana registry.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-002-well-known-agent.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-well-known-agent">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-04-runpod-training-bootstrap-hardening">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">RunPod training bootstrap hardening (cu128 + token prompts + dataset autodetect)</h2>
+    <p class="changelog-desc">Updated /static/train_anky_setup.sh to be robust on new Blackwell GPUs and fresh pods: switched default torch install to cu128 wheels, auto-recovers broken /workspace/venv, installs python3-venv/python3-pip, supports multiple extracted dataset folder names (including final-training-dataset-for-round-two), and prompts interactively for HF_TOKEN/ANKY_TOKEN when missing. Updated /trainings/general-instructions to match the new one-liner workflow and known failure fixes from the 2026-03-04 run.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-001-runpod-training-bootstrap-hardening.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-runpod-training-bootstrap-hardening">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-dataset-round-two-gallery">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Dataset round-two gallery with bulk elimination</h2>
+    <p class="changelog-desc">Added /gallery/dataset-round-two: a full collage of 112 training images rendered as 100×100 WebP thumbnails. Click to multi-select, then hit "eliminate from dataset" — a password-protected modal (password: ankyisyou) moves the selected PNGs and captions to a rejected/ subfolder and removes them from the grid instantly.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-010-dataset-round-two-gallery.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-dataset-round-two-gallery">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-move-all-non-reflection-to-local-qwen">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Move everything except the reflection stream to local Qwen</h2>
+    <p class="changelog-desc">Replaced all non-reflection Anthropic API calls with local Qwen3.5:35b via Ollama: memory extraction, psychological profile synthesis, inquiry generation, image prompt generation, chat about writing, prompt classification, mention classification. Suggested replies now generated proactively in parallel with the Claude reflection stream — by the time the user finishes reading, replies are already cached in the DB. First request is instant.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-009-move-all-non-reflection-to-local-qwen.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-move-all-non-reflection-to-local-qwen">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-local-embeddings-nomic-embed-text">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Replace OpenAI embeddings with local nomic-embed-text</h2>
+    <p class="changelog-desc">Dropped the OpenAI API key dependency for the memory pipeline. Researched alternatives: Qwen3.5 35B is a generative model and not suitable for embeddings; nomic-embed-text is a dedicated 274MB embedding model that outperforms OpenAI text-embedding-3-small. Pulled it via Ollama, switched embed_text() to call the local /api/embed endpoint (768 dims), removed all openai_key.is_empty() gates. Memory now runs unconditionally on every anky session.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-008-local-embeddings-nomic-embed-text.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-local-embeddings-nomic-embed-text">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-sharpen-reflection-prompts-ramana-jed">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Sharpen reflection prompts: Ramana Maharshi + Jed McKenna</h2>
+    <p class="changelog-desc">Rewrote all three reflection prompts (TITLE_AND_REFLECTION_SYSTEM, deep_reflection_prompt, quick_feedback_prompt) around the actual lineage of the practice — self-inquiry, not therapy. Stripped the manifesto-style instructions, removed coaching language, centered the mirror on pointing back at the writer rather than analyzing them.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-007-sharpen-reflection-prompts-ramana-jed.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-sharpen-reflection-prompts-ramana-jed">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-training-run-2-dataset-pipeline">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Training run 2: 319 images, Claude prompts, rank 32, 4500 steps</h2>
+    <p class="changelog-desc">Rebuilt the entire training data pipeline. Switched prompt generation from Grok to Claude Sonnet with explicit avoid-duplicates context across batches. Injected the rich Anky character spec into every Gemini image generation call. Removed the random training seed that was hurting character consistency. Generated 118 new approved images, copied into dataset (319 total, 0 generic captions). Updated train_anky_setup.sh to rank 32 / alpha 16 / 4500 steps. One-liner: HF_TOKEN=hf_xxx bash &lt;(curl -fsSL https://anky.app/static/train_anky_setup.sh)</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-006-training-run-2-dataset-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-training-run-2-dataset-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-tinder-image-review-ui">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Tinder-style image review UI for generated training data</h2>
+    <p class="changelog-desc">Added a keyboard-driven review page at /generations/{id}/tinder. Right arrow approves an image, left arrow rejects it. Decisions are saved to review.json per batch so approved/rejected signals can inform future prompt generation. Includes undo (Ctrl+Z / Backspace), progress bar, and stats.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-005-tinder-image-review-ui.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-tinder-image-review-ui">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-03-switch-to-qwen35-35b-moe">
+    <div class="changelog-date">2026-03-03</div>
+    <h2 class="changelog-title">Switch local LLM to Qwen3.5-35B-A3B (MoE)</h2>
+    <p class="changelog-desc">Replaced qwen2.5:32b with the newly released qwen3.5:35b — a Mixture-of-Experts model with 35B total params but only 3B active per token, giving near-3B inference speed with far superior quality. Stopped the interview engine, freed GPU memory, and updated all Ollama model references in the codebase to use the new model.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-03-004-switch-to-qwen35-35b-moe.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-03-switch-to-qwen35-35b-moe">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-03-anky-lora-recaption-and-dataset-gen">
     <div class="changelog-date">2026-03-03</div>
     <h2 class="changelog-title">LoRA dataset overhaul: recaption 194 images + generate 100 new human-grounded Ankys</h2>

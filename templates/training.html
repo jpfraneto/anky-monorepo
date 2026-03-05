@@ -3,7 +3,7 @@
 {% block content %}
 <style>
   .training-container {
-    max-width: 500px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 1rem;
     text-align: center;
@@ -11,7 +11,32 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+  }
+  .training-tabs {
+    width: 100%;
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.5rem 0 1rem;
+  }
+  .training-tab {
+    border: 1px solid #2a2a2a;
+    background: #101010;
+    color: #9a9a9a;
+    padding: 0.55rem 0.9rem;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .training-tab.active {
+    color: #fff;
+    border-color: #555;
+    background: #171717;
+  }
+  .training-panel {
+    width: 100%;
+  }
+  .training-panel.hidden {
+    display: none;
   }
   .training-stats {
     display: flex;
@@ -117,40 +142,108 @@
     font-size: 0.75rem;
     color: #555;
   }
+  .runbook {
+    text-align: left;
+    border: 1px solid #222;
+    background: #0d0d0d;
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  .runbook h2 {
+    margin: 0 0 0.4rem;
+    font-size: 1.05rem;
+  }
+  .runbook p, .runbook li {
+    color: #aaa;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .runbook ul {
+    margin: 0.5rem 0 0.9rem 1.1rem;
+  }
+  .runbook pre {
+    white-space: pre-wrap;
+    background: #0a0a0a;
+    border: 1px solid #252525;
+    border-radius: 8px;
+    padding: 0.75rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    color: #d0d0d0;
+  }
+  .runbook a { color: #c7c7c7; }
+  .runbook code {
+    color: #e0e0e0;
+  }
 </style>
 
 <div class="training-container">
   <h1 style="margin-bottom: 0.5rem;">training curation</h1>
-  <p style="color: #888; margin-bottom: 1.5rem; font-size: 0.9rem;">select the images that best represent anky</p>
+  <p style="color: #888; margin-bottom: 0.75rem; font-size: 0.9rem;">curate images and run the round-two one-shot playbook</p>
 
-  <div class="training-stats">
-    <div class="stat-yes"><span class="stat-val" id="stat-yes">0</span> approved</div>
-    <div class="stat-no"><span class="stat-val" id="stat-no">0</span> rejected</div>
-    <div class="stat-remaining"><span class="stat-val" id="stat-remaining">0</span> remaining</div>
+  <div class="training-tabs">
+    <button class="training-tab active" id="tab-curation" type="button" onclick="setTrainingTab('curation')">curation</button>
+    <button class="training-tab" id="tab-round-two" type="button" onclick="setTrainingTab('round-two')">round two one-shot</button>
   </div>
 
-  <div id="card-area">
-    <div class="training-card" id="training-card">
-      <img id="card-image" src="" alt="anky image">
-      <div class="training-card-info">
-        <div class="card-title" id="card-title"></div>
-        <div id="card-prompt"></div>
+  <div class="training-panel" id="panel-curation">
+    <div class="training-stats">
+      <div class="stat-yes"><span class="stat-val" id="stat-yes">0</span> approved</div>
+      <div class="stat-no"><span class="stat-val" id="stat-no">0</span> rejected</div>
+      <div class="stat-remaining"><span class="stat-val" id="stat-remaining">0</span> remaining</div>
+    </div>
+
+    <div id="card-area">
+      <div class="training-card" id="training-card">
+        <img id="card-image" src="" alt="anky image">
+        <div class="training-card-info">
+          <div class="card-title" id="card-title"></div>
+          <div id="card-prompt"></div>
+        </div>
+      </div>
+
+      <div class="training-buttons">
+        <button class="training-btn btn-no" id="btn-no" title="Reject (left arrow)">&#10007;</button>
+        <button class="training-btn btn-yes" id="btn-yes" title="Approve (right arrow)">&#10003;</button>
+      </div>
+
+      <div class="training-keyboard-hint">
+        keyboard: <b>&larr;</b> reject &nbsp;&middot;&nbsp; <b>&rarr;</b> approve
       </div>
     </div>
 
-    <div class="training-buttons">
-      <button class="training-btn btn-no" id="btn-no" title="Reject (left arrow)">&#10007;</button>
-      <button class="training-btn btn-yes" id="btn-yes" title="Approve (right arrow)">&#10003;</button>
-    </div>
-
-    <div class="training-keyboard-hint">
-      keyboard: <b>&larr;</b> reject &nbsp;&middot;&nbsp; <b>&rarr;</b> approve
+    <div class="training-done" id="training-done" style="display:none;">
+      all images reviewed!
+      <p>approved images copied to <code>data/training-images/</code></p>
     </div>
   </div>
 
-  <div class="training-done" id="training-done" style="display:none;">
-    all images reviewed!
-    <p>approved images copied to <code>data/training-images/</code></p>
+  <div class="training-panel hidden" id="panel-round-two">
+    <div class="runbook">
+      <h2>round two final dataset + one-shot</h2>
+      <p>Current production dataset archive: <a href="https://huggingface.co/jpfraneto/anky-flux-lora-v2/resolve/main/training-data/final-training-dataset-for-round-two.tar.gz" target="_blank">final-training-dataset-for-round-two.tar.gz</a></p>
+      <ul>
+        <li>Final trainable pairs: <code>465 image + 465 caption</code></li>
+        <li>Source gallery pool observed: <code>577</code> (dedupe + caption filtering reduced it)</li>
+        <li>Run name: <code>anky_flux_lora_v2</code>, rank/alpha <code>32/16</code>, steps <code>6500</code></li>
+      </ul>
+
+      <h2>runpod one-shot setup</h2>
+      <p>On a fresh RunPod terminal (Blackwell-safe torch handled in script):</p>
+      <pre>HF_TOKEN='hf_xxx' ANKY_TOKEN='xxx_optional' ANKY_DATASET_URL='https://huggingface.co/jpfraneto/anky-flux-lora-v2/resolve/main/training-data/final-training-dataset-for-round-two.tar.gz' ANKY_DATASET_MIN_IMAGES=460 TRAIN_NAME='anky_flux_lora_v2' LORA_RANK=32 LORA_ALPHA=16 TRAIN_STEPS=6500 SAVE_EVERY=500 SAMPLE_EVERY=500 bash &lt;(curl -fsSL https://anky.app/static/train_anky_setup.sh)</pre>
+      <p>If you omit tokens, script prompts for them interactively.</p>
+
+      <h2>post-training one-shot upload (weights + samples)</h2>
+      <pre>source /workspace/venv/bin/activate && HF_TOKEN='hf_xxx' REPO_ID='jpfraneto/anky-flux-lora-v2' RUN_DIR='/workspace/output/anky_flux_lora_v2' bash -lc 'set -euo pipefail; STAGE=/tmp/hf_upload_anky_flux_lora_v2; export STAGE; rm -rf "$STAGE"; mkdir -p "$STAGE/weights" "$STAGE/samples"; cp -av "$RUN_DIR"/*.safetensors "$STAGE/weights/"; cp -av "$RUN_DIR/samples/." "$STAGE/samples/" 2>/dev/null || true; python -c "import os; from huggingface_hub import HfApi; HfApi(token=os.environ[\"HF_TOKEN\"]).upload_folder(folder_path=os.environ[\"STAGE\"], repo_id=os.environ[\"REPO_ID\"], repo_type=\"model\", path_in_repo=\"training-runs/anky_flux_lora_v2\", commit_message=\"Upload round-two final weights and samples\")"'</pre>
+
+      <h2>uploaded artifacts (run 002)</h2>
+      <ul>
+        <li><code>training-runs/anky_flux_lora_v2/weights/anky_flux_lora_v2.safetensors</code></li>
+        <li><code>training-runs/anky_flux_lora_v2/samples/...</code></li>
+        <li><code>training-runs/anky_flux_lora_v2/meta/...</code></li>
+      </ul>
+      <p>Canonical repo: <a href="https://huggingface.co/jpfraneto/anky-flux-lora-v2" target="_blank">jpfraneto/anky-flux-lora-v2</a></p>
+    </div>
   </div>
 </div>
 
@@ -159,6 +252,15 @@
 {% block scripts %}
 <script>
 (function() {
+  function setTrainingTab(name) {
+    var isCuration = name === 'curation';
+    document.getElementById('panel-curation').classList.toggle('hidden', !isCuration);
+    document.getElementById('panel-round-two').classList.toggle('hidden', isCuration);
+    document.getElementById('tab-curation').classList.toggle('active', isCuration);
+    document.getElementById('tab-round-two').classList.toggle('active', !isCuration);
+  }
+  window.setTrainingTab = setTrainingTab;
+
   var currentAnky = null;
   var busy = false;
 

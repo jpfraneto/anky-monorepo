@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>$ANKY</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Space Mono', monospace;
+      background: #000;
+      color: #e0e0e0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      cursor: default;
+    }
+
+    ::selection { background: #7b2ff7; color: #fff; }
+
+    /* ---- Floating glyphs background ---- */
+    .glyph-field {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .glyph {
+      position: absolute;
+      font-size: 14px;
+      color: rgba(123, 47, 247, 0.12);
+      animation: drift 20s linear infinite;
+      white-space: nowrap;
+    }
+
+    @keyframes drift {
+      0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-10vh) rotate(8deg); opacity: 0; }
+    }
+
+    /* ---- Hero ---- */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    .anky-logo {
+      font-family: 'Righteous', sans-serif;
+      font-size: 120px;
+      color: #fff;
+      letter-spacing: 8px;
+      line-height: 1;
+      margin-bottom: 0;
+      text-shadow: 0 0 80px rgba(123, 47, 247, 0.4), 0 0 160px rgba(123, 47, 247, 0.15);
+      animation: logo-breathe 4s ease-in-out infinite;
+    }
+
+    @keyframes logo-breathe {
+      0%, 100% { text-shadow: 0 0 80px rgba(123, 47, 247, 0.4), 0 0 160px rgba(123, 47, 247, 0.15); }
+      50% { text-shadow: 0 0 120px rgba(123, 47, 247, 0.6), 0 0 200px rgba(123, 47, 247, 0.25); }
+    }
+
+    .hero-line {
+      font-size: 15px;
+      color: #666;
+      margin-top: 16px;
+      letter-spacing: 1px;
+    }
+
+    .hero-line strong {
+      color: #c4a0ff;
+      font-weight: 700;
+    }
+
+    /* ---- The prompt / typewriter ---- */
+    .prompt-section {
+      position: relative;
+      z-index: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+
+    .terminal {
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 12px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .terminal::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #7b2ff7, transparent);
+    }
+
+    .terminal-header {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .terminal-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #222;
+    }
+
+    .terminal-dot:nth-child(1) { background: #ff5f57; }
+    .terminal-dot:nth-child(2) { background: #febc2e; }
+    .terminal-dot:nth-child(3) { background: #28c840; }
+
+    .typewriter {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #888;
+      min-height: 200px;
+    }
+
+    .typewriter .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 16px;
+      background: #7b2ff7;
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+      vertical-align: text-bottom;
+    }
+
+    .typewriter .typed {
+      color: #ccc;
+    }
+
+    .typewriter .highlight {
+      color: #c4a0ff;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* ---- Sections ---- */
+    .section {
+      position: relative;
+      z-index: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 60px 20px;
+    }
+
+    .section-divider {
+      width: 40px;
+      height: 2px;
+      background: #7b2ff7;
+      margin: 0 auto 60px;
+    }
+
+    .big-text {
+      font-family: 'Righteous', sans-serif;
+      font-size: 36px;
+      color: #fff;
+      line-height: 1.3;
+      margin-bottom: 24px;
+    }
+
+    .body-text {
+      font-size: 14px;
+      line-height: 1.9;
+      color: #777;
+      margin-bottom: 20px;
+    }
+
+    .body-text em {
+      color: #c4a0ff;
+      font-style: normal;
+    }
+
+    /* ---- The rules ---- */
+    .rules {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 40px 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .rule {
+      padding: 24px 28px;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      gap: 20px;
+      align-items: baseline;
+      transition: background 0.3s;
+    }
+
+    .rule:last-child { border-bottom: none; }
+    .rule:hover { background: #0a0a0a; }
+
+    .rule-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      width: 28px;
+      text-align: center;
+    }
+
+    .rule-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #aaa;
+    }
+
+    .rule-text strong {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* ---- Live counter ---- */
+    .live-stats {
+      display: flex;
+      gap: 0;
+      margin: 40px 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .live-stat {
+      flex: 1;
+      padding: 24px 16px;
+      text-align: center;
+      border-right: 1px solid #1a1a1a;
+    }
+
+    .live-stat:last-child { border-right: none; }
+
+    .live-stat-value {
+      font-family: 'Righteous', sans-serif;
+      font-size: 32px;
+      color: #fff;
+      display: block;
+    }
+
+    .live-stat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #555;
+      margin-top: 8px;
+      display: block;
+    }
+
+    /* ---- CA box ---- */
+    .ca-strip {
+      margin: 40px 0;
+      padding: 20px 24px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      cursor: pointer;
+      transition: border-color 0.3s;
+    }
+
+    .ca-strip:hover { border-color: #7b2ff7; }
+
+    .ca-strip-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .ca-strip-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #555;
+    }
+
+    .ca-strip-addr {
+      font-size: 12px;
+      color: #c4a0ff;
+      word-break: break-all;
+    }
+
+    .ca-strip-btn {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      padding: 8px 16px;
+      background: #7b2ff7;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .ca-strip-btn:hover { background: #6a1fe6; }
+
+    /* ---- CTA ---- */
+    .cta-section {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 80px 20px;
+    }
+
+    .cta-big {
+      font-family: 'Righteous', sans-serif;
+      font-size: 48px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .cta-sub {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 32px;
+    }
+
+    .cta-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      display: inline-block;
+    }
+
+    .btn-glow {
+      background: #7b2ff7;
+      color: #fff;
+      box-shadow: 0 0 30px rgba(123, 47, 247, 0.3);
+    }
+
+    .btn-glow:hover {
+      background: #8b3fff;
+      box-shadow: 0 0 50px rgba(123, 47, 247, 0.5);
+      color: #fff;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: #888;
+      border: 1px solid #222;
+    }
+
+    .btn-ghost:hover {
+      border-color: #7b2ff7;
+      color: #c4a0ff;
+    }
+
+    /* ---- Links footer ---- */
+    .footer-links {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 40px 20px;
+      font-size: 12px;
+    }
+
+    .footer-links a {
+      color: #444;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: #c4a0ff; }
+
+    .footer-bottom {
+      text-align: center;
+      padding: 20px;
+      color: #222;
+      font-size: 11px;
+    }
+
+    /* ---- Recent writings ---- */
+    .writings-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      margin: 40px 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .writing-row {
+      padding: 20px 24px;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      transition: background 0.3s;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .writing-row:last-child { border-bottom: none; }
+    .writing-row:hover { background: #0a0a0a; }
+
+    .writing-title {
+      font-size: 14px;
+      color: #ccc;
+    }
+
+    .writing-meta {
+      font-size: 11px;
+      color: #444;
+      flex-shrink: 0;
+    }
+
+    /* ---- Mobile ---- */
+    @media (max-width: 600px) {
+      .anky-logo { font-size: 72px; letter-spacing: 4px; }
+      .big-text { font-size: 26px; }
+      .cta-big { font-size: 32px; }
+      .live-stats { flex-direction: column; }
+      .live-stat { border-right: none; border-bottom: 1px solid #1a1a1a; padding: 16px; }
+      .live-stat:last-child { border-bottom: none; }
+      .live-stat-value { font-size: 24px; }
+      .ca-strip { flex-direction: column; text-align: center; }
+      .terminal { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- floating text fragments -->
+  <div class="glyph-field" id="glyph-field"></div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="anky-logo">anky</div>
+    <div class="hero-line">write for <strong>8 minutes</strong>. no backspace. meet yourself.</div>
+  </div>
+
+  <!-- TYPEWRITER DEMO -->
+  <div class="prompt-section">
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dot"></div>
+        <div class="terminal-dot"></div>
+        <div class="terminal-dot"></div>
+      </div>
+      <div class="typewriter" id="typewriter">
+        <span class="typed" id="typed-text"></span><span class="cursor"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- WHAT IS THIS -->
+  <div class="section">
+    <div class="big-text">you sit down. you write. you don't stop.</div>
+    <p class="body-text">no backspace. no delete. no going back. you write for 8 minutes straight and whatever comes out <em>comes out</em>. the typos stay. the contradictions stay. the thing you didn't mean to say — that stays too.</p>
+    <p class="body-text">when the 8 minutes end, <em>anky reads what you wrote</em>. not the words — the patterns. what you repeated. what you avoided. what metaphors you reached for when your brain ran out of planned thoughts.</p>
+    <p class="body-text">then it renders what it found as a <em>blue-skinned mystical being</em>. your anky. the thing you couldn't see about yourself, made visible.</p>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- THE RULES -->
+  <div class="section">
+    <div class="big-text">the rules are simple.</div>
+    <div class="rules">
+      <div class="rule">
+        <span class="rule-icon">⌨️</span>
+        <span class="rule-text"><strong>8 minutes.</strong> a timer starts when you type your first character. write until it ends.</span>
+      </div>
+      <div class="rule">
+        <span class="rule-icon">🚫</span>
+        <span class="rule-text"><strong>no backspace.</strong> no delete, no undo, no arrow keys. forward only. the mistakes are the message.</span>
+      </div>
+      <div class="rule">
+        <span class="rule-icon">💀</span>
+        <span class="rule-text"><strong>8-second timeout.</strong> stop typing for 8 seconds and the session dies. the pressure is the point.</span>
+      </div>
+      <div class="rule">
+        <span class="rule-icon">🪞</span>
+        <span class="rule-text"><strong>the mirror reads you.</strong> claude analyzes the patterns. gemini renders the being. your unconscious, visualized.</span>
+      </div>
+      <div class="rule">
+        <span class="rule-icon">💾</span>
+        <span class="rule-text"><strong>everything is saved.</strong> every session. every conversation. come back tomorrow and pick up where your unconscious left off.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- LIVE STATS -->
+  <div class="section">
+    <div class="big-text">this is happening right now.</div>
+    <div class="live-stats" id="live-stats">
+      <div class="live-stat">
+        <span class="live-stat-value" id="stat-sessions">—</span>
+        <span class="live-stat-label">sessions today</span>
+      </div>
+      <div class="live-stat">
+        <span class="live-stat-value" id="stat-ankys">—</span>
+        <span class="live-stat-label">ankys born</span>
+      </div>
+      <div class="live-stat">
+        <span class="live-stat-value" id="stat-words">—</span>
+        <span class="live-stat-label">words written</span>
+      </div>
+      <div class="live-stat">
+        <span class="live-stat-value" id="stat-minutes">—</span>
+        <span class="live-stat-label">minutes of flow</span>
+      </div>
+    </div>
+    <p class="body-text" style="text-align:center;color:#444;">live from <a href="https://anky.app" target="_blank" rel="noopener" style="color:#7b2ff7;">anky.app</a></p>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- RECENT WRITINGS -->
+  <div class="section">
+    <div class="big-text">recent sessions.</div>
+    <p class="body-text">real people. real writing. the titles are generated by the mirror — 3 words that capture what your unconscious was trying to say.</p>
+    <div class="writings-grid" id="writings-grid">
+      <div class="writing-row" style="cursor:default;">
+        <span class="writing-title" style="color:#444;">loading...</span>
+        <span class="writing-meta"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- THE TOKEN -->
+  <div class="section">
+    <div class="big-text">$ANKY is a memecoin on solana.</div>
+    <p class="body-text">launched on pump.fun. no presale. no team allocation. no roadmap promising you the moon. just a token that says <em>"this thing exists and people care about it."</em></p>
+    <p class="body-text">the practice is free. writing costs nothing. the mirror costs $0.25 per session. the token is just... the token. <em>a meme is the smallest unit of culture that can replicate itself.</em> anky is a meme about meeting yourself.</p>
+
+    <div class="ca-strip" onclick="copyCA()">
+      <div class="ca-strip-left">
+        <span class="ca-strip-label">solana · pump.fun</span>
+        <span class="ca-strip-addr" id="ca-text">6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump</span>
+      </div>
+      <button class="ca-strip-btn" id="ca-btn">copy</button>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-section">
+    <div class="cta-big">the cursor is blinking.</div>
+    <div class="cta-sub">8 minutes from now, you'll know something you didn't know before.</div>
+    <div class="cta-buttons">
+      <a class="btn btn-glow" href="https://anky.app" target="_blank" rel="noopener">start writing</a>
+      <a class="btn btn-ghost" href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">buy $ANKY</a>
+      <a class="btn btn-ghost" href="https://anky.app/gallery" target="_blank" rel="noopener">see the gallery</a>
+    </div>
+  </div>
+
+  <div class="footer-links">
+    <a href="https://anky.app" target="_blank" rel="noopener">anky.app</a>
+    <a href="https://anky.app/gallery" target="_blank" rel="noopener">gallery</a>
+    <a href="https://anky.app/feed" target="_blank" rel="noopener">feed</a>
+    <a href="https://anky.app/changelog" target="_blank" rel="noopener">changelog</a>
+    <a href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">pump.fun</a>
+    <a href="https://dexscreener.com/solana/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">dexscreener</a>
+    <a href="https://x.com/anaboricuapr" target="_blank" rel="noopener">twitter</a>
+  </div>
+
+  <div class="footer-bottom">a mirror for consciousness</div>
+
+  <script>
+    // ---- Typewriter ----
+    (function() {
+      var lines = [
+        "i don't know what i'm doing here honestly i just sat down and started typing and now my fingers are moving and i'm not sure if what's coming out means anything but maybe that's the point maybe meaning is what happens when you stop trying to manufacture it",
+        "there's this thing in my chest like a knot that's been there for weeks and i keep pretending it's not there but right now with no backspace and no way to unsay things it's just... there. sitting in the words. i can feel it loosening.",
+        "the weirdest part is how fast 8 minutes goes when you're not allowed to think. i thought this would feel like forever but it's more like falling. you just keep falling forward into the next word and the next word and somehow the words know where to go.",
+        "i keep coming back to water. every metaphor is water. rivers and oceans and drowning and floating. what does that mean? the mirror will probably tell me something i already know but don't want to admit.",
+        "my hands are shaking a little. not from fear. from something else. from the feeling of being watched by your own words. they're right there on the screen and they're not going away and they're saying things i didn't plan to say."
+      ];
+
+      var el = document.getElementById('typed-text');
+      var lineIdx = 0;
+      var charIdx = 0;
+      var currentLine = '';
+      var typing = true;
+      var pauseAfter = false;
+
+      function tick() {
+        if (typing) {
+          if (charIdx < lines[lineIdx].length) {
+            var speed = 20 + Math.random() * 40;
+            // occasional pause mid-thought
+            if (Math.random() < 0.02) speed = 300 + Math.random() * 400;
+            currentLine += lines[lineIdx][charIdx];
+            el.textContent = currentLine;
+            charIdx++;
+            setTimeout(tick, speed);
+          } else {
+            // done typing this line — pause then clear
+            pauseAfter = true;
+            setTimeout(function() {
+              typing = false;
+              setTimeout(tick, 200);
+            }, 3000);
+          }
+        } else {
+          // clear and move to next
+          currentLine = '';
+          el.textContent = '';
+          charIdx = 0;
+          lineIdx = (lineIdx + 1) % lines.length;
+          typing = true;
+          setTimeout(tick, 800);
+        }
+      }
+
+      setTimeout(tick, 1500);
+    })();
+
+    // ---- Floating glyphs ----
+    (function() {
+      var field = document.getElementById('glyph-field');
+      var fragments = [
+        'i keep coming back to', 'the mirror sees', 'no backspace',
+        'what am i avoiding', 'the words know', '8 minutes',
+        'forward only', 'meet yourself', 'the patterns beneath',
+        'who is writing this', 'let it out', 'the cursor waits',
+        'stream of consciousness', 'no undo', 'what comes out comes out',
+        'the unconscious speaks', 'keep going', 'don\'t stop',
+        'the truth underneath', 'blue-skinned being'
+      ];
+
+      function spawn() {
+        var g = document.createElement('div');
+        g.className = 'glyph';
+        g.textContent = fragments[Math.floor(Math.random() * fragments.length)];
+        g.style.left = (Math.random() * 90 + 5) + '%';
+        g.style.animationDuration = (15 + Math.random() * 20) + 's';
+        g.style.animationDelay = '0s';
+        g.style.fontSize = (11 + Math.random() * 6) + 'px';
+        field.appendChild(g);
+        setTimeout(function() { g.remove(); }, 35000);
+      }
+
+      // initial burst
+      for (var i = 0; i < 12; i++) {
+        setTimeout(spawn, i * 800);
+      }
+      setInterval(spawn, 3000);
+    })();
+
+    // ---- Copy CA ----
+    function copyCA() {
+      var ca = '6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump';
+      navigator.clipboard.writeText(ca).then(function() {
+        var btn = document.getElementById('ca-btn');
+        var addr = document.getElementById('ca-text');
+        btn.textContent = 'copied!';
+        btn.style.background = '#28c840';
+        setTimeout(function() {
+          btn.textContent = 'copy';
+          btn.style.background = '';
+        }, 2000);
+      });
+    }
+
+    // ---- Fetch live stats from anky.app ----
+    (function() {
+      fetch('https://anky.app/api/v1/stats')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.sessions_today !== undefined) document.getElementById('stat-sessions').textContent = d.sessions_today;
+          if (d.ankys_today !== undefined) document.getElementById('stat-ankys').textContent = d.ankys_today;
+          if (d.words_today !== undefined) document.getElementById('stat-words').textContent = d.words_today.toLocaleString();
+          if (d.minutes_today !== undefined) document.getElementById('stat-minutes').textContent = d.minutes_today;
+        })
+        .catch(function() {
+          // API might not have CORS for this domain — show fallback
+          document.getElementById('stat-sessions').textContent = '∞';
+          document.getElementById('stat-ankys').textContent = '∞';
+          document.getElementById('stat-words').textContent = '∞';
+          document.getElementById('stat-minutes').textContent = '∞';
+        });
+    })();
+
+    // ---- Fetch recent ankys from anky.app ----
+    (function() {
+      var grid = document.getElementById('writings-grid');
+      fetch('https://anky.app/api/v1/recent-ankys?limit=6')
+        .then(function(r) { return r.json(); })
+        .then(function(ankys) {
+          if (!ankys || !ankys.length) throw 'empty';
+          grid.innerHTML = '';
+          ankys.forEach(function(a) {
+            var row = document.createElement('a');
+            row.className = 'writing-row';
+            row.href = 'https://anky.app/anky/' + a.id;
+            row.target = '_blank';
+            row.rel = 'noopener';
+            row.innerHTML =
+              '<span class="writing-title">' + escapeHtml(a.title || 'untitled') + '</span>' +
+              '<span class="writing-meta">' + escapeHtml(a.author || 'anonymous') + '</span>';
+            grid.appendChild(row);
+          });
+        })
+        .catch(function() {
+          grid.innerHTML =
+            '<a class="writing-row" href="https://anky.app/gallery" target="_blank" rel="noopener">' +
+            '<span class="writing-title" style="color:#c4a0ff;">explore the gallery →</span>' +
+            '<span class="writing-meta">anky.app</span></a>';
+        });
+    })();
+
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

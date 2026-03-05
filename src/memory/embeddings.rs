@@ -1,21 +1,20 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-const EMBEDDING_DIM: usize = 1536;
+const EMBEDDING_DIM: usize = 768;
 
-/// Call OpenAI's text-embedding-3-small to embed a text string.
-/// Returns a 1536-dimensional f32 vector.
-pub async fn embed_text(api_key: &str, text: &str) -> Result<Vec<f32>> {
+/// Call nomic-embed-text via Ollama to embed a text string.
+/// Returns a 768-dimensional f32 vector.
+pub async fn embed_text(ollama_base_url: &str, text: &str) -> Result<Vec<f32>> {
     let client = reqwest::Client::new();
 
     let body = serde_json::json!({
-        "model": "text-embedding-3-small",
+        "model": "nomic-embed-text",
         "input": text,
     });
 
     let resp = client
-        .post("https://api.openai.com/v1/embeddings")
-        .header("Authorization", format!("Bearer {}", api_key))
+        .post(format!("{}/api/embed", ollama_base_url))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
@@ -24,13 +23,13 @@ pub async fn embed_text(api_key: &str, text: &str) -> Result<Vec<f32>> {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI embeddings API error {}: {}", status, body);
+        anyhow::bail!("Ollama embed API error {}: {}", status, body);
     }
 
     let data: serde_json::Value = resp.json().await?;
-    let embedding = data["data"][0]["embedding"]
+    let embedding = data["embeddings"][0]
         .as_array()
-        .ok_or_else(|| anyhow::anyhow!("missing embedding in response"))?
+        .ok_or_else(|| anyhow::anyhow!("missing embeddings in response"))?
         .iter()
         .map(|v| v.as_f64().unwrap_or(0.0) as f32)
         .collect::<Vec<f32>>();
@@ -121,6 +120,10 @@ pub fn search_similar(
     let mut results: Vec<(String, Option<String>, String, String, f32)> = Vec::new();
     for row in rows {
         let (id, session_id, source, content, blob) = row?;
+        // Skip embeddings with wrong dimensions (legacy OpenAI 1536-dim vectors)
+        if blob.len() != EMBEDDING_DIM * 4 {
+            continue;
+        }
         let stored = bytes_to_vec(&blob);
         let score = cosine_similarity(query_embedding, &stored);
         if score >= min_score {

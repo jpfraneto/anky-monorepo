@@ -1,0 +1,1 @@
+i need a frontend where to address if each one of them is good or bnad. i want to hit the right of left keys on the keyboard. right is 'approved'. left it rejected. please learn about this, so that we can evolve the prompt generation in the future

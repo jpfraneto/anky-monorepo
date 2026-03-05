@@ -1,0 +1,1 @@
+yep. do this. unload the current one, load this new one, and set up everything on anky's repository for it to be referencing this new model when talking to it

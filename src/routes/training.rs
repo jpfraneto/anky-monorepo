@@ -4,8 +4,143 @@ use axum::extract::{Path as AxumPath, State};
 use axum::http::HeaderMap;
 use axum::response::Html;
 use axum::Json;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+// ── Training live monitor ────────────────────────────────────────────────────
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct TrainingHeartbeat {
+    pub step: Option<u32>,
+    pub total_steps: Option<u32>,
+    pub loss: Option<f64>,
+    pub timestamp: Option<String>,
+    pub log_tail: Option<String>,
+    pub samples: Option<Vec<SampleImage>>,
+    pub inference_url: Option<String>,
+    pub status: Option<String>, // "training" | "done" | "failed"
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct SampleImage {
+    pub name: String,
+    pub data: String, // base64 PNG
+}
+
+/// POST /api/training/heartbeat — RunPod watcher pushes state here
+pub async fn training_heartbeat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<TrainingHeartbeat>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let token = headers
+        .get("x-training-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if token != state.config.training_secret {
+        return Err(AppError::Unauthorized("invalid training token".into()));
+    }
+
+    std::fs::create_dir_all("data/training-live")
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Save sample images to disk (avoid storing large base64 blobs in state.json)
+    if let Some(samples) = &body.samples {
+        for sample in samples {
+            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&sample.data) {
+                let path = format!("data/training-live/{}", sample.name);
+                let _ = std::fs::write(&path, bytes);
+            }
+        }
+    }
+
+    // Save state without the sample image data (those are on disk)
+    let mut state_body = body.clone();
+    state_body.samples = None;
+
+    let tmp = "data/training-live/state.tmp.json";
+    let out = "data/training-live/state.json";
+    std::fs::write(tmp, serde_json::to_string(&state_body).unwrap_or_default())
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    std::fs::rename(tmp, out).map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// GET /api/training/state — returns current training state + sample image list
+pub async fn training_state() -> Result<Json<serde_json::Value>, AppError> {
+    let state_path = "data/training-live/state.json";
+    let state: serde_json::Value = if std::path::Path::new(state_path).exists() {
+        let raw = std::fs::read_to_string(state_path).unwrap_or_default();
+        serde_json::from_str(&raw).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // List saved sample images
+    let samples_dir = std::path::Path::new("data/training-live");
+    let mut sample_files: Vec<String> = Vec::new();
+    if samples_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(samples_dir) {
+            let mut files: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .map(|x| x == "png")
+                        .unwrap_or(false)
+                })
+                .collect();
+            files.sort_by_key(|e| {
+                e.metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            });
+            sample_files = files
+                .iter()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+        }
+    }
+
+    let mut result = state;
+    result["sample_files"] = serde_json::json!(sample_files);
+    Ok(Json(result))
+}
+
+/// GET /training/live — live training dashboard page
+pub async fn training_live(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state
+        .tera
+        .render("training_live.html", &ctx)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(Html(html))
+}
+
+/// GET /training/live/samples/{filename} — serve sample images
+pub async fn training_sample_image(
+    AxumPath(filename): AxumPath<String>,
+) -> Result<axum::response::Response<axum::body::Body>, AppError> {
+    // Sanitize filename
+    let safe = filename.replace(['/', '\\', '.', '.'], "");
+    let safe = if safe.is_empty() { filename.clone() } else { format!("{}.png", safe.trim_end_matches(".png")) };
+    let path = format!("data/training-live/{}", safe);
+
+    if !std::path::Path::new(&path).exists() {
+        return Err(AppError::NotFound(filename));
+    }
+
+    let bytes = std::fs::read(&path).map_err(|e| AppError::Internal(e.to_string()))?;
+    let response = axum::response::Response::builder()
+        .header("content-type", "image/png")
+        .header("cache-control", "no-cache")
+        .body(axum::body::Body::from(bytes))
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    Ok(response)
+}
 
 // --- Pages ---
 

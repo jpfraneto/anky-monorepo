@@ -163,15 +163,14 @@ pub async fn check_prompt(
     State(state): State<AppState>,
     Json(req): Json<CheckPromptRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = &state.config.anthropic_api_key;
-    if api_key.is_empty() {
-        return Err(AppError::Internal("API key not configured".into()));
-    }
-
     let classification =
-        crate::services::claude::classify_and_enhance_prompt(api_key, &req.writing)
-            .await
-            .map_err(|e| AppError::Internal(format!("Classification failed: {}", e)))?;
+        crate::services::ollama::classify_and_enhance_prompt(
+            &state.config.ollama_base_url,
+            &state.config.ollama_model,
+            &req.writing,
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("Classification failed: {}", e)))?;
 
     if classification.is_image_request {
         Ok(Json(json!({
@@ -527,26 +526,33 @@ pub async fn chat_with_anky(
         return Err(AppError::BadRequest("not authenticated".into()));
     }
 
-    let api_key = &state.config.anthropic_api_key;
-    if api_key.is_empty() {
-        return Err(AppError::Internal("API key not configured".into()));
-    }
-
     let writing = anky.writing_text.as_deref().unwrap_or("");
     let reflection = anky.reflection.as_deref().unwrap_or("");
 
-    let history: Vec<(String, String)> = req
-        .history
-        .iter()
-        .map(|m| (m.role.clone(), m.content.clone()))
-        .collect();
+    let mut messages: Vec<crate::services::ollama::OllamaChatMessage> = vec![
+        crate::services::ollama::OllamaChatMessage {
+            role: "system".into(),
+            content: format!(
+                "You are Anky, a consciousness companion continuing a conversation. The user just did a stream-of-consciousness writing session. You already reflected on their writing.\n\nBe warm, direct, precise. Reference their writing when relevant. Ask the question that cuts deepest. 2-3 paragraphs max.\n\nTHEIR WRITING:\n{}\n\nYOUR REFLECTION:\n{}",
+                writing, reflection
+            ),
+        },
+    ];
+    for m in &req.history {
+        messages.push(crate::services::ollama::OllamaChatMessage {
+            role: m.role.clone(),
+            content: m.content.clone(),
+        });
+    }
+    messages.push(crate::services::ollama::OllamaChatMessage {
+        role: "user".into(),
+        content: req.message.clone(),
+    });
 
-    let result = crate::services::claude::chat_about_writing(
-        api_key,
-        writing,
-        reflection,
-        &history,
-        &req.message,
+    let response_text = crate::services::ollama::chat_ollama(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        messages,
     )
     .await
     .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
@@ -558,7 +564,7 @@ pub async fn chat_with_anky(
         .map(|m| json!({"role": m.role, "content": m.content}))
         .collect();
     full_history.push(json!({"role": "user", "content": req.message}));
-    full_history.push(json!({"role": "assistant", "content": result.text}));
+    full_history.push(json!({"role": "assistant", "content": response_text}));
     let conv_json = serde_json::to_string(&json!({
         "messages": full_history,
     }))
@@ -569,7 +575,7 @@ pub async fn chat_with_anky(
     }
 
     Ok(Json(json!({
-        "response": result.text,
+        "response": response_text,
     })))
 }
 
@@ -606,28 +612,36 @@ pub async fn suggest_replies(
         return Err(AppError::BadRequest("not authenticated".into()));
     }
 
-    let api_key = &state.config.anthropic_api_key;
-    if api_key.is_empty() {
-        return Err(AppError::Internal("API key not configured".into()));
-    }
-
     let writing = anky.writing_text.as_deref().unwrap_or("");
     let reflection = anky.reflection.as_deref().unwrap_or("");
 
-    let history: Vec<(String, String)> = req
-        .history
-        .iter()
-        .map(|m| (m.role.clone(), m.content.clone()))
-        .collect();
+    // Check if replies were pre-generated during the reflection stream
+    let cached = anky.conversation_json.as_deref().and_then(|j| {
+        let v: serde_json::Value = serde_json::from_str(j).ok()?;
+        let r1 = v["pending_replies"][0].as_str()?.to_string();
+        let r2 = v["pending_replies"][1].as_str()?.to_string();
+        // Only use cache if no conversation history yet (first request)
+        if req.history.is_empty() { Some((r1, r2)) } else { None }
+    });
 
-    let (reply1, reply2) = crate::services::claude::generate_suggested_replies(
-        api_key,
-        writing,
-        reflection,
-        &history,
-    )
-    .await
-    .map_err(|e| AppError::Internal(format!("Suggest replies failed: {}", e)))?;
+    let (reply1, reply2) = if let Some(cached_replies) = cached {
+        cached_replies
+    } else {
+        let history: Vec<(String, String)> = req
+            .history
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        crate::services::ollama::generate_suggested_replies(
+            &state.config.ollama_base_url,
+            &state.config.ollama_model,
+            writing,
+            reflection,
+            &history,
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("Suggest replies failed: {}", e)))?
+    };
 
     // Save conversation state with pending suggestions
     let messages: Vec<serde_json::Value> = req
@@ -690,7 +704,7 @@ pub async fn chat_quick(
         content: req.message.clone(),
     });
 
-    let response = chat_ollama(&state.config.ollama_base_url, "llama3.1:latest", messages)
+    let response = chat_ollama(&state.config.ollama_base_url, &state.config.ollama_model, messages)
         .await
         .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
 
@@ -855,21 +869,17 @@ pub async fn stream_reflection(
             return Err(AppError::Internal("API key not configured".into()));
         }
 
-        // Build memory context if OpenAI key is available
-        let memory_ctx = if !state.config.openai_api_key.is_empty() {
-            if let Some(ref uid) = user_id {
-                crate::memory::recall::build_memory_context(
-                    &state.db,
-                    &state.config.openai_api_key,
-                    uid,
-                    &writing_text,
-                )
-                .await
-                .ok()
-                .map(|ctx| ctx.format_for_prompt())
-            } else {
-                None
-            }
+        // Build memory context from local embeddings
+        let memory_ctx = if let Some(ref uid) = user_id {
+            crate::memory::recall::build_memory_context(
+                &state.db,
+                &state.config.ollama_base_url,
+                uid,
+                &writing_text,
+            )
+            .await
+            .ok()
+            .map(|ctx| ctx.format_for_prompt())
         } else {
             None
         };
@@ -890,21 +900,23 @@ pub async fn stream_reflection(
                         crate::services::claude::parse_title_reflection(&full_text);
                     let cost =
                         crate::pipeline::cost::estimate_claude_cost(input_tokens, output_tokens);
-                    let db = state_clone.db.lock().await;
-                    if let Err(e) =
-                        queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
                     {
-                        tracing::error!("Failed to save reflection for {}: {}", &anky_id[..8], e);
+                        let db = state_clone.db.lock().await;
+                        if let Err(e) =
+                            queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
+                        {
+                            tracing::error!("Failed to save reflection for {}: {}", &anky_id[..8], e);
+                        }
+                        let _ = queries::insert_cost_record(
+                            &db,
+                            "claude",
+                            "claude-sonnet-4-20250514",
+                            input_tokens,
+                            output_tokens,
+                            cost,
+                            Some(&anky_id),
+                        );
                     }
-                    let _ = queries::insert_cost_record(
-                        &db,
-                        "claude",
-                        "claude-sonnet-4-20250514",
-                        input_tokens,
-                        output_tokens,
-                        cost,
-                        Some(&anky_id),
-                    );
                     state_clone.emit_log(
                         "INFO",
                         "stream",
@@ -914,6 +926,37 @@ pub async fn stream_reflection(
                             cost
                         ),
                     );
+                    // Proactively generate suggested replies in background so they're
+                    // ready by the time the user finishes reading the reflection.
+                    let sr_state = state_clone.clone();
+                    let sr_anky_id = anky_id.clone();
+                    let sr_writing = writing_text.clone();
+                    let sr_reflection = reflection.clone();
+                    tokio::spawn(async move {
+                        match crate::services::ollama::generate_suggested_replies(
+                            &sr_state.config.ollama_base_url,
+                            &sr_state.config.ollama_model,
+                            &sr_writing,
+                            &sr_reflection,
+                            &[],
+                        )
+                        .await
+                        {
+                            Ok((r1, r2)) => {
+                                let conv_json = serde_json::to_string(&serde_json::json!({
+                                    "messages": [],
+                                    "pending_replies": [r1, r2],
+                                }))
+                                .unwrap_or_default();
+                                let db = sr_state.db.lock().await;
+                                let _ = queries::update_anky_conversation(&db, &sr_anky_id, &conv_json);
+                                sr_state.emit_log("INFO", "stream", &format!("Replies pre-generated for {}", &sr_anky_id[..8]));
+                            }
+                            Err(e) => {
+                                tracing::warn!("Pre-generating replies failed for {}: {}", &sr_anky_id[..8], e);
+                            }
+                        }
+                    });
                 }
                 Err(e) => {
                     tracing::error!("Stream reflection failed for {}: {}", &anky_id[..8], e);
@@ -1229,22 +1272,18 @@ pub async fn generate_video(
         };
 
         // Build memory context outside the db lock
-        let memory = if !s.config.openai_api_key.is_empty() {
-            match crate::memory::recall::build_memory_context(
-                &s.db,
-                &s.config.openai_api_key,
-                &uid,
-                &video_ctx.writing_text,
-            )
-            .await
-            {
-                Ok(mem) if mem.session_count > 0 => {
-                    Some(crate::pipeline::video_gen::memory_context_to_video(&mem))
-                }
-                _ => None,
+        let memory = match crate::memory::recall::build_memory_context(
+            &s.db,
+            &s.config.ollama_base_url,
+            &uid,
+            &video_ctx.writing_text,
+        )
+        .await
+        {
+            Ok(mem) if mem.session_count > 0 => {
+                Some(crate::pipeline::video_gen::memory_context_to_video(&mem))
             }
-        } else {
-            None
+            _ => None,
         };
 
         let video_ctx = crate::pipeline::video_gen::VideoContext {
@@ -2410,12 +2449,12 @@ pub async fn toggle_like(
 pub async fn memory_backfill(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let openai_key = state.config.openai_api_key.clone();
     let anthropic_key = state.config.anthropic_api_key.clone();
+    let ollama_url = state.config.ollama_base_url.clone();
 
-    if openai_key.is_empty() || anthropic_key.is_empty() {
+    if anthropic_key.is_empty() {
         return Err(AppError::Internal(
-            "OpenAI or Anthropic API key not configured".into(),
+            "Anthropic API key not configured".into(),
         ));
     }
 
@@ -2424,7 +2463,7 @@ pub async fn memory_backfill(
     let s = state.clone();
     tokio::spawn(async move {
         let (processed, total) =
-            crate::pipeline::memory_pipeline::backfill_memories(&s, &openai_key, &anthropic_key)
+            crate::pipeline::memory_pipeline::backfill_memories(&s, &ollama_url, &anthropic_key)
                 .await;
         s.emit_log(
             "INFO",

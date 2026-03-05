@@ -1,0 +1,34 @@
+update training + generation stack for round two completion.
+
+goals:
+1) /training should no longer be only swipe curation. add a second tab right next to curation with the exact round-two one-shot runpod command, post-training upload command, and links to the published artifacts.
+2) /trainings/general-instructions must reflect what actually worked in run 002:
+   - blackwell-safe setup flow
+   - round-two dataset url and image counts
+   - one-shot upload for weights + samples
+   - metadata upload command
+   - note that python api upload is safer than relying on huggingface-cli entrypoints.
+3) training journal should include a new completed run entry for 2026-03-04 with params and outputs.
+4) /generate must serve the newly trained model on the non-ollama 4090 path (comfyui on gpu0), with sane fallback if old filename still exists.
+5) deploy and verify.
+
+implementation:
+- updated templates/training.html:
+  - added tabs: "curation" + "round two one-shot"
+  - preserved existing swipe flow
+  - added runbook content with dataset link, one-shot command, upload command, and artifact paths.
+- updated templates/training_general_instructions.html:
+  - rewrote steps to align with round-two realities (465 pairs, v2 dataset archive)
+  - added known issue around huggingface cli/module entrypoints.
+- updated templates/trainings.html + templates/training_run.html:
+  - new run 002 record and detail page content for 2026-03-04.
+- updated src/services/comfyui.rs:
+  - lora loader now resolves by priority:
+    1) COMFYUI_LORA_MODEL env override
+    2) anky_flux_lora_v2.safetensors if present
+    3) legacy anky_flux_lora.safetensors fallback
+  - keeps generation resilient while switching to v2 by default.
+
+result:
+- docs and in-app runbook now match the proven workflow.
+- generation path can use round-two lora on gpu0 without touching ollama on gpu1.

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dataset Round Two — Anky</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👽</text></svg>">
+  <meta property="og:title" content="Anky Dataset Round Two">
+  <meta property="og:description" content="{{ total }} images — the visual soul of anky, curated for training.">
+  <meta property="og:image" content="https://anky.app/static/og-dataset-round-two.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://anky.app/gallery/dataset-round-two">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Anky Dataset Round Two">
+  <meta name="twitter:description" content="{{ total }} images — the visual soul of anky, curated for training.">
+  <meta name="twitter:image" content="https://anky.app/static/og-dataset-round-two.jpg">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: monospace;
+      padding: 16px 16px 100px; /* bottom pad so content clears the floating button */
+    }
+    h1 { font-size: 1.2rem; margin-bottom: 6px; color: #fff; }
+    .meta { font-size: 0.8rem; color: #666; margin-bottom: 16px; }
+    .lore { font-size: 0.85rem; color: #aaa; line-height: 1.6; max-width: 780px; margin-bottom: 12px; }
+    .lore a { color: #7b9fff; text-decoration: none; }
+    .lore a:hover { text-decoration: underline; }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.85rem;
+      border-radius: 3px;
+    }
+    .btn:hover { background: #2a2a2a; border-color: #555; }
+    #selected-count { font-size: 0.85rem; color: #888; }
+
+    /* Collage: 2 cols on mobile, fills width naturally on desktop */
+    .collage {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4px;
+    }
+    @media (min-width: 500px) {
+      .collage { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    }
+
+    .thumb-wrap {
+      position: relative;
+      aspect-ratio: 1;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border: 3px solid transparent;
+      transition: border-color 0.1s;
+    }
+    .thumb-wrap.selected img { border-color: #e74c3c; }
+    .thumb-wrap .check {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      width: 22px;
+      height: 22px;
+      background: #e74c3c;
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #fff;
+      font-weight: bold;
+      z-index: 2;
+    }
+    .thumb-wrap.selected .check { display: flex; }
+    .thumb-wrap .view-full {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-decoration: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 3;
+    }
+    .thumb-wrap:hover .view-full { opacity: 1; }
+
+    /* Floating eliminate button */
+    #float-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      background: #1a0505;
+      border: 1px solid #c0392b;
+      color: #e74c3c;
+      padding: 12px 28px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.9rem;
+      border-radius: 30px;
+      box-shadow: 0 4px 20px rgba(231,76,60,0.3);
+      white-space: nowrap;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    #float-btn:hover { background: #2a0808; box-shadow: 0 4px 28px rgba(231,76,60,0.5); }
+    #float-btn .count-badge {
+      display: inline-block;
+      background: #e74c3c;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.75rem;
+      min-width: 20px;
+      height: 20px;
+      line-height: 20px;
+      text-align: center;
+      padding: 0 4px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* Eliminate modal */
+    #eliminate-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+    #eliminate-modal.open { display: flex; }
+    .modal-box {
+      background: #111;
+      border: 1px solid #333;
+      padding: 28px 28px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .modal-box h2 { font-size: 1rem; margin-bottom: 12px; color: #e74c3c; }
+    .modal-box p { font-size: 0.85rem; color: #999; margin-bottom: 14px; }
+    .modal-box input[type="password"] {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      color: #fff;
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 1rem;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    .modal-box input[type="password"]:focus { outline: none; border-color: #e74c3c; }
+    .modal-actions { display: flex; gap: 10px; justify-content: center; }
+    .modal-btn {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 8px 20px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      flex: 1;
+    }
+    .modal-btn.danger { border-color: #c0392b; color: #e74c3c; }
+    #pw-error { color: #e74c3c; font-size: 0.8rem; min-height: 18px; margin-bottom: 8px; }
+    #confirm-result { color: #2ecc71; font-size: 0.85rem; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>👽 Dataset Round Two</h1>
+<p class="lore">
+  <a href="https://anky.app/trainings/2026-02-28" target="_blank">Round one</a> was a first attempt at teaching flux what anky looks like — we trained on ~112 hand-picked images and got a model that sort of understood the shape, the blue skin, the big ears, but still drifted. Round two is a larger, more intentional dataset: we generated hundreds of new ankys across different scenes and emotional registers, ran them through a tinder-style review to keep only the ones that felt right, and combined them with the original training images. The goal is a LoRA that doesn't need coaxing — one that holds anky's presence across wildly different prompts.
+</p>
+<p class="meta">{{ total }} images total · click to select · hover for full view</p>
+
+<div class="controls">
+  <button class="btn" onclick="selectAll()">select all</button>
+  <button class="btn" onclick="selectNone()">deselect all</button>
+  <span id="selected-count">0 selected</span>
+</div>
+
+<div class="collage" id="collage">
+  {% for img in images %}
+  <div class="thumb-wrap"
+       data-source="{{ img.source }}"
+       data-batch="{{ img.batch_id }}"
+       data-image="{{ img.image_id }}"
+       onclick="toggle(this)">
+    <img src="{{ img.thumb_url }}" alt="{{ img.image_id }}" loading="lazy">
+    <div class="check">✕</div>
+    <a class="view-full"
+       href="{{ img.full_url }}"
+       target="_blank"
+       onclick="event.stopPropagation()">full ↗</a>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Floating eliminate button -->
+<button id="float-btn" onclick="openEliminate()">
+  eliminate from dataset<span class="count-badge" id="badge" style="display:none">0</span>
+</button>
+
+<!-- Eliminate modal -->
+<div id="eliminate-modal">
+  <div class="modal-box">
+    <h2>eliminate from dataset</h2>
+    <p id="modal-desc">0 images selected</p>
+    <input type="password" id="pw-input" placeholder="password" autocomplete="off">
+    <div id="pw-error"></div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeEliminate()">cancel</button>
+      <button class="modal-btn danger" onclick="confirmEliminate()">confirm</button>
+    </div>
+    <div id="confirm-result"></div>
+  </div>
+</div>
+
+<script>
+  const selected = new Map();
+
+  function key(el) {
+    return el.dataset.source + '|' + el.dataset.batch + '|' + el.dataset.image;
+  }
+
+  function updateCount() {
+    const n = selected.size;
+    document.getElementById('selected-count').textContent = n + ' selected';
+    const badge = document.getElementById('badge');
+    if (n > 0) {
+      badge.textContent = n;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function toggle(el) {
+    const k = key(el);
+    if (selected.has(k)) {
+      selected.delete(k);
+      el.classList.remove('selected');
+    } else {
+      selected.set(k, { source: el.dataset.source, batch_id: el.dataset.batch, image_id: el.dataset.image });
+      el.classList.add('selected');
+    }
+    updateCount();
+  }
+
+  function selectAll() {
+    document.querySelectorAll('.thumb-wrap').forEach(el => {
+      selected.set(key(el), { source: el.dataset.source, batch_id: el.dataset.batch, image_id: el.dataset.image });
+      el.classList.add('selected');
+    });
+    updateCount();
+  }
+
+  function selectNone() {
+    selected.clear();
+    document.querySelectorAll('.thumb-wrap').forEach(el => el.classList.remove('selected'));
+    updateCount();
+  }
+
+  function openEliminate() {
+    if (selected.size === 0) { alert('select at least one image first'); return; }
+    document.getElementById('modal-desc').textContent = selected.size + ' image(s) will be eliminated';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').textContent = '';
+    document.getElementById('confirm-result').textContent = '';
+    document.getElementById('eliminate-modal').classList.add('open');
+    setTimeout(() => document.getElementById('pw-input').focus(), 50);
+  }
+
+  function closeEliminate() {
+    document.getElementById('eliminate-modal').classList.remove('open');
+  }
+
+  async function confirmEliminate() {
+    const pw = document.getElementById('pw-input').value;
+    if (!pw) { document.getElementById('pw-error').textContent = 'enter the password'; return; }
+
+    const body = new URLSearchParams();
+    body.append('password', pw);
+    body.append('selections', JSON.stringify(Array.from(selected.values())));
+
+    const res = await fetch('/gallery/dataset-round-two/eliminate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    if (res.status === 403) {
+      document.getElementById('pw-error').textContent = 'wrong password... redirecting';
+      setTimeout(() => { window.location.href = 'https://anky.app/ankycoin'; }, 1500);
+      return;
+    }
+
+    const msg = await res.text();
+    document.getElementById('confirm-result').textContent = msg;
+
+    selected.forEach((_, k) => {
+      const [src, batch, image] = k.split('|');
+      const el = document.querySelector(`.thumb-wrap[data-source="${src}"][data-batch="${batch}"][data-image="${image}"]`);
+      if (el) el.remove();
+    });
+    selected.clear();
+    updateCount();
+    setTimeout(closeEliminate, 1200);
+  }
+
+  document.getElementById('eliminate-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeEliminate();
+  });
+
+  document.getElementById('pw-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') confirmEliminate();
+  });
+</script>
+</body>
+</html>

@@ -20,6 +20,9 @@ static/hf/
 static/ep2/
 static/dca-bot/
 
+# Tools - large binaries
+tools/ffmpeg-static/
+
 # Interview engine
 interview-engine/.venv/
 interview-engine/__pycache__/

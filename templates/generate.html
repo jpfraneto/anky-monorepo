@@ -17,7 +17,7 @@
         gemini <span class="model-badge paid">$0.25</span>
       </button>
     </div>
-    <p class="model-hint" id="model-hint">flux.1-dev fine-tuned on anky's visual world — always free</p>
+    <p class="model-hint" id="model-hint">flux.1-dev + anky LoRA v2 (round two) — always free</p>
   </div>
 
   <div class="gen-section">
@@ -142,7 +142,7 @@
     });
     var hint = document.getElementById('model-hint');
     hint.textContent = m === 'flux'
-      ? 'flux.1-dev fine-tuned on anky\'s visual world — always free'
+      ? 'flux.1-dev + anky LoRA v2 (round two) — always free'
       : 'google\'s image model — requires USDC on Base';
     var fluxHint = document.getElementById('flux-prompt-hint');
     if (fluxHint) fluxHint.style.display = m === 'flux' ? '' : 'none';

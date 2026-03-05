@@ -38,6 +38,10 @@ pub struct Config {
     // Cloudflare (cache purge)
     pub cloudflare_api_token: String,
     pub cloudflare_zone_id: String,
+    // Training live monitor
+    pub training_secret: String,
+    // Dataset gallery password
+    pub dataset_password: String,
 }
 
 impl Config {
@@ -51,7 +55,7 @@ impl Config {
                 .context("PORT must be a number")?,
             ollama_base_url: std::env::var("OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
-            ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5:72b".into()),
+            ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:35b".into()),
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             base_rpc_url: std::env::var("BASE_RPC_URL")
@@ -84,6 +88,8 @@ impl Config {
             xai_api_key: std::env::var("XAI_API_KEY").unwrap_or_default(),
             cloudflare_api_token: std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default(),
             cloudflare_zone_id: std::env::var("CLOUDFLARE_ZONE_ID").unwrap_or_default(),
+            training_secret: std::env::var("TRAINING_SECRET").unwrap_or_default(),
+            dataset_password: std::env::var("DATASET_PASSWORD").unwrap_or_else(|_| "ankyisyou".into()),
         })
     }
 }

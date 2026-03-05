@@ -35,6 +35,13 @@ async fn farcaster_manifest() -> ([(axum::http::HeaderName, &'static str); 1], &
     )
 }
 
+async fn agent_manifest() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        include_str!("../../static/agent.json"),
+    )
+}
+
 async fn service_worker() -> ([(axum::http::HeaderName, &'static str); 2], &'static str) {
     (
         [
@@ -127,6 +134,9 @@ pub fn build_router(state: AppState) -> Router {
         // Pages
         .route("/", axum::routing::get(pages::home))
         .route("/gallery", axum::routing::get(pages::gallery))
+        .route("/gallery/dataset-round-two", axum::routing::get(pages::dataset_round_two))
+        .route("/gallery/dataset-round-two/og-image", axum::routing::get(pages::dataset_og_image))
+        .route("/gallery/dataset-round-two/eliminate", axum::routing::post(pages::dataset_eliminate))
         .route("/video-gallery", axum::routing::get(pages::videos_gallery))
         .route("/feed", axum::routing::get(pages::feed_page))
         .route("/help", axum::routing::get(pages::help))
@@ -307,6 +317,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/generations/{id}/status", axum::routing::post(generations::save_status))
         .route("/generations/{id}/dashboard", axum::routing::get(generations::generation_dashboard))
         .route("/generations/{id}/progress", axum::routing::get(generations::generation_progress))
+        .route("/generations/{id}/tinder", axum::routing::get(generations::review_images))
+        .route("/generations/{id}/review", axum::routing::post(generations::save_review))
         // Training curation
         .route("/training", axum::routing::get(training::training_page))
         .route("/trainings", axum::routing::get(training::trainings_list))
@@ -314,6 +326,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/trainings/{date}", axum::routing::get(training::training_run_detail))
         .route("/api/training/next", axum::routing::get(training::next_image))
         .route("/api/training/vote", axum::routing::post(training::vote))
+        .route("/api/training/heartbeat", axum::routing::post(training::training_heartbeat))
+        .route("/api/training/state", axum::routing::get(training::training_state))
+        .route("/training/live", axum::routing::get(training::training_live))
+        .route("/training/live/samples/{filename}", axum::routing::get(training::training_sample_image))
         // Meditation
         .route(
             "/api/v1/meditate/start",
@@ -359,6 +375,11 @@ pub fn build_router(state: AppState) -> Router {
             "/.well-known/farcaster.json",
             axum::routing::get(farcaster_manifest),
         )
+        // Agent manifest (8004 registry / OASF)
+        .route(
+            "/.well-known/agent",
+            axum::routing::get(agent_manifest),
+        )
         // Service Worker (served from root for scope)
         .route("/sw.js", axum::routing::get(service_worker))
         // Health
@@ -383,6 +404,8 @@ pub fn build_router(state: AppState) -> Router {
         .nest_service("/videos", ServeDir::new("videos"))
         .nest_service("/data/videos", ServeDir::new("data/videos"))
         .nest_service("/gen-images", ServeDir::new("data/generations"))
+        .nest_service("/data/training-images", ServeDir::new("data/training-images"))
+        .nest_service("/data/training-runs", ServeDir::new("data/training_runs"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())
         .layer(cors)

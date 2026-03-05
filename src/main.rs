@@ -323,9 +323,9 @@ async fn run_bot_cycle(state: &state::AppState) -> anyhow::Result<()> {
             )?;
         }
 
-        // Classify with Claude Haiku
+        // Classify mention locally
         let classification =
-            match services::claude::classify_mention(&cfg.anthropic_api_key, &mention.text).await {
+            match services::ollama::classify_mention(&cfg.ollama_base_url, &cfg.ollama_model, &mention.text).await {
                 Ok(c) => c,
                 Err(e) => {
                     state.emit_log("ERROR", "x_bot", &format!("Classification failed: {}", e));

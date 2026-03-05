@@ -1,0 +1,25 @@
+we just burned multiple hours on runpod setup failures for flux lora run 2. lock this down now.
+
+fix /static/train_anky_setup.sh so it is resilient on fresh pods:
+
+1) blackwell compatibility:
+- default torch install to cu128 wheels instead of cu124
+- keep it configurable via env if needed
+
+2) token UX:
+- if HF_TOKEN is missing, prompt interactively in the terminal
+- if ANKY_TOKEN is missing, prompt optionally (allow empty for no live heartbeat)
+
+3) dataset extraction robustness:
+- our archive extracts to final-training-dataset-for-round-two, not training-images
+- detect common extracted folder names and rename to /workspace/dataset automatically
+- fail loudly if no dataset folder with pngs is found
+
+4) venv robustness:
+- if /workspace/venv exists but /workspace/venv/bin/activate is missing, rebuild it
+- ensure python3-venv/python3-pip installed up front
+
+5) docs:
+- update /trainings/general-instructions so next time we remember the real one-liner, token behavior, cu128 requirement, and recovery steps
+
+goal: one command on a new runpod should reliably get to tmux training launch without manual surgery.

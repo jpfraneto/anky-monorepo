@@ -196,9 +196,9 @@ pub async fn process_writing(
         });
         "your anky is being born. the reflection is streaming...".into()
     } else {
-        let model = "llama3.1:latest";
+        let model = &state.config.ollama_model;
         let prompt = crate::services::ollama::quick_feedback_prompt(&req.text, req.duration);
-        let r = match crate::services::ollama::call_ollama(&state.config.ollama_base_url, model, &prompt).await {
+        let r = match crate::services::ollama::call_ollama(&state.config.ollama_base_url, model.as_str(), &prompt).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Ollama error: {}", e);
@@ -387,11 +387,6 @@ pub async fn get_writings(
 
 /// Generate the next inquiry for a user based on their history.
 async fn generate_next_inquiry(state: &AppState, user_id: &str) -> anyhow::Result<()> {
-    let api_key = &state.config.anthropic_api_key;
-    if api_key.is_empty() {
-        return Ok(());
-    }
-
     let (history, lang) = {
         let db = state.db.lock().await;
         let h = crate::db::queries::get_inquiry_history(&db, user_id, 10)?;
@@ -456,16 +451,16 @@ async fn generate_next_inquiry(state: &AppState, user_id: &str) -> anyhow::Resul
         msg
     };
 
-    let result = crate::services::claude::call_claude_public(
-        api_key,
-        "claude-haiku-4-5-20251001",
+    let question = crate::services::ollama::call_ollama_with_system(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
         &system,
         &user_msg,
-        200,
     )
-    .await?;
+    .await?
+    .trim()
+    .to_string();
 
-    let question = result.text.trim().to_string();
     if !question.is_empty() {
         let db = state.db.lock().await;
         crate::db::queries::create_inquiry(&db, user_id, &question, &lang)?;

@@ -96,32 +96,15 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 1: Generate image prompt
-    state.emit_log("INFO", "claude", "Generating image prompt...");
-    let prompt_result = claude::generate_prompt(api_key, writing_text).await?;
-    let image_prompt = prompt_result.text.clone();
-
-    let prompt_cost = crate::pipeline::cost::estimate_claude_cost(
-        prompt_result.input_tokens,
-        prompt_result.output_tokens,
-    );
-    {
-        let db = state.db.lock().await;
-        queries::insert_cost_record(
-            &db,
-            "claude",
-            "claude-sonnet-4-20250514",
-            prompt_result.input_tokens,
-            prompt_result.output_tokens,
-            prompt_cost,
-            Some(anky_id),
-        )?;
-    }
-    state.emit_log(
-        "INFO",
-        "claude",
-        &format!("Image prompt ready (${:.4})", prompt_cost),
-    );
+    // Step 1: Generate image prompt (local Qwen)
+    state.emit_log("INFO", "qwen", "Generating image prompt...");
+    let image_prompt = crate::services::ollama::generate_image_prompt(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        writing_text,
+    )
+    .await?;
+    state.emit_log("INFO", "qwen", "Image prompt ready");
 
     // Step 2: Generate image with Gemini
     state.emit_log("INFO", "gemini", "Generating Anky image...");
@@ -192,19 +175,15 @@ pub async fn generate_anky_from_writing(
             );
 
             // Build memory context for the fallback reflection too
-            let memory_ctx = if !state.config.openai_api_key.is_empty() {
-                crate::memory::recall::build_memory_context(
-                    &state.db,
-                    &state.config.openai_api_key,
-                    _user_id,
-                    writing_text,
-                )
-                .await
-                .ok()
-                .map(|ctx| ctx.format_for_prompt())
-            } else {
-                None
-            };
+            let memory_ctx = crate::memory::recall::build_memory_context(
+                &state.db,
+                &state.config.ollama_base_url,
+                _user_id,
+                writing_text,
+            )
+            .await
+            .ok()
+            .map(|ctx| ctx.format_for_prompt());
 
             let tr = claude::generate_title_and_reflection_with_memory(
                 api_key,
@@ -237,7 +216,7 @@ pub async fn generate_anky_from_writing(
         let _ = queries::set_anky_image_model(&db, anky_id, "gemini");
     }
 
-    let total_cost = prompt_cost + 0.04;
+    let total_cost = 0.04;
     state.emit_log(
         "INFO",
         "image_gen",
@@ -248,19 +227,19 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 5: Memory extraction (background, non-blocking)
-    let openai_key = state.config.openai_api_key.clone();
-    let anthropic_key = state.config.anthropic_api_key.clone();
-    if !openai_key.is_empty() && !anthropic_key.is_empty() {
+    // Step 5: Memory extraction (background, non-blocking, fully local)
+    {
         let mem_state = state.clone();
+        let mem_ollama_url = state.config.ollama_base_url.clone();
+        let mem_anthropic_key = state.config.anthropic_api_key.clone();
         let mem_user_id = _user_id.to_string();
         let mem_session_id = writing_session_id.to_string();
         let mem_text = writing_text.to_string();
         tokio::spawn(async move {
             crate::pipeline::memory_pipeline::run_memory_pipeline(
                 &mem_state,
-                &openai_key,
-                &anthropic_key,
+                &mem_ollama_url,
+                &mem_anthropic_key,
                 &mem_user_id,
                 &mem_session_id,
                 &mem_text,
@@ -301,34 +280,19 @@ pub async fn generate_image_only(
     );
 
     // Step 1: Generate image prompt (or use pre-enhanced prompt)
-    let (image_prompt, prompt_cost) = if let Some(prompt) = pre_prompt {
-        state.emit_log("INFO", "claude", "Using pre-enhanced image prompt");
-        (prompt.to_string(), 0.0)
+    let image_prompt = if let Some(prompt) = pre_prompt {
+        state.emit_log("INFO", "qwen", "Using pre-enhanced image prompt");
+        prompt.to_string()
     } else {
-        state.emit_log("INFO", "claude", "Generating image prompt from text...");
-        let prompt_result = claude::generate_prompt(api_key, text).await?;
-        let cost = crate::pipeline::cost::estimate_claude_cost(
-            prompt_result.input_tokens,
-            prompt_result.output_tokens,
-        );
-        {
-            let db = state.db.lock().await;
-            queries::insert_cost_record(
-                &db,
-                "claude",
-                "claude-sonnet-4-20250514",
-                prompt_result.input_tokens,
-                prompt_result.output_tokens,
-                cost,
-                Some(anky_id),
-            )?;
-        }
-        state.emit_log(
-            "INFO",
-            "claude",
-            &format!("Image prompt generated (${:.4})", cost),
-        );
-        (prompt_result.text.clone(), cost)
+        state.emit_log("INFO", "qwen", "Generating image prompt from text...");
+        let p = crate::services::ollama::generate_image_prompt(
+            &state.config.ollama_base_url,
+            &state.config.ollama_model,
+            text,
+        )
+        .await?;
+        state.emit_log("INFO", "qwen", "Image prompt generated");
+        p
     };
 
     // Step 2: Generate image with Gemini
@@ -396,7 +360,7 @@ pub async fn generate_image_only(
         let _ = queries::set_anky_image_model(&db, anky_id, "gemini");
     }
 
-    let total_cost = prompt_cost + 0.04;
+    let total_cost = 0.04;
     state.emit_log(
         "INFO",
         "image_gen",

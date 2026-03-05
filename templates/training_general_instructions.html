@@ -77,68 +77,61 @@
   <a class="back-link" href="/trainings">← all training runs</a>
 
   <h1>how to run a training</h1>
-  <p class="instructions-subtitle">the full recipe for fine-tuning FLUX.1-dev on anky. written from memory after run 001.</p>
+  <p class="instructions-subtitle">the live recipe for fine-tuning FLUX.1-dev on anky with the current runpod bootstrap.</p>
 
   <hr class="divider">
 
   <div class="step">
     <div class="step-number">step 1</div>
     <h2>curate the dataset</h2>
-    <p>Go to <a href="/training">/training</a> and swipe through generated Ankys. Keep the ones that feel true to the character — correct proportions, good lighting, recognizable. Reject blurry, distorted, or off-model images.</p>
-    <p>Aim for at least 80–150 images. More isn't always better — quality matters more than quantity. Each approved image gets copied to <code>data/training-images/</code> with a caption <code>.txt</code> file alongside it.</p>
-    <p>The caption files are the image prompts that were used to generate each image. They teach the model the connection between words and visual features.</p>
+    <p>Go to <a href="/training">/training</a> and use the curation tab to keep/reject images. For round two, the final prepared dataset is already published to HuggingFace and can be consumed directly by the one-shot RunPod command.</p>
+    <p>Round-two final archive: <code>training-data/final-training-dataset-for-round-two.tar.gz</code> in <code>jpfraneto/anky-flux-lora-v2</code>. Final trainable set: <code>465</code> PNG + <code>465</code> TXT caption pairs.</p>
+    <p>Each caption teaches the model the prompt-to-visual mapping. Missing captions were generated and deduplicated before publishing this archive.</p>
   </div>
 
   <div class="step">
     <div class="step-number">step 2</div>
-    <h2>spin up a RunPod A100</h2>
-    <p>Go to <a href="https://runpod.io" target="_blank">runpod.io</a> and rent an <strong>A100 80GB SXM</strong> pod. Use the <strong>RunPod PyTorch 2.4.0</strong> template (not the base image — you need CUDA pre-installed).</p>
-    <p>Set the volume disk to at least <strong>50GB</strong> (the FLUX model alone is ~23GB). Container disk can be 20GB.</p>
+    <h2>spin up a RunPod GPU pod</h2>
+    <p>Go to <a href="https://runpod.io" target="_blank">runpod.io</a> and rent a high-memory GPU pod (A100/H100/RTX PRO 6000 class). Use a PyTorch/CUDA-ready template.</p>
+    <p>The key requirement is that <code>/workspace</code> is mounted on the large volume disk. Keep container/root disk separate.</p>
     <div class="note">⚠️ Make sure to set <code>HF_HOME=/workspace/hf_cache</code> before downloading models — the root disk fills up fast and kills the run.</div>
   </div>
 
   <div class="step">
     <div class="step-number">step 3</div>
     <h2>run the setup script</h2>
-    <p>Once the pod is running, open a terminal and run:</p>
-    <pre>curl -s https://anky.app/static/train_anky_setup.sh | bash</pre>
-    <p>This installs ai-toolkit, all dependencies (including torchaudio — don't skip it), clones the repo, and sets up the environment. Takes about 5–10 minutes.</p>
-    <div class="note">⚠️ Before running, you need to accept the FLUX.1-dev license at <a href="https://huggingface.co/black-forest-labs/FLUX.1-dev" target="_blank" style="color:#bba">huggingface.co/black-forest-labs/FLUX.1-dev</a> and log in with <code>huggingface-cli login</code>.</div>
+    <p>Once the pod is running, open a terminal and run the one-liner:</p>
+    <pre>HF_TOKEN=hf_xxx ANKY_TOKEN=xxx_optional ANKY_DATASET_URL=https://huggingface.co/jpfraneto/anky-flux-lora-v2/resolve/main/training-data/final-training-dataset-for-round-two.tar.gz ANKY_DATASET_MIN_IMAGES=460 TRAIN_NAME=anky_flux_lora_v2 LORA_RANK=32 LORA_ALPHA=16 TRAIN_STEPS=6500 SAVE_EVERY=500 SAMPLE_EVERY=500 bash &lt;(curl -fsSL https://anky.app/static/train_anky_setup.sh)</pre>
+    <p>If <code>HF_TOKEN</code> or <code>ANKY_TOKEN</code> are omitted, the script now prompts you interactively. <code>ANKY_TOKEN</code> is optional (only needed for live dashboard updates).</p>
+    <p>The script installs ai-toolkit, creates/fixes venv, installs PyTorch from <code>cu128</code> wheels (Blackwell-compatible), pulls dataset, writes config, and launches training in tmux.</p>
+    <div class="note">⚠️ Before running, accept the FLUX.1-dev license at <a href="https://huggingface.co/black-forest-labs/FLUX.1-dev" target="_blank" style="color:#bba">huggingface.co/black-forest-labs/FLUX.1-dev</a>.</div>
   </div>
 
   <div class="step">
     <div class="step-number">step 4</div>
-    <h2>upload the dataset</h2>
-    <p>Copy the training images from anky.app to the RunPod pod. The images are at <code>data/training-images/</code> on the server. You can tar them and scp, or use rsync. On the pod, put them at <code>/workspace/dataset/</code>.</p>
-    <p>Each image needs a matching <code>.txt</code> caption file in the same folder. The caption should describe the image and include the trigger word <code>anky</code>.</p>
+    <h2>verify tmux launch</h2>
+    <p>Wait until setup reaches <code>=== All launched in tmux session 'anky' ===</code>. Only leave once tmux is live.</p>
+    <pre>tmux ls
+tmux attach -t anky:training</pre>
+    <p>Detach safely with <code>Ctrl+B, D</code>. Training continues after disconnect.</p>
   </div>
 
   <div class="step">
     <div class="step-number">step 5</div>
-    <h2>start training in tmux</h2>
-    <p>Always use tmux so training survives if your SSH connection drops:</p>
-    <pre>tmux new -s train
-source /workspace/venv/bin/activate
-export HF_HOME=/workspace/hf_cache
-export HF_HUB_DISABLE_XET=1
-cd /workspace/ai-toolkit
-python -u run.py /workspace/train_anky.yaml</pre>
-    <p>Detach with <code>Ctrl+B, D</code>. Reattach later with <code>tmux attach -t train</code>.</p>
-    <p>Training 3000 steps on an A100 80GB takes roughly <strong>1–2 hours</strong>. Sample images are generated every 500 steps at <code>/workspace/output/anky_flux_lora/samples/</code>.</p>
+    <h2>monitor training</h2>
+    <p>Watch progress in tmux or tail logs directly:</p>
+    <pre>tmux attach -t anky:training
+tail -f /workspace/training.log</pre>
+    <p>With 465 images and 6500 steps, expect multiple hours depending on GPU/clocking. Samples/checkpoints save every 500 steps.</p>
   </div>
 
   <div class="step">
     <div class="step-number">step 6</div>
     <h2>upload to huggingface</h2>
-    <p>Once training finishes, upload the weights and everything else using these one-liners from the pod terminal:</p>
-    <p><strong>Upload the LoRA weights:</strong></p>
-    <pre>python3 -c "from huggingface_hub import HfApi; api=HfApi(); api.upload_file(path_or_fileobj='/workspace/output/anky_flux_lora/anky_flux_lora.safetensors', path_in_repo='anky_flux_lora.safetensors', repo_id='jpfraneto/anky-flux-lora-v1', repo_type='model'); print('done')"</pre>
-    <p><strong>Upload the training config:</strong></p>
-    <pre>python3 -c "from huggingface_hub import HfApi; api=HfApi(); api.upload_file(path_or_fileobj='/workspace/train_anky.yaml', path_in_repo='train_anky.yaml', repo_id='jpfraneto/anky-flux-lora-v1', repo_type='model'); print('done')"</pre>
-    <p><strong>Upload the README (managed on anky.app):</strong></p>
-    <pre>curl -s https://anky.app/static/hf/anky-flux-lora-v1-readme.md -o /tmp/readme.md && python3 -c "from huggingface_hub import HfApi; api=HfApi(); api.upload_file(path_or_fileobj='/tmp/readme.md', path_in_repo='README.md', repo_id='jpfraneto/anky-flux-lora-v1', repo_type='model'); print('done')"</pre>
-    <p><strong>Upload checkpoints + samples:</strong></p>
-    <pre>curl -s https://anky.app/static/hf/upload-checkpoints.py | python3</pre>
+    <p>Once training finishes, upload weights + samples in one shot:</p>
+    <pre>source /workspace/venv/bin/activate && HF_TOKEN=hf_xxx REPO_ID=jpfraneto/anky-flux-lora-v2 RUN_DIR=/workspace/output/anky_flux_lora_v2 bash -lc 'set -euo pipefail; STAGE=/tmp/hf_upload_anky_flux_lora_v2; export STAGE; rm -rf "$STAGE"; mkdir -p "$STAGE/weights" "$STAGE/samples"; cp -av "$RUN_DIR"/*.safetensors "$STAGE/weights/"; cp -av "$RUN_DIR/samples/." "$STAGE/samples/" 2>/dev/null || true; python -c "import os; from huggingface_hub import HfApi; HfApi(token=os.environ[\"HF_TOKEN\"]).upload_folder(folder_path=os.environ[\"STAGE\"], repo_id=os.environ[\"REPO_ID\"], repo_type=\"model\", path_in_repo=\"training-runs/anky_flux_lora_v2\", commit_message=\"Upload round-two final weights and samples\")"'</pre>
+    <p>Then upload reproducibility metadata (config/log/env):</p>
+    <pre>source /workspace/venv/bin/activate && HF_TOKEN=hf_xxx REPO_ID=jpfraneto/anky-flux-lora-v2 RUN=anky_flux_lora_v2 bash -lc 'set -euo pipefail; M=/tmp/${RUN}_meta; export M; rm -rf "$M"; mkdir -p "$M"; cp -f /workspace/train_anky.yaml "$M/"; [ -f /workspace/training.log ] && cp -f /workspace/training.log "$M/" || true; nvidia-smi > "$M/nvidia-smi.txt"; python -V > "$M/python-version.txt"; pip freeze > "$M/pip-freeze.txt"; python -c "import torch; print(\"torch\",torch.__version__); print(\"cuda\",torch.version.cuda); print(\"gpu\",torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"none\")" > "$M/torch-env.txt"; df -h / /workspace > "$M/disk.txt"; python -c "import os; from huggingface_hub import HfApi; HfApi(token=os.environ[\"HF_TOKEN\"]).upload_folder(folder_path=os.environ[\"M\"], repo_id=os.environ[\"REPO_ID\"], repo_type=\"model\", path_in_repo=\"training-runs/{}/meta\".format(os.environ[\"RUN\"]), commit_message=\"Upload run metadata\")"'</pre>
   </div>
 
   <div class="step">
@@ -166,12 +159,21 @@ python -u run.py /workspace/train_anky.yaml</pre>
     <p><strong>GatedRepoError: 401</strong><br>
     You need to accept the FLUX.1-dev license on the HuggingFace website and re-login with <code>huggingface-cli login</code>.</p>
 
-    <p><strong>torch install corrupted after Ctrl+C</strong><br>
-    If you interrupt a pip install mid-way, torch can be in a broken state. Fix with a forced reinstall as a single line (no backslash continuations):</p>
-    <pre>pip install torch==2.5.1+cu124 torchvision==0.20.1+cu124 torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124 --force-reinstall --no-deps</pre>
+    <p><strong>CUDA no kernel image available</strong><br>
+    This happens on newer Blackwell GPUs with older torch wheels. Use cu128 wheels:</p>
+    <pre>pip uninstall -y torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</pre>
+
+    <p><strong>Broken venv after interrupted setup</strong><br>
+    If <code>/workspace/venv/bin/activate</code> is missing, rebuild venv:</p>
+    <pre>rm -rf /workspace/venv
+python3 -m venv /workspace/venv</pre>
 
     <p><strong>Python output not appearing in terminal</strong><br>
     Python buffers output when piped. Use <code>python -u</code> (unbuffered) to see logs in real time.</p>
+
+    <p><strong>huggingface-cli: command not found / python -m huggingface_hub fails</strong><br>
+    Use the direct Python API upload commands above (<code>HfApi().upload_folder</code>) instead of relying on CLI entrypoints.</p>
   </div>
 
 </div>

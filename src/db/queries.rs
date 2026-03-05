@@ -833,11 +833,12 @@ pub struct AnkyDetail {
     pub created_at: String,
     pub origin: String,
     pub image_model: String,
+    pub conversation_json: Option<String>,
 }
 
 pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini')
+        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini'), a.conversation_json
          FROM ankys a
          LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
          WHERE a.id = ?1",
@@ -858,6 +859,7 @@ pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>>
             created_at: row.get(11)?,
             origin: row.get(12)?,
             image_model: row.get(13)?,
+            conversation_json: row.get(14)?,
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))

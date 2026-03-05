@@ -88,7 +88,113 @@
 <div class="run-page">
   <a class="run-back" href="/trainings">← all training runs</a>
 
-  {% if date == "2026-02-28" %}
+  {% if date == "2026-03-04" %}
+
+  <h1>run 002 — round-two LoRA <span class="status-pill status-running" style="background:rgba(33,150,243,0.1);color:#2196f3;border-color:rgba(33,150,243,0.3)">complete</span></h1>
+  <div class="run-meta">2026-03-04 &nbsp;·&nbsp; FLUX.1-dev &nbsp;·&nbsp; RunPod RTX PRO 6000 96GB</div>
+
+  <div class="run-section">
+    <h2>what changed from run 001</h2>
+    <p>
+      We moved from a small first-pass set to a larger, deduplicated, caption-complete dataset. The source pool had 577 gallery images, but the final trainable round-two archive intentionally kept only high-quality unique image-caption pairs.
+    </p>
+    <p>
+      Final dataset used for training: <code>465 png + 465 txt</code>. This run increases capacity (rank 32) and extends the schedule (6500 steps) to improve identity consistency across harder prompts.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>training parameters</h2>
+    <div class="run-params">
+      <div class="param"><div class="param-label">base model</div><div class="param-value">FLUX.1-dev</div></div>
+      <div class="param"><div class="param-label">technique</div><div class="param-value">LoRA</div></div>
+      <div class="param"><div class="param-label">rank / alpha</div><div class="param-value">32 / 16</div></div>
+      <div class="param"><div class="param-label">steps</div><div class="param-value">6500</div></div>
+      <div class="param"><div class="param-label">save every</div><div class="param-value">500</div></div>
+      <div class="param"><div class="param-label">optimizer</div><div class="param-value">adamw8bit</div></div>
+      <div class="param"><div class="param-label">dtype</div><div class="param-value">bf16</div></div>
+      <div class="param"><div class="param-label">images</div><div class="param-value">465</div></div>
+      <div class="param"><div class="param-label">trigger word</div><div class="param-value">anky</div></div>
+      <div class="param"><div class="param-label">hardware</div><div class="param-value">RTX PRO 6000 96GB</div></div>
+    </div>
+  </div>
+
+  <div class="run-section">
+    <h2>published artifacts</h2>
+    <p>
+      Model + dataset repo:
+      <a href="https://huggingface.co/jpfraneto/anky-flux-lora-v2" style="color:#aaa">jpfraneto/anky-flux-lora-v2</a>
+    </p>
+    <p>
+      Final dataset archive:
+      <code>training-data/final-training-dataset-for-round-two.tar.gz</code>
+    </p>
+    <p>
+      Training outputs:
+      <code>training-runs/anky_flux_lora_v2/weights/anky_flux_lora_v2.safetensors</code>,
+      <code>training-runs/anky_flux_lora_v2/samples/...</code>,
+      <code>training-runs/anky_flux_lora_v2/meta/...</code>.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>execution timeline</h2>
+    <p>
+      The run started on a fresh RunPod pod with RTX PRO 6000 (96GB), 188GB RAM. Initial setup stalled due to a host-level pod issue and an interrupted virtualenv bootstrap. After moving to a clean pod and repairing the environment, training proceeded normally.
+    </p>
+    <p>
+      Effective schedule: baseline sample generation, latent caching at 512/768/1024 buckets, then full 6500-step optimization with checkpoint/sample saves every 500 steps.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>critical failures and fixes</h2>
+    <p>
+      <strong>1) CUDA kernel mismatch on Blackwell GPUs.</strong> The default torch build (<code>2.5.1+cu124</code>) failed with <code>no kernel image is available for execution on the device</code>. Fix: reinstall torch/vision/audio using <code>cu128</code> wheels.
+    </p>
+    <p>
+      <strong>2) Dataset extraction shape mismatch.</strong> Archive extracted under <code>final-training-dataset-for-round-two/</code>, while scripts expected <code>/workspace/dataset</code>. Fix: move/auto-detect dataset folder in bootstrap flow.
+    </p>
+    <p>
+      <strong>3) Broken venv after interrupted setup.</strong> Missing <code>/workspace/venv/bin/activate</code>. Fix: recreate venv before re-running setup.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>what this run produced</h2>
+    <p>
+      Final weight + recent checkpoints are published. The canonical production weight for inference is:
+      <code>training-runs/anky_flux_lora_v2/weights/anky_flux_lora_v2.safetensors</code>.
+    </p>
+    <p>
+      Samples for each checkpoint band are published under:
+      <code>training-runs/anky_flux_lora_v2/samples/</code>.
+      Reproducibility logs/config/env snapshots are under:
+      <code>training-runs/anky_flux_lora_v2/meta/</code>.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>deployment in anky.app</h2>
+    <p>
+      The <code>/generate</code> Flux path now prefers the run-002 LoRA (<code>anky_flux_lora_v2.safetensors</code>) on ComfyUI (GPU0), with fallback to the prior LoRA filename if v2 is unavailable. Ollama remains isolated on GPU1.
+    </p>
+    <p>
+      This keeps inference fast and production-safe while preserving backward compatibility.
+    </p>
+  </div>
+
+  <div class="run-section">
+    <h2>next improvements for run 003</h2>
+    <p>
+      Priority upgrades: add a held-out validation prompt set, score identity drift per checkpoint, and gate final export on objective + human review instead of fixed step count only.
+    </p>
+    <p>
+      Operationally, the run is now one-shot reproducible: dataset URL + bootstrap + upload + metadata are all documented and scriptable.
+    </p>
+  </div>
+
+  {% elif date == "2026-02-28" %}
 
   <h1>run 001 — first LoRA <span class="status-pill status-running" style="background:rgba(33,150,243,0.1);color:#2196f3;border-color:rgba(33,150,243,0.3)">complete</span></h1>
   <div class="run-meta">2026-02-28 &nbsp;·&nbsp; FLUX.1-dev &nbsp;·&nbsp; RunPod A100 80GB</div>

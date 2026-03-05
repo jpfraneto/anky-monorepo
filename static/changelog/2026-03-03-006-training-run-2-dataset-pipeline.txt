@@ -1,0 +1,11 @@
+ok. lets do this again. use the rich character description of the /generate page. and now generate the prompts using claude please
+
+ok im seeing them being genreated but it seems that the prompts are the same? 15 have been generated. stop with the current ones when they finish and then regenerate the prompts so that they can be new ones. i want the 100 prompts to bew new ones. so we will have 25 from this batch and 100 from the new one
+
+ok 100 done. give me the tinder like link to filter these for generation
+
+done. this is WAY closer to how i see anky looking like. i approved 93 out of the 100. can you tell me now how many images do we have for training?
+
+yep do that please. are we good with this number of images for another training round?
+
+yep. i want you to give me the full pipeline ready on a one liner that i can run on a runpod server so that it triggers this run from scratch. on this anky repo you have information and data about that first run. please use the learnings from that one so that you can evolve and set this all up

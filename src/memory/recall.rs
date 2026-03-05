@@ -105,7 +105,7 @@ impl MemoryContext {
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn build_memory_context(
     db: &Arc<Mutex<Connection>>,
-    openai_key: &str,
+    ollama_base_url: &str,
     user_id: &str,
     new_writing: &str,
 ) -> Result<MemoryContext> {
@@ -135,8 +135,8 @@ pub async fn build_memory_context(
     }; // conn dropped here
 
     // 2. Async embedding call (no conn held)
-    let similar_moments = if !openai_key.is_empty() {
-        match embeddings::embed_text(openai_key, new_writing).await {
+    let similar_moments = {
+        match embeddings::embed_text(ollama_base_url, new_writing).await {
             Ok(query_embedding) => {
                 // 3. Lock again for vector search
                 let conn = db.lock().await;
@@ -152,8 +152,6 @@ pub async fn build_memory_context(
             }
             Err(_) => Vec::new(),
         }
-    } else {
-        Vec::new()
     };
 
     Ok(MemoryContext {

@@ -10,7 +10,7 @@ use crate::state::AppState;
 /// 4. Update psychological profile every 5th session
 pub async fn run_memory_pipeline(
     state: &AppState,
-    openai_key: &str,
+    ollama_base_url: &str,
     anthropic_key: &str,
     user_id: &str,
     writing_session_id: &str,
@@ -26,7 +26,7 @@ pub async fn run_memory_pipeline(
     );
 
     // Step 1: Embed the writing session
-    match crate::memory::embeddings::embed_text(openai_key, writing_text).await {
+    match crate::memory::embeddings::embed_text(ollama_base_url, writing_text).await {
         Ok(embedding) => {
             let embed_id = format!("ws-{}", writing_session_id);
             let content_preview: String = writing_text.chars().take(500).collect();
@@ -57,7 +57,7 @@ pub async fn run_memory_pipeline(
 
     // Step 2: Extract structured memories
     let extracted =
-        match crate::memory::extraction::extract_memories(anthropic_key, writing_text).await {
+        match crate::memory::extraction::extract_memories(ollama_base_url, &state.config.ollama_model, writing_text).await {
             Ok(m) => {
                 let total = m.themes.len()
                     + m.emotions.len()
@@ -88,7 +88,7 @@ pub async fn run_memory_pipeline(
     // Step 3: Store with dedup (uses Arc<Mutex<Connection>> internally)
     match crate::memory::extraction::store_memories(
         &state.db,
-        openai_key,
+        ollama_base_url,
         user_id,
         writing_session_id,
         &extracted,
@@ -127,7 +127,7 @@ pub async fn run_memory_pipeline(
             ),
         );
         if let Err(e) =
-            crate::memory::profile::update_profile(&state.db, anthropic_key, user_id).await
+            crate::memory::profile::update_profile(&state.db, ollama_base_url, &state.config.ollama_model, user_id).await
         {
             state.emit_log("WARN", "memory", &format!("Profile update failed: {}", e));
         } else {
@@ -141,7 +141,7 @@ pub async fn run_memory_pipeline(
 /// Backfill memory for all existing writing sessions.
 pub async fn backfill_memories(
     state: &AppState,
-    openai_key: &str,
+    ollama_base_url: &str,
     anthropic_key: &str,
 ) -> (usize, usize) {
     let sessions: Vec<(String, String, String)> = {
@@ -182,7 +182,7 @@ pub async fn backfill_memories(
     for (session_id, user_id, content) in &sessions {
         run_memory_pipeline(
             state,
-            openai_key,
+            ollama_base_url,
             anthropic_key,
             user_id,
             session_id,

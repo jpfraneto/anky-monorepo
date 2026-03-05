@@ -1,0 +1,1 @@
+you mentioned about the openai api key. that if we don't have an api key the system doesn't work. well right  now this machine should be serving all the time a very powerful qwen model. can you use that model for whatever you want to do on that step? or is it not good enough? please do your research about the model and if it is good enough use it

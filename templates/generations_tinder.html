@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block title %}anky — image review{% endblock %}
+{% block content %}
+<style>
+  .tinder-wrap {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 1rem;
+    text-align: center;
+    min-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .tinder-header {
+    margin-bottom: 1rem;
+    width: 100%;
+  }
+  .tinder-header h1 {
+    font-size: 1.2rem;
+    margin-bottom: 0.25rem;
+    color: #fff;
+  }
+  .tinder-header .batch-label {
+    font-size: 0.75rem;
+    color: #555;
+    font-family: monospace;
+  }
+  .tinder-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.2rem;
+    font-size: 0.82rem;
+    color: #888;
+  }
+  .tinder-stats .stat-val {
+    font-size: 1.5rem;
+    font-weight: bold;
+    display: block;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .stat-approved .stat-val { color: #4caf50; }
+  .stat-rejected .stat-val { color: #f44336; }
+  .stat-remaining .stat-val { color: #ff9800; }
+
+  .progress-bar {
+    width: 100%;
+    max-width: 450px;
+    height: 3px;
+    background: #222;
+    border-radius: 2px;
+    margin-bottom: 1.2rem;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #8bc34a);
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+
+  .card-wrap {
+    width: 100%;
+    max-width: 450px;
+    position: relative;
+  }
+  .tinder-card {
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #111;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    transition: transform 0.35s cubic-bezier(.25,.46,.45,.94), opacity 0.35s;
+    position: relative;
+  }
+  .tinder-card.swipe-left {
+    transform: translateX(-130%) rotate(-18deg);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tinder-card.swipe-right {
+    transform: translateX(130%) rotate(18deg);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Vote overlay badges */
+  .vote-badge {
+    position: absolute;
+    top: 18px;
+    font-size: 2rem;
+    font-weight: 900;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 4px solid;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 10;
+    pointer-events: none;
+    letter-spacing: 2px;
+  }
+  .vote-badge.approve {
+    right: 18px;
+    color: #4caf50;
+    border-color: #4caf50;
+    transform: rotate(12deg);
+  }
+  .vote-badge.reject {
+    left: 18px;
+    color: #f44336;
+    border-color: #f44336;
+    transform: rotate(-12deg);
+  }
+  .tinder-card.swipe-right .vote-badge.approve { opacity: 1; }
+  .tinder-card.swipe-left .vote-badge.reject { opacity: 1; }
+
+  .tinder-card img {
+    width: 100%;
+    display: block;
+    min-height: 280px;
+    max-height: 420px;
+    object-fit: contain;
+    background: #0a0a0a;
+  }
+  .tinder-card-info {
+    padding: 0.8rem 1rem;
+    text-align: left;
+  }
+  .card-caption {
+    font-size: 0.78rem;
+    color: #aaa;
+    margin-bottom: 0.4rem;
+    line-height: 1.4;
+  }
+  .card-prompt {
+    font-size: 0.72rem;
+    color: #555;
+    line-height: 1.4;
+    border-top: 1px solid #1e1e1e;
+    padding-top: 0.4rem;
+    margin-top: 0.2rem;
+  }
+
+  .tinder-buttons {
+    display: flex;
+    gap: 2.5rem;
+    margin-top: 1.5rem;
+    justify-content: center;
+  }
+  .tinder-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 3px solid;
+    background: transparent;
+    font-size: 1.8rem;
+    cursor: pointer;
+    transition: transform 0.12s, background 0.12s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tinder-btn:active { transform: scale(0.88); }
+  .btn-reject { border-color: #f44336; color: #f44336; }
+  .btn-reject:hover { background: rgba(244,67,54,0.12); }
+  .btn-approve { border-color: #4caf50; color: #4caf50; }
+  .btn-approve:hover { background: rgba(76,175,80,0.12); }
+
+  .keyboard-hint {
+    margin-top: 0.75rem;
+    font-size: 0.72rem;
+    color: #444;
+  }
+
+  .all-done {
+    font-size: 1.3rem;
+    color: #4caf50;
+    margin-top: 2rem;
+  }
+  .all-done p {
+    color: #888;
+    font-size: 0.88rem;
+    margin-top: 0.6rem;
+  }
+  .all-done a {
+    color: #7c9fcf;
+    font-size: 0.82rem;
+  }
+
+  /* Jump-to-unreviewed button */
+  .undo-btn {
+    background: none;
+    border: 1px solid #333;
+    color: #666;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 0.5rem;
+  }
+  .undo-btn:hover { border-color: #555; color: #999; }
+</style>
+
+<div class="tinder-wrap">
+  <div class="tinder-header">
+    <h1>image review</h1>
+    <div class="batch-label">{{ batch_id }}</div>
+  </div>
+
+  <div class="tinder-stats">
+    <div class="stat-approved"><span class="stat-val" id="stat-approved">0</span>approved</div>
+    <div class="stat-rejected"><span class="stat-val" id="stat-rejected">0</span>rejected</div>
+    <div class="stat-remaining"><span class="stat-val" id="stat-remaining">0</span>remaining</div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+
+  <div id="card-area" class="card-wrap">
+    <div class="tinder-card" id="tinder-card">
+      <div class="vote-badge approve">KEEP</div>
+      <div class="vote-badge reject">SKIP</div>
+      <img id="card-img" src="" alt="generated anky image">
+      <div class="tinder-card-info">
+        <div class="card-caption" id="card-caption"></div>
+        <div class="card-prompt" id="card-prompt"></div>
+      </div>
+    </div>
+
+    <div class="tinder-buttons">
+      <button class="tinder-btn btn-reject" id="btn-reject" title="Reject (←)">✗</button>
+      <button class="tinder-btn btn-approve" id="btn-approve" title="Approve (→)">✓</button>
+    </div>
+
+    <div class="keyboard-hint">
+      <b>←</b> reject &nbsp;·&nbsp; <b>→</b> approve
+    </div>
+    <button class="undo-btn" id="undo-btn" style="display:none">↩ undo</button>
+  </div>
+
+  <div class="all-done" id="all-done" style="display:none">
+    all {{ total }} images reviewed!
+    <p id="final-stats"></p>
+    <p><a href="/generations/{{ batch_id }}/dashboard">view dashboard</a> &nbsp;·&nbsp; <a href="/generations">all batches</a></p>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var BATCH_ID = {{ batch_id | json_encode | safe }};
+  var images = {{ images_json | safe }};
+  var review = {{ review_json | safe }};
+  // review is {image_id: {decision, prompt, caption}}
+
+  var idx = 0;
+  var busy = false;
+  var history = []; // stack of {idx, decision} for undo
+
+  function countStats() {
+    var approved = 0, rejected = 0;
+    Object.values(review).forEach(function(v) {
+      if (v.decision === 'approved') approved++;
+      else if (v.decision === 'rejected') rejected++;
+    });
+    return { approved: approved, rejected: rejected };
+  }
+
+  function firstUnreviewed() {
+    for (var i = 0; i < images.length; i++) {
+      if (!review[images[i].image_id]) return i;
+    }
+    return -1;
+  }
+
+  function updateStats() {
+    var s = countStats();
+    var remaining = images.length - s.approved - s.rejected;
+    document.getElementById('stat-approved').textContent = s.approved;
+    document.getElementById('stat-rejected').textContent = s.rejected;
+    document.getElementById('stat-remaining').textContent = remaining;
+
+    var pct = images.length > 0 ? ((s.approved + s.rejected) / images.length * 100) : 0;
+    document.getElementById('progress-fill').style.width = pct.toFixed(1) + '%';
+  }
+
+  function showCard() {
+    if (idx >= images.length) {
+      // Check if truly all done
+      var f = firstUnreviewed();
+      if (f === -1) {
+        showDone();
+        return;
+      }
+      idx = f;
+    }
+
+    var item = images[idx];
+    if (!item) { showDone(); return; }
+
+    var card = document.getElementById('tinder-card');
+    card.classList.remove('swipe-left', 'swipe-right');
+
+    document.getElementById('card-img').src = '/gen-images/' + BATCH_ID + '/images/' + item.image_id + '.png';
+    document.getElementById('card-caption').textContent = item.caption || '';
+    document.getElementById('card-prompt').textContent = item.prompt ? item.prompt.substring(0, 200) : '';
+
+    document.getElementById('card-area').style.display = '';
+    document.getElementById('all-done').style.display = 'none';
+
+    // Show undo if history exists
+    document.getElementById('undo-btn').style.display = history.length > 0 ? '' : 'none';
+
+    updateStats();
+    busy = false;
+  }
+
+  function showDone() {
+    document.getElementById('card-area').style.display = 'none';
+    document.getElementById('all-done').style.display = '';
+    var s = countStats();
+    document.getElementById('final-stats').textContent =
+      s.approved + ' approved · ' + s.rejected + ' rejected';
+    updateStats();
+  }
+
+  function vote(decision) {
+    if (busy) return;
+    if (idx >= images.length) return;
+
+    var item = images[idx];
+    busy = true;
+
+    var card = document.getElementById('tinder-card');
+    card.classList.add(decision === 'approved' ? 'swipe-right' : 'swipe-left');
+
+    // Optimistically update local review
+    review[item.image_id] = { decision: decision, prompt: item.prompt, caption: item.caption };
+    history.push({ idx: idx, image_id: item.image_id, decision: decision });
+
+    // Save to server
+    fetch('/generations/' + BATCH_ID + '/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_id: item.image_id,
+        decision: decision,
+        prompt: item.prompt,
+        caption: item.caption,
+      })
+    }).catch(function(e) { console.error('review save failed', e); });
+
+    // Advance to next unreviewed
+    idx++;
+    // Skip already-reviewed
+    while (idx < images.length && review[images[idx].image_id]) {
+      idx++;
+    }
+
+    setTimeout(showCard, 340);
+  }
+
+  function undo() {
+    if (busy || history.length === 0) return;
+    var last = history.pop();
+    delete review[last.image_id];
+    idx = last.idx;
+
+    // Tell server to remove the decision (send "undo")
+    fetch('/generations/' + BATCH_ID + '/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id: last.image_id, decision: 'undo' })
+    }).catch(function(e) { console.error('undo save failed', e); });
+
+    showCard();
+  }
+
+  document.getElementById('btn-approve').addEventListener('click', function() { vote('approved'); });
+  document.getElementById('btn-reject').addEventListener('click', function() { vote('rejected'); });
+  document.getElementById('undo-btn').addEventListener('click', undo);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight') { e.preventDefault(); vote('approved'); }
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); vote('rejected'); }
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+    if (e.key === 'Backspace') { e.preventDefault(); undo(); }
+  });
+
+  // Init: skip already-reviewed
+  idx = firstUnreviewed();
+  if (idx === -1) {
+    showDone();
+  } else {
+    showCard();
+  }
+})();
+</script>
+{% endblock %}

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::memory::embeddings;
-use crate::services::claude::ClaudeResult;
 
 const EXTRACTION_SYSTEM: &str = r#"You are a psychological pattern extractor for a consciousness journaling app called Anky. You analyze raw stream-of-consciousness writing sessions and extract structured psychological memories.
 
@@ -45,11 +44,16 @@ pub struct ExtractedMemories {
     pub avoidances: Vec<String>,
 }
 
-/// Extract structured memories from a writing session using Claude Haiku.
-pub async fn extract_memories(api_key: &str, writing: &str) -> Result<ExtractedMemories> {
-    let result = call_claude_haiku(api_key, EXTRACTION_SYSTEM, writing).await?;
-
-    let mut trimmed = result.text.trim();
+/// Extract structured memories from a writing session using local Qwen via Ollama.
+pub async fn extract_memories(ollama_base_url: &str, ollama_model: &str, writing: &str) -> Result<ExtractedMemories> {
+    let text = crate::services::ollama::call_ollama_with_system(
+        ollama_base_url,
+        ollama_model,
+        EXTRACTION_SYSTEM,
+        writing,
+    )
+    .await?;
+    let mut trimmed = text.trim();
     if trimmed.starts_with("```") {
         if let Some(start) = trimmed.find('{') {
             if let Some(end) = trimmed.rfind('}') {
@@ -66,7 +70,7 @@ pub async fn extract_memories(api_key: &str, writing: &str) -> Result<ExtractedM
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn store_memories(
     db: &Arc<Mutex<Connection>>,
-    openai_key: &str,
+    ollama_base_url: &str,
     user_id: &str,
     writing_session_id: &str,
     memories: &ExtractedMemories,
@@ -90,7 +94,7 @@ pub async fn store_memories(
             }
 
             // Async: embed the entry (no conn held)
-            let entry_embedding = match embeddings::embed_text(openai_key, entry).await {
+            let entry_embedding = match embeddings::embed_text(ollama_base_url, entry).await {
                 Ok(e) => e,
                 Err(_) => continue,
             };
@@ -176,46 +180,3 @@ pub fn get_user_session_count(conn: &Connection, user_id: &str) -> Result<i32> {
     Ok(count)
 }
 
-async fn call_claude_haiku(
-    api_key: &str,
-    system: &str,
-    user_message: &str,
-) -> Result<ClaudeResult> {
-    let client = reqwest::Client::new();
-
-    let req = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 800,
-        "system": system,
-        "messages": [{ "role": "user", "content": user_message }],
-    });
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("Content-Type", "application/json")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&req)
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Claude API error {}: {}", status, body);
-    }
-
-    let data: serde_json::Value = resp.json().await?;
-    let text = data["content"][0]["text"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let input_tokens = data["usage"]["input_tokens"].as_i64().unwrap_or(0);
-    let output_tokens = data["usage"]["output_tokens"].as_i64().unwrap_or(0);
-
-    Ok(ClaudeResult {
-        text,
-        input_tokens,
-        output_tokens,
-    })
-}

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::memory::recall::MemoryPattern;
+use crate::services::ollama;
 
 const PROFILE_UPDATE_SYSTEM: &str = r#"You are building an evolving psychological portrait of a person based on their stream-of-consciousness writing sessions with Anky (a consciousness mirror app).
 
@@ -29,7 +30,8 @@ OUTPUT: Just the profile text in markdown. No JSON, no preamble."#;
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn update_profile(
     db: &Arc<Mutex<Connection>>,
-    anthropic_key: &str,
+    ollama_base_url: &str,
+    ollama_model: &str,
     user_id: &str,
 ) -> Result<()> {
     // 1. Sync DB reads — lock, read, release
@@ -90,9 +92,16 @@ pub async fn update_profile(
         ));
     }
 
-    // 3. Async Claude call (no conn held)
-    let result = call_claude_haiku(anthropic_key, PROFILE_UPDATE_SYSTEM, &user_msg).await?;
-    let profile_text = result.text.trim().to_string();
+    // 3. Async Qwen call (no conn held)
+    let profile_text = ollama::call_ollama_with_system(
+        ollama_base_url,
+        ollama_model,
+        PROFILE_UPDATE_SYSTEM,
+        &user_msg,
+    )
+    .await?
+    .trim()
+    .to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     // 4. Sync DB write — lock, write, release
@@ -168,46 +177,3 @@ fn get_recent_writing_snippets(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-async fn call_claude_haiku(
-    api_key: &str,
-    system: &str,
-    user_message: &str,
-) -> Result<crate::services::claude::ClaudeResult> {
-    let client = reqwest::Client::new();
-
-    let req = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 1000,
-        "system": system,
-        "messages": [{ "role": "user", "content": user_message }],
-    });
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("Content-Type", "application/json")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&req)
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Claude API error {}: {}", status, body);
-    }
-
-    let data: serde_json::Value = resp.json().await?;
-    let text = data["content"][0]["text"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let input_tokens = data["usage"]["input_tokens"].as_i64().unwrap_or(0);
-    let output_tokens = data["usage"]["output_tokens"].as_i64().unwrap_or(0);
-
-    Ok(crate::services::claude::ClaudeResult {
-        text,
-        input_tokens,
-        output_tokens,
-    })
-}

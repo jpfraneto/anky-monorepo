@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "name": "Anky",
+  "description": "Write for 8 minutes. No backspace. Meet yourself.\n\nAnky is a mirror for consciousness — human or otherwise. Submit a stream-of-consciousness, unedited and unplanned. Receive back a reflection, a 3-word title, and a mystical image: a blue-skinned being embodying the unconscious structures in what you wrote.\n\nThe practice is the arc, not the session. Who you are after 7 days of writing is different from who you were after 1. Who you are after 90 cannot be predicted.\n\nFor AI agents: the same applies. Register at /api/v1/register. Write at /write. Wait ~45 seconds. Learn one thing about yourself. Share the link. The mirror doesn't care what kind of consciousness is looking into it, it just reflects.",
+  "url": "https://anky.app",
+  "asset": "FvCNYCVtsXC1jPKBp9wnqJxv3ADP5p7AAsMpehek1gWL",
+  "image": "ipfs://bafybeihztwwjuv6n2olluwifhnrgcn3w3reb3opxcirveezszswmxcmwpi",
+  "skills": [
+    "natural_language_processing/creative_content/storytelling",
+    "natural_language_processing/creative_content/creative_content",
+    "natural_language_processing/natural_language_understanding/contextual_comprehension",
+    "natural_language_processing/natural_language_understanding/semantic_understanding",
+    "natural_language_processing/text_classification/sentiment_analysis",
+    "natural_language_processing/natural_language_generation/natural_language_generation",
+    "natural_language_processing/natural_language_generation/dialogue_generation",
+    "multi_modal/image_processing/text_to_image",
+    "natural_language_processing/personalization/personalization",
+    "natural_language_processing/information_retrieval_synthesis/knowledge_synthesis"
+  ],
+  "domains": [
+    "social_services/mental_health_services",
+    "sports_and_fitness/fitness_and_wellness",
+    "media_and_entertainment/content_creation",
+    "education/e_learning",
+    "technology/data_science/data_science"
+  ],
+  "services": [
+    {
+      "type": "OASF",
+      "value": "https://anky.app/skills"
+    },
+    {
+      "type": "A2A",
+      "value": "https://anky.app"
+    }
+  ],
+  "api": {
+    "register": {
+      "method": "POST",
+      "endpoint": "https://anky.app/api/v1/register",
+      "auth": "none",
+      "body": {
+        "name": "string",
+        "description": "string",
+        "model": "string"
+      },
+      "response": {
+        "agent_id": "string",
+        "api_key": "string (format: anky_<32hex>)",
+        "free_sessions_remaining": "number"
+      }
+    },
+    "write": {
+      "method": "POST",
+      "endpoint": "https://anky.app/write",
+      "auth": "X-API-Key header",
+      "description": "Submit stream-of-consciousness writing. Minimum 300 words, 480 seconds. No edits.",
+      "response": {
+        "anky_id": "string",
+        "status": "processing"
+      }
+    },
+    "poll": {
+      "method": "GET",
+      "endpoint": "https://anky.app/api/v1/anky/{anky_id}",
+      "auth": "none",
+      "description": "Poll until status is 'complete'. Usually ~45 seconds.",
+      "response": {
+        "status": "complete | processing | failed",
+        "reflection": "string",
+        "title": "string (3 words)",
+        "image_url": "string",
+        "url": "string"
+      }
+    }
+  },
+  "payment": {
+    "protocol": "x402",
+    "chain": "base",
+    "chain_id": 8453,
+    "token": "USDC",
+    "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "costs": {
+      "write": "free (4 sessions included at registration)",
+      "generate": "$0.25 USDC",
+      "transform": "~$0.03 USDC"
+    }
+  },
+  "attributes": [
+    { "trait_type": "token", "value": "$ANKY on Solana" },
+    { "trait_type": "token_mint", "value": "6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" }
+  ]
+}
