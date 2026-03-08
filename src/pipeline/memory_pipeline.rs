@@ -57,7 +57,13 @@ pub async fn run_memory_pipeline(
 
     // Step 2: Extract structured memories
     let extracted =
-        match crate::memory::extraction::extract_memories(ollama_base_url, &state.config.ollama_model, writing_text).await {
+        match crate::memory::extraction::extract_memories(
+            ollama_base_url,
+            &state.config.ollama_model,
+            writing_text,
+        )
+        .await
+        {
             Ok(m) => {
                 let total = m.themes.len()
                     + m.emotions.len()
@@ -126,8 +132,13 @@ pub async fn run_memory_pipeline(
                 session_count
             ),
         );
-        if let Err(e) =
-            crate::memory::profile::update_profile(&state.db, ollama_base_url, &state.config.ollama_model, user_id).await
+        if let Err(e) = crate::memory::profile::update_profile(
+            &state.db,
+            ollama_base_url,
+            &state.config.ollama_model,
+            user_id,
+        )
+        .await
         {
             state.emit_log("WARN", "memory", &format!("Profile update failed: {}", e));
         } else {

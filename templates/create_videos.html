@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+
+{% block title %}create videos — anky{% endblock %}
+
+{% block head %}
+<style>
+  :root {
+    --cv-bg: #0b0d12;
+    --cv-panel: rgba(16, 20, 28, 0.92);
+    --cv-panel-strong: rgba(11, 14, 22, 0.98);
+    --cv-line: rgba(229, 205, 150, 0.16);
+    --cv-gold: #efd49a;
+    --cv-cream: #f6edd3;
+    --cv-text: #d4d8de;
+    --cv-dim: #8f97a4;
+    --cv-good: #76d49a;
+    --cv-bad: #ef8f89;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(214, 165, 91, 0.12), rgba(214, 165, 91, 0) 32%),
+      radial-gradient(circle at top right, rgba(71, 98, 151, 0.18), rgba(71, 98, 151, 0) 34%),
+      linear-gradient(180deg, #090b10 0%, #0b0d12 52%, #07080c 100%);
+  }
+
+  .cv-shell {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 28px 18px 56px;
+  }
+
+  .cv-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .cv-hero-main,
+  .cv-hero-side {
+    border: 1px solid var(--cv-line);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(16, 20, 30, 0.96) 0%, rgba(12, 15, 22, 0.94) 100%);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.28);
+  }
+
+  .cv-hero-main {
+    padding: 24px 24px 20px;
+  }
+
+  .cv-kicker {
+    margin: 0 0 10px;
+    color: var(--cv-gold);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 12px;
+  }
+
+  .cv-hero-main h1 {
+    margin: 0;
+    color: var(--cv-cream);
+    font-size: clamp(32px, 5vw, 56px);
+    line-height: 0.92;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .cv-hero-main p {
+    max-width: 760px;
+    margin: 14px 0 0;
+    color: var(--cv-text);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .cv-hero-side {
+    padding: 18px;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .cv-side-block {
+    border: 1px solid rgba(239, 212, 154, 0.12);
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(8, 10, 16, 0.5);
+  }
+
+  .cv-side-label {
+    display: block;
+    color: var(--cv-gold);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+
+  .cv-side-block p {
+    margin: 0;
+    color: var(--cv-text);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+
+  .cv-login {
+    border: 1px solid rgba(239, 143, 137, 0.26);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    background: rgba(65, 20, 22, 0.22);
+    color: #f5d5d1;
+  }
+
+  .cv-login a {
+    color: var(--cv-gold);
+    text-decoration: none;
+  }
+
+  .cv-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .cv-card {
+    border: 1px solid var(--cv-line);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(13, 16, 24, 0.96) 0%, rgba(10, 12, 18, 0.98) 100%);
+    overflow: hidden;
+    box-shadow: 0 22px 44px rgba(0, 0, 0, 0.22);
+  }
+
+  .cv-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px 12px;
+  }
+
+  .cv-card-head h2 {
+    margin: 0;
+    color: var(--cv-cream);
+    font-size: 19px;
+    line-height: 1.1;
+  }
+
+  .cv-pill {
+    flex-shrink: 0;
+    border: 1px solid rgba(239, 212, 154, 0.22);
+    border-radius: 999px;
+    padding: 6px 10px;
+    color: var(--cv-gold);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: rgba(239, 212, 154, 0.06);
+  }
+
+  .cv-preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 18px 16px;
+  }
+
+  .cv-preview-block {
+    display: grid;
+    gap: 8px;
+  }
+
+  .cv-preview-label {
+    color: var(--cv-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .cv-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(239, 212, 154, 0.12);
+    background:
+      radial-gradient(circle at top left, rgba(239, 212, 154, 0.12), rgba(239, 212, 154, 0) 36%),
+      linear-gradient(135deg, rgba(20, 24, 34, 0.96), rgba(8, 10, 16, 0.98));
+  }
+
+  .cv-frame img,
+  .cv-frame video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .cv-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 18px;
+    color: var(--cv-dim);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .cv-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 18px 18px;
+  }
+
+  .cv-block {
+    border: 1px solid rgba(239, 212, 154, 0.1);
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(9, 11, 18, 0.72);
+  }
+
+  .cv-block-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .cv-block-title {
+    color: var(--cv-cream);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .cv-btn {
+    border: 1px solid rgba(239, 212, 154, 0.24);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(239, 212, 154, 0.18), rgba(239, 212, 154, 0.08));
+    color: var(--cv-cream);
+    padding: 9px 13px;
+    font: inherit;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  }
+
+  .cv-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(239, 212, 154, 0.42);
+  }
+
+  .cv-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .cv-prompt {
+    margin: 0;
+    color: var(--cv-text);
+    font-size: 13px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+  }
+
+  .cv-status {
+    margin-top: 12px;
+    color: var(--cv-gold);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+
+  .cv-error {
+    display: none;
+    margin-top: 8px;
+    color: var(--cv-bad);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .cv-error.is-visible {
+    display: block;
+  }
+
+  @media (max-width: 1120px) {
+    .cv-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .cv-hero {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .cv-shell {
+      padding: 20px 12px 44px;
+    }
+
+    .cv-preview-grid,
+    .cv-body {
+      grid-template-columns: 1fr;
+    }
+
+    .cv-card-head,
+    .cv-preview-grid,
+    .cv-body {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+
+    .cv-card-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .cv-block-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .cv-btn {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cv-shell">
+  <section class="cv-hero">
+    <div class="cv-hero-main">
+      <p class="cv-kicker">Marketing Video Creator</p>
+      <h1>Anky, But Human</h1>
+      <p>
+        Eight new horizontal 16:9 marketing concepts, rebuilt for 15-second clips with clearer interaction, stronger
+        meaning, and a more legible emotional arc. Generate the still first, then animate it once the image is ready.
+      </p>
+    </div>
+    <aside class="cv-hero-side">
+      <div class="cv-side-block">
+        <span class="cv-side-label">Visual Direction</span>
+        <p>Every concept grounds Anky in everyday human life: kitchens, trains, bookstores, rooftops, hospital corridors, family tables.</p>
+      </div>
+      <div class="cv-side-block">
+        <span class="cv-side-label">Format</span>
+        <p>Gemini seed images render in horizontal 16:9. Grok then animates those images into short horizontal marketing clips.</p>
+      </div>
+      <div class="cv-side-block">
+        <span class="cv-side-label">Workflow</span>
+        <p>Generate image. Review the still. Generate video. The Grok button stays locked until the seed image exists.</p>
+      </div>
+    </aside>
+  </section>
+
+  {% if not logged_in %}
+    <div class="cv-login">
+      Log in to use the creator. The prompt catalog is public, but generation is restricted to authenticated users.
+      <a href="/login">Go to login</a>.
+    </div>
+  {% endif %}
+
+  <div class="cv-grid">
+    {% for card in cards %}
+      <article class="cv-card" id="card-{{ card.id }}">
+        <div class="cv-card-head">
+          <h2>{{ card.title }}</h2>
+          <span class="cv-pill">{{ card.duration_seconds }}s clip · 16:9</span>
+        </div>
+
+        <div class="cv-preview-grid">
+          <div class="cv-preview-block">
+            <div class="cv-preview-label">Seed Image</div>
+            <div class="cv-frame">
+              <img id="image-preview-{{ card.id }}" alt="{{ card.title }} seed image"{% if card.image_url %} src="{{ card.image_url }}"{% else %} style="display:none;"{% endif %}>
+              <div class="cv-empty" id="image-empty-{{ card.id }}">{% if card.image_url %}image ready{% else %}Generate the Gemini still to preview this concept.{% endif %}</div>
+            </div>
+          </div>
+          <div class="cv-preview-block">
+            <div class="cv-preview-label">Video Preview</div>
+            <div class="cv-frame">
+              <video id="video-preview-{{ card.id }}"{% if card.video_url %} src="{{ card.video_url }}"{% else %} style="display:none;"{% endif %} controls muted loop playsinline></video>
+              <div class="cv-empty" id="video-empty-{{ card.id }}">
+                {% if card.video_url %}
+                  video ready
+                {% elif card.image_status == "complete" %}
+                  seed image ready. generate the grok clip.
+                {% else %}
+                  Generate the image first to unlock video creation.
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cv-body">
+          <section class="cv-block">
+            <div class="cv-block-head">
+              <div class="cv-block-title">Gemini Seed Prompt</div>
+              <button
+                class="cv-btn"
+                id="image-btn-{{ card.id }}"
+                onclick="generateCardImage('{{ card.id }}')"
+                {% if not logged_in %}disabled{% endif %}
+              >
+                {% if card.image_url %}regenerate image{% else %}generate image{% endif %}
+              </button>
+            </div>
+            <p class="cv-prompt">{{ card.image_prompt }}</p>
+            <div class="cv-status" id="image-status-{{ card.id }}"></div>
+            <div class="cv-error{% if card.image_error %} is-visible{% endif %}" id="image-error-{{ card.id }}">{{ card.image_error | default(value="") }}</div>
+          </section>
+
+          <section class="cv-block">
+            <div class="cv-block-head">
+              <div class="cv-block-title">Grok Motion Prompt</div>
+              <button
+                class="cv-btn"
+                id="video-btn-{{ card.id }}"
+                onclick="generateCardVideo('{{ card.id }}')"
+                {% if not logged_in or card.image_status != "complete" or card.video_status == "generating" %}disabled{% endif %}
+              >
+                {% if card.video_status == "complete" %}regenerate video{% else %}generate video{% endif %}
+              </button>
+            </div>
+            <p class="cv-prompt">{{ card.video_prompt }}</p>
+            <div class="cv-status" id="video-status-{{ card.id }}"></div>
+            <div class="cv-error{% if card.video_error %} is-visible{% endif %}" id="video-error-{{ card.id }}">{{ card.video_error | default(value="") }}</div>
+          </section>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var createVideoCards = {{ cards | json_encode | safe }};
+  var createVideoLoggedIn = {{ logged_in | json_encode | safe }};
+  var pollers = {};
+
+  function findCard(id) {
+    return createVideoCards.find(function(card) { return card.id === id; });
+  }
+
+  function statusText(kind, card) {
+    var status = kind === 'image' ? card.image_status : card.video_status;
+    if (kind === 'image') {
+      if (status === 'generating') return 'Gemini is rendering the horizontal seed image...';
+      if (status === 'complete') return 'Seed image ready.';
+      if (status === 'failed') return 'Seed image generation failed.';
+      return 'Ready to generate the seed image.';
+    }
+
+    if (status === 'generating') return 'Grok is animating the image into a clip...';
+    if (status === 'complete') return 'Video clip ready.';
+    if (status === 'failed') return 'Video generation failed.';
+    if (card.image_status === 'complete') return 'Unlocked. Generate the video when the still feels right.';
+    return 'Locked until the seed image is generated.';
+  }
+
+  function updateError(id, kind, message) {
+    var el = document.getElementById(kind + '-error-' + id);
+    if (!el) return;
+    if (message) {
+      el.textContent = message;
+      el.classList.add('is-visible');
+    } else {
+      el.textContent = '';
+      el.classList.remove('is-visible');
+    }
+  }
+
+  function updatePreview(id, kind, url, emptyText) {
+    var media = document.getElementById(kind + '-preview-' + id);
+    var empty = document.getElementById(kind + '-empty-' + id);
+    if (!media || !empty) return;
+
+    if (url) {
+      media.src = url;
+      media.style.display = 'block';
+      empty.textContent = kind === 'image' ? 'image ready' : 'video ready';
+      empty.style.display = 'none';
+      if (kind === 'video') {
+        media.load();
+      }
+    } else {
+      media.removeAttribute('src');
+      media.style.display = 'none';
+      empty.textContent = emptyText;
+      empty.style.display = 'flex';
+    }
+  }
+
+  function updateButtons(card) {
+    var imageBtn = document.getElementById('image-btn-' + card.id);
+    var videoBtn = document.getElementById('video-btn-' + card.id);
+    if (!imageBtn || !videoBtn) return;
+
+    imageBtn.textContent = card.image_status === 'generating'
+      ? 'generating image...'
+      : (card.image_url ? 'regenerate image' : 'generate image');
+    imageBtn.disabled = !createVideoLoggedIn || card.image_status === 'generating' || card.video_status === 'generating';
+
+    videoBtn.textContent = card.video_status === 'generating'
+      ? 'generating video...'
+      : (card.video_status === 'complete' ? 'regenerate video' : 'generate video');
+    videoBtn.disabled = !createVideoLoggedIn || card.image_status !== 'complete' || card.video_status === 'generating';
+  }
+
+  function maybeStartPolling(card) {
+    if (card.video_status !== 'generating') {
+      if (pollers[card.id]) {
+        clearInterval(pollers[card.id]);
+        delete pollers[card.id];
+      }
+      return;
+    }
+
+    if (pollers[card.id]) return;
+    pollers[card.id] = setInterval(function() {
+      refreshCard(card.id);
+    }, 5000);
+  }
+
+  function updateCard(card) {
+    var existing = findCard(card.id);
+    if (existing) {
+      Object.assign(existing, card);
+      card = existing;
+    } else {
+      createVideoCards.push(card);
+    }
+
+    document.getElementById('image-status-' + card.id).textContent = statusText('image', card);
+    document.getElementById('video-status-' + card.id).textContent = statusText('video', card);
+
+    updateError(card.id, 'image', card.image_error);
+    updateError(card.id, 'video', card.video_error);
+
+    updatePreview(
+      card.id,
+      'image',
+      card.image_url,
+      'Generate the Gemini still to preview this concept.'
+    );
+
+    var videoEmptyText = card.image_status === 'complete'
+      ? 'seed image ready. generate the grok clip.'
+      : 'Generate the image first to unlock video creation.';
+    updatePreview(card.id, 'video', card.video_url, videoEmptyText);
+    updateButtons(card);
+    maybeStartPolling(card);
+  }
+
+  async function refreshCard(id) {
+    var res = await fetch('/api/v1/create-videos/' + encodeURIComponent(id));
+    if (!res.ok) return;
+    var data = await res.json();
+    if (data && data.card) updateCard(data.card);
+  }
+
+  async function sendCreateVideoRequest(endpoint, promptId) {
+    var res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt_id: promptId })
+    });
+
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) {
+      throw new Error((data && data.error) || 'request failed');
+    }
+    if (data && data.card) updateCard(data.card);
+    return data;
+  }
+
+  async function generateCardImage(promptId) {
+    try {
+      await sendCreateVideoRequest('/api/v1/create-videos/image', promptId);
+    } catch (err) {
+      alert(err.message || 'image generation failed');
+      refreshCard(promptId);
+    }
+  }
+
+  async function generateCardVideo(promptId) {
+    try {
+      await sendCreateVideoRequest('/api/v1/create-videos/video', promptId);
+      maybeStartPolling(findCard(promptId));
+    } catch (err) {
+      alert(err.message || 'video generation failed');
+      refreshCard(promptId);
+    }
+  }
+
+  createVideoCards.forEach(updateCard);
+</script>
+{% endblock %}

@@ -25,12 +25,15 @@
       <img src="/data/images/{{ image_path }}" alt="{{ title }}" id="anky-detail-img">
     </picture>
   </div>
-  <div style="margin-bottom: 20px;">
+  <div class="anky-detail-actions">
     <button class="share-card-btn" id="anky-detail-share"
       data-title="{{ title }}"
       data-reflection="{{ reflection | default(value='') }}"
       data-prompt="{{ image_prompt | default(value='') }}"
       data-anky-id="{{ id }}">share</button>
+    {% if reflection or image_prompt %}
+    <button class="reflection-download-btn" id="anky-detail-download" type="button">download card</button>
+    {% endif %}
   </div>
   {% elif status == "generating" %}
   <div class="anky-image">
@@ -100,14 +103,48 @@
 (function() {
   var shareBtn = document.getElementById('anky-detail-share');
   if (!shareBtn) return;
+  var img = document.getElementById('anky-detail-img');
   shareBtn.addEventListener('click', function() {
-    var img = document.getElementById('anky-detail-img');
     window.ankyShareCard.open({
       imageUrl: img ? img.src : '',
       title: shareBtn.dataset.title || '',
       reflection: shareBtn.dataset.reflection || shareBtn.dataset.prompt || '',
       ankyId: shareBtn.dataset.ankyId
     });
+  });
+
+  var downloadBtn = document.getElementById('anky-detail-download');
+  if (!downloadBtn || !window.ankyReflectionCard) return;
+
+  var defaultLabel = downloadBtn.textContent;
+  downloadBtn.addEventListener('click', async function() {
+    var imageUrl = img ? (img.currentSrc || img.src) : '';
+    var reflection = shareBtn.dataset.reflection || shareBtn.dataset.prompt || '';
+    if (!imageUrl || !reflection) return;
+
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = 'rendering...';
+
+    try {
+      await window.ankyReflectionCard.download({
+        downloadUrl: '/api/anky-card/' + encodeURIComponent(shareBtn.dataset.ankyId || ''),
+        title: shareBtn.dataset.title || 'untitled',
+        filenameBase: shareBtn.dataset.title || 'anky-reflection'
+      });
+      downloadBtn.textContent = 'downloaded';
+    } catch (e) {
+      downloadBtn.textContent = 'try again';
+      setTimeout(function() {
+        downloadBtn.textContent = defaultLabel;
+        downloadBtn.disabled = false;
+      }, 1200);
+      return;
+    }
+
+    setTimeout(function() {
+      downloadBtn.textContent = defaultLabel;
+      downloadBtn.disabled = false;
+    }, 1200);
   });
 })();
 </script>

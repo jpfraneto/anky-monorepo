@@ -43,8 +43,7 @@ pub async fn training_heartbeat(
         return Err(AppError::Unauthorized("invalid training token".into()));
     }
 
-    std::fs::create_dir_all("data/training-live")
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    std::fs::create_dir_all("data/training-live").map_err(|e| AppError::Internal(e.to_string()))?;
 
     // Save sample images to disk (avoid storing large base64 blobs in state.json)
     if let Some(samples) = &body.samples {
@@ -86,12 +85,7 @@ pub async fn training_state() -> Result<Json<serde_json::Value>, AppError> {
         if let Ok(entries) = std::fs::read_dir(samples_dir) {
             let mut files: Vec<_> = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .map(|x| x == "png")
-                        .unwrap_or(false)
-                })
+                .filter(|e| e.path().extension().map(|x| x == "png").unwrap_or(false))
                 .collect();
             files.sort_by_key(|e| {
                 e.metadata()
@@ -126,7 +120,11 @@ pub async fn training_sample_image(
 ) -> Result<axum::response::Response<axum::body::Body>, AppError> {
     // Sanitize filename
     let safe = filename.replace(['/', '\\', '.', '.'], "");
-    let safe = if safe.is_empty() { filename.clone() } else { format!("{}.png", safe.trim_end_matches(".png")) };
+    let safe = if safe.is_empty() {
+        filename.clone()
+    } else {
+        format!("{}.png", safe.trim_end_matches(".png"))
+    };
     let path = format!("data/training-live/{}", safe);
 
     if !std::path::Path::new(&path).exists() {
@@ -161,7 +159,9 @@ pub async fn trainings_list(State(state): State<AppState>) -> Result<Html<String
 pub async fn general_instructions(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let mut ctx = tera::Context::new();
     ctx.insert("page", "trainings");
-    let html = state.tera.render("training_general_instructions.html", &ctx)?;
+    let html = state
+        .tera
+        .render("training_general_instructions.html", &ctx)?;
     Ok(Html(html))
 }
 
@@ -202,7 +202,7 @@ pub async fn next_image(State(state): State<AppState>) -> Result<Json<NextRespon
             anky_id TEXT PRIMARY KEY,
             approved BOOLEAN NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );"
+        );",
     )?;
 
     // Count stats
@@ -290,7 +290,7 @@ pub async fn vote(
             anky_id TEXT PRIMARY KEY,
             approved BOOLEAN NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );"
+        );",
     )?;
 
     // Insert or replace the label
@@ -320,7 +320,9 @@ pub async fn vote(
 
             // Also write the caption file (image_prompt as .txt)
             if let Some(prompt) = paths.1 {
-                let txt_name = image_filename.replace(".png", ".txt").replace(".webp", ".txt");
+                let txt_name = image_filename
+                    .replace(".png", ".txt")
+                    .replace(".webp", ".txt");
                 let txt_path = format!("data/training-images/{}", txt_name);
                 let _ = std::fs::write(&txt_path, &prompt);
             }

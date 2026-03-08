@@ -87,7 +87,11 @@ fn build_scene_video_prompt(
         "Scene {} of {} in story arc: {}",
         scene.index + 1,
         scene_count,
-        if spine.arc.is_empty() { "progressing" } else { &spine.arc }
+        if spine.arc.is_empty() {
+            "progressing"
+        } else {
+            &spine.arc
+        }
     ));
 
     parts.push(base);
@@ -653,12 +657,14 @@ async fn generate_sequential_chain(
 
     let (image_prompt_template, sound_prompt_template) = {
         let db = state.db.lock().await;
-        let image_tpl = crate::db::queries::get_pipeline_prompt(&db, VIDEO_IMAGE_PROMPT_TEMPLATE_KEY)?
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_IMAGE_PROMPT_TEMPLATE.to_string());
-        let sound_tpl = crate::db::queries::get_pipeline_prompt(&db, VIDEO_SOUND_PROMPT_TEMPLATE_KEY)?
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_SOUND_PROMPT_TEMPLATE.to_string());
+        let image_tpl =
+            crate::db::queries::get_pipeline_prompt(&db, VIDEO_IMAGE_PROMPT_TEMPLATE_KEY)?
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_IMAGE_PROMPT_TEMPLATE.to_string());
+        let sound_tpl =
+            crate::db::queries::get_pipeline_prompt(&db, VIDEO_SOUND_PROMPT_TEMPLATE_KEY)?
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_SOUND_PROMPT_TEMPLATE.to_string());
         (image_tpl, sound_tpl)
     };
 
@@ -1001,7 +1007,10 @@ fn stitch_clips(project_id: &str, script: &VideoScript) -> Result<String> {
     let concat_content: String = completed_clips
         .iter()
         .map(|s| {
-            let path = s.local_path.strip_prefix("videos/").unwrap_or(&s.local_path);
+            let path = s
+                .local_path
+                .strip_prefix("videos/")
+                .unwrap_or(&s.local_path);
             format!("file '{}'", path.replace('\'', "'\\''"))
         })
         .collect::<Vec<_>>()

@@ -294,6 +294,214 @@ pub fn insert_writing_session_with_flow(
     Ok(())
 }
 
+pub fn upsert_active_writing_session(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    content: &str,
+    duration: f64,
+    word_count: i32,
+    status: &str,
+    pause_used: bool,
+    session_token: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO writing_sessions (
+            id, user_id, content, duration_seconds, word_count, is_anky, response,
+            status, pause_used, paused_at, resumed_at, session_token
+         ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, 0, NULL,
+            ?6, ?7,
+            CASE WHEN ?6 = 'paused' THEN datetime('now') ELSE NULL END,
+            CASE WHEN ?6 = 'resumed' THEN datetime('now') ELSE NULL END,
+            ?8
+         )
+         ON CONFLICT(id) DO UPDATE SET
+            content = excluded.content,
+            duration_seconds = excluded.duration_seconds,
+            word_count = excluded.word_count,
+            status = excluded.status,
+            pause_used = excluded.pause_used,
+            paused_at = CASE
+                WHEN excluded.status = 'paused' THEN datetime('now')
+                ELSE writing_sessions.paused_at
+            END,
+            resumed_at = CASE
+                WHEN excluded.status = 'resumed' THEN datetime('now')
+                ELSE writing_sessions.resumed_at
+            END,
+            session_token = COALESCE(excluded.session_token, writing_sessions.session_token)",
+        params![
+            id,
+            user_id,
+            content,
+            duration,
+            word_count,
+            status,
+            pause_used,
+            session_token
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn update_checkpoint_backed_writing_session(
+    conn: &Connection,
+    id: &str,
+    content: &str,
+    duration: f64,
+    word_count: i32,
+    session_token: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE writing_sessions
+         SET content = ?2,
+             duration_seconds = ?3,
+             word_count = ?4,
+             session_token = COALESCE(?5, session_token)
+         WHERE id = ?1
+           AND status IN ('paused', 'resumed')",
+        params![id, content, duration, word_count, session_token],
+    )?;
+    Ok(())
+}
+
+pub fn upsert_completed_writing_session_with_flow(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    content: &str,
+    duration: f64,
+    word_count: i32,
+    is_anky: bool,
+    response: Option<&str>,
+    keystroke_deltas: Option<&str>,
+    flow_score: Option<f64>,
+    session_token: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO writing_sessions (
+            id, user_id, content, duration_seconds, word_count, is_anky, response,
+            keystroke_deltas, flow_score, status, pause_used, session_token
+         ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+            ?8, ?9, 'completed', 0, ?10
+         )
+         ON CONFLICT(id) DO UPDATE SET
+            content = excluded.content,
+            duration_seconds = excluded.duration_seconds,
+            word_count = excluded.word_count,
+            is_anky = excluded.is_anky,
+            response = excluded.response,
+            keystroke_deltas = excluded.keystroke_deltas,
+            flow_score = excluded.flow_score,
+            status = 'completed',
+            session_token = COALESCE(excluded.session_token, writing_sessions.session_token)",
+        params![
+            id,
+            user_id,
+            content,
+            duration,
+            word_count,
+            is_anky,
+            response,
+            keystroke_deltas,
+            flow_score,
+            session_token
+        ],
+    )?;
+    Ok(())
+}
+
+pub struct WritingSessionState {
+    pub user_id: String,
+    pub status: String,
+    pub pause_used: bool,
+    pub session_token: Option<String>,
+}
+
+pub fn get_writing_session_state(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<WritingSessionState>> {
+    let mut stmt = conn.prepare(
+        "SELECT user_id, COALESCE(status, 'completed'), COALESCE(pause_used, 0), session_token
+         FROM writing_sessions
+         WHERE id = ?1
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        Ok(WritingSessionState {
+            user_id: row.get(0)?,
+            status: row.get(1)?,
+            pause_used: row.get(2)?,
+            session_token: row.get(3)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub struct ResumableWritingSession {
+    pub id: String,
+    pub content: String,
+    pub duration_seconds: f64,
+    pub word_count: i32,
+    pub pause_used: bool,
+    pub status: String,
+    pub paused_at: Option<String>,
+    pub resumed_at: Option<String>,
+    pub session_token: Option<String>,
+}
+
+pub fn get_resumable_writing_session(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<ResumableWritingSession>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, content, duration_seconds, word_count,
+                COALESCE(pause_used, 0),
+                COALESCE(status, 'completed'),
+                paused_at,
+                resumed_at,
+                session_token
+         FROM writing_sessions
+         WHERE user_id = ?1
+           AND status IN ('paused', 'resumed')
+         ORDER BY COALESCE(resumed_at, paused_at, created_at) DESC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        Ok(ResumableWritingSession {
+            id: row.get(0)?,
+            content: row.get(1)?,
+            duration_seconds: row.get(2)?,
+            word_count: row.get(3)?,
+            pause_used: row.get(4)?,
+            status: row.get(5)?,
+            paused_at: row.get(6)?,
+            resumed_at: row.get(7)?,
+            session_token: row.get(8)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn discard_resumable_writing_session(
+    conn: &Connection,
+    user_id: &str,
+    session_id: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE writing_sessions
+         SET status = 'discarded'
+         WHERE id = ?1
+           AND user_id = ?2
+           AND status IN ('paused', 'resumed')",
+        params![session_id, user_id],
+    )?;
+    Ok(())
+}
+
 /// Calculate flow score from keystroke deltas (0-100).
 /// Measures rhythm consistency, velocity, and sustained attention.
 pub fn calculate_flow_score(deltas: &[f64], duration: f64, word_count: i32) -> f64 {
@@ -402,10 +610,11 @@ pub fn update_user_flow_stats(
             total_sessions = COALESCE(total_sessions, 0) + 1,
             avg_flow_score = (
                 SELECT COALESCE(AVG(flow_score), 0) FROM writing_sessions
-                WHERE user_id = ?1 AND flow_score IS NOT NULL
+                WHERE user_id = ?1 AND flow_score IS NOT NULL AND COALESCE(status, 'completed') = 'completed'
             ),
             total_words_written = (
-                SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1
+                SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions
+                WHERE user_id = ?1 AND COALESCE(status, 'completed') = 'completed'
             ),
             updated_at = datetime('now')
         WHERE user_id = ?1",
@@ -486,7 +695,11 @@ pub struct WritingSession {
 
 pub fn get_user_writings(conn: &Connection, user_id: &str) -> Result<Vec<WritingSession>> {
     let mut stmt = conn.prepare(
-        "SELECT id, content, duration_seconds, word_count, is_anky, response, created_at FROM writing_sessions WHERE user_id = ?1 ORDER BY created_at DESC",
+        "SELECT id, content, duration_seconds, word_count, is_anky, response, created_at
+         FROM writing_sessions
+         WHERE user_id = ?1
+           AND COALESCE(status, 'completed') = 'completed'
+         ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map(params![user_id], |row| {
         Ok(WritingSession {
@@ -527,6 +740,7 @@ pub fn get_user_writings_with_ankys(
          FROM writing_sessions ws
          LEFT JOIN ankys a ON a.writing_session_id = ws.id AND a.status = 'complete'
          WHERE ws.user_id = ?1
+           AND COALESCE(ws.status, 'completed') = 'completed'
          ORDER BY ws.created_at DESC",
     )?;
     let rows = stmt.query_map(params![user_id], |row| {
@@ -2369,7 +2583,8 @@ pub fn get_feed_stats_24h(conn: &Connection) -> Result<FeedStats> {
             COALESCE(SUM(duration_seconds), 0) as total_seconds,
             COALESCE(SUM(word_count), 0) as total_words
          FROM writing_sessions
-         WHERE created_at > datetime('now', '-24 hours')",
+         WHERE created_at > datetime('now', '-24 hours')
+           AND COALESCE(status, 'completed') = 'completed'",
         [],
         |row| {
             Ok(FeedStats {
@@ -2838,7 +3053,12 @@ pub fn get_user_context_for_interview(
 
     // Get last 5 writing session summaries (response = Ollama/Claude feedback)
     let mut ws_stmt = conn.prepare(
-        "SELECT response FROM writing_sessions WHERE user_id = ?1 AND response IS NOT NULL ORDER BY created_at DESC LIMIT 5",
+        "SELECT response FROM writing_sessions
+         WHERE user_id = ?1
+           AND response IS NOT NULL
+           AND COALESCE(status, 'completed') = 'completed'
+         ORDER BY created_at DESC
+         LIMIT 5",
     )?;
     let recent_writings: Vec<String> = ws_stmt
         .query_map(params![user_id], |row| row.get::<_, String>(0))?
@@ -2894,4 +3114,650 @@ pub fn get_all_complete_video_projects(conn: &Connection) -> Result<Vec<VideoGal
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)
+}
+
+// ===== Premium =====
+
+pub fn is_user_premium(conn: &Connection, user_id: &str) -> Result<bool> {
+    let mut stmt = conn.prepare("SELECT is_premium FROM users WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, bool>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()).unwrap_or(false))
+}
+
+pub fn set_user_premium(conn: &Connection, user_id: &str, is_premium: bool) -> Result<()> {
+    if is_premium {
+        conn.execute(
+            "UPDATE users SET is_premium = 1, premium_since = datetime('now') WHERE id = ?1",
+            params![user_id],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE users SET is_premium = 0 WHERE id = ?1",
+            params![user_id],
+        )?;
+    }
+    Ok(())
+}
+
+// ===== Personalized Meditations =====
+
+pub fn create_personalized_meditation(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    writing_session_id: Option<&str>,
+    tier: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO personalized_meditations (id, user_id, writing_session_id, tier)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![id, user_id, writing_session_id, tier],
+    )?;
+    Ok(())
+}
+
+pub fn set_meditation_script(
+    conn: &Connection,
+    id: &str,
+    script_json: &str,
+    status: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE personalized_meditations SET script_json = ?2, status = ?3 WHERE id = ?1",
+        params![id, script_json, status],
+    )?;
+    Ok(())
+}
+
+pub fn get_ready_meditation(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<(String, String)>> {
+    // (id, script_json) — most recent ready one
+    let mut stmt = conn.prepare(
+        "SELECT id, script_json FROM personalized_meditations
+         WHERE user_id = ?1 AND status = 'ready'
+         ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn get_pending_free_meditation(conn: &Connection) -> Result<Option<(String, String, Option<String>)>> {
+    // (id, user_id, writing_session_id)
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, writing_session_id FROM personalized_meditations
+         WHERE status = 'pending' AND tier = 'free'
+         ORDER BY created_at ASC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn set_meditation_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE personalized_meditations SET status = ?2 WHERE id = ?1",
+        params![id, status],
+    )?;
+    Ok(())
+}
+
+pub fn has_recent_ready_meditation(conn: &Connection, user_id: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM personalized_meditations
+         WHERE user_id = ?1 AND status = 'ready'
+           AND created_at > datetime('now', '-24 hours')
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |_| Ok(true))?;
+    Ok(rows.next().and_then(|r| r.ok()).unwrap_or(false))
+}
+
+// ===== Personalized Breathwork =====
+
+pub fn create_personalized_breathwork(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    writing_session_id: Option<&str>,
+    style: &str,
+    tier: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO personalized_breathwork (id, user_id, writing_session_id, style, tier)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, user_id, writing_session_id, style, tier],
+    )?;
+    Ok(())
+}
+
+pub fn set_breathwork_script(
+    conn: &Connection,
+    id: &str,
+    script_json: &str,
+    status: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE personalized_breathwork SET script_json = ?2, status = ?3 WHERE id = ?1",
+        params![id, script_json, status],
+    )?;
+    Ok(())
+}
+
+pub fn get_ready_breathwork(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<(String, String, String)>> {
+    // (id, style, script_json)
+    let mut stmt = conn.prepare(
+        "SELECT id, style, script_json FROM personalized_breathwork
+         WHERE user_id = ?1 AND status = 'ready'
+         ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn get_pending_free_breathwork(conn: &Connection) -> Result<Option<(String, String, Option<String>, String)>> {
+    // (id, user_id, writing_session_id, style)
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, writing_session_id, style FROM personalized_breathwork
+         WHERE status = 'pending' AND tier = 'free'
+         ORDER BY created_at ASC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn set_breathwork_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE personalized_breathwork SET status = ?2 WHERE id = ?1",
+        params![id, status],
+    )?;
+    Ok(())
+}
+
+pub fn has_recent_ready_breathwork(conn: &Connection, user_id: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM personalized_breathwork
+         WHERE user_id = ?1 AND status = 'ready'
+           AND created_at > datetime('now', '-24 hours')
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |_| Ok(true))?;
+    Ok(rows.next().and_then(|r| r.ok()).unwrap_or(false))
+}
+
+pub fn get_writing_content(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT content FROM writing_sessions WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+// ===== Facilitators =====
+
+pub struct FacilitatorRecord {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub bio: String,
+    pub specialties: String,
+    pub approach: Option<String>,
+    pub session_rate_usd: f64,
+    pub booking_url: Option<String>,
+    pub contact_method: Option<String>,
+    pub profile_image_url: Option<String>,
+    pub location: Option<String>,
+    pub languages: String,
+    pub status: String,
+    pub avg_rating: f64,
+    pub total_reviews: i32,
+    pub total_sessions: i32,
+    pub created_at: String,
+}
+
+pub fn insert_facilitator(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    name: &str,
+    bio: &str,
+    specialties: &str,
+    approach: Option<&str>,
+    session_rate_usd: f64,
+    booking_url: Option<&str>,
+    contact_method: Option<&str>,
+    profile_image_url: Option<&str>,
+    location: Option<&str>,
+    languages: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO facilitators (id, user_id, name, bio, specialties, approach, session_rate_usd, booking_url, contact_method, profile_image_url, location, languages)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![id, user_id, name, bio, specialties, approach, session_rate_usd, booking_url, contact_method, profile_image_url, location, languages],
+    )?;
+    Ok(())
+}
+
+fn row_to_facilitator(row: &rusqlite::Row) -> rusqlite::Result<FacilitatorRecord> {
+    Ok(FacilitatorRecord {
+        id: row.get(0)?,
+        user_id: row.get(1)?,
+        name: row.get(2)?,
+        bio: row.get(3)?,
+        specialties: row.get(4)?,
+        approach: row.get(5)?,
+        session_rate_usd: row.get(6)?,
+        booking_url: row.get(7)?,
+        contact_method: row.get(8)?,
+        profile_image_url: row.get(9)?,
+        location: row.get(10)?,
+        languages: row.get(11)?,
+        status: row.get(12)?,
+        avg_rating: row.get(13)?,
+        total_reviews: row.get(14)?,
+        total_sessions: row.get(15)?,
+        created_at: row.get(16)?,
+    })
+}
+
+const FACILITATOR_COLS: &str = "id, user_id, name, bio, specialties, approach, session_rate_usd, booking_url, contact_method, profile_image_url, location, languages, status, avg_rating, total_reviews, total_sessions, created_at";
+
+pub fn get_approved_facilitators(conn: &Connection) -> Result<Vec<FacilitatorRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM facilitators WHERE status = 'approved' ORDER BY avg_rating DESC, total_reviews DESC",
+        FACILITATOR_COLS
+    ))?;
+    let rows = stmt.query_map([], row_to_facilitator)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_facilitator(conn: &Connection, id: &str) -> Result<Option<FacilitatorRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM facilitators WHERE id = ?1", FACILITATOR_COLS
+    ))?;
+    let mut rows = stmt.query_map(params![id], row_to_facilitator)?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn get_pending_facilitators(conn: &Connection) -> Result<Vec<FacilitatorRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {} FROM facilitators WHERE status = 'pending' ORDER BY created_at ASC",
+        FACILITATOR_COLS
+    ))?;
+    let rows = stmt.query_map([], row_to_facilitator)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn approve_facilitator(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE facilitators SET status = 'approved', approved_at = datetime('now') WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+pub fn suspend_facilitator(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE facilitators SET status = 'suspended' WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+pub struct FacilitatorReview {
+    pub id: String,
+    pub user_id: String,
+    pub rating: i32,
+    pub review_text: Option<String>,
+    pub created_at: String,
+}
+
+pub fn insert_facilitator_review(
+    conn: &Connection,
+    id: &str,
+    facilitator_id: &str,
+    user_id: &str,
+    rating: i32,
+    review_text: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO facilitator_reviews (id, facilitator_id, user_id, rating, review_text)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (facilitator_id, user_id) DO UPDATE SET rating = ?4, review_text = ?5",
+        params![id, facilitator_id, user_id, rating, review_text],
+    )?;
+    // Recalculate average
+    conn.execute(
+        "UPDATE facilitators SET
+           avg_rating = (SELECT COALESCE(AVG(CAST(rating AS REAL)), 0) FROM facilitator_reviews WHERE facilitator_id = ?1),
+           total_reviews = (SELECT COUNT(*) FROM facilitator_reviews WHERE facilitator_id = ?1)
+         WHERE id = ?1",
+        params![facilitator_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_facilitator_reviews(conn: &Connection, facilitator_id: &str) -> Result<Vec<FacilitatorReview>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, rating, review_text, created_at
+         FROM facilitator_reviews WHERE facilitator_id = ?1 ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![facilitator_id], |row| {
+        Ok(FacilitatorReview {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            rating: row.get(2)?,
+            review_text: row.get(3)?,
+            created_at: row.get(4)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn insert_facilitator_booking(
+    conn: &Connection,
+    id: &str,
+    facilitator_id: &str,
+    user_id: &str,
+    payment_amount_usd: f64,
+    platform_fee_usd: f64,
+    payment_method: &str,
+    payment_tx_hash: Option<&str>,
+    stripe_payment_id: Option<&str>,
+    context_shared: bool,
+    shared_context_json: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO facilitator_bookings (id, facilitator_id, user_id, payment_amount_usd, platform_fee_usd, payment_method, payment_tx_hash, stripe_payment_id, user_context_shared, shared_context_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![id, facilitator_id, user_id, payment_amount_usd, platform_fee_usd, payment_method, payment_tx_hash, stripe_payment_id, context_shared, shared_context_json],
+    )?;
+    conn.execute(
+        "UPDATE facilitators SET total_sessions = total_sessions + 1 WHERE id = ?1",
+        params![facilitator_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_profile_summary(conn: &Connection, user_id: &str) -> Result<Option<String>> {
+    // Returns the psychological_profile + core_tensions from user_profiles for AI matching
+    let mut stmt = conn.prepare(
+        "SELECT psychological_profile, core_tensions, growth_edges, emotional_signature
+         FROM user_profiles WHERE user_id = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![user_id], |row| {
+        let psych: Option<String> = row.get(0)?;
+        let tensions: Option<String> = row.get(1)?;
+        let edges: Option<String> = row.get(2)?;
+        let emotion: Option<String> = row.get(3)?;
+        Ok([psych, tensions, edges, emotion]
+            .iter()
+            .filter_map(|o| o.as_ref())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n"))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()).filter(|s| !s.is_empty()))
+}
+
+// ===== Sadhana =====
+
+pub struct SadhanaCommitment {
+    pub id: String,
+    pub user_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub frequency: String,
+    pub duration_minutes: i32,
+    pub target_days: i32,
+    pub start_date: String,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+pub fn create_sadhana_commitment(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    title: &str,
+    description: Option<&str>,
+    frequency: &str,
+    duration_minutes: i32,
+    target_days: i32,
+    start_date: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO sadhana_commitments (id, user_id, title, description, frequency, duration_minutes, target_days, start_date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![id, user_id, title, description, frequency, duration_minutes, target_days, start_date],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_sadhana_commitments(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<SadhanaCommitment>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, title, description, frequency, duration_minutes, target_days, start_date, is_active, created_at
+         FROM sadhana_commitments WHERE user_id = ?1 ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        Ok(SadhanaCommitment {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            frequency: row.get(4)?,
+            duration_minutes: row.get(5)?,
+            target_days: row.get(6)?,
+            start_date: row.get(7)?,
+            is_active: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_sadhana_commitment(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+) -> Result<Option<SadhanaCommitment>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_id, title, description, frequency, duration_minutes, target_days, start_date, is_active, created_at
+         FROM sadhana_commitments WHERE id = ?1 AND user_id = ?2",
+    )?;
+    let mut rows = stmt.query_map(params![id, user_id], |row| {
+        Ok(SadhanaCommitment {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            title: row.get(2)?,
+            description: row.get(3)?,
+            frequency: row.get(4)?,
+            duration_minutes: row.get(5)?,
+            target_days: row.get(6)?,
+            start_date: row.get(7)?,
+            is_active: row.get(8)?,
+            created_at: row.get(9)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub struct SadhanaCheckin {
+    pub id: String,
+    pub commitment_id: String,
+    pub user_id: String,
+    pub date: String,
+    pub completed: bool,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+pub fn upsert_sadhana_checkin(
+    conn: &Connection,
+    id: &str,
+    commitment_id: &str,
+    user_id: &str,
+    date: &str,
+    completed: bool,
+    notes: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO sadhana_checkins (id, commitment_id, user_id, date, completed, notes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (commitment_id, date) DO UPDATE SET completed = ?5, notes = ?6",
+        params![id, commitment_id, user_id, date, completed, notes],
+    )?;
+    Ok(())
+}
+
+pub fn get_sadhana_checkins(
+    conn: &Connection,
+    commitment_id: &str,
+) -> Result<Vec<SadhanaCheckin>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, commitment_id, user_id, date, completed, notes, created_at
+         FROM sadhana_checkins WHERE commitment_id = ?1 ORDER BY date DESC",
+    )?;
+    let rows = stmt.query_map(params![commitment_id], |row| {
+        Ok(SadhanaCheckin {
+            id: row.get(0)?,
+            commitment_id: row.get(1)?,
+            user_id: row.get(2)?,
+            date: row.get(3)?,
+            completed: row.get(4)?,
+            notes: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ===== Breathwork =====
+
+pub struct BreathworkSession {
+    pub id: String,
+    pub style: String,
+    pub duration_seconds: i32,
+    pub script_json: String,
+    pub generated_at: String,
+}
+
+pub fn get_breathwork_session_by_style(
+    conn: &Connection,
+    style: &str,
+) -> Result<Option<BreathworkSession>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, style, duration_seconds, script_json, generated_at
+         FROM breathwork_sessions WHERE style = ?1
+         ORDER BY generated_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![style], |row| {
+        Ok(BreathworkSession {
+            id: row.get(0)?,
+            style: row.get(1)?,
+            duration_seconds: row.get(2)?,
+            script_json: row.get(3)?,
+            generated_at: row.get(4)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn insert_breathwork_session(
+    conn: &Connection,
+    id: &str,
+    style: &str,
+    duration_seconds: i32,
+    script_json: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO breathwork_sessions (id, style, duration_seconds, script_json) VALUES (?1, ?2, ?3, ?4)",
+        params![id, style, duration_seconds, script_json],
+    )?;
+    Ok(())
+}
+
+pub fn log_breathwork_completion(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    session_id: &str,
+    notes: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO breathwork_completions (id, user_id, session_id, notes) VALUES (?1, ?2, ?3, ?4)",
+        params![id, user_id, session_id, notes],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_breathwork_history(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<(String, String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT bc.id, bc.session_id, bs.style, bc.completed_at
+         FROM breathwork_completions bc
+         JOIN breathwork_sessions bs ON bs.id = bc.session_id
+         WHERE bc.user_id = ?1
+         ORDER BY bc.completed_at DESC
+         LIMIT 50",
+    )?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_user_meditation_history(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<(String, i32, Option<i32>, bool, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, duration_target, duration_actual, completed, created_at
+         FROM meditation_sessions
+         WHERE user_id = ?1
+         ORDER BY created_at DESC
+         LIMIT 50",
+    )?;
+    let rows = stmt.query_map(params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i32>(1)?,
+            row.get::<_, Option<i32>>(2)?,
+            row.get::<_, bool>(3)?,
+            row.get::<_, String>(4)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }

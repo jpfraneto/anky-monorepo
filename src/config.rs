@@ -42,6 +42,8 @@ pub struct Config {
     pub training_secret: String,
     // Dataset gallery password
     pub dataset_password: String,
+    // ComfyUI (local Flux image generation)
+    pub comfyui_url: String,
 }
 
 impl Config {
@@ -69,12 +71,11 @@ impl Config {
             twitter_client_secret: std::env::var("TWITTER_CLIENT_SECRET").unwrap_or_default(),
             twitter_callback_url: std::env::var("TWITTER_CALLBACK_URL")
                 .unwrap_or_else(|_| "https://anky.app/auth/x/callback".into()),
-            twitter_bot_bearer_token: std::env::var("TWITTER_BOT_BEARER_TOKEN").unwrap_or_default(),
-            twitter_bot_api_key: std::env::var("TWITTER_BOT_API_KEY").unwrap_or_default(),
-            twitter_bot_api_secret: std::env::var("TWITTER_BOT_API_SECRET").unwrap_or_default(),
-            twitter_bot_access_token: std::env::var("TWITTER_BOT_ACCESS_TOKEN").unwrap_or_default(),
-            twitter_bot_access_secret: std::env::var("TWITTER_BOT_ACCESS_SECRET")
-                .unwrap_or_default(),
+            twitter_bot_bearer_token: std::env::var("X_BEARER_TOKEN").unwrap_or_default(),
+            twitter_bot_api_key: std::env::var("X_CONSUMER_KEY").unwrap_or_default(),
+            twitter_bot_api_secret: std::env::var("X_CONSUMER_SECRET").unwrap_or_default(),
+            twitter_bot_access_token: std::env::var("X_ACCESS_TOKEN").unwrap_or_default(),
+            twitter_bot_access_secret: std::env::var("X_ACCESS_TOKEN_SECRET").unwrap_or_default(),
             twitter_bot_user_id: std::env::var("TWITTER_BOT_USER_ID").unwrap_or_default(),
             privy_app_id: std::env::var("PRIVY_APP_ID").unwrap_or_default(),
             privy_app_secret: std::env::var("PRIVY_APP_SECRET").unwrap_or_default(),
@@ -89,7 +90,10 @@ impl Config {
             cloudflare_api_token: std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default(),
             cloudflare_zone_id: std::env::var("CLOUDFLARE_ZONE_ID").unwrap_or_default(),
             training_secret: std::env::var("TRAINING_SECRET").unwrap_or_default(),
-            dataset_password: std::env::var("DATASET_PASSWORD").unwrap_or_else(|_| "ankyisyou".into()),
+            dataset_password: std::env::var("DATASET_PASSWORD")
+                .unwrap_or_else(|_| "ankyisyou".into()),
+            comfyui_url: std::env::var("COMFYUI_URL")
+                .unwrap_or_else(|_| "http://localhost:8188".into()),
         })
     }
 }

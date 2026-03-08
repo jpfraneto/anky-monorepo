@@ -11,7 +11,10 @@ pub async fn generation_dashboard(
 ) -> Result<Html<String>, AppError> {
     let prompts_path = PathBuf::from(format!("data/generations/{}/prompts.json", batch_id));
     if !prompts_path.exists() {
-        return Err(AppError::NotFound(format!("Batch '{}' not found", batch_id)));
+        return Err(AppError::NotFound(format!(
+            "Batch '{}' not found",
+            batch_id
+        )));
     }
     let mut ctx = tera::Context::new();
     ctx.insert("batch_id", &batch_id);
@@ -30,8 +33,8 @@ pub async fn generation_progress(
     if !progress_path.exists() {
         return Ok(axum::Json(serde_json::json!({})));
     }
-    let raw = std::fs::read_to_string(&progress_path)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let raw =
+        std::fs::read_to_string(&progress_path).map_err(|e| AppError::Internal(e.to_string()))?;
     let val: serde_json::Value =
         serde_json::from_str(&raw).map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(axum::Json(val))
@@ -113,11 +116,14 @@ pub async fn review_batch(
     let prompts_path = PathBuf::from(format!("data/generations/{}/prompts.json", batch_id));
 
     if !prompts_path.exists() {
-        return Err(AppError::NotFound(format!("Batch '{}' not found", batch_id)));
+        return Err(AppError::NotFound(format!(
+            "Batch '{}' not found",
+            batch_id
+        )));
     }
 
-    let raw = std::fs::read_to_string(&prompts_path)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let raw =
+        std::fs::read_to_string(&prompts_path).map_err(|e| AppError::Internal(e.to_string()))?;
     let prompts: Vec<String> =
         serde_json::from_str(&raw).map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -160,11 +166,14 @@ pub async fn review_images(
 ) -> Result<Html<String>, AppError> {
     let progress_path = PathBuf::from(format!("data/generations/{}/progress.json", batch_id));
     if !progress_path.exists() {
-        return Err(AppError::NotFound(format!("Batch '{}' not found", batch_id)));
+        return Err(AppError::NotFound(format!(
+            "Batch '{}' not found",
+            batch_id
+        )));
     }
 
-    let raw = std::fs::read_to_string(&progress_path)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let raw =
+        std::fs::read_to_string(&progress_path).map_err(|e| AppError::Internal(e.to_string()))?;
     let progress: serde_json::Value =
         serde_json::from_str(&raw).map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -227,14 +236,8 @@ pub async fn save_review(
         serde_json::Map::new()
     };
 
-    let image_id = body
-        .get("image_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let decision = body
-        .get("decision")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let image_id = body.get("image_id").and_then(|v| v.as_str()).unwrap_or("");
+    let decision = body.get("decision").and_then(|v| v.as_str()).unwrap_or("");
 
     if !image_id.is_empty() {
         if decision == "undo" {
@@ -255,10 +258,18 @@ pub async fn save_review(
     std::fs::write(&tmp_path, &json_str).map_err(|e| AppError::Internal(e.to_string()))?;
     std::fs::rename(&tmp_path, &review_path).map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let approved = review.values().filter(|v| v.get("decision").and_then(|d| d.as_str()) == Some("approved")).count();
-    let rejected = review.values().filter(|v| v.get("decision").and_then(|d| d.as_str()) == Some("rejected")).count();
+    let approved = review
+        .values()
+        .filter(|v| v.get("decision").and_then(|d| d.as_str()) == Some("approved"))
+        .count();
+    let rejected = review
+        .values()
+        .filter(|v| v.get("decision").and_then(|d| d.as_str()) == Some("rejected"))
+        .count();
 
-    Ok(axum::Json(serde_json::json!({ "ok": true, "approved": approved, "rejected": rejected })))
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "approved": approved, "rejected": rejected }),
+    ))
 }
 
 /// POST /generations/:id/status — save keep/skip decisions

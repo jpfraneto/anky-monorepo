@@ -7,6 +7,134 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-07-swift-agent-brief-understanding-whitepaper">
+    <div class="changelog-date">2026-03-07</div>
+    <h2 class="changelog-title">SWIFT_AGENT_BRIEF.md, UNDERSTANDING_ANKY.md, and WHITEPAPER.tex</h2>
+    <p class="changelog-desc">Three foundational documents: a comprehensive Swift agent brief with all API endpoints, data models, and SwiftUI components for the iOS app; a deep technical guide explaining the entire system for the founder; and a 22-page LaTeX whitepaper written in Anky's first-person voice covering the philosophy, the four pillars (writing, meditation, breathwork, sadhana), the facilitator network, the $ANKY token on Solana, and the technical architecture.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-07-005-swift-agent-brief-understanding-whitepaper.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-07-swift-agent-brief-understanding-whitepaper">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-07-facilitator-marketplace">
+    <div class="changelog-date">2026-03-07</div>
+    <h2 class="changelog-title">Facilitator marketplace: apply, approve, review, AI-powered matching</h2>
+    <p class="changelog-desc">Spiritual facilitators can apply to be listed on Anky. Apply → admin approval → public profile with reviews. Users book sessions (USDC on Base or Stripe) with an 8% platform fee. The killer feature: GET /swift/v1/facilitators/recommended uses Claude to match users with facilitators based on their writing profile — their psychological patterns, core tensions, and growth edges — so people find the right human guide, not just any guide. Users can optionally share their anonymized Anky context with the facilitator before the first session.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-07-004-facilitator-marketplace.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-07-facilitator-marketplace">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-07-personalized-guidance-queue">
+    <div class="changelog-date">2026-03-07</div>
+    <h2 class="changelog-title">Personalized AI meditation + breathwork generated from every writing session</h2>
+    <p class="changelog-desc">After every writing session, Anky now generates a personalized 10-min guided meditation and 8-min breathwork session tailored to what was just expressed. Mood detection picks the right breathwork style (calming for grief, wim hof for anger, 4-7-8 for anxiety, etc). Premium users get instant Claude Haiku generation; free users are queued through local Ollama on poiesis. Users with no writing get a fresh generic session daily. New endpoints: GET /swift/v1/meditation/ready and /swift/v1/breathwork/ready. is_premium flag added to users for day-one monetization.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-07-003-personalized-guidance-queue.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-07-personalized-guidance-queue">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-07-swift-mobile-api">
+    <div class="changelog-date">2026-03-07</div>
+    <h2 class="changelog-title">Swift mobile API: auth, writings, sadhana, meditation, breathwork</h2>
+    <p class="changelog-desc">Added a full /swift/v1/* REST API namespace for the Anky iOS app. Includes Privy-based auth (Bearer token, same accounts as web), writings list + submission, sadhana commitment tracking with daily check-ins, meditation session logging, and an AI-powered breathwork session generator (Wim Hof, box, 4-7-8, pranayama, and more) that has Anky guide you through an 8-minute practice. New DB tables: sadhana_commitments, sadhana_checkins, breathwork_sessions, breathwork_completions.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-07-002-swift-mobile-api.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-07-swift-mobile-api">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-07-gemini-flux-fallback">
+    <div class="changelog-date">2026-03-07</div>
+    <h2 class="changelog-title">Gemini → Flux fallback + Ollama resilience in image pipeline</h2>
+    <p class="changelog-desc">Image generation pipeline is now fault-tolerant: if Ollama is unreachable for prompt generation it falls back to the raw writing text; if Gemini image generation fails it automatically retries with the local Flux/ComfyUI pipeline. Previously a single Ollama hiccup aborted the whole pipeline before reaching Gemini.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-07-001-gemini-flux-fallback.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-07-gemini-flux-fallback">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-06-x-reply-context">
+    <div class="changelog-date">2026-03-06</div>
+    <h2 class="changelog-title">X bot: parent tweet context for @jpfraneto image replies</h2>
+    <p class="changelog-desc">When @jpfraneto replies to a tweet tagging @ankydotapp, the bot now fetches the parent tweet's text and image (if any), passes both to Claude as a multimodal request, and generates a Flux prompt that weaves together the original request and the parent context. Falls back to the old behavior if the fetch fails.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-06-003-x-reply-context.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-06-x-reply-context">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-06-remove-nav-links">
+    <div class="changelog-date">2026-03-06</div>
+    <h2 class="changelog-title">Remove "live interview" and "dca bot" from nav drawer</h2>
+    <p class="changelog-desc">Removed two stale nav links — live interview and dca bot — from the left drawer.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-06-002-remove-nav-links.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-06-remove-nav-links">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-06-leaderboard-styling">
+    <div class="changelog-date">2026-03-06</div>
+    <h2 class="changelog-title">Leaderboard styling overhaul</h2>
+    <p class="changelog-desc">Added full CSS for the leaderboard page, which had no styles at all. Now features a dark grid layout with color-coded top-3 rows, tab navigation, flow/streak accent colors, and responsive mobile layout.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-06-001-leaderboard-styling.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-06-leaderboard-styling">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-05-prefetch-memory-context">
+    <div class="changelog-date">2026-03-05</div>
+    <h2 class="changelog-title">Pre-warm memory context at minute 5</h2>
+    <p class="changelog-desc">At 5 minutes into a writing session, the frontend now fires a background request to pre-build the Ollama memory context. By the time the user finishes and the reflection is requested, the context is already cached and returned instantly.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-05-005-prefetch-memory-context.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-05-prefetch-memory-context">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-05-fix-stuck-reading-screen">
+    <div class="changelog-date">2026-03-05</div>
+    <h2 class="changelog-title">Fix stuck "anky is reading" screen; remove hackathon banner</h2>
+    <p class="changelog-desc">Moved Ollama memory embedding inside the spawned Claude task with a 5s timeout, so a slow Ollama no longer blocks the SSE stream from starting. Removed the pump hackathon banner from the nav.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-05-004-fix-stuck-reading-screen-remove-hackathon-banner.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-05-fix-stuck-reading-screen">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-05-x-filtered-stream">
+    <div class="changelog-date">2026-03-05</div>
+    <h2 class="changelog-title">X mention bot: migrated to v2 Filtered Stream</h2>
+    <p class="changelog-desc">Replaced the broken v1.1 Account Activity API webhook (deprecated/410) with the v2 Filtered Stream. Anky now maintains a persistent connection to X, detects mentions in real-time, likes immediately, sends a "generating..." ack reply, generates a Flux image (~24s), posts it, and deletes the ack. Full round-trip in under 50 seconds.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-05-003-x-filtered-stream.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-05-x-filtered-stream">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-05-webhook-log-viewer">
+    <div class="changelog-date">2026-03-05</div>
+    <h2 class="changelog-title">X webhook live log viewer at /webhooks/logs</h2>
+    <p class="changelog-desc">Added a real-time debug page at /webhooks/logs that streams every incoming X webhook POST as pretty-printed JSON via SSE. Also removed the broken polling fallback (free tier doesn't support GET /2/users/:id/mentions).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-05-002-webhook-log-viewer.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-05-webhook-log-viewer">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-05-polling-loop-new-webhook-logic">
+    <div class="changelog-date">2026-03-05</div>
+    <h2 class="changelog-title">Polling loop: unified with webhook mention logic</h2>
+    <p class="changelog-desc">Since the X Account Activity webhook wasn't delivering events, the 2-min polling fallback now runs the same logic: like tweet → single Qwen intent+reply call → rate limit check → Flux image generation with media reply, or text reply. Replaces the old prompt-link flow.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-05-001-polling-loop-new-webhook-logic.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-05-polling-loop-new-webhook-logic">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-04-x-webhook-image-rate-limit">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">X webhook: image generation rate limit with Anky personality</h2>
+    <p class="changelog-desc">Added per-user rate limiting to the @ankydotapp mention handler: 1 Flux image per user per 5 minutes. If a user hits the limit, Anky replies immediately with a jester-flavored message (5 rotating variants) telling them exactly how long to wait — in full Anky voice drawn from SOUL.md.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-006-x-webhook-image-rate-limit.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-x-webhook-image-rate-limit">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-04-x-webhook-crc-comfyui-mention-reply">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">X webhook: CRC endpoint + @ankydotapp mention reply with Flux images</h2>
+    <p class="changelog-desc">Added GET/POST /webhooks/x — CRC challenge handler (fixes "Failed to create webhook – 404 CRC") and full Account Activity event processing. When @ankydotapp is mentioned, Qwen classifies the intent: image requests trigger ComfyUI Flux generation and a v1.1 media reply; text requests get a playful Ollama reply. Also adds comfyui_url to config and generate_flux_image to the image pipeline.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-005-x-webhook-crc-comfyui-mention-reply.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-x-webhook-crc-comfyui-mention-reply">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-04-switch-to-qwen3-5-35b">
+    <div class="changelog-date">2026-03-04</div>
+    <h2 class="changelog-title">Switch default Ollama model to qwen3.5:35b</h2>
+    <p class="changelog-desc">Set qwen3.5:35b as the default model for all Ollama calls (writing feedback, chat, image prompts, memory extraction, mention classification). Deleted all other downloaded models (qwen2.5:32b/14b/72b, llama3.3:70b, llama3.1:70b/latest). nomic-embed-text kept for semantic memory embeddings.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-04-004-switch-to-qwen3-5-35b.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-04-switch-to-qwen3-5-35b">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-04-round-two-runbook-and-v2-serving">
     <div class="changelog-date">2026-03-04</div>
     <h2 class="changelog-title">Round-two runbook tab + one-shot docs + serve LoRA v2 on /generate</h2>

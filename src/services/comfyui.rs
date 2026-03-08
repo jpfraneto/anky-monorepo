@@ -157,6 +157,11 @@ pub async fn is_available() -> bool {
 /// Generate an image using Flux.1-dev + anky LoRA via ComfyUI.
 /// Returns PNG bytes.
 pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
+    generate_image_at_url(prompt, COMFYUI_URL).await
+}
+
+/// Like `generate_image` but uses a caller-supplied ComfyUI base URL.
+pub async fn generate_image_at_url(prompt: &str, comfy_url: &str) -> Result<Vec<u8>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(300))
         .build()?;
@@ -166,7 +171,7 @@ pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
 
     // Queue the prompt
     let resp = client
-        .post(format!("{}/prompt", COMFYUI_URL))
+        .post(format!("{}/prompt", comfy_url))
         .json(&workflow)
         .send()
         .await?;
@@ -187,7 +192,7 @@ pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
         sleep(Duration::from_secs(2)).await;
 
         let history_resp = client
-            .get(format!("{}/history/{}", COMFYUI_URL, prompt_id))
+            .get(format!("{}/history/{}", comfy_url, prompt_id))
             .send()
             .await?;
 
@@ -238,7 +243,7 @@ pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
         let img_resp = client
             .get(format!(
                 "{}/view?filename={}&type=output",
-                COMFYUI_URL, filename
+                comfy_url, filename
             ))
             .send()
             .await?;

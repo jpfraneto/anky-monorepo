@@ -1,0 +1,70 @@
+Add the complete X webhook at exactly `/webhooks/x` so the "Failed to create webhook – 404 CRC" error disappears forever.
+
+Steps (in order):
+
+1. Update src/config.rs
+   - Add only one new field: `comfyui_url: String,` (default in from_env)
+   - Update the from_env() impl so it loads from `COMFYUI_URL` (same pattern as OLLAMA_BASE_URL).
+
+2. Update .env.example
+   - Add: `COMFYUI_URL=http://localhost:8188`
+   - Change the OLLAMA_MODEL comment to: `# Ollama (currently qwen3.5:35b)`
+   - Keep all existing twitter_bot_* keys (they are already there for the bot).
+
+3. Add to Cargo.toml (under [dependencies])
+   ```toml
+   hmac = { version = "0.12", features = ["std"] }
+   sha2 = "0.10"
+   base64 = "0.22"
+   oauth1 = "0.2"
+
+Create the webhook logic in src/routes/api.rs (add at the bottom, matching other handlers)
+GET /webhooks/x → CRC check using twitter_bot_api_secret
+POST /webhooks/x → verify signature (X-Twitter-Webhooks-Signature), parse tweet_create_events, if @ankydotapp is mentioned → tokio::spawn(process_anky_mention(...)), always return 200 immediately.
+Implement FULL mission inside async fn process_anky_mention(tweet_id: String, text: String, state: AppState)
+Use this exact structure (do not leave any placeholder):
+Rust
+// INTENT DETECTION WITH QWEN 3.5:35b (via existing Ollama service)
+let intent_system = "You are Anky. Analyze if the user wants you to generate an image of yourself (Anky the cute cartoon ape). It counts for ANY natural language request like 'i want to see you dancing under the rain', 'draw anky doing X', or mentioning 'anky' + a scene. Answer ONLY with YES\nSCENE: <exact scene description> or NO";
+let ollama_resp = services::ollama::call_ollama_with_system(
+    &state.config.ollama_base_url,
+    &state.config.ollama_model,  // this is qwen3.5:35b
+    intent_system,
+    &text,
+).await.unwrap_or_else(|_| "NO".to_string());
+
+let is_image_request = ollama_resp.trim_start().starts_with("YES");
+let scene = if is_image_request {
+    ollama_resp.lines().nth(1).unwrap_or("").trim().to_string()
+} else {
+    String::new()
+};
+
+if is_image_request {
+    let flux_prompt = format!(
+        "Anky the cute cartoon ape character {}, vibrant colors, detailed, studio ghibli style, high quality, cute expression",
+        if scene.is_empty() { "standing happily".to_string() } else { scene.clone() }
+    );
+
+    let image_bytes = pipeline::image_gen::generate_flux_image(&flux_prompt, &state.config.comfyui_url).await?;
+
+    let reply_text = format!("Here you go! Anky {}", scene);
+    let _ = post_reply_with_image(&state, &tweet_id, &reply_text, image_bytes).await;
+} else {
+    let reply_text = services::ollama::call_ollama_with_system(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        "You are Anky the cute cartoon ape. Reply in a short, fun, playful way.",
+        &text,
+    ).await.unwrap_or_else(|_| "Hey! Thanks for tagging me 🦍".to_string());
+
+    let _ = post_reply(&state, &tweet_id, &reply_text).await;
+}
+Extend pipeline/image_gen.rs
+Add pub async fn generate_flux_image(prompt: &str, comfy_url: &str) -> Result<Vec<u8>>
+Use the standard ComfyUI flow: POST /prompt with a minimal Flux workflow (hardcode the simplest positive-prompt workflow that exists), poll /history, then fetch the image from /view.
+Return the raw image bytes (same as the existing Gemini function).
+Add two small helper functions (in the same api.rs file or a new services/x.rs — your choice, keep it minimal):
+post_reply(state, tweet_id, text)
+post_reply_with_image(state, tweet_id, text, image_bytes) using OAuth 1.0a (oauth1 crate) + reqwest to v1.1 /media/upload.json then /statuses/update.json with in_reply_to_status_id.
+Mount the routes in src/main.rs exactly like all other API routes.

@@ -123,6 +123,13 @@ pub async fn generate_image_with_aspect(
     references: &[String],
     aspect_ratio: &str,
 ) -> Result<ImageResult> {
+    let aspect_guidance = match aspect_ratio {
+        "16:9" => "Horizontal 16:9 composition with cinematic width and layered depth",
+        "9:16" => "Vertical 9:16 composition with layered depth",
+        "1:1" => "Square 1:1 composition with balanced framing and layered depth",
+        other => anyhow::bail!("Unsupported aspect ratio guidance requested: {}", other),
+    };
+
     let full_prompt = format!(
         r#"{}
 
@@ -137,10 +144,10 @@ STYLE:
 - Painterly, atmospheric, cinematic depth
 - Consistent visual coherence — this is ONE scene from a continuous story
 - Follow the color direction specified in the scene description
-- Vertical 9:16 composition with layered depth
+- {}
 - Highly detailed, emotionally evocative
 - If continuity reference frames are provided, maintain the same environment, lighting, and visual world — only transform what the scene description asks to change"#,
-        prompt
+        prompt, aspect_guidance
     );
 
     let mut parts: Vec<GeminiPart> = Vec::new();

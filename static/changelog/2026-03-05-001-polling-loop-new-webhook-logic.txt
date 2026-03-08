@@ -1,0 +1,5 @@
+i just tagged it but nothing happened within seconds :/ and on the https://console.x.com/accounts/2022640884114952194/subscriptions page on the dashbaord i see this No subscriptions found.
+
+[after confirming webhook not delivering events despite valid setup and subscription]
+
+update the polling loop in main.rs to use the same new logic as the webhook handler since the webhook isn't delivering events.

@@ -7,7 +7,10 @@ use axum::response::Html;
 use axum::Json;
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 
-fn get_or_create_user_id(jar: &CookieJar, token_header: Option<&str>) -> (String, Option<Cookie<'static>>) {
+fn get_or_create_user_id(
+    jar: &CookieJar,
+    token_header: Option<&str>,
+) -> (String, Option<Cookie<'static>>) {
     if let Some(cookie) = jar.get("anky_user_id") {
         return (cookie.value().to_string(), None);
     }
@@ -84,7 +87,9 @@ pub async fn process_writing(
         return Err(AppError::RateLimited(retry_after));
     }
 
-    let token_header = headers.get("x-anky-user-token").and_then(|v| v.to_str().ok());
+    let token_header = headers
+        .get("x-anky-user-token")
+        .and_then(|v| v.to_str().ok());
     let (user_id, new_cookie) = get_or_create_user_id(&jar, token_header);
     let jar = if let Some(c) = new_cookie {
         jar.add(c)
@@ -127,7 +132,11 @@ pub async fn process_writing(
         is_anky = false;
     }
 
-    let session_id = uuid::Uuid::new_v4().to_string();
+    let session_id = req
+        .session_id
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let mins = (req.duration / 60.0) as u32;
     let secs = (req.duration % 60.0) as u32;
@@ -152,7 +161,17 @@ pub async fn process_writing(
     {
         let db = state.db.lock().await;
         crate::db::queries::ensure_user(&db, &user_id)?;
-        crate::db::queries::insert_writing_session_with_flow(
+        let mut was_completed = false;
+        if let Some(existing) = crate::db::queries::get_writing_session_state(&db, &session_id)? {
+            if existing.user_id != user_id {
+                return Err(AppError::Unauthorized(
+                    "that writing session belongs to another user".into(),
+                ));
+            }
+            was_completed = existing.status == "completed";
+        }
+
+        crate::db::queries::upsert_completed_writing_session_with_flow(
             &db,
             &session_id,
             &user_id,
@@ -163,10 +182,13 @@ pub async fn process_writing(
             None, // response filled in after Ollama
             keystroke_json.as_deref(),
             flow_score,
+            req.session_token.as_deref(),
         )?;
         // Update leaderboard stats
-        if let Some(fs) = flow_score {
-            let _ = crate::db::queries::update_user_flow_stats(&db, &user_id, fs, is_anky);
+        if !was_completed {
+            if let Some(fs) = flow_score {
+                let _ = crate::db::queries::update_user_flow_stats(&db, &user_id, fs, is_anky);
+            }
         }
     }
 
@@ -180,7 +202,13 @@ pub async fn process_writing(
         let model_bg = state.config.ollama_model.clone();
         tokio::spawn(async move {
             let prompt = crate::services::ollama::deep_reflection_prompt(&text_bg);
-            match crate::services::ollama::call_ollama(&state_bg.config.ollama_base_url, &model_bg, &prompt).await {
+            match crate::services::ollama::call_ollama(
+                &state_bg.config.ollama_base_url,
+                &model_bg,
+                &prompt,
+            )
+            .await
+            {
                 Ok(r) => {
                     let db = state_bg.db.lock().await;
                     let _ = db.execute(
@@ -198,7 +226,13 @@ pub async fn process_writing(
     } else {
         let model = &state.config.ollama_model;
         let prompt = crate::services::ollama::quick_feedback_prompt(&req.text, req.duration);
-        let r = match crate::services::ollama::call_ollama(&state.config.ollama_base_url, model.as_str(), &prompt).await {
+        let r = match crate::services::ollama::call_ollama(
+            &state.config.ollama_base_url,
+            model.as_str(),
+            &prompt,
+        )
+        .await
+        {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Ollama error: {}", e);

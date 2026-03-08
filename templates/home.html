@@ -186,10 +186,10 @@
 
     <div class="land-grid">
       <section class="land-block">
-        <h2>What Is Anky?</h2>
+        <h2>what is this?</h2>
         <p>
-          anky is an 8-minute daily writing practice. no edits, no deleting, no pretending.
-          write until the noise turns into signal.
+          Anky is the self awareness layer for the new internet, disguised as a character that is
+          your daily companion. Your mission: Write an 8 minute stream of consciousness every day.
         </p>
       </section>
 
@@ -236,6 +236,10 @@
     <div class="session-progress" id="session-progress"></div>
     <div class="session-bar-inner">
       <div class="session-comments" id="session-comments"></div>
+      <button class="session-pause-btn" id="session-pause-btn" type="button" aria-label="pause session" hidden>
+        <span></span>
+        <span></span>
+      </button>
       <div class="session-stats">
         <span id="stat-words">0 words</span>
         <span id="stat-time" class="stat-dim"></span>
@@ -423,12 +427,19 @@ document.body.classList.add('home-prewrite');
   var chatContainer = document.getElementById('chat-container');
   var sessionProgress = document.getElementById('session-progress');
   var sessionComments = document.getElementById('session-comments');
+  var pauseButton = document.getElementById('session-pause-btn');
 
   var sessionActive = false;
+  var sessionPaused = false;
   var sessionStartTime = null;
   var lastKeystrokeTime = null;
   var blockedCount = 0;
   var animFrame = null;
+  var pausedElapsedSeconds = 0;
+  var pauseUsed = false;
+  var pauseBusy = false;
+  var prefetchTimer = null;
+  var sessionCommentTimer = null;
 
   var TOTAL_SECONDS = 480;
   var IDLE_TIMEOUT = 8000;
@@ -440,16 +451,74 @@ document.body.classList.add('home-prewrite');
   // --- Draft saving (debounced 2s) ---
   var draftSaveTimer = null;
   function saveDraftToStorage() {
-    if (!sessionActive || !textarea.value) return;
-    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    if ((!sessionActive && !sessionPaused) || !textarea.value) return;
+    var elapsed = sessionPaused ? pausedElapsedSeconds : (Date.now() - sessionStartTime) / 1000;
     localStorage.setItem('anky_draft', JSON.stringify({
       text: textarea.value,
       elapsed: elapsed,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      session_id: sessionId,
+      session_token: sessionToken,
+      pause_used: pauseUsed,
+      session_paused: sessionPaused
     }));
   }
   function clearDraft() {
     localStorage.removeItem('anky_draft');
+  }
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function buildDraftPreview(text) {
+    var cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!cleaned) return '';
+    return cleaned.length > 50 ? ('...' + cleaned.slice(-50)) : cleaned;
+  }
+
+  function removeRecoveryBanner() {
+    var existing = document.getElementById('session-recovery-overlay');
+    if (existing) existing.remove();
+  }
+
+  function showRecoveryBanner(opts) {
+    removeRecoveryBanner();
+    var overlay = document.createElement('div');
+    overlay.id = 'session-recovery-overlay';
+    overlay.className = 'draft-recovery-overlay';
+
+    var banner = document.createElement('div');
+    banner.className = 'draft-recovery-banner';
+    var preview = buildDraftPreview(opts.preview || '');
+    banner.innerHTML =
+      '<div class="draft-recovery-copy">' +
+        '<span class="draft-recovery-kicker">pending session</span>' +
+        '<p class="draft-recovery-message">' + opts.message + '</p>' +
+        (preview ? (
+          '<div class="draft-recovery-preview-wrap">' +
+            '<span class="draft-recovery-preview-label">last words</span>' +
+            '<div class="draft-recovery-preview">' + escapeHtml(preview) + '</div>' +
+          '</div>'
+        ) : '') +
+      '</div>' +
+      '<div class="draft-recovery-actions">' +
+        '<button class="draft-resume-btn" id="draft-resume-yes">' + opts.resumeLabel + '</button>' +
+        '<button class="draft-dismiss-btn" id="draft-resume-no">' + opts.discardLabel + '</button>' +
+      '</div>';
+    overlay.appendChild(banner);
+    document.body.appendChild(overlay);
+
+    document.getElementById('draft-resume-yes').onclick = function() {
+      overlay.remove();
+      opts.onResume();
+    };
+    document.getElementById('draft-resume-no').onclick = function() {
+      overlay.remove();
+      opts.onDiscard();
+    };
   }
 
   // --- Anky ID persistence ---
@@ -459,13 +528,12 @@ document.body.classList.add('home-prewrite');
     localStorage.setItem('anky_my_ankys', JSON.stringify(myAnkys.slice(0, 50)));
   }
 
-  // --- Draft recovery on page load ---
-  (function checkDraftRecovery() {
+  function promptForLocalDraft() {
+    if (!document.body.classList.contains('home-prewrite')) return;
     var raw = localStorage.getItem('anky_draft');
     if (!raw) return;
     try {
       var draft = JSON.parse(raw);
-      // Only recover if < 1 hour old
       if (Date.now() - draft.timestamp > 3600000) {
         clearDraft();
         return;
@@ -474,28 +542,39 @@ document.body.classList.add('home-prewrite');
         clearDraft();
         return;
       }
-      // Show a recovery banner on the landing page
-      var banner = document.createElement('div');
-      banner.className = 'draft-recovery-banner';
-      banner.innerHTML =
-        '<p>you have an unfinished writing (' + draft.text.split(/\s+/).filter(function(w){return w.length>0;}).length + ' words). resume?</p>' +
-        '<button class="draft-resume-btn" id="draft-resume-yes">resume</button>' +
-        '<button class="draft-dismiss-btn" id="draft-resume-no">discard</button>';
-      banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(13,15,25,0.95);border:1px solid rgba(238,214,152,0.3);border-radius:12px;padding:14px 20px;color:#ececf4;font-family:Righteous,sans-serif;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,0.4);max-width:90vw;';
-      document.body.appendChild(banner);
 
-      document.getElementById('draft-resume-yes').onclick = function() {
-        banner.remove();
-        enterWritingMode(draft.text);
-      };
-      document.getElementById('draft-resume-no').onclick = function() {
-        banner.remove();
-        clearDraft();
-      };
-    } catch(e) {
+      var words = draft.text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+      if (draft.session_paused && draft.pause_used && draft.session_id) {
+        showRecoveryBanner({
+          message: 'you paused a writing (' + words + ' words). keep it for later or start new?',
+          resumeLabel: 'dismiss',
+          discardLabel: 'start new',
+          preview: draft.text,
+          onResume: function() {
+            return;
+          },
+          onDiscard: function() {
+            clearDraft();
+          }
+        });
+        return;
+      }
+      showRecoveryBanner({
+        message: 'you have an unfinished writing (' + words + ' words). keep it for later or discard?',
+        resumeLabel: 'dismiss',
+        discardLabel: 'discard',
+        preview: draft.text,
+        onResume: function() {
+          return;
+        },
+        onDiscard: function() {
+          clearDraft();
+        }
+      });
+    } catch (e) {
       clearDraft();
     }
-  })();
+  }
 
   function enterWritingMode(seedText) {
     if (!document.body.classList.contains('home-prewrite')) return;
@@ -504,11 +583,12 @@ document.body.classList.add('home-prewrite');
     textarea.style.display = 'block';
     var chat = document.getElementById('chat-container');
     if (chat) chat.style.display = 'none';
-    textarea.focus();
     if (seedText && seedText.trim()) {
       textarea.value = seedText;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    renderSessionMetrics(sessionPaused ? pausedElapsedSeconds : 0);
+    syncPauseButton();
+    textarea.focus();
   }
 
   if (landingTrigger) {
@@ -517,16 +597,194 @@ document.body.classList.add('home-prewrite');
     landingTrigger.addEventListener('touchstart', function() { enterWritingMode(landingTrigger.value); }, { once: true });
   }
 
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
+  function focusWritingAreaToEnd() {
+    if (!textarea || document.body.classList.contains('chat-active')) return;
+    try {
+      textarea.focus({ preventScroll: true });
+    } catch (e) {
+      textarea.focus();
+    }
+    var len = textarea.value.length;
+    try {
+      textarea.setSelectionRange(len, len);
+    } catch (e) {}
   }
 
-  function showCheckpoint(msg) {
+  if (pauseButton) {
+    var suppressPauseClick = false;
+
+    if (window.PointerEvent) {
+      pauseButton.addEventListener('pointerdown', function(e) {
+        if (e.pointerType === 'mouse') return;
+        e.preventDefault();
+        suppressPauseClick = true;
+        pauseCurrentSession();
+        focusWritingAreaToEnd();
+      });
+    } else {
+      pauseButton.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        suppressPauseClick = true;
+        pauseCurrentSession();
+        focusWritingAreaToEnd();
+      }, { passive: false });
+    }
+
+    pauseButton.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (suppressPauseClick) {
+        suppressPauseClick = false;
+        return;
+      }
+      pauseCurrentSession();
+      focusWritingAreaToEnd();
+    });
+
+    pauseButton.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      pauseCurrentSession();
+      focusWritingAreaToEnd();
+    });
+  }
+
+  checkSavedSessionRecovery();
+
+  function clearSessionComment() {
+    if (sessionCommentTimer) {
+      clearTimeout(sessionCommentTimer);
+      sessionCommentTimer = null;
+    }
+    sessionComments.classList.remove('visible');
+  }
+
+  function showSessionComment(msg, persist) {
+    if (sessionCommentTimer) {
+      clearTimeout(sessionCommentTimer);
+      sessionCommentTimer = null;
+    }
     sessionComments.textContent = msg;
     sessionComments.classList.add('visible');
-    setTimeout(function() { sessionComments.classList.remove('visible'); }, 4000);
+    if (!persist) {
+      sessionCommentTimer = setTimeout(function() {
+        sessionComments.classList.remove('visible');
+        sessionCommentTimer = null;
+      }, 4000);
+    }
+  }
+
+  function renderSessionMetrics(elapsed) {
+    var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    statWords.textContent = words + (words === 1 ? ' word' : ' words');
+
+    var mins = Math.floor(elapsed / 60);
+    var secs = Math.floor(elapsed % 60);
+    statTime.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+    statTime.className = elapsed >= TOTAL_SECONDS ? 'stat-time-done' : 'stat-dim';
+
+    var progressPct = Math.min((elapsed / TOTAL_SECONDS) * 100, 100);
+    sessionProgress.style.width = progressPct + '%';
+    if (progressPct >= 100) {
+      sessionProgress.classList.add('complete');
+      if (!document.getElementById('anky-accomplished-text')) {
+        var badge = document.createElement('span');
+        badge.id = 'anky-accomplished-text';
+        badge.className = 'anky-accomplished';
+        badge.textContent = 'anky accomplished';
+        sessionComments.parentNode.insertBefore(badge, sessionComments.parentNode.firstChild.nextSibling);
+      }
+    } else {
+      sessionProgress.classList.remove('complete');
+      var badge = document.getElementById('anky-accomplished-text');
+      if (badge) badge.remove();
+    }
+  }
+
+  function syncPauseButton() {
+    if (!pauseButton) return;
+    var shouldShow = document.body.classList.contains('writing-active') && (!pauseUsed || sessionPaused);
+    pauseButton.hidden = !shouldShow;
+    pauseButton.classList.toggle('is-paused', sessionPaused);
+    pauseButton.disabled = pauseBusy || sessionPaused || !sessionActive || !textarea.value.trim();
+  }
+
+  function restorePausedSession(saved) {
+    sessionId = saved.session_id;
+    sessionToken = saved.session_token || null;
+    pauseUsed = true;
+    sessionPaused = true;
+    sessionActive = false;
+    pausedElapsedSeconds = saved.elapsed || 0;
+    lastKeystrokeTime = Date.now();
+    enterWritingMode(saved.text || '');
+    textarea.classList.add('writing-engaged');
+    renderSessionMetrics(pausedElapsedSeconds);
+    lifeBar.style.width = '0%';
+    lifeBar.style.opacity = '0';
+    showSessionComment('paused — continue writing to resume', true);
+    saveDraftToStorage();
+    focusWritingAreaToEnd();
+  }
+
+  function checkSavedSessionRecovery() {
+    fetch('/api/session/paused')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!document.body.classList.contains('home-prewrite')) return;
+        if (data && data.paused_session) {
+          var saved = data.paused_session;
+          showRecoveryBanner({
+            message: 'you paused a writing (' + (saved.word_count || 0) + ' words). keep it for later or start new?',
+            resumeLabel: 'dismiss',
+            discardLabel: 'start new',
+            preview: saved.text || '',
+            onResume: function() {
+              return;
+            },
+            onDiscard: function() {
+              clearDraft();
+              sessionId = null;
+              sessionToken = null;
+              pauseUsed = false;
+              sessionPaused = false;
+              pausedElapsedSeconds = 0;
+              fetch('/api/session/discard', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: saved.session_id })
+              }).catch(function() {});
+              enterWritingMode('');
+            }
+          });
+          return;
+        }
+        promptForLocalDraft();
+      })
+      .catch(function() {
+        if (!document.body.classList.contains('home-prewrite')) return;
+        promptForLocalDraft();
+      });
+  }
+
+  function triggerMemoryPrefetch() {
+    if (!sessionActive || !textarea.value) return;
+    var headers = { 'Content-Type': 'application/json' };
+    var userToken = localStorage.getItem('anky_user_token');
+    if (userToken) headers['X-Anky-User-Token'] = userToken;
+    fetch('/api/prefetch-memory', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ text: textarea.value }),
+    }).catch(function() {});
+  }
+
+  function scheduleMemoryPrefetch(elapsedSeconds) {
+    if (prefetchTimer) {
+      clearTimeout(prefetchTimer);
+      prefetchTimer = null;
+    }
+    var remainingMs = Math.max(0, (5 * 60 - elapsedSeconds) * 1000);
+    prefetchTimer = setTimeout(triggerMemoryPrefetch, remainingMs);
   }
 
   function saveCheckpoint() {
@@ -542,32 +800,14 @@ document.body.classList.add('home-prewrite');
     }).then(function(r) { return r.json(); }).then(function(data) {
       if (data.session_token) sessionToken = data.session_token;
     }).catch(function() {});
-    showCheckpoint('checkpoint saved');
+    showSessionComment('checkpoint saved');
+    syncPauseButton();
   }
 
   function animate() {
     if (!sessionActive) return;
     var elapsed = (Date.now() - sessionStartTime) / 1000;
-
-    var mins = Math.floor(elapsed / 60);
-    var secs = Math.floor(elapsed % 60);
-    statTime.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
-    if (elapsed >= TOTAL_SECONDS) {
-      statTime.className = 'stat-time-done';
-    }
-
-    var progressPct = Math.min((elapsed / TOTAL_SECONDS) * 100, 100);
-    sessionProgress.style.width = progressPct + '%';
-    if (progressPct >= 100) {
-      sessionProgress.classList.add('complete');
-      if (!document.getElementById('anky-accomplished-text')) {
-        var badge = document.createElement('span');
-        badge.id = 'anky-accomplished-text';
-        badge.className = 'anky-accomplished';
-        badge.textContent = 'anky accomplished';
-        sessionComments.parentNode.insertBefore(badge, sessionComments.parentNode.firstChild.nextSibling);
-      }
-    }
+    renderSessionMetrics(elapsed);
 
     var sinceLastKey = Date.now() - lastKeystrokeTime;
     if (sinceLastKey < 3000) {
@@ -586,11 +826,93 @@ document.body.classList.add('home-prewrite');
     animFrame = requestAnimationFrame(animate);
   }
 
+  function pauseCurrentSession() {
+    if (!sessionActive || sessionPaused || pauseUsed || pauseBusy || !textarea.value.trim()) return;
+    pauseBusy = true;
+    syncPauseButton();
+
+    var elapsed = (Date.now() - sessionStartTime) / 1000;
+    var payload = { session_id: sessionId, text: textarea.value, elapsed: elapsed };
+    if (sessionToken) payload.session_token = sessionToken;
+
+    fetch('/api/session/pause', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        if (data.session_token) sessionToken = data.session_token;
+        if (animFrame) {
+          cancelAnimationFrame(animFrame);
+          animFrame = null;
+        }
+        if (checkpointTimer) {
+          clearInterval(checkpointTimer);
+          checkpointTimer = null;
+        }
+        if (prefetchTimer) {
+          clearTimeout(prefetchTimer);
+          prefetchTimer = null;
+        }
+        sessionActive = false;
+        sessionPaused = true;
+        pauseUsed = true;
+        pausedElapsedSeconds = elapsed;
+        lifeBar.style.width = '0%';
+        lifeBar.style.opacity = '0';
+        renderSessionMetrics(pausedElapsedSeconds);
+        showSessionComment('paused — continue writing to resume', true);
+        saveDraftToStorage();
+        focusWritingAreaToEnd();
+      })
+      .catch(function() {
+        showSessionComment('could not pause right now');
+      })
+      .finally(function() {
+        pauseBusy = false;
+        syncPauseButton();
+        focusWritingAreaToEnd();
+      });
+  }
+
+  function resumePausedSession() {
+    sessionPaused = false;
+    sessionActive = true;
+    sessionStartTime = Date.now() - pausedElapsedSeconds * 1000;
+    lastKeystrokeTime = Date.now();
+    if (window.ankyLive && window.ankyLive.setSessionActive) {
+      window.ankyLive.setSessionActive(true);
+    }
+    checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
+    scheduleMemoryPrefetch(pausedElapsedSeconds);
+    clearSessionComment();
+    syncPauseButton();
+    focusWritingAreaToEnd();
+    animate();
+
+    var payload = {
+      session_id: sessionId,
+      text: textarea.value,
+      elapsed: pausedElapsedSeconds
+    };
+    if (sessionToken) payload.session_token = sessionToken;
+    fetch('/api/session/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(function() {});
+  }
+
   function startSession() {
     sessionActive = true;
+    sessionPaused = false;
     sessionStartTime = Date.now();
     lastKeystrokeTime = Date.now();
     blockedCount = 0;
+    pausedElapsedSeconds = 0;
+    pauseUsed = false;
     sessionId = 'ses_' + Date.now().toString(36);
     sessionToken = null;
 
@@ -603,6 +925,8 @@ document.body.classList.add('home-prewrite');
 
     animate();
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
+    scheduleMemoryPrefetch(0);
+    syncPauseButton();
   }
 
   var currentAnkyId = null;
@@ -610,6 +934,7 @@ document.body.classList.add('home-prewrite');
   var currentWritingText = '';
   var lastStreamedTitle = '';
   var lastStreamedReflection = '';
+  var currentAnkyImageUrl = '';
 
   function isNearBottom() {
     var threshold = 80;
@@ -650,6 +975,274 @@ document.body.classList.add('home-prewrite');
       .replace(/\n/g, '<br>');
   }
 
+  function clearReflectionActions() {
+    var existing = document.getElementById('reflection-actions');
+    if (existing) existing.remove();
+  }
+
+  function renderReflectionActions() {
+    clearReflectionActions();
+    if (!lastStreamedReflection) return;
+    var ankyBubble = document.getElementById('anky-bubble');
+    if (!ankyBubble) return;
+
+    var actions = document.createElement('div');
+    actions.id = 'reflection-actions';
+    actions.className = 'reflection-actions';
+
+    var disabled = !currentAnkyImageUrl || !currentAnkyId;
+    actions.innerHTML =
+      '<button class="reflection-download-btn" ' + (disabled ? 'disabled' : '') + '>download</button>' +
+      (disabled ? '<span class="reflection-download-hint">waiting for anky image...</span>' : '');
+    ankyBubble.insertAdjacentElement('afterend', actions);
+
+    actions.querySelector('button').addEventListener('click', function() {
+      downloadReflectionCard();
+    });
+  }
+
+  function sameOriginAssetUrl(url) {
+    if (!url) return '';
+    try {
+      var parsed = new URL(url, window.location.origin);
+      if (parsed.origin === window.location.origin || parsed.hostname === 'anky.app') {
+        return parsed.pathname + parsed.search;
+      }
+      return parsed.href;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  function stripMarkdownForCard(text) {
+    if (!text) return '';
+    return text
+      .replace(/\r/g, '')
+      .replace(/^#{1,4}\s*/gm, '')
+      .replace(/^>\s*/gm, '')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/__(.+?)__/g, '$1')
+      .replace(/_(.+?)_/g, '$1')
+      .replace(/^- /gm, '• ')
+      .trim();
+  }
+
+  function wrapCanvasText(ctx, text, maxWidth) {
+    var words = text.split(/\s+/).filter(function(part) { return part.length > 0; });
+    if (!words.length) return [''];
+    var lines = [];
+    var line = words[0];
+    for (var i = 1; i < words.length; i++) {
+      var test = line + ' ' + words[i];
+      if (ctx.measureText(test).width <= maxWidth) {
+        line = test;
+      } else {
+        lines.push(line);
+        line = words[i];
+      }
+    }
+    lines.push(line);
+    return lines;
+  }
+
+  function fitParagraphBlock(ctx, paragraphs, maxWidth, maxHeight, family, startSize, minSize, weight) {
+    for (var size = startSize; size >= minSize; size -= 2) {
+      ctx.font = (weight || '400') + ' ' + size + 'px ' + family;
+      var lineHeight = Math.round(size * 1.34);
+      var paragraphGap = Math.round(size * 0.6);
+      var lines = [];
+      var height = 0;
+
+      for (var i = 0; i < paragraphs.length; i++) {
+        var paragraph = paragraphs[i];
+        var wrapped = wrapCanvasText(ctx, paragraph, maxWidth);
+        for (var j = 0; j < wrapped.length; j++) {
+          lines.push({ text: wrapped[j], gapAfter: false });
+          height += lineHeight;
+        }
+        if (i < paragraphs.length - 1) {
+          lines.push({ text: '', gapAfter: true });
+          height += paragraphGap;
+        }
+      }
+
+      if (height <= maxHeight) {
+        return { size: size, lineHeight: lineHeight, paragraphGap: paragraphGap, lines: lines, height: height };
+      }
+    }
+    return null;
+  }
+
+  function fitTitleBlock(ctx, title, maxWidth, maxHeight) {
+    var family = '"Righteous", sans-serif';
+    for (var size = 78; size >= 40; size -= 2) {
+      ctx.font = '400 ' + size + 'px ' + family;
+      var lines = wrapCanvasText(ctx, title || 'untitled', maxWidth);
+      if (lines.length > 4) continue;
+      var lineHeight = Math.round(size * 1.05);
+      if (lines.length * lineHeight <= maxHeight) {
+        return { size: size, lineHeight: lineHeight, lines: lines };
+      }
+    }
+    return { size: 40, lineHeight: 44, lines: wrapCanvasText(ctx, title || 'untitled', maxWidth) };
+  }
+
+  function loadCardImage(url) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function() { resolve(img); };
+      img.onerror = reject;
+      img.src = sameOriginAssetUrl(url);
+    });
+  }
+
+  async function buildReflectionCardBlob() {
+    await (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve());
+
+    var canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    var ctx = canvas.getContext('2d');
+
+    var gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#080910');
+    gradient.addColorStop(0.45, '#121223');
+    gradient.addColorStop(1, '#06070b');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(123, 47, 247, 0.16)';
+    ctx.beginPath();
+    ctx.arc(canvas.width - 180, 220, 240, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(196, 160, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(160, canvas.height - 180, 180, 0, Math.PI * 2);
+    ctx.fill();
+
+    var safeX = 72;
+    var topY = 84;
+    var imageSize = stripMarkdownForCard(lastStreamedReflection).length > 900 ? 260 : 320;
+    var headerHeight = imageSize;
+    var gap = 38;
+    var titleX = safeX + imageSize + gap;
+    var titleWidth = canvas.width - safeX - titleX;
+
+    var img = await loadCardImage(currentAnkyImageUrl);
+    ctx.save();
+    ctx.beginPath();
+    var radius = 38;
+    ctx.moveTo(safeX + radius, topY);
+    ctx.lineTo(safeX + imageSize - radius, topY);
+    ctx.quadraticCurveTo(safeX + imageSize, topY, safeX + imageSize, topY + radius);
+    ctx.lineTo(safeX + imageSize, topY + imageSize - radius);
+    ctx.quadraticCurveTo(safeX + imageSize, topY + imageSize, safeX + imageSize - radius, topY + imageSize);
+    ctx.lineTo(safeX + radius, topY + imageSize);
+    ctx.quadraticCurveTo(safeX, topY + imageSize, safeX, topY + imageSize - radius);
+    ctx.lineTo(safeX, topY + radius);
+    ctx.quadraticCurveTo(safeX, topY, safeX + radius, topY);
+    ctx.closePath();
+    ctx.clip();
+    var scale = Math.max(imageSize / img.width, imageSize / img.height);
+    var drawW = img.width * scale;
+    var drawH = img.height * scale;
+    var drawX = safeX + (imageSize - drawW) / 2;
+    var drawY = topY + (imageSize - drawH) / 2;
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(196, 160, 255, 0.18)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(safeX, topY, imageSize, imageSize);
+
+    var titleBlock = fitTitleBlock(ctx, lastStreamedTitle || 'untitled', titleWidth, headerHeight - 10);
+    ctx.fillStyle = '#f6ecff';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'right';
+    ctx.font = '400 ' + titleBlock.size + 'px "Righteous", sans-serif';
+    var titleStartY = topY + Math.max(0, (headerHeight - titleBlock.lines.length * titleBlock.lineHeight) / 2);
+    for (var t = 0; t < titleBlock.lines.length; t++) {
+      ctx.fillText(titleBlock.lines[t], canvas.width - safeX, titleStartY + t * titleBlock.lineHeight);
+    }
+
+    var reflectionTop = topY + headerHeight + 72;
+    var reflectionHeight = canvas.height - reflectionTop - 140;
+    var reflectionWidth = canvas.width - safeX * 2;
+    var reflectionParagraphs = stripMarkdownForCard(lastStreamedReflection)
+      .split(/\n{2,}/)
+      .map(function(part) { return part.replace(/\n/g, ' ').trim(); })
+      .filter(function(part) { return part.length > 0; });
+    if (!reflectionParagraphs.length) reflectionParagraphs = [''];
+
+    var reflectionBlock = fitParagraphBlock(
+      ctx,
+      reflectionParagraphs,
+      reflectionWidth,
+      reflectionHeight,
+      '"Georgia", "Times New Roman", serif',
+      40,
+      24,
+      '400'
+    );
+    if (!reflectionBlock) {
+      throw new Error('reflection card text did not fit');
+    }
+
+    ctx.fillStyle = '#ece9f7';
+    ctx.textAlign = 'left';
+    ctx.font = '400 ' + reflectionBlock.size + 'px "Georgia", "Times New Roman", serif';
+    var cursorY = reflectionTop;
+    for (var r = 0; r < reflectionBlock.lines.length; r++) {
+      var line = reflectionBlock.lines[r];
+      if (line.gapAfter) {
+        cursorY += reflectionBlock.paragraphGap;
+        continue;
+      }
+      ctx.fillText(line.text, safeX, cursorY);
+      cursorY += reflectionBlock.lineHeight;
+    }
+
+    ctx.fillStyle = '#a06fff';
+    ctx.font = '400 34px "Righteous", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('https://anky.app', canvas.width / 2, canvas.height - 78);
+
+    return new Promise(function(resolve, reject) {
+      canvas.toBlob(function(blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('could not build card image'));
+      }, 'image/jpeg', 0.94);
+    });
+  }
+
+  async function downloadReflectionCard() {
+    if (!currentAnkyId || !currentAnkyImageUrl || !window.ankyReflectionCard) return;
+    var btn = document.querySelector('#reflection-actions .reflection-download-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'rendering...';
+
+    try {
+      await window.ankyReflectionCard.download({
+        downloadUrl: '/api/anky-card/' + encodeURIComponent(currentAnkyId),
+        title: lastStreamedTitle || 'untitled',
+        filenameBase: lastStreamedTitle || 'anky-reflection'
+      });
+      btn.textContent = 'downloaded';
+    } catch (e) {
+      btn.textContent = 'try again';
+      btn.disabled = false;
+      return;
+    }
+
+    setTimeout(function() {
+      renderReflectionActions();
+    }, 1200);
+  }
+
   function streamAnkyReflection(ankyId) {
     var ankyBubble = document.getElementById('anky-bubble');
     var fullText = '';
@@ -663,13 +1256,14 @@ document.body.classList.add('home-prewrite');
         titleParsed = true;
         lastStreamedTitle = titleText;
       }
-      lastStreamedReflection = fullText;
       if (titleParsed) {
         var rest = fullText.substring(fullText.indexOf('\n') + 1).trim();
+        lastStreamedReflection = rest;
         ankyBubble.innerHTML =
           '<div class="anky-chat-title">' + escapeHtml(titleText) + '</div>' +
           '<span class="anky-response-text">' + renderMarkdown(rest) + '</span>';
       } else if (fullText) {
+        lastStreamedReflection = fullText.trim();
         ankyBubble.innerHTML =
           '<span class="anky-response-text">' + escapeHtml(fullText) + '</span>';
       }
@@ -693,6 +1287,7 @@ document.body.classList.add('home-prewrite');
     source.addEventListener('done', function() {
       source.close();
       renderCurrentText();
+      renderReflectionActions();
       pollAnkyImage(ankyId);
       // Show reply options right after reflection is done — don't wait for image
       setTimeout(function() { showReplyOptions(); }, 700);
@@ -700,7 +1295,12 @@ document.body.classList.add('home-prewrite');
     source.onerror = function() {
       source.close();
       if (!fullText) pollAnkyReflection(ankyId);
-      else { renderCurrentText(); pollAnkyImage(ankyId); setTimeout(function() { showReplyOptions(); }, 700); }
+      else {
+        renderCurrentText();
+        renderReflectionActions();
+        pollAnkyImage(ankyId);
+        setTimeout(function() { showReplyOptions(); }, 700);
+      }
     };
   }
 
@@ -722,16 +1322,20 @@ document.body.classList.add('home-prewrite');
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
             clearInterval(interval);
+            currentAnkyImageUrl = data.image_url;
             var shareHtml = makeInlineShareHtml(ankyId);
             if (imgEl) {
               imgEl.innerHTML = '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml;
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
+            renderReflectionActions();
             // Don't call showChatInput() here — reply options are shown right after streaming ends
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
+            currentAnkyImageUrl = '';
+            renderReflectionActions();
             // Don't call showChatInput() here — already handled
           }
           if (pollCount > 100) clearInterval(interval);
@@ -757,6 +1361,7 @@ document.body.classList.add('home-prewrite');
             if (data.title) {
               ankyBubble.innerHTML = '<div class="anky-chat-title">' + escapeHtml(data.title) + '</div>' + ankyBubble.innerHTML;
             }
+            renderReflectionActions();
             scrollChatToBottom();
             // Show reply options as soon as reflection is available
             setTimeout(function() { showReplyOptions(); }, 500);
@@ -764,15 +1369,19 @@ document.body.classList.add('home-prewrite');
           var imgEl = document.getElementById('anky-inline-image');
           if (data.status === 'complete' && data.image_url) {
             clearInterval(interval);
+            currentAnkyImageUrl = data.image_url;
             var shareHtml = makeInlineShareHtml(ankyId);
             if (imgEl) {
               imgEl.innerHTML = '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml;
             } else {
               addChatBubble('anky', '<img src="' + data.image_url + '" alt="your anky" class="anky-chat-img" />' + shareHtml);
             }
+            renderReflectionActions();
           } else if (data.status === 'failed') {
             clearInterval(interval);
             if (imgEl) imgEl.innerHTML = '<span class="error">image generation failed.</span>';
+            currentAnkyImageUrl = '';
+            renderReflectionActions();
           }
           if (pollCount > 100) clearInterval(interval);
         })
@@ -986,9 +1595,14 @@ document.body.classList.add('home-prewrite');
   function endSession() {
     if (!sessionActive) return;
     sessionActive = false;
-    if (animFrame) cancelAnimationFrame(animFrame);
+    sessionPaused = false;
+    if (animFrame) {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
     if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
-    sessionComments.classList.remove('visible');
+    if (prefetchTimer) { clearTimeout(prefetchTimer); prefetchTimer = null; }
+    clearSessionComment();
     lifeBar.style.width = '0%';
     lifeBar.style.opacity = '0';
 
@@ -1000,14 +1614,18 @@ document.body.classList.add('home-prewrite');
     currentWritingText = text;
     chatHistory = [];
     currentAnkyId = null;
+    currentAnkyImageUrl = '';
+    lastStreamedTitle = '';
+    lastStreamedReflection = '';
+    clearReflectionActions();
 
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
     var accomplishedText = document.getElementById('anky-accomplished-text');
     if (accomplishedText) accomplishedText.remove();
-
     document.body.classList.remove('writing-active');
     document.body.classList.add('chat-active');
+    syncPauseButton();
     textarea.style.display = 'none';
     chatContainer.style.display = 'flex';
     chatContainer.innerHTML = '';
@@ -1029,7 +1647,12 @@ document.body.classList.add('home-prewrite');
 
     var inquiryEl = document.getElementById('inquiry-prompt');
     var inquiryId = inquiryEl ? inquiryEl.getAttribute('data-inquiry-id') : null;
-    var writePayload = { text: text, duration: duration };
+    var writePayload = {
+      text: text,
+      duration: duration,
+      session_id: sessionId
+    };
+    if (sessionToken) writePayload.session_token = sessionToken;
     if (inquiryId) writePayload.inquiry_id = inquiryId;
 
     var writeHeaders = { 'Content-Type': 'application/json' };
@@ -1076,13 +1699,14 @@ document.body.classList.add('home-prewrite');
 
   textarea.addEventListener('input', function() {
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
-    if (!sessionActive) startSession();
+    if (sessionPaused) resumePausedSession();
+    else if (!sessionActive) startSession();
     else lastKeystrokeTime = Date.now();
-    var words = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-    statWords.textContent = words + (words === 1 ? ' word' : ' words');
+    renderSessionMetrics(sessionActive ? (Date.now() - sessionStartTime) / 1000 : pausedElapsedSeconds);
     // Debounced draft save to localStorage
     if (draftSaveTimer) clearTimeout(draftSaveTimer);
     draftSaveTimer = setTimeout(saveDraftToStorage, 2000);
+    syncPauseButton();
     if (window.ankyLive && window.ankyLive.isLive()) {
       var wordCount = textarea.value.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
       window.ankyLive.sendText(textarea.value, {

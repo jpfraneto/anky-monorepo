@@ -1,0 +1,1 @@
+we need to make the x webhook work. it is not capturing events. [after investigation: v1.1 Account Activity API was deprecated, switched to v2 Filtered Stream. disabled broken polling loop. added immediate "generating..." ack reply that gets deleted after image posts. fixed reply_with_media to use v2 API. whitelisted @jpfraneto to bypass 5min rate limit.]

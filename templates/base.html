@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20260303a">
+  <link rel="stylesheet" href="/static/style.css?v=20260306b">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -30,7 +30,7 @@
       <a class="anky-tv-btn" href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">BUY $ANKY</a>
     </div>
   </nav>
-  <div class="drawer-overlay" id="drawer-overlay"></div>
+<div class="drawer-overlay" id="drawer-overlay"></div>
   <div class="drawer" id="drawer">
     <div class="drawer-header">
       <a href="/" class="drawer-logo">anky</a>
@@ -42,15 +42,14 @@
       <a href="/video-gallery">videos</a>
       <a href="/writings">writings</a>
       <a href="/generate">generate</a>
+      <a href="/create-videos">create videos</a>
       <a href="/generate/video">video production</a>
       <a href="/video-dashboard">media dashboard</a>
       <a href="/prompt/create">prompts</a>
       <a href="/leaderboard">leaderboard</a>
-      <a href="/interview">live interview</a>
       <a href="/trainings">training runs</a>
       <a href="/feedback">feedback</a>
       <a href="/changelog">changelog</a>
-      <a href="/dca">dca bot</a>
       <a href="/ankycoin">$ANKY</a>
       <a href="/settings">settings</a>
       <a href="/help">help</a>
@@ -271,6 +270,333 @@
     });
 
     return { open: open, close: close, extractExcerpt: extractExcerpt };
+  })();
+
+  // --- Reflection Card ---
+  window.ankyReflectionCard = (function() {
+    function sameOriginAssetUrl(url) {
+      if (!url) return '';
+      try {
+        var parsed = new URL(url, window.location.origin);
+        if (parsed.origin === window.location.origin || parsed.hostname === 'anky.app') {
+          return parsed.pathname + parsed.search;
+        }
+        return parsed.href;
+      } catch (e) {
+        return url;
+      }
+    }
+
+    function stripMarkdownForCard(text) {
+      if (!text) return '';
+      return text
+        .replace(/\r/g, '')
+        .replace(/^#{1,4}\s*/gm, '')
+        .replace(/^>\s*/gm, '')
+        .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/__(.+?)__/g, '$1')
+        .replace(/_(.+?)_/g, '$1')
+        .replace(/^- /gm, '• ')
+        .trim();
+    }
+
+    function normalizeParagraphs(text) {
+      var cleaned = stripMarkdownForCard(text);
+      var parts = cleaned
+        .split(/\n{2,}/)
+        .map(function(part) {
+          return part.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        })
+        .filter(function(part) { return part.length > 0; });
+      return parts.length ? parts : [''];
+    }
+
+    function splitLongWord(ctx, word, maxWidth) {
+      if (!word) return [''];
+      var pieces = [];
+      var cursor = '';
+      for (var i = 0; i < word.length; i++) {
+        var next = cursor + word[i];
+        if (cursor && ctx.measureText(next).width > maxWidth) {
+          pieces.push(cursor);
+          cursor = word[i];
+        } else {
+          cursor = next;
+        }
+      }
+      if (cursor) pieces.push(cursor);
+      return pieces.length ? pieces : [word];
+    }
+
+    function wrapCanvasText(ctx, text, maxWidth) {
+      var words = String(text || '').split(/\s+/).filter(function(part) { return part.length > 0; });
+      if (!words.length) return [''];
+      var tokens = [];
+      for (var i = 0; i < words.length; i++) {
+        if (ctx.measureText(words[i]).width > maxWidth) {
+          var fragments = splitLongWord(ctx, words[i], maxWidth);
+          for (var j = 0; j < fragments.length; j++) tokens.push(fragments[j]);
+        } else {
+          tokens.push(words[i]);
+        }
+      }
+
+      var lines = [];
+      var line = tokens[0];
+      for (var k = 1; k < tokens.length; k++) {
+        var test = line + ' ' + tokens[k];
+        if (ctx.measureText(test).width <= maxWidth) {
+          line = test;
+        } else {
+          lines.push(line);
+          line = tokens[k];
+        }
+      }
+      lines.push(line);
+      return lines;
+    }
+
+    function fitParagraphBlock(ctx, paragraphs, maxWidth, maxHeight, family, startSize, minSize, weight) {
+      for (var size = startSize; size >= minSize; size -= 2) {
+        ctx.font = (weight || '400') + ' ' + size + 'px ' + family;
+        var lineHeight = Math.round(size * 1.24);
+        var paragraphGap = Math.max(10, Math.round(size * 0.34));
+        var lines = [];
+        var height = 0;
+
+        for (var i = 0; i < paragraphs.length; i++) {
+          var paragraph = paragraphs[i];
+          var wrapped = wrapCanvasText(ctx, paragraph, maxWidth);
+          for (var j = 0; j < wrapped.length; j++) {
+            lines.push({ text: wrapped[j], gapAfter: false });
+            height += lineHeight;
+          }
+          if (i < paragraphs.length - 1) {
+            lines.push({ text: '', gapAfter: true });
+            height += paragraphGap;
+          }
+        }
+
+        if (height <= maxHeight) {
+          return {
+            size: size,
+            lineHeight: lineHeight,
+            paragraphGap: paragraphGap,
+            lines: lines,
+            height: height
+          };
+        }
+      }
+      return null;
+    }
+
+    function fitTitleBlock(ctx, title, maxWidth, maxHeight, maxLines) {
+      var family = '"Righteous", sans-serif';
+      for (var size = 82; size >= 30; size -= 2) {
+        ctx.font = '400 ' + size + 'px ' + family;
+        var lines = wrapCanvasText(ctx, title || 'untitled', maxWidth);
+        if (lines.length > maxLines) continue;
+        var lineHeight = Math.round(size * 1.05);
+        if (lines.length * lineHeight <= maxHeight) {
+          return { size: size, lineHeight: lineHeight, lines: lines };
+        }
+      }
+
+      ctx.font = '400 30px ' + family;
+      return {
+        size: 30,
+        lineHeight: 32,
+        lines: wrapCanvasText(ctx, title || 'untitled', maxWidth).slice(0, maxLines)
+      };
+    }
+
+    function loadCardImage(url) {
+      return new Promise(function(resolve, reject) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() { resolve(img); };
+        img.onerror = reject;
+        img.src = sameOriginAssetUrl(url);
+      });
+    }
+
+    function findCardLayout(ctx, title, reflection) {
+      var candidates = [
+        { safeX: 72, topY: 84, imageSize: 320, gap: 38, reflectionGap: 72, footerPad: 148, textStart: 40, textMin: 22, maxTitleLines: 4, brandSize: 34 },
+        { safeX: 64, topY: 72, imageSize: 280, gap: 34, reflectionGap: 60, footerPad: 136, textStart: 38, textMin: 20, maxTitleLines: 4, brandSize: 32 },
+        { safeX: 56, topY: 64, imageSize: 240, gap: 30, reflectionGap: 52, footerPad: 126, textStart: 36, textMin: 18, maxTitleLines: 5, brandSize: 30 },
+        { safeX: 48, topY: 56, imageSize: 200, gap: 26, reflectionGap: 44, footerPad: 118, textStart: 34, textMin: 16, maxTitleLines: 5, brandSize: 28 },
+        { safeX: 40, topY: 48, imageSize: 168, gap: 22, reflectionGap: 36, footerPad: 108, textStart: 30, textMin: 12, maxTitleLines: 6, brandSize: 26 }
+      ];
+
+      for (var i = 0; i < candidates.length; i++) {
+        var config = candidates[i];
+        var titleX = config.safeX + config.imageSize + config.gap;
+        var titleWidth = 1080 - config.safeX - titleX;
+        var titleBlock = fitTitleBlock(ctx, title, titleWidth, config.imageSize, config.maxTitleLines);
+        var reflectionTop = config.topY + config.imageSize + config.reflectionGap;
+        var reflectionHeight = 1920 - reflectionTop - config.footerPad;
+        var reflectionWidth = 1080 - config.safeX * 2;
+        var reflectionBlock = fitParagraphBlock(
+          ctx,
+          normalizeParagraphs(reflection),
+          reflectionWidth,
+          reflectionHeight,
+          '"Georgia", "Times New Roman", serif',
+          config.textStart,
+          config.textMin,
+          '400'
+        );
+
+        if (titleBlock && reflectionBlock) {
+          return {
+            config: config,
+            titleBlock: titleBlock,
+            reflectionBlock: reflectionBlock
+          };
+        }
+      }
+
+      return null;
+    }
+
+    async function buildBlob(opts) {
+      await (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve());
+
+      var title = (opts && opts.title) || 'untitled';
+      var reflection = (opts && opts.reflection) || '';
+      var imageUrl = opts && opts.imageUrl;
+      if (!imageUrl) throw new Error('missing image');
+
+      var canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      var ctx = canvas.getContext('2d');
+
+      var gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, '#080910');
+      gradient.addColorStop(0.45, '#121223');
+      gradient.addColorStop(1, '#06070b');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = 'rgba(123, 47, 247, 0.16)';
+      ctx.beginPath();
+      ctx.arc(canvas.width - 180, 220, 240, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(196, 160, 255, 0.08)';
+      ctx.beginPath();
+      ctx.arc(160, canvas.height - 180, 180, 0, Math.PI * 2);
+      ctx.fill();
+
+      var layout = findCardLayout(ctx, title, reflection);
+      if (!layout) throw new Error('reflection card text did not fit');
+
+      var cfg = layout.config;
+      var img = await loadCardImage(imageUrl);
+      var safeX = cfg.safeX;
+      var topY = cfg.topY;
+      var imageSize = cfg.imageSize;
+      var titleX = safeX + imageSize + cfg.gap;
+      var titleWidth = canvas.width - safeX - titleX;
+
+      ctx.save();
+      ctx.beginPath();
+      var radius = 38;
+      ctx.moveTo(safeX + radius, topY);
+      ctx.lineTo(safeX + imageSize - radius, topY);
+      ctx.quadraticCurveTo(safeX + imageSize, topY, safeX + imageSize, topY + radius);
+      ctx.lineTo(safeX + imageSize, topY + imageSize - radius);
+      ctx.quadraticCurveTo(safeX + imageSize, topY + imageSize, safeX + imageSize - radius, topY + imageSize);
+      ctx.lineTo(safeX + radius, topY + imageSize);
+      ctx.quadraticCurveTo(safeX, topY + imageSize, safeX, topY + imageSize - radius);
+      ctx.lineTo(safeX, topY + radius);
+      ctx.quadraticCurveTo(safeX, topY, safeX + radius, topY);
+      ctx.closePath();
+      ctx.clip();
+      var scale = Math.max(imageSize / img.width, imageSize / img.height);
+      var drawW = img.width * scale;
+      var drawH = img.height * scale;
+      var drawX = safeX + (imageSize - drawW) / 2;
+      var drawY = topY + (imageSize - drawH) / 2;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      ctx.restore();
+
+      ctx.strokeStyle = 'rgba(196, 160, 255, 0.18)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(safeX, topY, imageSize, imageSize);
+
+      ctx.fillStyle = '#f6ecff';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'right';
+      ctx.font = '400 ' + layout.titleBlock.size + 'px "Righteous", sans-serif';
+      var titleStartY = topY + Math.max(0, (imageSize - layout.titleBlock.lines.length * layout.titleBlock.lineHeight) / 2);
+      for (var t = 0; t < layout.titleBlock.lines.length; t++) {
+        ctx.fillText(layout.titleBlock.lines[t], canvas.width - safeX, titleStartY + t * layout.titleBlock.lineHeight, titleWidth);
+      }
+
+      var reflectionTop = topY + imageSize + cfg.reflectionGap;
+      ctx.fillStyle = '#ece9f7';
+      ctx.textAlign = 'left';
+      ctx.font = '400 ' + layout.reflectionBlock.size + 'px "Georgia", "Times New Roman", serif';
+      var cursorY = reflectionTop;
+      for (var r = 0; r < layout.reflectionBlock.lines.length; r++) {
+        var line = layout.reflectionBlock.lines[r];
+        if (line.gapAfter) {
+          cursorY += layout.reflectionBlock.paragraphGap;
+          continue;
+        }
+        ctx.fillText(line.text, safeX, cursorY);
+        cursorY += layout.reflectionBlock.lineHeight;
+      }
+
+      ctx.fillStyle = '#a06fff';
+      ctx.font = '400 ' + cfg.brandSize + 'px "Righteous", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('https://anky.app', canvas.width / 2, canvas.height - 78);
+
+      return new Promise(function(resolve, reject) {
+        canvas.toBlob(function(blob) {
+          if (blob) resolve(blob);
+          else reject(new Error('could not build card image'));
+        }, 'image/jpeg', 0.94);
+      });
+    }
+
+    async function download(opts) {
+      var blob;
+      if (opts && opts.downloadUrl) {
+        var response = await fetch(opts.downloadUrl, { credentials: 'same-origin' });
+        if (!response.ok) {
+          throw new Error('could not fetch reflection card image');
+        }
+        blob = await response.blob();
+      } else {
+        blob = await buildBlob(opts || {});
+      }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var slug = String((opts && (opts.filenameBase || opts.title)) || 'anky-reflection')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64) || 'anky-reflection';
+      var extension = blob.type === 'image/png' ? '.png' : '.jpg';
+      a.href = url;
+      a.download = slug + extension;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    return {
+      buildBlob: buildBlob,
+      download: download,
+      stripMarkdown: stripMarkdownForCard
+    };
   })();
 
   // Navbar keyboard navigation

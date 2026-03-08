@@ -148,6 +148,12 @@ pub struct AppState {
     pub frame_buffer: FrameBuffer,
     pub write_limiter: RateLimiter,
     pub waiting_room: Arc<RwLock<VecDeque<QueueEntry>>>,
+    /// Rate limiter for X webhook image generation (1 per user per 5 min)
+    pub image_limiter: RateLimiter,
+    /// Broadcast channel for raw X webhook payloads (for /webhooks/logs viewer)
+    pub webhook_log_tx: broadcast::Sender<String>,
+    /// Pre-warmed memory context cache: user_id -> formatted context string
+    pub memory_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl AppState {

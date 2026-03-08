@@ -1,4 +1,5 @@
 mod config;
+mod create_videos;
 mod db;
 mod error;
 mod memory;
@@ -48,6 +49,9 @@ async fn main() -> anyhow::Result<()> {
     // SSE broadcast channel
     let (log_tx, _) = broadcast::channel::<sse::logger::LogEntry>(1000);
 
+    // Webhook event log channel
+    let (webhook_log_tx, _) = broadcast::channel::<String>(200);
+
     // Live streaming state
     let (live_status_tx, _) = broadcast::channel::<state::LiveStatusEvent>(100);
     let (live_text_tx, _) = broadcast::channel::<state::LiveTextEvent>(100);
@@ -68,6 +72,9 @@ async fn main() -> anyhow::Result<()> {
         frame_buffer,
         write_limiter: state::RateLimiter::new(5, std::time::Duration::from_secs(600)),
         waiting_room: Arc::new(RwLock::new(VecDeque::new())),
+        image_limiter: state::RateLimiter::new(1, std::time::Duration::from_secs(300)),
+        webhook_log_tx,
+        memory_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
 
     // Init health tracking
@@ -214,26 +221,64 @@ async fn main() -> anyhow::Result<()> {
     });
     tracing::info!("Checkpoint recovery watchdog spawned (every 5 minutes)");
 
-    // X Bot mention polling (every 2 minutes, skip if not configured)
-    let bot_state = state.clone();
+    // X v2 Filtered Stream — real-time mention detection, reconnects automatically
+    let stream_state = state.clone();
     tokio::spawn(async move {
-        // Wait 30s before starting to avoid startup noise
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let bearer = stream_state.config.twitter_bot_bearer_token.clone();
+        if bearer.is_empty() {
+            tracing::warn!("X bearer token not configured, skipping filtered stream");
+            return;
+        }
 
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
-
-            let cfg = &bot_state.config;
-            if cfg.twitter_bot_bearer_token.is_empty() || cfg.twitter_bot_user_id.is_empty() {
-                continue; // Bot not configured, skip
+        // Ensure the @ankydotapp mention filter rule exists
+        match services::x_bot::ensure_mention_rule(&bearer).await {
+            Ok(_) => tracing::info!("X stream rule ready"),
+            Err(e) => {
+                tracing::error!("Failed to set up stream rule: {}", e);
+                stream_state.emit_log("ERROR", "x_stream", &format!("Rule setup failed: {}", e));
+                return;
             }
+        }
 
-            if let Err(e) = run_bot_cycle(&bot_state).await {
-                tracing::error!("Bot cycle error: {}", e);
-                bot_state.emit_log("ERROR", "x_bot", &format!("Bot cycle error: {}", e));
+        // Connect and reconnect with exponential backoff
+        let mut backoff = 5u64;
+        loop {
+            let start = std::time::Instant::now();
+            match services::x_bot::run_filtered_stream(&bearer, &stream_state).await {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("Filtered stream error: {}", e);
+                    stream_state.emit_log("ERROR", "x_stream", &format!("Disconnected: {}", e));
+                }
+            }
+            // Reset backoff if connection was stable for >60s
+            if start.elapsed().as_secs() > 60 {
+                backoff = 5;
+            }
+            tracing::info!("Filtered stream reconnecting in {}s", backoff);
+            tokio::time::sleep(std::time::Duration::from_secs(backoff)).await;
+            backoff = (backoff * 2).min(300);
+        }
+    });
+
+    // Guidance queue worker — processes free-tier meditation + breathwork jobs via Ollama
+    let queue_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            match pipeline::guidance_gen::process_free_queue(&queue_state).await {
+                Ok(true) => {
+                    // Processed one job — check again soon for backlog
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+                Ok(false) => {} // nothing pending
+                Err(e) => {
+                    tracing::error!("Guidance queue error: {}", e);
+                }
             }
         }
     });
+    tracing::info!("Guidance queue worker spawned (checks every 60s)");
 
     // Build router
     let app = routes::build_router(state);
@@ -243,217 +288,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Listening on 0.0.0.0:{}", port);
 
     axum::serve(listener, app).await?;
-
-    Ok(())
-}
-
-async fn run_bot_cycle(state: &state::AppState) -> anyhow::Result<()> {
-    let cfg = &state.config;
-
-    // Get since_id from DB
-    let since_id = {
-        let db = state.db.lock().await;
-        db::queries::get_latest_interaction_tweet_id(&db)?
-    };
-
-    let result = services::x_bot::fetch_mentions(
-        &cfg.twitter_bot_bearer_token,
-        &cfg.twitter_bot_user_id,
-        since_id.as_deref(),
-    )
-    .await?;
-
-    if result.mentions.is_empty() {
-        return Ok(());
-    }
-
-    state.emit_log(
-        "INFO",
-        "x_bot",
-        &format!("Processing {} new mentions", result.mentions.len()),
-    );
-
-    for mention in &result.mentions {
-        // Check if already processed
-        {
-            let db = state.db.lock().await;
-            if db::queries::interaction_exists(&db, &mention.id)? {
-                continue;
-            }
-        }
-
-        let author_id = mention.author_id.as_deref().unwrap_or("");
-        let username = result
-            .users
-            .iter()
-            .find(|u| u.id == author_id)
-            .map(|u| u.username.as_str())
-            .unwrap_or("unknown");
-
-        // Rate limit: max 5/day per user
-        {
-            let db = state.db.lock().await;
-            let count = db::queries::count_user_interactions_today(&db, author_id)?;
-            if count >= 5 {
-                let interaction_id = uuid::Uuid::new_v4().to_string();
-                db::queries::insert_x_interaction(
-                    &db,
-                    &interaction_id,
-                    &mention.id,
-                    Some(author_id),
-                    Some(username),
-                    Some(&mention.text),
-                    "rate_limited",
-                )?;
-                continue;
-            }
-        }
-
-        let interaction_id = uuid::Uuid::new_v4().to_string();
-        {
-            let db = state.db.lock().await;
-            db::queries::insert_x_interaction(
-                &db,
-                &interaction_id,
-                &mention.id,
-                Some(author_id),
-                Some(username),
-                Some(&mention.text),
-                "pending",
-            )?;
-        }
-
-        // Classify mention locally
-        let classification =
-            match services::ollama::classify_mention(&cfg.ollama_base_url, &cfg.ollama_model, &mention.text).await {
-                Ok(c) => c,
-                Err(e) => {
-                    state.emit_log("ERROR", "x_bot", &format!("Classification failed: {}", e));
-                    let db = state.db.lock().await;
-                    let _ = db::queries::update_x_interaction_status(
-                        &db,
-                        &interaction_id,
-                        "failed",
-                        None,
-                        None,
-                        None,
-                    );
-                    continue;
-                }
-            };
-
-        if !classification.is_genuine {
-            let db = state.db.lock().await;
-            let _ = db::queries::update_x_interaction_status(
-                &db,
-                &interaction_id,
-                "classified_spam",
-                Some("spam"),
-                None,
-                None,
-            );
-            continue;
-        }
-
-        let prompt_text = classification
-            .prompt_text
-            .unwrap_or_else(|| mention.text.clone());
-        state.emit_log(
-            "INFO",
-            "x_bot",
-            &format!(
-                "Genuine mention from @{}: {}",
-                username,
-                &prompt_text[..prompt_text.len().min(60)]
-            ),
-        );
-
-        // Create prompt
-        let prompt_id = uuid::Uuid::new_v4().to_string();
-        {
-            let db = state.db.lock().await;
-            db::queries::ensure_user(&db, author_id)?;
-            db::queries::insert_prompt(
-                &db,
-                &prompt_id,
-                author_id,
-                &prompt_text,
-                None,
-                Some("Anky"),
-            )?;
-            db::queries::update_prompt_status(&db, &prompt_id, "generating")?;
-            db::queries::update_x_interaction_status(
-                &db,
-                &interaction_id,
-                "prompt_created",
-                Some("genuine"),
-                Some(&prompt_id),
-                None,
-            )?;
-        }
-
-        // Generate prompt image
-        match pipeline::prompt_gen::generate_prompt_image(state, &prompt_id, &prompt_text).await {
-            Ok(image_path) => {
-                let db = state.db.lock().await;
-                let _ = db::queries::update_prompt_image(&db, &prompt_id, &image_path);
-            }
-            Err(e) => {
-                state.emit_log("ERROR", "x_bot", &format!("Image gen failed: {}", e));
-                let db = state.db.lock().await;
-                let _ = db::queries::update_prompt_status(&db, &prompt_id, "failed");
-            }
-        }
-
-        // Reply with link
-        let reply_text = format!(
-            "here's your prompt, @{}. write for 8 minutes without stopping.\n\nhttps://anky.app/prompt/{}",
-            username, prompt_id
-        );
-
-        match services::x_bot::reply_to_tweet(
-            &cfg.twitter_bot_api_key,
-            &cfg.twitter_bot_api_secret,
-            &cfg.twitter_bot_access_token,
-            &cfg.twitter_bot_access_secret,
-            &mention.id,
-            &reply_text,
-        )
-        .await
-        {
-            Ok(reply_id) => {
-                let db = state.db.lock().await;
-                let _ = db::queries::update_x_interaction_status(
-                    &db,
-                    &interaction_id,
-                    "replied",
-                    Some("genuine"),
-                    Some(&prompt_id),
-                    Some(&reply_id),
-                );
-                state.emit_log(
-                    "INFO",
-                    "x_bot",
-                    &format!("Replied to @{}: {}", username, reply_id),
-                );
-            }
-            Err(e) => {
-                state.emit_log("ERROR", "x_bot", &format!("Reply failed: {}", e));
-                let db = state.db.lock().await;
-                let _ = db::queries::update_x_interaction_status(
-                    &db,
-                    &interaction_id,
-                    "failed",
-                    Some("genuine"),
-                    Some(&prompt_id),
-                    None,
-                );
-            }
-        }
-
-        // Small delay between processing mentions
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    }
 
     Ok(())
 }

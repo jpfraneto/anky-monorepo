@@ -15,7 +15,9 @@ pub mod payment_helper;
 pub mod poiesis;
 pub mod prompt;
 pub mod settings;
+pub mod swift;
 pub mod training;
+pub mod webhook_x;
 pub mod writing;
 
 use crate::middleware;
@@ -88,6 +90,13 @@ pub fn build_router(state: AppState) -> Router {
         ])
         .allow_credentials(false);
 
+    // Mobile CORS — allow any origin for the /swift/* routes (native apps + testing)
+    let mobile_cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_credentials(false);
+
     // Paid generate routes (optional API key — payment handled in handler)
     let generate_routes = Router::new()
         .route(
@@ -130,13 +139,125 @@ pub fn build_router(state: AppState) -> Router {
             middleware::api_auth::optional_api_key,
         ));
 
+    // Swift / Mobile API routes under /swift/v1/
+    let swift_routes = Router::new()
+        // Auth
+        .route(
+            "/swift/v1/auth/privy",
+            axum::routing::post(swift::auth_privy),
+        )
+        .route(
+            "/swift/v1/auth/session",
+            axum::routing::delete(swift::auth_logout),
+        )
+        // Me
+        .route("/swift/v1/me", axum::routing::get(swift::get_me))
+        // Writings
+        .route(
+            "/swift/v1/writings",
+            axum::routing::get(swift::list_writings),
+        )
+        .route("/swift/v1/write", axum::routing::post(swift::submit_writing))
+        // Sadhana
+        .route(
+            "/swift/v1/sadhana",
+            axum::routing::get(swift::list_sadhana).post(swift::create_sadhana),
+        )
+        .route(
+            "/swift/v1/sadhana/{id}",
+            axum::routing::get(swift::get_sadhana),
+        )
+        .route(
+            "/swift/v1/sadhana/{id}/checkin",
+            axum::routing::post(swift::sadhana_checkin),
+        )
+        // Meditation
+        .route(
+            "/swift/v1/meditation/start",
+            axum::routing::post(swift::meditation_start),
+        )
+        .route(
+            "/swift/v1/meditation/complete",
+            axum::routing::post(swift::meditation_complete),
+        )
+        .route(
+            "/swift/v1/meditation/history",
+            axum::routing::get(swift::meditation_history),
+        )
+        // Breathwork
+        .route(
+            "/swift/v1/breathwork/session",
+            axum::routing::get(swift::get_breathwork_session),
+        )
+        .route(
+            "/swift/v1/breathwork/ready",
+            axum::routing::get(swift::breathwork_ready),
+        )
+        .route(
+            "/swift/v1/breathwork/complete",
+            axum::routing::post(swift::breathwork_complete),
+        )
+        .route(
+            "/swift/v1/breathwork/history",
+            axum::routing::get(swift::breathwork_history),
+        )
+        // Personalized meditation ready
+        .route(
+            "/swift/v1/meditation/ready",
+            axum::routing::get(swift::meditation_ready),
+        )
+        // Facilitators
+        .route(
+            "/swift/v1/facilitators",
+            axum::routing::get(swift::list_facilitators),
+        )
+        .route(
+            "/swift/v1/facilitators/apply",
+            axum::routing::post(swift::facilitator_apply),
+        )
+        .route(
+            "/swift/v1/facilitators/recommended",
+            axum::routing::get(swift::recommended_facilitators),
+        )
+        .route(
+            "/swift/v1/facilitators/{id}",
+            axum::routing::get(swift::get_facilitator),
+        )
+        .route(
+            "/swift/v1/facilitators/{id}/review",
+            axum::routing::post(swift::review_facilitator),
+        )
+        .route(
+            "/swift/v1/facilitators/{id}/book",
+            axum::routing::post(swift::book_facilitator),
+        )
+        // Admin
+        .route(
+            "/swift/v1/admin/premium",
+            axum::routing::post(swift::set_premium),
+        )
+        .route(
+            "/swift/v1/admin/facilitator",
+            axum::routing::post(swift::admin_facilitator),
+        )
+        .layer(mobile_cors);
+
     Router::new()
         // Pages
         .route("/", axum::routing::get(pages::home))
         .route("/gallery", axum::routing::get(pages::gallery))
-        .route("/gallery/dataset-round-two", axum::routing::get(pages::dataset_round_two))
-        .route("/gallery/dataset-round-two/og-image", axum::routing::get(pages::dataset_og_image))
-        .route("/gallery/dataset-round-two/eliminate", axum::routing::post(pages::dataset_eliminate))
+        .route(
+            "/gallery/dataset-round-two",
+            axum::routing::get(pages::dataset_round_two),
+        )
+        .route(
+            "/gallery/dataset-round-two/og-image",
+            axum::routing::get(pages::dataset_og_image),
+        )
+        .route(
+            "/gallery/dataset-round-two/eliminate",
+            axum::routing::post(pages::dataset_eliminate),
+        )
         .route("/video-gallery", axum::routing::get(pages::videos_gallery))
         .route("/feed", axum::routing::get(pages::feed_page))
         .route("/help", axum::routing::get(pages::help))
@@ -147,6 +268,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/leaderboard", axum::routing::get(pages::leaderboard))
         .route("/pitch", axum::routing::get(pages::pitch))
         .route("/generate", axum::routing::get(pages::generate_page))
+        .route("/create-videos", axum::routing::get(pages::create_videos_page))
         .route(
             "/generate/video",
             axum::routing::get(pages::video_dashboard),
@@ -242,13 +364,40 @@ pub fn build_router(state: AppState) -> Router {
             "/api/stream-reflection/{id}",
             axum::routing::get(api::stream_reflection),
         )
+        .route(
+            "/api/anky-card/{id}",
+            axum::routing::get(api::anky_reflection_card_image),
+        )
         .route("/api/checkpoint", axum::routing::post(api::save_checkpoint))
+        .route(
+            "/api/session/paused",
+            axum::routing::get(api::get_paused_writing_session),
+        )
+        .route(
+            "/api/session/pause",
+            axum::routing::post(api::pause_writing_session),
+        )
+        .route(
+            "/api/session/resume",
+            axum::routing::post(api::resume_writing_session),
+        )
+        .route(
+            "/api/session/discard",
+            axum::routing::post(api::discard_paused_writing_session),
+        )
+        .route(
+            "/api/prefetch-memory",
+            axum::routing::post(api::prefetch_memory),
+        )
         .route("/api/cost-estimate", axum::routing::get(api::cost_estimate))
         .route("/api/treasury", axum::routing::get(api::treasury_address))
         .route("/api/feedback", axum::routing::post(api::submit_feedback))
         .route("/api/chat", axum::routing::post(api::chat_with_anky))
         .route("/api/chat-quick", axum::routing::post(api::chat_quick))
-        .route("/api/suggest-replies", axum::routing::post(api::suggest_replies))
+        .route(
+            "/api/suggest-replies",
+            axum::routing::post(api::suggest_replies),
+        )
         .route("/api/retry-failed", axum::routing::post(api::retry_failed))
         .route(
             "/api/v1/generate/video-frame",
@@ -257,6 +406,18 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/v1/generate/video",
             axum::routing::post(api::generate_video),
+        )
+        .route(
+            "/api/v1/create-videos/{id}",
+            axum::routing::get(api::get_create_video_card),
+        )
+        .route(
+            "/api/v1/create-videos/image",
+            axum::routing::post(api::generate_create_video_image),
+        )
+        .route(
+            "/api/v1/create-videos/video",
+            axum::routing::post(api::generate_create_video_clip),
         )
         .route(
             "/api/v1/video/{id}",
@@ -303,33 +464,93 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/ankys/today", axum::routing::get(live::todays_ankys))
         // Interview
         .route("/interview", axum::routing::get(interview::interview_page))
-        .route("/ws/interview", axum::routing::get(interview::ws_interview_proxy))
-        .route("/api/interview/start", axum::routing::post(interview::interview_start))
-        .route("/api/interview/message", axum::routing::post(interview::interview_message))
-        .route("/api/interview/end", axum::routing::post(interview::interview_end))
-        .route("/api/interview/history/{user_id}", axum::routing::get(interview::interview_history))
-        .route("/api/interview/user-context/{user_id}", axum::routing::get(interview::interview_user_context))
+        .route(
+            "/ws/interview",
+            axum::routing::get(interview::ws_interview_proxy),
+        )
+        .route(
+            "/api/interview/start",
+            axum::routing::post(interview::interview_start),
+        )
+        .route(
+            "/api/interview/message",
+            axum::routing::post(interview::interview_message),
+        )
+        .route(
+            "/api/interview/end",
+            axum::routing::post(interview::interview_end),
+        )
+        .route(
+            "/api/interview/history/{user_id}",
+            axum::routing::get(interview::interview_history),
+        )
+        .route(
+            "/api/interview/user-context/{user_id}",
+            axum::routing::get(interview::interview_user_context),
+        )
         // Stream overlay
         .route("/stream/overlay", axum::routing::get(pages::stream_overlay))
         // Generations review + live dashboard
-        .route("/generations", axum::routing::get(generations::list_batches))
-        .route("/generations/{id}", axum::routing::get(generations::review_batch))
-        .route("/generations/{id}/status", axum::routing::post(generations::save_status))
-        .route("/generations/{id}/dashboard", axum::routing::get(generations::generation_dashboard))
-        .route("/generations/{id}/progress", axum::routing::get(generations::generation_progress))
-        .route("/generations/{id}/tinder", axum::routing::get(generations::review_images))
-        .route("/generations/{id}/review", axum::routing::post(generations::save_review))
+        .route(
+            "/generations",
+            axum::routing::get(generations::list_batches),
+        )
+        .route(
+            "/generations/{id}",
+            axum::routing::get(generations::review_batch),
+        )
+        .route(
+            "/generations/{id}/status",
+            axum::routing::post(generations::save_status),
+        )
+        .route(
+            "/generations/{id}/dashboard",
+            axum::routing::get(generations::generation_dashboard),
+        )
+        .route(
+            "/generations/{id}/progress",
+            axum::routing::get(generations::generation_progress),
+        )
+        .route(
+            "/generations/{id}/tinder",
+            axum::routing::get(generations::review_images),
+        )
+        .route(
+            "/generations/{id}/review",
+            axum::routing::post(generations::save_review),
+        )
         // Training curation
         .route("/training", axum::routing::get(training::training_page))
         .route("/trainings", axum::routing::get(training::trainings_list))
-        .route("/trainings/general-instructions", axum::routing::get(training::general_instructions))
-        .route("/trainings/{date}", axum::routing::get(training::training_run_detail))
-        .route("/api/training/next", axum::routing::get(training::next_image))
+        .route(
+            "/trainings/general-instructions",
+            axum::routing::get(training::general_instructions),
+        )
+        .route(
+            "/trainings/{date}",
+            axum::routing::get(training::training_run_detail),
+        )
+        .route(
+            "/api/training/next",
+            axum::routing::get(training::next_image),
+        )
         .route("/api/training/vote", axum::routing::post(training::vote))
-        .route("/api/training/heartbeat", axum::routing::post(training::training_heartbeat))
-        .route("/api/training/state", axum::routing::get(training::training_state))
-        .route("/training/live", axum::routing::get(training::training_live))
-        .route("/training/live/samples/{filename}", axum::routing::get(training::training_sample_image))
+        .route(
+            "/api/training/heartbeat",
+            axum::routing::post(training::training_heartbeat),
+        )
+        .route(
+            "/api/training/state",
+            axum::routing::get(training::training_state),
+        )
+        .route(
+            "/training/live",
+            axum::routing::get(training::training_live),
+        )
+        .route(
+            "/training/live/samples/{filename}",
+            axum::routing::get(training::training_sample_image),
+        )
         // Meditation
         .route(
             "/api/v1/meditate/start",
@@ -376,14 +597,25 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(farcaster_manifest),
         )
         // Agent manifest (8004 registry / OASF)
-        .route(
-            "/.well-known/agent",
-            axum::routing::get(agent_manifest),
-        )
+        .route("/.well-known/agent", axum::routing::get(agent_manifest))
         // Service Worker (served from root for scope)
         .route("/sw.js", axum::routing::get(service_worker))
+        // X Account Activity webhook (CRC + events)
+        .route("/webhooks/x", axum::routing::get(webhook_x::webhook_crc))
+        .route("/webhooks/x", axum::routing::post(webhook_x::webhook_post))
+        // X Webhook live log viewer
+        .route(
+            "/webhooks/logs",
+            axum::routing::get(webhook_x::webhook_logs_page),
+        )
+        .route(
+            "/webhooks/logs/stream",
+            axum::routing::get(webhook_x::webhook_logs_stream),
+        )
         // Health
         .route("/health", axum::routing::get(health::health_check))
+        // Swift / Mobile API
+        .merge(swift_routes)
         // Extension API (authed)
         .merge(extension_routes)
         // Paid generate API (optional auth)
@@ -404,7 +636,10 @@ pub fn build_router(state: AppState) -> Router {
         .nest_service("/videos", ServeDir::new("videos"))
         .nest_service("/data/videos", ServeDir::new("data/videos"))
         .nest_service("/gen-images", ServeDir::new("data/generations"))
-        .nest_service("/data/training-images", ServeDir::new("data/training-images"))
+        .nest_service(
+            "/data/training-images",
+            ServeDir::new("data/training-images"),
+        )
         .nest_service("/data/training-runs", ServeDir::new("data/training_runs"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())

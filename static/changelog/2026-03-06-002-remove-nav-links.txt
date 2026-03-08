@@ -1,0 +1,1 @@
+also delete the live interview element from the left navigation bar (drawer) and also the dca bot one

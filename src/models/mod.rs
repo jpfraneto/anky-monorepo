@@ -5,6 +5,10 @@ pub struct WriteRequest {
     pub text: String,
     pub duration: f64,
     #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub session_token: Option<String>,
+    #[serde(default)]
     pub keystroke_deltas: Option<Vec<f64>>,
     #[serde(default)]
     pub inquiry_id: Option<String>,

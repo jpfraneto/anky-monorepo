@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine as _;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -648,8 +649,16 @@ pub async fn generate_suggested_replies(
 
     let trimmed = result.text.trim();
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        let r1 = v.get("reply1").and_then(|r| r.as_str()).unwrap_or("that really resonates with me").to_string();
-        let r2 = v.get("reply2").and_then(|r| r.as_str()).unwrap_or("tell me more about that pattern").to_string();
+        let r1 = v
+            .get("reply1")
+            .and_then(|r| r.as_str())
+            .unwrap_or("that really resonates with me")
+            .to_string();
+        let r2 = v
+            .get("reply2")
+            .and_then(|r| r.as_str())
+            .unwrap_or("tell me more about that pattern")
+            .to_string();
         return Ok((r1, r2));
     }
 
@@ -671,6 +680,75 @@ pub fn parse_title_reflection(text: &str) -> (String, String) {
         .replace(['\'', '"'], "");
     let reflection = lines.next().unwrap_or("").trim().to_string();
     (title, reflection)
+}
+
+const X_MENTION_FLUX_SYSTEM: &str = r#"You are generating a Flux image generation prompt for Anky. Anky is a blue-skinned mystical creature with purple swirling hair, golden/amber eyes, golden decorative accents and jewelry, large expressive ears, and an ancient-yet-childlike quality. Anky exists in richly colored, spiritually charged environments (deep blues, purples, oranges, golds). The aesthetic is warm, alive, slightly psychedelic — painterly, not sterile.
+
+The user tagged @ankydotapp in a reply to another tweet. You will receive their specific request plus the context of the tweet they replied to — text, and optionally its image.
+
+YOUR TASK: Generate a single Flux image prompt, 2-3 sentences, that weaves together what the user asked for AND the context from the parent tweet/image into one coherent scene featuring Anky.
+
+OUTPUT: Just the image prompt. Nothing else."#;
+
+/// Generate a contextual Flux prompt for an X mention, optionally incorporating
+/// the parent tweet's text and image. Used only for @jpfraneto replies.
+pub async fn generate_x_mention_flux_prompt(
+    api_key: &str,
+    mention_text: &str,
+    parent_text: Option<&str>,
+    parent_image: Option<(&[u8], &str)>, // (bytes, media_type e.g. "image/jpeg")
+) -> Result<String> {
+    let mut user_msg = format!("USER'S REQUEST: {}", mention_text);
+    if let Some(pt) = parent_text {
+        user_msg.push_str(&format!("\n\nPARENT TWEET TEXT: {}", pt));
+    }
+
+    let content = if let Some((img_bytes, media_type)) = parent_image {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(img_bytes);
+        serde_json::json!([
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64
+                }
+            },
+            { "type": "text", "text": user_msg }
+        ])
+    } else {
+        serde_json::json!(user_msg)
+    };
+
+    let req = serde_json::json!({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "system": X_MENTION_FLUX_SYSTEM,
+        "messages": [{ "role": "user", "content": content }]
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("Content-Type", "application/json")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&req)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Claude API error {}: {}", status, body);
+    }
+
+    let data: ClaudeResponse = resp.json().await?;
+    Ok(data
+        .content
+        .and_then(|c| c.into_iter().next())
+        .and_then(|b| b.text)
+        .unwrap_or_default())
 }
 
 /// Generate a stream of consciousness for a given thinker at a specific moment.

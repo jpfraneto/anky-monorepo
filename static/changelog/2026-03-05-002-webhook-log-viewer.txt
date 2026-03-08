@@ -1,0 +1,1 @@
+can you just create an endpoint on the rust app so that i can go to https://anky.app/webhooks/logs and see them in real time as they come through? (along with their payload!)

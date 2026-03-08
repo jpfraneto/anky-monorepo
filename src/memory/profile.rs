@@ -176,4 +176,3 @@ fn get_recent_writing_snippets(
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
-

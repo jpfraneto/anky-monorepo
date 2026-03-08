@@ -1,5 +1,6 @@
 pub mod collection;
 pub mod cost;
+pub mod guidance_gen;
 pub mod image_gen;
 pub mod memory_pipeline;
 pub mod prompt_gen;

@@ -1,0 +1,1 @@
+please run qwen3.5:35b on ollama by default and use it on the places of this app that need it. delete all the other models that ollama has downloaded. the only one we will use is qwen3.5:35b

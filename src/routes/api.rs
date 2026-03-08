@@ -163,14 +163,13 @@ pub async fn check_prompt(
     State(state): State<AppState>,
     Json(req): Json<CheckPromptRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let classification =
-        crate::services::ollama::classify_and_enhance_prompt(
-            &state.config.ollama_base_url,
-            &state.config.ollama_model,
-            &req.writing,
-        )
-        .await
-        .map_err(|e| AppError::Internal(format!("Classification failed: {}", e)))?;
+    let classification = crate::services::ollama::classify_and_enhance_prompt(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        &req.writing,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Classification failed: {}", e)))?;
 
     if classification.is_image_request {
         Ok(Json(json!({
@@ -228,7 +227,9 @@ pub async fn generate_anky_paid(
         }
 
         // Validate prompt with Ollama: must be about Anky
-        let prompt_text = req.writing.as_deref()
+        let prompt_text = req
+            .writing
+            .as_deref()
             .or(req.thinker_name.as_deref())
             .unwrap_or("");
         let ollama_url = &state.config.ollama_base_url;
@@ -282,9 +283,7 @@ pub async fn generate_anky_paid(
                 } else {
                     let facilitator = &state.config.x402_facilitator_url;
                     if facilitator.is_empty() {
-                        return Err(AppError::Internal(
-                            "x402 facilitator not configured".into(),
-                        ));
+                        return Err(AppError::Internal("x402 facilitator not configured".into()));
                     }
                     match x402::verify_x402_payment(facilitator, sig, resource_url).await {
                         Ok(hash) => {
@@ -380,9 +379,15 @@ pub async fn generate_anky_paid(
                 let prompt = format!("{} — {}", name, mom);
                 crate::pipeline::image_gen::generate_image_only_flux(&sc, &aid, &prompt).await
             } else {
-                crate::pipeline::stream_gen::generate_for_thinker(&sc, &name, &mom, None, Some(&aid))
-                    .await
-                    .map(|_| ())
+                crate::pipeline::stream_gen::generate_for_thinker(
+                    &sc,
+                    &name,
+                    &mom,
+                    None,
+                    Some(&aid),
+                )
+                .await
+                .map(|_| ())
             };
             if let Err(e) = result {
                 tracing::error!("Thinker generation failed for {}: {}", &aid[..8], e);
@@ -621,7 +626,11 @@ pub async fn suggest_replies(
         let r1 = v["pending_replies"][0].as_str()?.to_string();
         let r2 = v["pending_replies"][1].as_str()?.to_string();
         // Only use cache if no conversation history yet (first request)
-        if req.history.is_empty() { Some((r1, r2)) } else { None }
+        if req.history.is_empty() {
+            Some((r1, r2))
+        } else {
+            None
+        }
     });
 
     let (reply1, reply2) = if let Some(cached_replies) = cached {
@@ -704,9 +713,13 @@ pub async fn chat_quick(
         content: req.message.clone(),
     });
 
-    let response = chat_ollama(&state.config.ollama_base_url, &state.config.ollama_model, messages)
-        .await
-        .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+    let response = chat_ollama(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        messages,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
 
     Ok(Json(json!({ "response": response })))
 }
@@ -745,6 +758,43 @@ pub async fn submit_feedback(
     Ok(Json(json!({ "id": id, "saved": true })))
 }
 
+fn require_user_id(jar: &CookieJar) -> Result<String, AppError> {
+    jar.get("anky_user_id")
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| AppError::Unauthorized("no user id".into()))
+}
+
+fn persist_checkpoint_record(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    text: &str,
+    elapsed: f64,
+    session_token: Option<&str>,
+) -> Result<String, AppError> {
+    let word_count = text.split_whitespace().count() as i32;
+
+    let prev = queries::get_latest_checkpoint(conn, session_id)?;
+    let token = if let Some(ref prev) = prev {
+        if elapsed < prev.elapsed_seconds {
+            return Err(AppError::BadRequest("elapsed time cannot decrease".into()));
+        }
+        if let Some(ref prev_token) = prev.session_token {
+            match session_token {
+                Some(t) if t == prev_token => t.to_string(),
+                Some(_) => return Err(AppError::BadRequest("session token mismatch".into())),
+                None => return Err(AppError::BadRequest("session token required".into())),
+            }
+        } else {
+            session_token.unwrap_or_default().to_string()
+        }
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
+
+    queries::insert_checkpoint(conn, session_id, text, elapsed, word_count, Some(&token))?;
+    Ok(token)
+}
+
 // --- Checkpoint ---
 #[derive(serde::Deserialize)]
 pub struct CheckpointRequest {
@@ -761,31 +811,14 @@ pub async fn save_checkpoint(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let word_count = req.text.split_whitespace().count() as i32;
     let db = state.db.lock().await;
-
-    // Check for existing checkpoint to validate session
-    let prev = queries::get_latest_checkpoint(&db, &req.session_id)?;
-    let token = if let Some(ref prev) = prev {
-        // Validate: elapsed must increase monotonically
-        if req.elapsed < prev.elapsed_seconds {
-            return Err(AppError::BadRequest("elapsed time cannot decrease".into()));
-        }
-        // Validate: session_token must match
-        if let Some(ref prev_token) = prev.session_token {
-            match &req.session_token {
-                Some(t) if t == prev_token => t.clone(),
-                Some(_) => return Err(AppError::BadRequest("session token mismatch".into())),
-                None => return Err(AppError::BadRequest("session token required".into())),
-            }
-        } else {
-            // Legacy checkpoint without token — accept
-            req.session_token.unwrap_or_default()
-        }
-    } else {
-        // First checkpoint for this session — generate token
-        uuid::Uuid::new_v4().to_string()
-    };
-
-    queries::insert_checkpoint(
+    let token = persist_checkpoint_record(
+        &db,
+        &req.session_id,
+        &req.text,
+        req.elapsed,
+        req.session_token.as_deref(),
+    )?;
+    queries::update_checkpoint_backed_writing_session(
         &db,
         &req.session_id,
         &req.text,
@@ -803,6 +836,227 @@ pub async fn save_checkpoint(
         ),
     );
     Ok(Json(json!({ "saved": true, "session_token": token })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct PauseWritingSessionRequest {
+    pub session_id: String,
+    pub text: String,
+    pub elapsed: f64,
+    #[serde(default)]
+    pub session_token: Option<String>,
+}
+
+pub async fn pause_writing_session(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<PauseWritingSessionRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if req.text.trim().is_empty() {
+        return Err(AppError::BadRequest("cannot pause an empty session".into()));
+    }
+
+    let user_id = require_user_id(&jar)?;
+    let word_count = req.text.split_whitespace().count() as i32;
+    let db = state.db.lock().await;
+
+    if let Some(existing) = queries::get_writing_session_state(&db, &req.session_id)? {
+        if existing.user_id != user_id {
+            return Err(AppError::Unauthorized(
+                "that session belongs to another user".into(),
+            ));
+        }
+        if existing.pause_used {
+            return Err(AppError::BadRequest(
+                "this session already used its pause".into(),
+            ));
+        }
+        if existing.status == "completed" {
+            return Err(AppError::BadRequest(
+                "this session is already complete".into(),
+            ));
+        }
+    }
+
+    let token = persist_checkpoint_record(
+        &db,
+        &req.session_id,
+        &req.text,
+        req.elapsed,
+        req.session_token.as_deref(),
+    )?;
+    queries::upsert_active_writing_session(
+        &db,
+        &req.session_id,
+        &user_id,
+        &req.text,
+        req.elapsed,
+        word_count,
+        "paused",
+        true,
+        Some(&token),
+    )?;
+    drop(db);
+
+    state.emit_log(
+        "INFO",
+        "writing",
+        &format!("Paused session {} at {:.0}s", &req.session_id, req.elapsed),
+    );
+
+    Ok(Json(json!({
+        "saved": true,
+        "paused": true,
+        "session_token": token,
+    })))
+}
+
+pub async fn get_paused_writing_session(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = match jar.get("anky_user_id").map(|c| c.value().to_string()) {
+        Some(uid) => uid,
+        None => return Ok(Json(json!({ "paused_session": serde_json::Value::Null }))),
+    };
+
+    let db = state.db.lock().await;
+    let session = queries::get_resumable_writing_session(&db, &user_id)?;
+
+    Ok(Json(json!({
+        "paused_session": session.map(|s| json!({
+            "session_id": s.id,
+            "text": s.content,
+            "elapsed": s.duration_seconds,
+            "word_count": s.word_count,
+            "pause_used": s.pause_used,
+            "status": s.status,
+            "paused_at": s.paused_at,
+            "resumed_at": s.resumed_at,
+            "session_token": s.session_token,
+        }))
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ResumeWritingSessionRequest {
+    pub session_id: String,
+    pub text: String,
+    pub elapsed: f64,
+    #[serde(default)]
+    pub session_token: Option<String>,
+}
+
+pub async fn resume_writing_session(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<ResumeWritingSessionRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = require_user_id(&jar)?;
+    let word_count = req.text.split_whitespace().count() as i32;
+    let db = state.db.lock().await;
+
+    let existing = queries::get_writing_session_state(&db, &req.session_id)?
+        .ok_or_else(|| AppError::NotFound("paused session not found".into()))?;
+    if existing.user_id != user_id {
+        return Err(AppError::Unauthorized(
+            "that session belongs to another user".into(),
+        ));
+    }
+    if existing.status != "paused" && existing.status != "resumed" {
+        return Err(AppError::BadRequest("that session is not resumable".into()));
+    }
+
+    queries::upsert_active_writing_session(
+        &db,
+        &req.session_id,
+        &user_id,
+        &req.text,
+        req.elapsed,
+        word_count,
+        "resumed",
+        true,
+        req.session_token
+            .as_deref()
+            .or(existing.session_token.as_deref()),
+    )?;
+    drop(db);
+
+    state.emit_log(
+        "INFO",
+        "writing",
+        &format!("Resumed session {} at {:.0}s", &req.session_id, req.elapsed),
+    );
+
+    Ok(Json(json!({ "resumed": true })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct DiscardPausedSessionRequest {
+    pub session_id: String,
+}
+
+pub async fn discard_paused_writing_session(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<DiscardPausedSessionRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = require_user_id(&jar)?;
+    let db = state.db.lock().await;
+    queries::discard_resumable_writing_session(&db, &user_id, &req.session_id)?;
+    drop(db);
+
+    state.emit_log(
+        "INFO",
+        "writing",
+        &format!("Discarded paused session {}", &req.session_id),
+    );
+
+    Ok(Json(json!({ "discarded": true })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct PrefetchMemoryRequest {
+    pub text: String,
+}
+
+/// POST /api/prefetch-memory — pre-warm memory context during a writing session.
+/// Called at ~5 minutes so the context is ready when the reflection is requested.
+pub async fn prefetch_memory(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<PrefetchMemoryRequest>,
+) -> Json<serde_json::Value> {
+    let user_id = match jar.get("anky_user_id").map(|c| c.value().to_string()) {
+        Some(uid) => uid,
+        None => return Json(json!({ "ok": false, "reason": "no user id" })),
+    };
+    if req.text.split_whitespace().count() < 10 {
+        return Json(json!({ "ok": false, "reason": "not enough text" }));
+    }
+    let db = state.db.clone();
+    let ollama_url = state.config.ollama_base_url.clone();
+    let cache = state.memory_cache.clone();
+    let text = req.text.clone();
+    let uid = user_id.clone();
+    tokio::spawn(async move {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            crate::memory::recall::build_memory_context(&db, &ollama_url, &uid, &text),
+        )
+        .await
+        {
+            Ok(Ok(ctx)) => {
+                let formatted = ctx.format_for_prompt();
+                let mut map = cache.lock().await;
+                map.insert(uid.clone(), formatted);
+                tracing::info!("memory pre-warmed for {}", &uid[..8.min(uid.len())]);
+            }
+            Ok(Err(e)) => tracing::warn!("prefetch_memory build error: {}", e),
+            Err(_) => tracing::warn!("prefetch_memory timed out for {}", &uid[..8.min(uid.len())]),
+        }
+    });
+    Json(json!({ "ok": true }))
 }
 
 // --- Cost Estimate ---
@@ -869,24 +1123,42 @@ pub async fn stream_reflection(
             return Err(AppError::Internal("API key not configured".into()));
         }
 
-        // Build memory context from local embeddings
-        let memory_ctx = if let Some(ref uid) = user_id {
-            crate::memory::recall::build_memory_context(
-                &state.db,
-                &state.config.ollama_base_url,
-                uid,
-                &writing_text,
-            )
-            .await
-            .ok()
-            .map(|ctx| ctx.format_for_prompt())
-        } else {
-            None
-        };
-
         let anky_id = id.clone();
         let state_clone = state.clone();
+        let ollama_url = state.config.ollama_base_url.clone();
         tokio::spawn(async move {
+            // Check pre-warmed cache first (populated at minute 5 of writing session).
+            // Fall back to building it now with a 5s timeout if not cached.
+            let memory_ctx = if let Some(ref uid) = user_id {
+                let cached = {
+                    let mut cache = state_clone.memory_cache.lock().await;
+                    cache.remove(uid)
+                };
+                if let Some(ctx) = cached {
+                    tracing::info!("memory cache hit for {}", &uid[..8.min(uid.len())]);
+                    Some(ctx)
+                } else {
+                    tracing::info!(
+                        "memory cache miss for {}, building now",
+                        &uid[..8.min(uid.len())]
+                    );
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        crate::memory::recall::build_memory_context(
+                            &state_clone.db,
+                            &ollama_url,
+                            uid,
+                            &writing_text,
+                        ),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .map(|ctx| ctx.format_for_prompt())
+                }
+            } else {
+                None
+            };
             match crate::services::claude::stream_title_and_reflection(
                 &api_key,
                 &writing_text,
@@ -902,10 +1174,17 @@ pub async fn stream_reflection(
                         crate::pipeline::cost::estimate_claude_cost(input_tokens, output_tokens);
                     {
                         let db = state_clone.db.lock().await;
-                        if let Err(e) =
-                            queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
-                        {
-                            tracing::error!("Failed to save reflection for {}: {}", &anky_id[..8], e);
+                        if let Err(e) = queries::update_anky_title_reflection(
+                            &db,
+                            &anky_id,
+                            &title,
+                            &reflection,
+                        ) {
+                            tracing::error!(
+                                "Failed to save reflection for {}: {}",
+                                &anky_id[..8],
+                                e
+                            );
                         }
                         let _ = queries::insert_cost_record(
                             &db,
@@ -949,11 +1228,20 @@ pub async fn stream_reflection(
                                 }))
                                 .unwrap_or_default();
                                 let db = sr_state.db.lock().await;
-                                let _ = queries::update_anky_conversation(&db, &sr_anky_id, &conv_json);
-                                sr_state.emit_log("INFO", "stream", &format!("Replies pre-generated for {}", &sr_anky_id[..8]));
+                                let _ =
+                                    queries::update_anky_conversation(&db, &sr_anky_id, &conv_json);
+                                sr_state.emit_log(
+                                    "INFO",
+                                    "stream",
+                                    &format!("Replies pre-generated for {}", &sr_anky_id[..8]),
+                                );
                             }
                             Err(e) => {
-                                tracing::warn!("Pre-generating replies failed for {}: {}", &sr_anky_id[..8], e);
+                                tracing::warn!(
+                                    "Pre-generating replies failed for {}: {}",
+                                    &sr_anky_id[..8],
+                                    e
+                                );
                             }
                         }
                     });
@@ -1034,6 +1322,355 @@ const VIDEO_FRAME_COST_USD: f64 = 0.10;
 pub struct VideoFrameRequest {
     pub prompt_id: String,
     pub prompt_text: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateVideoRequest {
+    pub prompt_id: String,
+}
+
+fn create_video_card_value(prompt_id: &str) -> Result<serde_json::Value, AppError> {
+    let prompt = crate::create_videos::get_prompt(prompt_id)
+        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", prompt_id)))?;
+    let state = crate::create_videos::load_state(prompt_id)?;
+    Ok(serde_json::to_value(state.to_card(&prompt))?)
+}
+
+async fn require_create_videos_user(state: &AppState, jar: &CookieJar) -> Result<String, AppError> {
+    crate::routes::auth::get_auth_user(state, jar)
+        .await
+        .map(|user| user.user_id)
+        .ok_or_else(|| AppError::Unauthorized("login required".into()))
+}
+
+fn persist_create_video_failure(
+    prompt_id: &str,
+    phase: &str,
+    message: String,
+) -> Result<(), AppError> {
+    let mut state = crate::create_videos::load_state(prompt_id)?;
+    match phase {
+        "image" => {
+            state.image_status = "failed".to_string();
+            state.image_error = Some(message);
+            if state.image_path.is_some() {
+                state.video_status = if state.video_url.is_some() {
+                    "complete".to_string()
+                } else {
+                    "ready".to_string()
+                };
+            } else {
+                state.video_status = "locked".to_string();
+            }
+        }
+        "video" => {
+            state.video_status = "failed".to_string();
+            state.video_error = Some(message);
+        }
+        _ => {}
+    }
+    state.touch();
+    crate::create_videos::save_state(&state)?;
+    Ok(())
+}
+
+/// GET /api/v1/create-videos/{id} — fetch prompt state for the marketing video creator.
+pub async fn get_create_video_card(
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(json!({
+        "card": create_video_card_value(&id)?
+    })))
+}
+
+/// POST /api/v1/create-videos/image — generate the 16:9 seed image for a marketing concept.
+pub async fn generate_create_video_image(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<CreateVideoRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = require_create_videos_user(&state, &jar).await?;
+    let prompt = crate::create_videos::get_prompt(&req.prompt_id)
+        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id)))?;
+
+    if state.config.gemini_api_key.is_empty() {
+        return Err(AppError::Unavailable("Gemini API key not configured".into()));
+    }
+
+    let mut card_state = crate::create_videos::load_state(&prompt.id)?;
+    if card_state.image_status == "generating" {
+        return Err(AppError::BadRequest("image already generating".into()));
+    }
+    if card_state.video_status == "generating" {
+        return Err(AppError::BadRequest(
+            "wait for the current video generation to finish before regenerating the image".into(),
+        ));
+    }
+
+    card_state.image_status = "generating".to_string();
+    card_state.image_error = None;
+    card_state.touch();
+    crate::create_videos::save_state(&card_state)?;
+
+    state.emit_log(
+        "INFO",
+        "create-videos",
+        &format!("{} requested image generation for {}", user_id, prompt.id),
+    );
+
+    let references = crate::services::gemini::load_references(std::path::Path::new("src/public"));
+    let image_result = match crate::services::gemini::generate_image_exact_with_aspect(
+        &state.config.gemini_api_key,
+        &prompt.image_prompt,
+        &references,
+        "16:9",
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            let message = format!("Gemini error: {}", err);
+            let _ = persist_create_video_failure(&prompt.id, "image", message.clone());
+            return Err(AppError::Internal(message));
+        }
+    };
+
+    let asset_stem = crate::create_videos::asset_stem(&prompt.id);
+    let image_path = match crate::services::gemini::save_image(&image_result.base64, &asset_stem) {
+        Ok(path) => path,
+        Err(err) => {
+            let message = format!("failed to save image: {}", err);
+            let _ = persist_create_video_failure(&prompt.id, "image", message.clone());
+            return Err(AppError::Internal(message));
+        }
+    };
+    let image_jpeg_path = match crate::services::gemini::save_image_jpeg(
+        &image_result.base64,
+        &asset_stem,
+    ) {
+        Ok(path) => path,
+        Err(err) => {
+            let message = format!("failed to save image jpeg: {}", err);
+            let _ = persist_create_video_failure(&prompt.id, "image", message.clone());
+            return Err(AppError::Internal(message));
+        }
+    };
+
+    card_state = crate::create_videos::load_state(&prompt.id)?;
+    card_state.image_status = "complete".to_string();
+    card_state.image_path = Some(image_path.clone());
+    card_state.image_url = Some(crate::create_videos::image_public_url(&image_path));
+    card_state.image_jpeg_path = Some(image_jpeg_path);
+    card_state.video_status = "ready".to_string();
+    card_state.video_path = None;
+    card_state.video_url = None;
+    card_state.video_request_id = None;
+    card_state.image_error = None;
+    card_state.video_error = None;
+    card_state.touch();
+    crate::create_videos::save_state(&card_state)?;
+
+    {
+        let db = state.db.lock().await;
+        let _ = queries::insert_cost_record(
+            &db,
+            "gemini",
+            "gemini-2.5-flash-image",
+            0,
+            0,
+            0.04,
+            Some(&prompt.id),
+        );
+    }
+
+    state.emit_log(
+        "INFO",
+        "create-videos",
+        &format!("Seed image ready for {}", prompt.id),
+    );
+
+    Ok(Json(json!({
+        "ok": true,
+        "card": create_video_card_value(&prompt.id)?
+    })))
+}
+
+/// POST /api/v1/create-videos/video — animate a generated seed image into a 16:9 Grok clip.
+pub async fn generate_create_video_clip(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<CreateVideoRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = require_create_videos_user(&state, &jar).await?;
+    let prompt = crate::create_videos::get_prompt(&req.prompt_id)
+        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id)))?;
+
+    if state.config.xai_api_key.is_empty() {
+        return Err(AppError::Unavailable("XAI_API_KEY not configured".into()));
+    }
+
+    let mut card_state = crate::create_videos::load_state(&prompt.id)?;
+    let image_jpeg_path = card_state
+        .image_jpeg_path
+        .clone()
+        .ok_or_else(|| AppError::BadRequest("generate the image first".into()))?;
+
+    if card_state.image_status != "complete" {
+        return Err(AppError::BadRequest("generate the image first".into()));
+    }
+
+    if card_state.video_status == "generating" {
+        return Ok(Json(json!({
+            "ok": true,
+            "card": create_video_card_value(&prompt.id)?
+        })));
+    }
+
+    card_state.video_status = "generating".to_string();
+    card_state.video_error = None;
+    card_state.video_request_id = None;
+    card_state.touch();
+    crate::create_videos::save_state(&card_state)?;
+
+    state.emit_log(
+        "INFO",
+        "create-videos",
+        &format!("{} requested video generation for {}", user_id, prompt.id),
+    );
+
+    let state_clone = state.clone();
+    let prompt_id = prompt.id.clone();
+    let prompt_duration = prompt.duration_seconds;
+    let video_prompt = prompt.video_prompt.clone();
+    let image_url = crate::create_videos::image_absolute_url(&image_jpeg_path);
+
+    tokio::spawn(async move {
+        let request_id = match crate::services::grok::generate_video_from_image_with_aspect(
+            &state_clone.config.xai_api_key,
+            &video_prompt,
+            prompt_duration,
+            Some(&image_url),
+            "16:9",
+        )
+        .await
+        {
+            Ok(request_id) => request_id,
+            Err(err) => {
+                let message = format!("Grok submit error: {}", err);
+                let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                state_clone.emit_log("ERROR", "create-videos", &message);
+                return;
+            }
+        };
+
+        if let Ok(mut inner_state) = crate::create_videos::load_state(&prompt_id) {
+            inner_state.video_request_id = Some(request_id.clone());
+            inner_state.touch();
+            let _ = crate::create_videos::save_state(&inner_state);
+        }
+
+        state_clone.emit_log(
+            "INFO",
+            "create-videos",
+            &format!("Grok request {} started for {}", request_id, prompt_id),
+        );
+
+        let mut attempts = 0u32;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            attempts += 1;
+
+            match crate::services::grok::poll_video(&state_clone.config.xai_api_key, &request_id)
+                .await
+            {
+                Ok((status, maybe_url))
+                    if status == "complete" || status == "done" || status == "succeeded" =>
+                {
+                    let Some(remote_video_url) = maybe_url else {
+                        let message = "Grok completed without a downloadable video URL".to_string();
+                        let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                        state_clone.emit_log("ERROR", "create-videos", &message);
+                        return;
+                    };
+
+                    let output_path = crate::create_videos::video_output_path(&prompt_id);
+                    if let Err(err) =
+                        crate::services::grok::download_video(&remote_video_url, &output_path).await
+                    {
+                        let message = format!("video download failed: {}", err);
+                        let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                        state_clone.emit_log("ERROR", "create-videos", &message);
+                        return;
+                    }
+
+                    if let Ok(mut inner_state) = crate::create_videos::load_state(&prompt_id) {
+                        inner_state.video_status = "complete".to_string();
+                        inner_state.video_path = Some(output_path.clone());
+                        inner_state.video_url = Some(crate::create_videos::video_public_url(
+                            &crate::create_videos::video_filename(&prompt_id),
+                        ));
+                        inner_state.video_request_id = Some(request_id.clone());
+                        inner_state.video_error = None;
+                        inner_state.touch();
+                        let _ = crate::create_videos::save_state(&inner_state);
+                    }
+
+                    {
+                        let db = state_clone.db.lock().await;
+                        let _ = queries::insert_cost_record(
+                            &db,
+                            "grok",
+                            "grok-imagine-video",
+                            0,
+                            0,
+                            prompt_duration as f64 * 0.05,
+                            Some(&prompt_id),
+                        );
+                    }
+
+                    state_clone.emit_log(
+                        "INFO",
+                        "create-videos",
+                        &format!("Marketing video ready for {}", prompt_id),
+                    );
+                    return;
+                }
+                Ok((status, _))
+                    if status == "failed"
+                        || status == "error"
+                        || status == "expired"
+                        || status == "cancelled" =>
+                {
+                    let message = format!("Grok returned terminal status {}", status);
+                    let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                    state_clone.emit_log("ERROR", "create-videos", &message);
+                    return;
+                }
+                Ok((_status, _)) => {
+                    if attempts >= 180 {
+                        let message =
+                            "Timed out waiting for Grok video generation after 15 minutes".to_string();
+                        let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                        state_clone.emit_log("ERROR", "create-videos", &message);
+                        return;
+                    }
+                }
+                Err(err) => {
+                    if attempts >= 180 {
+                        let message = format!("Grok polling failed repeatedly: {}", err);
+                        let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
+                        state_clone.emit_log("ERROR", "create-videos", &message);
+                        return;
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(Json(json!({
+        "ok": true,
+        "card": create_video_card_value(&prompt.id)?
+    })))
 }
 
 /// POST /api/v1/generate/video-frame — generate a single video frame image (paid via x402)
@@ -1213,13 +1850,7 @@ pub async fn generate_video(
     // the browser disconnects. Status starts as 'pending' (script not yet generated).
     {
         let db = state.db.lock().await;
-        queries::insert_video_project_pending(
-            &db,
-            &project_id,
-            &user_id,
-            &req.anky_id,
-            &tx_hash,
-        )?;
+        queries::insert_video_project_pending(&db, &project_id, &user_id, &req.anky_id, &tx_hash)?;
     }
 
     state.emit_log(
@@ -1245,7 +1876,11 @@ pub async fn generate_video(
                 Ok(Some(a)) => a,
                 _ => {
                     let _ = queries::update_video_project_status(&db, &pid, "failed");
-                    s.emit_log("ERROR", "video", &format!("Video {} failed: anky not found", &pid[..8]));
+                    s.emit_log(
+                        "ERROR",
+                        "video",
+                        &format!("Video {} failed: anky not found", &pid[..8]),
+                    );
                     return;
                 }
             };
@@ -1294,7 +1929,9 @@ pub async fn generate_video(
         // --- Phase 2: generate script with Claude ---
         let script_prompt_override = {
             let db = s.db.lock().await;
-            queries::get_pipeline_prompt(&db, crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY).ok().flatten()
+            queries::get_pipeline_prompt(&db, crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY)
+                .ok()
+                .flatten()
         };
         let script_result = match crate::pipeline::video_gen::generate_script(
             &s.config.anthropic_api_key,
@@ -1307,7 +1944,11 @@ pub async fn generate_video(
             Err(e) => {
                 let db = s.db.lock().await;
                 let _ = queries::update_video_project_status(&db, &pid, "failed");
-                s.emit_log("ERROR", "video", &format!("Video {} script failed: {}", &pid[..8], e));
+                s.emit_log(
+                    "ERROR",
+                    "video",
+                    &format!("Video {} script failed: {}", &pid[..8], e),
+                );
                 return;
             }
         };
@@ -1343,7 +1984,11 @@ pub async fn generate_video(
         s.emit_log(
             "INFO",
             "video",
-            &format!("Video {} script ready ({} scenes), starting generation", &pid[..8], scene_count),
+            &format!(
+                "Video {} script ready ({} scenes), starting generation",
+                &pid[..8],
+                scene_count
+            ),
         );
 
         // --- Phase 3: generate images + videos ---
@@ -1351,13 +1996,22 @@ pub async fn generate_video(
             Ok(video_path) => {
                 let updated_json = serde_json::to_string(&script).unwrap_or_default();
                 let db = s.db.lock().await;
-                let _ = queries::update_video_project_complete(&db, &pid, &video_path, &updated_json);
-                s.emit_log("INFO", "video", &format!("Video {} complete: {}", &pid[..8], video_path));
+                let _ =
+                    queries::update_video_project_complete(&db, &pid, &video_path, &updated_json);
+                s.emit_log(
+                    "INFO",
+                    "video",
+                    &format!("Video {} complete: {}", &pid[..8], video_path),
+                );
             }
             Err(e) => {
                 let db = s.db.lock().await;
                 let _ = queries::update_video_project_status(&db, &pid, "failed");
-                s.emit_log("ERROR", "video", &format!("Video {} failed: {}", &pid[..8], e));
+                s.emit_log(
+                    "ERROR",
+                    "video",
+                    &format!("Video {} failed: {}", &pid[..8], e),
+                );
             }
         }
     });
@@ -1526,18 +2180,13 @@ pub async fn get_video_pipeline_config(
         .await
         .ok_or_else(|| AppError::BadRequest("login required".into()))?;
 
-    let (
-        script_prompt,
-        image_template,
-        sound_template,
-        spend_7d,
-        spend_all_time,
-        recent_projects,
-    ) = {
+    let (script_prompt, image_template, sound_template, spend_7d, spend_all_time, recent_projects) = {
         let db = state.db.lock().await;
         let script_prompt =
             queries::get_pipeline_prompt(&db, crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY)?
-                .unwrap_or_else(|| crate::pipeline::video_gen::default_script_system_prompt().to_string());
+                .unwrap_or_else(|| {
+                    crate::pipeline::video_gen::default_script_system_prompt().to_string()
+                });
         let image_template = queries::get_pipeline_prompt(
             &db,
             crate::pipeline::video_gen::VIDEO_IMAGE_PROMPT_TEMPLATE_KEY,
@@ -1917,8 +2566,8 @@ async fn fetch_anky_balance_for_og(rpc_url: &str, wallet: &str, mint: &str) -> O
     let accounts = json["result"]["value"].as_array()?;
     let mut total = 0.0f64;
     for account in accounts {
-        if let Some(amount) = account["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"]
-            .as_f64()
+        if let Some(amount) =
+            account["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"].as_f64()
         {
             total += amount;
         }
@@ -2052,7 +2701,9 @@ pub async fn og_dca_image() -> Result<Response, AppError> {
 
             let mut x_cursor = 64f32;
             let y2 = y + 22;
-            let w = |txt: &str| crate::pipeline::prompt_gen::measure_text_width_pub(&font, row_detail_scale, txt);
+            let w = |txt: &str| {
+                crate::pipeline::prompt_gen::measure_text_width_pub(&font, row_detail_scale, txt)
+            };
             let draw = |canvas: &mut RgbaImage, txt: &str, color: Rgba<u8>, xc: &mut f32| {
                 draw_text_mut(canvas, color, *xc as i32, y2, row_detail_scale, &font, txt);
                 *xc += w(txt);
@@ -2265,6 +2916,749 @@ pub async fn og_embed_image(State(state): State<AppState>) -> Result<Response, A
         buf.into_inner(),
     )
         .into_response())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReflectionCardBlockKind {
+    Heading,
+    Body,
+}
+
+#[derive(Clone)]
+struct ReflectionCardBlock {
+    kind: ReflectionCardBlockKind,
+    text: String,
+}
+
+#[derive(Clone)]
+struct ReflectionCardWrappedBlock {
+    kind: ReflectionCardBlockKind,
+    lines: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct ReflectionCardConfig {
+    safe_x: u32,
+    top_y: u32,
+    image_size: u32,
+    gap: u32,
+    reflection_gap: u32,
+    footer_pad: u32,
+    title_start: f32,
+    title_min: f32,
+    title_max_lines: usize,
+    body_start: f32,
+    body_min: f32,
+    brand_size: f32,
+}
+
+struct ReflectionCardLayout {
+    config: ReflectionCardConfig,
+    title_lines: Vec<String>,
+    title_scale: f32,
+    title_line_height: u32,
+    wrapped_blocks: Vec<ReflectionCardWrappedBlock>,
+    body_scale: f32,
+    body_line_height: u32,
+    heading_scale: f32,
+    heading_line_height: u32,
+    paragraph_gap: u32,
+    heading_gap: u32,
+}
+
+fn reflection_card_slug(input: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in input.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            slug.push(lower);
+            last_dash = false;
+        } else if !last_dash && !slug.is_empty() {
+            slug.push('-');
+            last_dash = true;
+        }
+        if slug.len() >= 64 {
+            break;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn reflection_card_blend(dst: &mut image::Rgba<u8>, src: image::Rgba<u8>) {
+    let alpha = src[3] as f32 / 255.0;
+    let inv = 1.0 - alpha;
+    dst[0] = ((src[0] as f32 * alpha) + (dst[0] as f32 * inv)) as u8;
+    dst[1] = ((src[1] as f32 * alpha) + (dst[1] as f32 * inv)) as u8;
+    dst[2] = ((src[2] as f32 * alpha) + (dst[2] as f32 * inv)) as u8;
+    dst[3] = 255;
+}
+
+fn reflection_card_fill_background(img: &mut image::RgbaImage) {
+    let top = [8.0f32, 9.0, 16.0];
+    let mid = [18.0f32, 18.0, 35.0];
+    let bottom = [6.0f32, 7.0, 11.0];
+    let height = img.height().max(1);
+    let width = img.width().max(1);
+
+    for y in 0..height {
+        let t = y as f32 / (height - 1) as f32;
+        let (a, b, local_t) = if t < 0.46 {
+            (top, mid, t / 0.46)
+        } else {
+            (mid, bottom, (t - 0.46) / 0.54)
+        };
+        let r = a[0] + (b[0] - a[0]) * local_t;
+        let g = a[1] + (b[1] - a[1]) * local_t;
+        let bch = a[2] + (b[2] - a[2]) * local_t;
+        for x in 0..width {
+            let drift = x as f32 / (width - 1) as f32;
+            let glow = (1.0 - ((drift - 0.72).abs() * 1.6)).max(0.0) * 10.0;
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([
+                    (r + glow * 0.14).min(255.0) as u8,
+                    (g + glow * 0.09).min(255.0) as u8,
+                    (bch + glow * 0.28).min(255.0) as u8,
+                    255,
+                ]),
+            );
+        }
+    }
+}
+
+fn reflection_card_draw_soft_circle(
+    img: &mut image::RgbaImage,
+    cx: i32,
+    cy: i32,
+    radius: f32,
+    color: image::Rgba<u8>,
+) {
+    let min_x = ((cx as f32 - radius).floor() as i32).max(0);
+    let max_x = ((cx as f32 + radius).ceil() as i32).min(img.width() as i32 - 1);
+    let min_y = ((cy as f32 - radius).floor() as i32).max(0);
+    let max_y = ((cy as f32 + radius).ceil() as i32).min(img.height() as i32 - 1);
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 - cx as f32;
+            let dy = y as f32 - cy as f32;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist > radius {
+                continue;
+            }
+            let falloff = (1.0 - dist / radius).powf(1.8);
+            let mut tinted = color;
+            tinted[3] = ((color[3] as f32) * falloff) as u8;
+            let pixel = img.get_pixel_mut(x as u32, y as u32);
+            reflection_card_blend(pixel, tinted);
+        }
+    }
+}
+
+fn reflection_card_stroke_rect(
+    img: &mut image::RgbaImage,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    color: image::Rgba<u8>,
+) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    for dx in 0..w {
+        let top = img.get_pixel_mut(x + dx, y);
+        reflection_card_blend(top, color);
+        let bottom = img.get_pixel_mut(x + dx, y + h - 1);
+        reflection_card_blend(bottom, color);
+    }
+    for dy in 0..h {
+        let left = img.get_pixel_mut(x, y + dy);
+        reflection_card_blend(left, color);
+        let right = img.get_pixel_mut(x + w - 1, y + dy);
+        reflection_card_blend(right, color);
+    }
+}
+
+fn reflection_card_is_inside_rounded_rect(x: u32, y: u32, size: u32, radius: u32) -> bool {
+    if x >= size || y >= size {
+        return false;
+    }
+    let r = radius as i32;
+    let xi = x as i32;
+    let yi = y as i32;
+    let edge = size as i32 - r - 1;
+
+    let dx = if xi < r {
+        r - xi
+    } else if xi > edge {
+        xi - edge
+    } else {
+        0
+    };
+    let dy = if yi < r {
+        r - yi
+    } else if yi > edge {
+        yi - edge
+    } else {
+        0
+    };
+    dx == 0 || dy == 0 || dx * dx + dy * dy <= r * r
+}
+
+fn reflection_card_draw_cover_image(
+    canvas: &mut image::RgbaImage,
+    src: &image::DynamicImage,
+    x: u32,
+    y: u32,
+    size: u32,
+) {
+    use image::GenericImageView;
+
+    let (src_w, src_h) = src.dimensions();
+    if src_w == 0 || src_h == 0 || size == 0 {
+        return;
+    }
+
+    let scale = (size as f32 / src_w as f32).max(size as f32 / src_h as f32);
+    let new_w = (src_w as f32 * scale).ceil() as u32;
+    let new_h = (src_h as f32 * scale).ceil() as u32;
+    let resized = image::imageops::resize(
+        &src.to_rgba8(),
+        new_w,
+        new_h,
+        image::imageops::FilterType::Lanczos3,
+    );
+    let crop_x = new_w.saturating_sub(size) / 2;
+    let crop_y = new_h.saturating_sub(size) / 2;
+    let radius = (size as f32 * 0.12) as u32;
+
+    for dy in 0..size {
+        for dx in 0..size {
+            if !reflection_card_is_inside_rounded_rect(dx, dy, size, radius) {
+                continue;
+            }
+            let px = resized.get_pixel(crop_x + dx, crop_y + dy);
+            canvas.put_pixel(x + dx, y + dy, *px);
+        }
+    }
+
+    reflection_card_stroke_rect(canvas, x, y, size, size, image::Rgba([196, 160, 255, 48]));
+}
+
+fn reflection_card_clean_inline(text: &str) -> String {
+    text.replace("***", "")
+        .replace("**", "")
+        .replace("__", "")
+        .replace('*', "")
+        .replace('_', "")
+        .replace('`', "")
+        .trim()
+        .to_string()
+}
+
+fn reflection_card_known_heading(text: &str) -> Option<String> {
+    let cleaned = reflection_card_clean_inline(text)
+        .trim()
+        .trim_end_matches(':')
+        .trim()
+        .to_ascii_lowercase();
+    match cleaned.as_str() {
+        "what i see" => Some("What I see".to_string()),
+        "do this today" => Some("Do this today".to_string()),
+        _ => None,
+    }
+}
+
+fn reflection_card_extract_heading(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("### ")
+        .or_else(|| trimmed.strip_prefix("## "))
+        .or_else(|| trimmed.strip_prefix("# "))
+    {
+        return Some(reflection_card_known_heading(rest).unwrap_or_else(|| {
+            reflection_card_clean_inline(rest)
+                .trim_end_matches(':')
+                .trim()
+                .to_string()
+        }));
+    }
+    if let Some(inner) = trimmed
+        .strip_prefix("**")
+        .and_then(|s| s.strip_suffix("**"))
+        .or_else(|| {
+            trimmed
+                .strip_prefix("__")
+                .and_then(|s| s.strip_suffix("__"))
+        })
+    {
+        let cleaned = reflection_card_clean_inline(inner);
+        if cleaned.len() <= 48 || reflection_card_known_heading(&cleaned).is_some() {
+            return Some(reflection_card_known_heading(&cleaned).unwrap_or(cleaned));
+        }
+    }
+    reflection_card_known_heading(trimmed)
+}
+
+fn reflection_card_blocks(text: &str) -> Vec<ReflectionCardBlock> {
+    let mut blocks = Vec::new();
+    let mut paragraph: Vec<String> = Vec::new();
+
+    let flush_paragraph = |blocks: &mut Vec<ReflectionCardBlock>, paragraph: &mut Vec<String>| {
+        if paragraph.is_empty() {
+            return;
+        }
+        let joined = paragraph.join(" ");
+        let cleaned = reflection_card_clean_inline(&joined);
+        if !cleaned.is_empty() {
+            blocks.push(ReflectionCardBlock {
+                kind: ReflectionCardBlockKind::Body,
+                text: cleaned,
+            });
+        }
+        paragraph.clear();
+    };
+
+    for raw_line in text.replace('\r', "").lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            flush_paragraph(&mut blocks, &mut paragraph);
+            continue;
+        }
+        if let Some(heading) = reflection_card_extract_heading(line) {
+            flush_paragraph(&mut blocks, &mut paragraph);
+            blocks.push(ReflectionCardBlock {
+                kind: ReflectionCardBlockKind::Heading,
+                text: heading,
+            });
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
+            flush_paragraph(&mut blocks, &mut paragraph);
+            blocks.push(ReflectionCardBlock {
+                kind: ReflectionCardBlockKind::Body,
+                text: format!("• {}", reflection_card_clean_inline(rest)),
+            });
+            continue;
+        }
+        paragraph.push(line.to_string());
+    }
+    flush_paragraph(&mut blocks, &mut paragraph);
+
+    if blocks.is_empty() {
+        blocks.push(ReflectionCardBlock {
+            kind: ReflectionCardBlockKind::Body,
+            text: String::new(),
+        });
+    }
+    blocks
+}
+
+fn reflection_card_wrap_word(
+    font: &ab_glyph::FontRef<'_>,
+    scale: ab_glyph::PxScale,
+    word: &str,
+    max_width: f32,
+) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    for ch in word.chars() {
+        let mut trial = current.clone();
+        trial.push(ch);
+        let width = crate::pipeline::prompt_gen::measure_text_width_pub(font, scale, &trial);
+        if !current.is_empty() && width > max_width {
+            parts.push(current);
+            current = ch.to_string();
+        } else {
+            current.push(ch);
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    if parts.is_empty() {
+        parts.push(word.to_string());
+    }
+    parts
+}
+
+fn reflection_card_wrap_text(
+    font: &ab_glyph::FontRef<'_>,
+    scale: ab_glyph::PxScale,
+    text: &str,
+    max_width: f32,
+) -> Vec<String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut tokens = Vec::new();
+    for word in words {
+        let width = crate::pipeline::prompt_gen::measure_text_width_pub(font, scale, word);
+        if width > max_width {
+            tokens.extend(reflection_card_wrap_word(font, scale, word, max_width));
+        } else {
+            tokens.push(word.to_string());
+        }
+    }
+
+    let mut lines = Vec::new();
+    let mut current = tokens[0].clone();
+    for token in tokens.into_iter().skip(1) {
+        let test = format!("{} {}", current, token);
+        let width = crate::pipeline::prompt_gen::measure_text_width_pub(font, scale, &test);
+        if width <= max_width {
+            current = test;
+        } else {
+            lines.push(current);
+            current = token;
+        }
+    }
+    lines.push(current);
+    lines
+}
+
+fn reflection_card_fit_layout(
+    title: &str,
+    text: &str,
+    title_font: &ab_glyph::FontRef<'_>,
+    body_font: &ab_glyph::FontRef<'_>,
+) -> Result<ReflectionCardLayout, AppError> {
+    let blocks = reflection_card_blocks(text);
+    let configs = [
+        ReflectionCardConfig {
+            safe_x: 72,
+            top_y: 84,
+            image_size: 320,
+            gap: 40,
+            reflection_gap: 72,
+            footer_pad: 150,
+            title_start: 76.0,
+            title_min: 34.0,
+            title_max_lines: 4,
+            body_start: 28.0,
+            body_min: 18.0,
+            brand_size: 34.0,
+        },
+        ReflectionCardConfig {
+            safe_x: 62,
+            top_y: 72,
+            image_size: 280,
+            gap: 32,
+            reflection_gap: 60,
+            footer_pad: 138,
+            title_start: 68.0,
+            title_min: 30.0,
+            title_max_lines: 5,
+            body_start: 26.0,
+            body_min: 16.0,
+            brand_size: 32.0,
+        },
+        ReflectionCardConfig {
+            safe_x: 52,
+            top_y: 60,
+            image_size: 236,
+            gap: 28,
+            reflection_gap: 50,
+            footer_pad: 126,
+            title_start: 60.0,
+            title_min: 28.0,
+            title_max_lines: 5,
+            body_start: 24.0,
+            body_min: 14.0,
+            brand_size: 30.0,
+        },
+        ReflectionCardConfig {
+            safe_x: 42,
+            top_y: 48,
+            image_size: 184,
+            gap: 22,
+            reflection_gap: 40,
+            footer_pad: 116,
+            title_start: 50.0,
+            title_min: 24.0,
+            title_max_lines: 6,
+            body_start: 22.0,
+            body_min: 12.0,
+            brand_size: 28.0,
+        },
+    ];
+
+    for config in configs {
+        let title_x = config.safe_x + config.image_size + config.gap;
+        let title_width = 1080u32.saturating_sub(config.safe_x + title_x) as f32;
+        let title_height = config.image_size as f32;
+        let mut fitted_title = None;
+
+        let mut title_size = config.title_start;
+        while title_size >= config.title_min {
+            let scale = ab_glyph::PxScale::from(title_size);
+            let lines = reflection_card_wrap_text(title_font, scale, title, title_width);
+            let line_height = (title_size * 1.04).round() as u32;
+            if lines.len() <= config.title_max_lines
+                && (lines.len() as f32 * line_height as f32) <= title_height
+            {
+                fitted_title = Some((lines, title_size, line_height));
+                break;
+            }
+            title_size -= 2.0;
+        }
+
+        let Some((title_lines, title_scale, title_line_height)) = fitted_title else {
+            continue;
+        };
+
+        let reflection_top = config.top_y + config.image_size + config.reflection_gap;
+        let reflection_width = (1080u32 - config.safe_x * 2) as f32;
+        let reflection_height = 1920u32.saturating_sub(reflection_top + config.footer_pad) as f32;
+
+        let mut body_size = config.body_start;
+        while body_size >= config.body_min {
+            let body_scale = ab_glyph::PxScale::from(body_size);
+            let heading_size = (body_size + 8.0).min(body_size * 1.4);
+            let heading_scale = ab_glyph::PxScale::from(heading_size);
+            let body_line_height = (body_size * 1.28).round() as u32;
+            let heading_line_height = (heading_size * 1.05).round() as u32;
+            let paragraph_gap = (body_size * 0.72).round().max(12.0) as u32;
+            let heading_gap = (body_size * 0.56).round().max(10.0) as u32;
+
+            let mut wrapped_blocks = Vec::new();
+            let mut total_height = 0u32;
+            for block in &blocks {
+                let (font, scale, line_height, gap) = match block.kind {
+                    ReflectionCardBlockKind::Heading => {
+                        (title_font, heading_scale, heading_line_height, heading_gap)
+                    }
+                    ReflectionCardBlockKind::Body => {
+                        (body_font, body_scale, body_line_height, paragraph_gap)
+                    }
+                };
+                let lines = reflection_card_wrap_text(font, scale, &block.text, reflection_width);
+                total_height = total_height.saturating_add(line_height * lines.len() as u32);
+                total_height = total_height.saturating_add(gap);
+                wrapped_blocks.push(ReflectionCardWrappedBlock {
+                    kind: block.kind,
+                    lines,
+                });
+            }
+            total_height = total_height.saturating_sub(paragraph_gap.min(total_height));
+
+            if total_height as f32 <= reflection_height {
+                return Ok(ReflectionCardLayout {
+                    config,
+                    title_lines,
+                    title_scale,
+                    title_line_height,
+                    wrapped_blocks,
+                    body_scale: body_size,
+                    body_line_height,
+                    heading_scale: heading_size,
+                    heading_line_height,
+                    paragraph_gap,
+                    heading_gap,
+                });
+            }
+
+            body_size -= 2.0;
+        }
+    }
+
+    Err(AppError::Internal(
+        "reflection card could not fit on one screen".into(),
+    ))
+}
+
+async fn render_anky_reflection_card_bytes(
+    state: &AppState,
+    id: &str,
+) -> Result<(Vec<u8>, String), AppError> {
+    use ab_glyph::{FontRef, PxScale};
+    use image::{DynamicImage, Rgba, RgbaImage};
+    use imageproc::drawing::draw_text_mut;
+
+    let anky = {
+        let db = state.db.lock().await;
+        queries::get_anky_by_id(&db, id)?
+    }
+    .ok_or_else(|| AppError::NotFound(format!("anky {} not found", id)))?;
+
+    if anky.status != "complete" {
+        return Err(AppError::BadRequest("anky is not ready yet".into()));
+    }
+
+    let image_path = anky
+        .image_path
+        .clone()
+        .ok_or_else(|| AppError::BadRequest("anky does not have an image yet".into()))?;
+    let title = anky.title.clone().unwrap_or_else(|| "untitled".to_string());
+    let reflection_text = anky
+        .reflection
+        .clone()
+        .or(anky.image_prompt.clone())
+        .unwrap_or_default();
+    if reflection_text.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "anky does not have reflection text yet".into(),
+        ));
+    }
+
+    let full_path = if image_path.starts_with('/') {
+        std::path::PathBuf::from(&image_path)
+    } else {
+        std::path::PathBuf::from("data/images").join(&image_path)
+    };
+    let image_bytes = tokio::fs::read(&full_path).await.map_err(|e| {
+        AppError::Internal(format!(
+            "failed to read image {}: {}",
+            full_path.display(),
+            e
+        ))
+    })?;
+    let source = image::load_from_memory(&image_bytes)
+        .map_err(|e| AppError::Internal(format!("image decode error: {}", e)))?;
+
+    let righteous_data = include_bytes!("../../static/fonts/Righteous-Regular.ttf");
+    let title_font = FontRef::try_from_slice(righteous_data)
+        .map_err(|e| AppError::Internal(format!("font error: {}", e)))?;
+
+    let body_font_bytes =
+        std::fs::read("/usr/share/fonts/liberation-mono-fonts/LiberationMono-Regular.ttf")
+            .unwrap_or_else(|_| righteous_data.to_vec());
+    let body_font = FontRef::try_from_slice(&body_font_bytes)
+        .map_err(|e| AppError::Internal(format!("body font error: {}", e)))?;
+
+    let layout = reflection_card_fit_layout(&title, &reflection_text, &title_font, &body_font)?;
+
+    let mut canvas = RgbaImage::from_pixel(1080, 1920, Rgba([8, 9, 16, 255]));
+    reflection_card_fill_background(&mut canvas);
+    reflection_card_draw_soft_circle(&mut canvas, 900, 220, 260.0, Rgba([123, 47, 247, 42]));
+    reflection_card_draw_soft_circle(&mut canvas, 170, 1720, 220.0, Rgba([196, 160, 255, 22]));
+
+    reflection_card_draw_cover_image(
+        &mut canvas,
+        &DynamicImage::ImageRgba8(source.to_rgba8()),
+        layout.config.safe_x,
+        layout.config.top_y,
+        layout.config.image_size,
+    );
+
+    let title_x = layout.config.safe_x + layout.config.image_size + layout.config.gap;
+    let title_y = layout.config.top_y
+        + ((layout.config.image_size as i32
+            - (layout.title_lines.len() as i32 * layout.title_line_height as i32))
+            .max(0) as u32
+            / 2);
+    let title_scale = PxScale::from(layout.title_scale);
+    for (idx, line) in layout.title_lines.iter().enumerate() {
+        draw_text_mut(
+            &mut canvas,
+            Rgba([246, 236, 255, 255]),
+            title_x as i32,
+            (title_y + idx as u32 * layout.title_line_height) as i32,
+            title_scale,
+            &title_font,
+            line,
+        );
+    }
+
+    let mut cursor_y =
+        layout.config.top_y + layout.config.image_size + layout.config.reflection_gap;
+    let heading_scale = PxScale::from(layout.heading_scale);
+    let body_scale = PxScale::from(layout.body_scale);
+    for block in &layout.wrapped_blocks {
+        match block.kind {
+            ReflectionCardBlockKind::Heading => {
+                for line in &block.lines {
+                    draw_text_mut(
+                        &mut canvas,
+                        Rgba([196, 160, 255, 255]),
+                        layout.config.safe_x as i32,
+                        cursor_y as i32,
+                        heading_scale,
+                        &title_font,
+                        line,
+                    );
+                    cursor_y += layout.heading_line_height;
+                }
+                cursor_y += layout.heading_gap;
+            }
+            ReflectionCardBlockKind::Body => {
+                for line in &block.lines {
+                    draw_text_mut(
+                        &mut canvas,
+                        Rgba([236, 233, 247, 255]),
+                        layout.config.safe_x as i32,
+                        cursor_y as i32,
+                        body_scale,
+                        &body_font,
+                        line,
+                    );
+                    cursor_y += layout.body_line_height;
+                }
+                cursor_y += layout.paragraph_gap;
+            }
+        }
+    }
+
+    let brand_text = "https://anky.app";
+    let brand_scale = PxScale::from(layout.config.brand_size);
+    let brand_width =
+        crate::pipeline::prompt_gen::measure_text_width_pub(&title_font, brand_scale, brand_text);
+    let brand_x = ((1080.0 - brand_width) / 2.0).round() as i32;
+    draw_text_mut(
+        &mut canvas,
+        Rgba([160, 111, 255, 255]),
+        brand_x,
+        1832,
+        brand_scale,
+        &title_font,
+        brand_text,
+    );
+
+    let dynamic = DynamicImage::ImageRgba8(canvas);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    dynamic
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| AppError::Internal(format!("PNG encode error: {}", e)))?;
+
+    Ok((buf.into_inner(), reflection_card_slug(&title)))
+}
+
+/// GET /api/anky-card/{id} — render a phone-sized downloadable reflection card image.
+pub async fn anky_reflection_card_image(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let (bytes, slug) = render_anky_reflection_card_bytes(&state, &id).await?;
+    let filename = if slug.is_empty() {
+        "anky-reflection".to_string()
+    } else {
+        slug
+    };
+    let disposition =
+        axum::http::HeaderValue::from_str(&format!("inline; filename=\"{}.png\"", filename))
+            .map_err(|e| AppError::Internal(format!("header error: {}", e)))?;
+
+    let mut response = Response::new(bytes.into());
+    response.headers_mut().insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("image/png"),
+    );
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("public, max-age=300, s-maxage=300"),
+    );
+    response
+        .headers_mut()
+        .insert(axum::http::header::CONTENT_DISPOSITION, disposition);
+    Ok(response)
 }
 
 // ==================== Studio Video Upload ====================

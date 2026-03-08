@@ -1,0 +1,1 @@
+yeah the memory context should be built when the user is on minute 5 of their writing session. which probably means they will write an anky. so that we have it ready for when it does

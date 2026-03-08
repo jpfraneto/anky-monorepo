@@ -1,8 +1,10 @@
 use anyhow::Result;
 use base64::Engine;
+use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha1::Sha1;
+use std::time::Duration;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -128,6 +130,191 @@ pub async fn reply_to_tweet(
     Ok(data.data.id)
 }
 
+/// Like a tweet via the v2 API (used to acknowledge a mention is being processed).
+pub async fn like_tweet(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    bot_user_id: &str,
+    tweet_id: &str,
+) -> Result<()> {
+    let url = format!("https://api.twitter.com/2/users/{}/likes", bot_user_id);
+    let auth_header = generate_oauth_header(
+        "POST",
+        &url,
+        api_key,
+        api_secret,
+        access_token,
+        access_secret,
+        &[],
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("Authorization", auth_header)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({ "tweet_id": tweet_id }))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Twitter like_tweet failed {}: {}", status, body);
+    }
+
+    tracing::info!("Liked tweet {}", tweet_id);
+    Ok(())
+}
+
+/// Send a DM to a user via the v1.1 Direct Messages API.
+/// Uses JSON body (not form-encoded), so body is NOT included in OAuth signature.
+pub async fn send_dm(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    recipient_id: &str,
+    text: &str,
+) -> Result<()> {
+    let url = "https://api.twitter.com/1.1/direct_messages/events/new.json";
+    let auth_header = generate_oauth_header(
+        "POST",
+        url,
+        api_key,
+        api_secret,
+        access_token,
+        access_secret,
+        &[],
+    );
+
+    let body = serde_json::json!({
+        "event": {
+            "type": "message_create",
+            "message_create": {
+                "target": { "recipient_id": recipient_id },
+                "message_data": { "text": text }
+            }
+        }
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(url)
+        .header("Authorization", auth_header)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Twitter send_dm failed {}: {}", status, body_text);
+    }
+
+    tracing::info!("DM sent to user_id={}", recipient_id);
+    Ok(())
+}
+
+/// Upload image bytes to Twitter v1.1 media/upload. Returns `media_id_string`.
+pub async fn upload_media_v1(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    image_bytes: &[u8],
+) -> Result<String> {
+    let url = "https://upload.twitter.com/1.1/media/upload.json";
+
+    // Multipart upload — body parts are NOT included in OAuth signature
+    let auth_header = generate_oauth_header(
+        "POST",
+        url,
+        api_key,
+        api_secret,
+        access_token,
+        access_secret,
+        &[],
+    );
+
+    let part = reqwest::multipart::Part::bytes(image_bytes.to_vec())
+        .file_name("anky.png")
+        .mime_str("image/png")
+        .map_err(|e| anyhow::anyhow!("mime error: {}", e))?;
+    let form = reqwest::multipart::Form::new().part("media", part);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(url)
+        .header("Authorization", auth_header)
+        .multipart(form)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Twitter media upload failed: {}", body);
+    }
+
+    #[derive(Deserialize)]
+    struct MediaResponse {
+        media_id_string: String,
+    }
+
+    let data: MediaResponse = resp.json().await?;
+    tracing::info!("Twitter media uploaded: id={}", data.media_id_string);
+    Ok(data.media_id_string)
+}
+
+/// Post a v2 reply tweet that attaches an already-uploaded media_id.
+pub async fn reply_with_media_v2(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    tweet_id: &str,
+    text: &str,
+    media_id: &str,
+) -> Result<()> {
+    let url = "https://api.x.com/2/tweets";
+    let body = serde_json::json!({
+        "text": text,
+        "reply": { "in_reply_to_tweet_id": tweet_id },
+        "media": { "media_ids": [media_id] }
+    });
+
+    let auth_header = generate_oauth_header(
+        "POST",
+        url,
+        api_key,
+        api_secret,
+        access_token,
+        access_secret,
+        &[],
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(url)
+        .header("Authorization", auth_header)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("reply_with_media_v2 failed {}: {}", status, body);
+    }
+
+    tracing::info!("Image reply posted to tweet {}", tweet_id);
+    Ok(())
+}
+
 /// Generate OAuth 1.0a Authorization header.
 fn generate_oauth_header(
     method: &str,
@@ -202,6 +389,234 @@ fn generate_oauth_header(
         percent_encode(&timestamp),
         percent_encode(token),
     )
+}
+
+/// Delete a tweet by ID via the v2 API.
+pub async fn delete_tweet(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    tweet_id: &str,
+) -> Result<()> {
+    let url = format!("https://api.x.com/2/tweets/{}", tweet_id);
+    let auth_header = generate_oauth_header(
+        "DELETE",
+        &url,
+        api_key,
+        api_secret,
+        access_token,
+        access_secret,
+        &[],
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .delete(&url)
+        .header("Authorization", auth_header)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("delete_tweet failed {}: {}", status, body);
+    }
+
+    tracing::info!("Deleted tweet {}", tweet_id);
+    Ok(())
+}
+
+/// Parent tweet context fetched for reply mentions.
+pub struct ParentTweet {
+    pub text: String,
+    pub image_url: Option<String>,
+}
+
+/// Fetch a tweet by ID and return its text plus the first image URL (if any).
+pub async fn fetch_parent_tweet(bearer_token: &str, tweet_id: &str) -> Result<ParentTweet> {
+    let url = format!(
+        "https://api.twitter.com/2/tweets/{}?tweet.fields=text&expansions=attachments.media_keys&media.fields=url,preview_image_url,type",
+        tweet_id
+    );
+    let client = reqwest::Client::new();
+    let resp = client.get(&url).bearer_auth(bearer_token).send().await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("fetch_parent_tweet failed {}: {}", status, body);
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    let text = data["data"]["text"].as_str().unwrap_or("").to_string();
+
+    let image_url = data["includes"]["media"].as_array().and_then(|media| {
+        media.iter().find_map(|m| {
+            if m["type"].as_str() == Some("photo") {
+                m["url"].as_str().map(|s| s.to_string())
+            } else {
+                m["preview_image_url"].as_str().map(|s| s.to_string())
+            }
+        })
+    });
+
+    Ok(ParentTweet { text, image_url })
+}
+
+/// Ensure a filter rule for @ankydotapp mentions exists on the v2 Filtered Stream.
+/// Idempotent — safe to call on every startup.
+pub async fn ensure_mention_rule(bearer_token: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+
+    // Check existing rules
+    let resp = client
+        .get("https://api.twitter.com/2/tweets/search/stream/rules")
+        .bearer_auth(bearer_token)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Failed to list stream rules: {} {}", status, body);
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    if let Some(rules) = data["data"].as_array() {
+        for rule in rules {
+            if rule["tag"].as_str() == Some("ankydotapp-mentions") {
+                tracing::info!("Filtered stream rule already exists (id={})", rule["id"]);
+                return Ok(());
+            }
+        }
+    }
+
+    // Create the rule
+    let resp = client
+        .post("https://api.twitter.com/2/tweets/search/stream/rules")
+        .bearer_auth(bearer_token)
+        .json(&serde_json::json!({
+            "add": [{"value": "@ankydotapp -is:retweet", "tag": "ankydotapp-mentions"}]
+        }))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Failed to create stream rule: {} {}", status, body);
+    }
+
+    let result: serde_json::Value = resp.json().await?;
+    tracing::info!("Created filtered stream rule: {:?}", result["data"]);
+    Ok(())
+}
+
+/// Connect to the X v2 Filtered Stream and process @ankydotapp mentions.
+/// Returns Err when the stream disconnects (caller should reconnect with backoff).
+pub async fn run_filtered_stream(bearer_token: &str, state: &crate::state::AppState) -> Result<()> {
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get("https://api.twitter.com/2/tweets/search/stream")
+        .bearer_auth(bearer_token)
+        .query(&[
+            ("tweet.fields", "author_id,created_at,referenced_tweets"),
+            ("expansions", "author_id,referenced_tweets.id"),
+            ("user.fields", "username"),
+        ])
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        // Back off for 15 minutes before retrying
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!("Filtered stream 429 rate limited: {}", body);
+        tokio::time::sleep(Duration::from_secs(900)).await;
+        anyhow::bail!("rate limited (429), waited 15m");
+    }
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Filtered stream connect failed: {} {}", status, body);
+    }
+
+    tracing::info!("Connected to X v2 Filtered Stream");
+    state.emit_log("INFO", "x_stream", "Connected to X v2 Filtered Stream");
+
+    let mut stream = resp.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        let line = std::str::from_utf8(&chunk).unwrap_or("").trim().to_string();
+
+        if line.is_empty() {
+            continue; // heartbeat newline
+        }
+
+        let event: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    "Stream parse error: {} — {:?}",
+                    e,
+                    &line[..line.len().min(200)]
+                );
+                continue;
+            }
+        };
+
+        let tweet_id = event["data"]["id"].as_str().unwrap_or("").to_string();
+        let text = event["data"]["text"].as_str().unwrap_or("").to_string();
+        let author_id = event["data"]["author_id"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        if tweet_id.is_empty() || text.is_empty() || author_id.is_empty() {
+            continue;
+        }
+
+        // Skip our own tweets
+        if author_id == state.config.twitter_bot_user_id {
+            continue;
+        }
+
+        // Extract parent tweet ID if this is a reply
+        let in_reply_to_tweet_id = event["data"]["referenced_tweets"]
+            .as_array()
+            .and_then(|refs| {
+                refs.iter()
+                    .find(|r| r["type"].as_str() == Some("replied_to"))
+                    .and_then(|r| r["id"].as_str())
+                    .map(|s| s.to_string())
+            });
+
+        tracing::info!(
+            "Stream mention: tweet_id={} author={} reply_to={:?}",
+            &tweet_id,
+            &author_id,
+            &in_reply_to_tweet_id,
+        );
+        state.emit_log(
+            "INFO",
+            "x_stream",
+            &format!("Mention: {}", &text[..text.len().min(100)]),
+        );
+
+        let s = state.clone();
+        let tid = tweet_id.clone();
+        let txt = text.clone();
+        let aid = author_id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::routes::webhook_x::process_anky_mention(tid, txt, aid, in_reply_to_tweet_id, s).await {
+                tracing::error!("process_anky_mention error: {}", e);
+            }
+        });
+    }
+
+    anyhow::bail!("Filtered stream disconnected")
 }
 
 fn percent_encode(s: &str) -> String {

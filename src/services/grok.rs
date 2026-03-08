@@ -24,7 +24,7 @@ struct VideoRequest {
 
 /// Submit a text-to-video generation request.
 pub async fn generate_video(api_key: &str, prompt: &str, duration_seconds: u32) -> Result<String> {
-    generate_video_from_image(api_key, prompt, duration_seconds, None).await
+    generate_video_with_aspect(api_key, prompt, duration_seconds, None, "9:16").await
 }
 
 /// Submit an image-to-video generation request.
@@ -35,14 +35,36 @@ pub async fn generate_video_from_image(
     duration_seconds: u32,
     image_url: Option<&str>,
 ) -> Result<String> {
+    generate_video_with_aspect(api_key, prompt, duration_seconds, image_url, "9:16").await
+}
+
+/// Submit an image-to-video generation request with a specific aspect ratio.
+pub async fn generate_video_from_image_with_aspect(
+    api_key: &str,
+    prompt: &str,
+    duration_seconds: u32,
+    image_url: Option<&str>,
+    aspect_ratio: &str,
+) -> Result<String> {
+    generate_video_with_aspect(api_key, prompt, duration_seconds, image_url, aspect_ratio).await
+}
+
+async fn generate_video_with_aspect(
+    api_key: &str,
+    prompt: &str,
+    duration_seconds: u32,
+    image_url: Option<&str>,
+    aspect_ratio: &str,
+) -> Result<String> {
     // xAI enforces 1–15 second range
     let duration_seconds = duration_seconds.clamp(1, 15);
 
     tracing::info!(
-        "xAI: submitting video gen, key_len={}, prompt_len={}, duration={}s, has_image={}",
+        "xAI: submitting video gen, key_len={}, prompt_len={}, duration={}s, aspect_ratio={}, has_image={}",
         api_key.len(),
         prompt.len(),
         duration_seconds,
+        aspect_ratio,
         image_url.is_some()
     );
 
@@ -51,7 +73,7 @@ pub async fn generate_video_from_image(
         model: "grok-imagine-video".to_string(),
         prompt: prompt.to_string(),
         duration: Some(duration_seconds),
-        aspect_ratio: Some("9:16".to_string()),
+        aspect_ratio: Some(aspect_ratio.to_string()),
         resolution: Some("720p".to_string()),
         image: image_url.map(|s| ImageRef { url: s.to_string() }),
     };

@@ -1,0 +1,3 @@
+implement this but only when i tag the bot (@jpfraneto on x)
+
+[prior conversation: idea was that when @jpfraneto replies to a tweet tagging @ankydotapp to generate an image, anky should read the parent tweet's content — text and image if present — and use that as context when generating the image]

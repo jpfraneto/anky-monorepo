@@ -96,35 +96,64 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 1: Generate image prompt (local Qwen)
+    // Step 1: Generate image prompt (local Qwen) — non-fatal, fall back to raw text
     state.emit_log("INFO", "qwen", "Generating image prompt...");
-    let image_prompt = crate::services::ollama::generate_image_prompt(
+    let image_prompt = match crate::services::ollama::generate_image_prompt(
         &state.config.ollama_base_url,
         &state.config.ollama_model,
         writing_text,
     )
-    .await?;
-    state.emit_log("INFO", "qwen", "Image prompt ready");
+    .await
+    {
+        Ok(p) => {
+            state.emit_log("INFO", "qwen", "Image prompt ready");
+            p
+        }
+        Err(e) => {
+            state.emit_log(
+                "WARN",
+                "qwen",
+                &format!("Ollama unavailable ({}), using raw writing text as prompt", e),
+            );
+            writing_text.to_string()
+        }
+    };
 
-    // Step 2: Generate image with Gemini
+    // Step 2: Generate image with Gemini — fall back to Flux on failure
     state.emit_log("INFO", "gemini", "Generating Anky image...");
     let references = gemini::load_references(std::path::Path::new("src/public"));
-    let image_result = gemini::generate_image(gemini_key, &image_prompt, &references).await?;
-    let image_path = gemini::save_image(&image_result.base64, anky_id)?;
-
+    let (image_path, image_model) = match gemini::generate_image(gemini_key, &image_prompt, &references)
+        .await
+        .and_then(|r| gemini::save_image(&r.base64, anky_id))
     {
-        let db = state.db.lock().await;
-        queries::insert_cost_record(
-            &db,
-            "gemini",
-            "gemini-2.5-flash-image",
-            0,
-            0,
-            0.04,
-            Some(anky_id),
-        )?;
-    }
-    state.emit_log("INFO", "gemini", &format!("Image saved: {}", image_path));
+        Ok(p) => {
+            {
+                let db = state.db.lock().await;
+                queries::insert_cost_record(
+                    &db,
+                    "gemini",
+                    "gemini-2.5-flash-image",
+                    0,
+                    0,
+                    0.04,
+                    Some(anky_id),
+                )?;
+            }
+            state.emit_log("INFO", "gemini", &format!("Image saved: {}", p));
+            (p, "gemini".to_string())
+        }
+        Err(e) => {
+            state.emit_log(
+                "WARN",
+                "gemini",
+                &format!("Gemini failed ({}), falling back to Flux...", e),
+            );
+            let image_bytes = comfyui::generate_image(&image_prompt).await?;
+            let p = comfyui::save_image(&image_bytes, anky_id)?;
+            state.emit_log("INFO", "flux", &format!("Flux image saved: {}", p));
+            (p, "flux".to_string())
+        }
+    };
 
     // WebP conversion
     match convert_to_webp(&image_path) {
@@ -213,10 +242,10 @@ pub async fn generate_anky_from_writing(
     {
         let db = state.db.lock().await;
         queries::update_anky_image_complete(&db, anky_id, &image_prompt, &image_path, &caption)?;
-        let _ = queries::set_anky_image_model(&db, anky_id, "gemini");
+        let _ = queries::set_anky_image_model(&db, anky_id, &image_model);
     }
 
-    let total_cost = 0.04;
+    let total_cost = if image_model == "gemini" { 0.04 } else { 0.0 };
     state.emit_log(
         "INFO",
         "image_gen",
@@ -374,15 +403,18 @@ pub async fn generate_image_only(
     Ok(())
 }
 
+/// Generate a Flux image via ComfyUI at the given URL. Returns raw PNG bytes.
+/// Used by the X webhook mention handler to generate Anky images on demand.
+pub async fn generate_flux_image(prompt: &str, comfy_url: &str) -> anyhow::Result<Vec<u8>> {
+    tracing::info!("generate_flux_image: prompt len={}", prompt.len());
+    comfyui::generate_image_at_url(prompt, comfy_url).await
+}
+
 /// Image-only pipeline using Flux.1-dev + anky LoRA via ComfyUI (free, local GPU).
 /// 1. Claude: text → image prompt
 /// 2. ComfyUI: prompt → Flux image
 /// 3. Save image
-pub async fn generate_image_only_flux(
-    state: &AppState,
-    anky_id: &str,
-    text: &str,
-) -> Result<()> {
+pub async fn generate_image_only_flux(state: &AppState, anky_id: &str, text: &str) -> Result<()> {
     state.emit_log(
         "INFO",
         "flux",
@@ -393,7 +425,11 @@ pub async fn generate_image_only_flux(
     let image_prompt = text.to_string();
 
     // Step 1: Generate image via ComfyUI (Flux.1-dev + anky LoRA)
-    state.emit_log("INFO", "flux", "Sending to ComfyUI (Flux.1-dev + anky LoRA)...");
+    state.emit_log(
+        "INFO",
+        "flux",
+        "Sending to ComfyUI (Flux.1-dev + anky LoRA)...",
+    );
     let image_bytes = comfyui::generate_image(&image_prompt).await?;
     let image_path = comfyui::save_image(&image_bytes, anky_id)?;
     state.emit_log("INFO", "flux", &format!("Flux image saved: {}", image_path));
@@ -418,7 +454,11 @@ pub async fn generate_image_only_flux(
             state.emit_log("INFO", "flux", &format!("Thumbnail saved: {}", thumb));
         }
         Err(e) => {
-            state.emit_log("WARN", "flux", &format!("Thumbnail generation failed: {}", e));
+            state.emit_log(
+                "WARN",
+                "flux",
+                &format!("Thumbnail generation failed: {}", e),
+            );
         }
     }
 

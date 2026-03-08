@@ -398,6 +398,46 @@ pub fn run(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // --- Writing session lifecycle columns ---
+    let has_writing_status: bool = conn
+        .prepare("SELECT status FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_writing_status {
+        conn.execute_batch(
+            "ALTER TABLE writing_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';",
+        )?;
+    }
+
+    let has_pause_used: bool = conn
+        .prepare("SELECT pause_used FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_pause_used {
+        conn.execute_batch(
+            "ALTER TABLE writing_sessions ADD COLUMN pause_used BOOLEAN NOT NULL DEFAULT 0;",
+        )?;
+    }
+
+    let has_paused_at: bool = conn
+        .prepare("SELECT paused_at FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_paused_at {
+        conn.execute_batch("ALTER TABLE writing_sessions ADD COLUMN paused_at TEXT;")?;
+    }
+
+    let has_resumed_at: bool = conn
+        .prepare("SELECT resumed_at FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_resumed_at {
+        conn.execute_batch("ALTER TABLE writing_sessions ADD COLUMN resumed_at TEXT;")?;
+    }
+
+    let has_writing_session_token: bool = conn
+        .prepare("SELECT session_token FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_writing_session_token {
+        conn.execute_batch("ALTER TABLE writing_sessions ADD COLUMN session_token TEXT;")?;
+    }
+
     // --- Video Projects (Grok pipeline) ---
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS video_projects (
@@ -493,7 +533,9 @@ pub fn run(conn: &Connection) -> Result<()> {
         .prepare("SELECT image_model FROM ankys LIMIT 0")
         .is_ok();
     if !has_image_model {
-        conn.execute_batch("ALTER TABLE ankys ADD COLUMN image_model TEXT NOT NULL DEFAULT 'gemini';")?;
+        conn.execute_batch(
+            "ALTER TABLE ankys ADD COLUMN image_model TEXT NOT NULL DEFAULT 'gemini';",
+        )?;
     }
 
     // --- Leaderboard: streak + best_flow_score on user_profiles ---
@@ -591,6 +633,150 @@ pub fn run(conn: &Connection) -> Result<()> {
             FOREIGN KEY (interview_id) REFERENCES interviews(id)
         );
         CREATE INDEX IF NOT EXISTS idx_interview_messages_interview_id ON interview_messages(interview_id);",
+    )?;
+
+    // --- Premium flag on users ---
+    let has_premium: bool = conn.prepare("SELECT is_premium FROM users LIMIT 0").is_ok();
+    if !has_premium {
+        conn.execute_batch(
+            "ALTER TABLE users ADD COLUMN is_premium BOOLEAN NOT NULL DEFAULT 0;
+             ALTER TABLE users ADD COLUMN premium_since TEXT;",
+        )?;
+    }
+
+    // --- Swift / Mobile API ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sadhana_commitments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            frequency TEXT NOT NULL DEFAULT 'daily',
+            duration_minutes INTEGER NOT NULL DEFAULT 10,
+            target_days INTEGER NOT NULL DEFAULT 30,
+            start_date TEXT NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS sadhana_checkins (
+            id TEXT PRIMARY KEY,
+            commitment_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            completed BOOLEAN NOT NULL DEFAULT 1,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (commitment_id, date),
+            FOREIGN KEY (commitment_id) REFERENCES sadhana_commitments(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS breathwork_sessions (
+            id TEXT PRIMARY KEY,
+            style TEXT NOT NULL,
+            duration_seconds INTEGER NOT NULL DEFAULT 480,
+            script_json TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS breathwork_completions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+            notes TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (session_id) REFERENCES breathwork_sessions(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sadhana_commitments_user ON sadhana_commitments(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sadhana_checkins_commitment ON sadhana_checkins(commitment_id);
+        CREATE INDEX IF NOT EXISTS idx_breathwork_completions_user ON breathwork_completions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_breathwork_sessions_style ON breathwork_sessions(style);
+
+        CREATE TABLE IF NOT EXISTS personalized_meditations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            writing_session_id TEXT,
+            script_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            tier TEXT NOT NULL DEFAULT 'free',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS personalized_breathwork (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            writing_session_id TEXT,
+            style TEXT NOT NULL DEFAULT 'calming',
+            script_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            tier TEXT NOT NULL DEFAULT 'free',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_personalized_meditations_user ON personalized_meditations(user_id, status);
+        CREATE INDEX IF NOT EXISTS idx_personalized_breathwork_user ON personalized_breathwork(user_id, status);
+
+        CREATE TABLE IF NOT EXISTS facilitators (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            bio TEXT NOT NULL,
+            specialties TEXT NOT NULL DEFAULT '[]',
+            approach TEXT,
+            session_rate_usd REAL NOT NULL,
+            booking_url TEXT,
+            contact_method TEXT,
+            profile_image_url TEXT,
+            location TEXT,
+            languages TEXT NOT NULL DEFAULT '[\"en\"]',
+            status TEXT NOT NULL DEFAULT 'pending',
+            avg_rating REAL DEFAULT 0,
+            total_reviews INTEGER DEFAULT 0,
+            total_sessions INTEGER DEFAULT 0,
+            fee_paid BOOLEAN NOT NULL DEFAULT 0,
+            fee_tx_hash TEXT,
+            approved_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS facilitator_reviews (
+            id TEXT PRIMARY KEY,
+            facilitator_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            review_text TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (facilitator_id, user_id),
+            FOREIGN KEY (facilitator_id) REFERENCES facilitators(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS facilitator_bookings (
+            id TEXT PRIMARY KEY,
+            facilitator_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            payment_amount_usd REAL,
+            platform_fee_usd REAL,
+            payment_method TEXT,
+            payment_tx_hash TEXT,
+            stripe_payment_id TEXT,
+            user_context_shared BOOLEAN DEFAULT 0,
+            shared_context_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (facilitator_id) REFERENCES facilitators(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_facilitators_status ON facilitators(status);
+        CREATE INDEX IF NOT EXISTS idx_facilitator_reviews_fac ON facilitator_reviews(facilitator_id);
+        CREATE INDEX IF NOT EXISTS idx_facilitator_bookings_user ON facilitator_bookings(user_id);",
     )?;
 
     Ok(())

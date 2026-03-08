@@ -97,8 +97,14 @@ pub async fn call_ollama_with_system(
         base_url,
         model,
         vec![
-            OllamaChatMessage { role: "system".into(), content: system.into() },
-            OllamaChatMessage { role: "user".into(), content: user_message.into() },
+            OllamaChatMessage {
+                role: "system".into(),
+                content: system.into(),
+            },
+            OllamaChatMessage {
+                role: "user".into(),
+                content: user_message.into(),
+            },
         ],
     )
     .await
@@ -130,7 +136,10 @@ pub async fn generate_suggested_replies(
     reflection: &str,
     history: &[(String, String)],
 ) -> anyhow::Result<(String, String)> {
-    let mut context = format!("USER'S WRITING:\n{}\n\nREFLECTION:\n{}", writing, reflection);
+    let mut context = format!(
+        "USER'S WRITING:\n{}\n\nREFLECTION:\n{}",
+        writing, reflection
+    );
     if !history.is_empty() {
         context.push_str("\n\nCONVERSATION SO FAR:");
         for (role, content) in history {
@@ -148,8 +157,14 @@ pub async fn generate_suggested_replies(
         trimmed
     };
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-        let r1 = v["reply1"].as_str().unwrap_or("that lands somewhere deep").to_string();
-        let r2 = v["reply2"].as_str().unwrap_or("but what am i actually avoiding here").to_string();
+        let r1 = v["reply1"]
+            .as_str()
+            .unwrap_or("that lands somewhere deep")
+            .to_string();
+        let r2 = v["reply2"]
+            .as_str()
+            .unwrap_or("but what am i actually avoiding here")
+            .to_string();
         return Ok((r1, r2));
     }
     Ok((
@@ -171,8 +186,78 @@ ALWAYS INCLUDE:
 OUTPUT: A single detailed image generation prompt, 2-3 sentences, painterly/fantasy style. Nothing else."#;
 
 /// Generate an image prompt from writing using local Qwen.
-pub async fn generate_image_prompt(base_url: &str, model: &str, writing: &str) -> anyhow::Result<String> {
+pub async fn generate_image_prompt(
+    base_url: &str,
+    model: &str,
+    writing: &str,
+) -> anyhow::Result<String> {
     call_ollama_with_system(base_url, model, IMAGE_PROMPT_SYSTEM, writing).await
+}
+
+const X_IMAGE_MENTION_SYSTEM: &str = r#"You are Anky handling direct mentions on X.
+
+TASK:
+- Decide whether the user is asking to see an image of Anky.
+- If they are, mark it as an image request.
+- If they are not, answer with a short in-character reply.
+
+TREAT AS IMAGE REQUEST:
+- Any request to draw, show, depict, imagine, render, or place Anky in a scene, action, mood, or concept
+- Any message where the user is clearly trying to see Anky
+
+WHEN GENERATING THE TEXT REPLY:
+- Max 2 sentences
+- Mystical, playful, irreverent
+- Never corporate, never generic
+
+Ignore raw @mentions and links except for the meaning of the user's request.
+
+Output raw JSON only:
+Image request: {"type":"image"}
+Not image request: {"type":"reply","reply":"..."}"#;
+
+#[derive(Debug)]
+pub struct XImageMentionResponse {
+    pub is_image_request: bool,
+    pub text_reply: Option<String>,
+}
+
+/// Classify an X mention as either an image request with a fresh prompt or a short text reply.
+pub async fn classify_x_image_mention(
+    base_url: &str,
+    model: &str,
+    text: &str,
+) -> anyhow::Result<XImageMentionResponse> {
+    let raw = call_ollama_with_system(base_url, model, X_IMAGE_MENTION_SYSTEM, text).await?;
+    let trimmed = raw.trim();
+    let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        &trimmed[s..=e]
+    } else {
+        trimmed
+    };
+
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+        match v["type"].as_str().unwrap_or("") {
+            "image" => {
+                return Ok(XImageMentionResponse {
+                    is_image_request: true,
+                    text_reply: None,
+                });
+            }
+            "reply" => {
+                return Ok(XImageMentionResponse {
+                    is_image_request: false,
+                    text_reply: Some(v["reply"].as_str().unwrap_or("🦍").trim().to_string()),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    Ok(XImageMentionResponse {
+        is_image_request: false,
+        text_reply: Some("🦍".to_string()),
+    })
 }
 
 const CLASSIFY_PROMPT_SYSTEM: &str = r#"You are a classifier for the Anky image generation platform. Determine if the user's text is an image generation request.
@@ -255,7 +340,10 @@ pub async fn classify_mention(
             });
         }
     }
-    Ok(crate::services::claude::MentionClassification { is_genuine: false, prompt_text: None })
+    Ok(crate::services::claude::MentionClassification {
+        is_genuine: false,
+        prompt_text: None,
+    })
 }
 
 pub fn deep_reflection_prompt(text: &str) -> String {

@@ -1,0 +1,1 @@
+i just finished writing an anky and the image generation faiked. please diagnose. and for the next time if the gemini generation fails iss the flux local pipeline. fix and redeploy. and regenerate the anky image dor the anky i just wrote

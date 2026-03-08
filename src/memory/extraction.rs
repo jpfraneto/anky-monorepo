@@ -45,7 +45,11 @@ pub struct ExtractedMemories {
 }
 
 /// Extract structured memories from a writing session using local Qwen via Ollama.
-pub async fn extract_memories(ollama_base_url: &str, ollama_model: &str, writing: &str) -> Result<ExtractedMemories> {
+pub async fn extract_memories(
+    ollama_base_url: &str,
+    ollama_model: &str,
+    writing: &str,
+) -> Result<ExtractedMemories> {
     let text = crate::services::ollama::call_ollama_with_system(
         ollama_base_url,
         ollama_model,
@@ -179,4 +183,3 @@ pub fn get_user_session_count(conn: &Connection, user_id: &str) -> Result<i32> {
     )?;
     Ok(count)
 }
-
