@@ -284,6 +284,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
         .route("/changelog", axum::routing::get(pages::changelog))
+        .route("/llm", axum::routing::get(pages::llm))
+        .route("/pitch-deck", axum::routing::get(pages::pitch_deck))
+        .route("/api/v1/llm/training-status", axum::routing::post(api::llm_training_status))
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
         // Prompt pages
         .route(

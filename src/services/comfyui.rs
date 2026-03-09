@@ -23,6 +23,7 @@ const GUIDANCE: f64 = 3.5;
 /// Uses separate UNETLoader + DualCLIPLoader + VAELoader (correct setup for flux1-dev.safetensors).
 fn build_workflow(prompt: &str, client_id: &str) -> Value {
     let lora_name = resolve_lora_model_name();
+    let prompt = ensure_trigger_word(prompt);
     json!({
         "client_id": client_id,
         "prompt": {
@@ -158,6 +159,16 @@ pub async fn is_available() -> bool {
 /// Returns PNG bytes.
 pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
     generate_image_at_url(prompt, COMFYUI_URL).await
+}
+
+/// Ensure the LoRA trigger word "anky" is present in the prompt.
+/// If missing, prepend it so the LoRA style activates.
+fn ensure_trigger_word(prompt: &str) -> String {
+    if prompt.to_lowercase().contains("anky") {
+        prompt.to_string()
+    } else {
+        format!("anky, {}", prompt)
+    }
 }
 
 /// Like `generate_image` but uses a caller-supplied ComfyUI base URL.

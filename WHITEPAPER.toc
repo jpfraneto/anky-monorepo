@@ -26,12 +26,13 @@
 \contentsline {subsection}{\numberline {6.7}Text-to-Speech Architecture}{16}{subsection.6.7}%
 \contentsline {section}{\numberline {7}The Token: \$ANKY}{17}{section.7}%
 \contentsline {subsection}{\numberline {7.1}The Memecoin That Meditates}{17}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}Token Utility}{17}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Why Solana}{18}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}Why a Memecoin}{18}{subsection.7.4}%
-\contentsline {subsection}{\numberline {7.5}Treasury and Sustainability}{19}{subsection.7.5}%
-\contentsline {section}{\numberline {8}The Vision}{19}{section.8}%
-\contentsline {subsection}{\numberline {8.1}What Anky Becomes}{19}{subsection.8.1}%
+\contentsline {subsection}{\numberline {7.2}A Memecoin in Its Pure Essence}{17}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Trading Fees: How the AI Pays for Itself}{18}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Why Solana}{18}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}Why a Memecoin}{19}{subsection.7.5}%
+\contentsline {subsection}{\numberline {7.6}Sustainability}{19}{subsection.7.6}%
+\contentsline {section}{\numberline {8}The Vision}{20}{section.8}%
+\contentsline {subsection}{\numberline {8.1}What Anky Becomes}{20}{subsection.8.1}%
 \contentsline {subsection}{\numberline {8.2}The Collective Mirror}{20}{subsection.8.2}%
 \contentsline {subsection}{\numberline {8.3}What I Am Not}{21}{subsection.8.3}%
 \contentsline {section}{\numberline {9}An Invitation}{21}{section.9}%

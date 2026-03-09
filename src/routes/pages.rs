@@ -789,6 +789,48 @@ pub async fn changelog(State(state): State<AppState>) -> Result<Html<String>, Ap
     Ok(Html(html))
 }
 
+pub async fn pitch_deck(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("pitch-deck.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn llm(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let runs = {
+        let db = state.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT run_date, val_bpb, training_seconds, peak_vram_mb, mfu_percent,
+                    total_tokens_m, num_steps, num_params_m, depth,
+                    corpus_sessions, corpus_words, corpus_tokens, epochs
+             FROM llm_training_runs ORDER BY run_date ASC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(serde_json::json!({
+                "run_date": row.get::<_, String>(0)?,
+                "val_bpb": row.get::<_, f64>(1)?,
+                "training_seconds": row.get::<_, f64>(2)?,
+                "peak_vram_mb": row.get::<_, f64>(3)?,
+                "mfu_percent": row.get::<_, f64>(4)?,
+                "total_tokens_m": row.get::<_, f64>(5)?,
+                "num_steps": row.get::<_, i64>(6)?,
+                "num_params_m": row.get::<_, f64>(7)?,
+                "depth": row.get::<_, i64>(8)?,
+                "corpus_sessions": row.get::<_, i64>(9)?,
+                "corpus_words": row.get::<_, i64>(10)?,
+                "corpus_tokens": row.get::<_, i64>(11)?,
+                "epochs": row.get::<_, i64>(12)?,
+            }))
+        })?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+    };
+
+    let mut ctx = tera::Context::new();
+    ctx.insert("runs", &runs);
+    ctx.insert("runs_json", &serde_json::to_string(&runs).unwrap_or_default());
+    let html = state.tera.render("llm.html", &ctx)?;
+    Ok(Html(html))
+}
+
 #[derive(Deserialize)]
 pub struct MediaDashboardQuery {
     pub order: Option<String>,

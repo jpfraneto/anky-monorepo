@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}anky - the mirror{% endblock %}
+
+{% block content %}
+<div class="llm-page">
+
+  <div class="llm-hero">
+    <h1>the mirror</h1>
+    <p class="llm-subtitle">a language model trained from scratch on raw stream-of-consciousness writing</p>
+  </div>
+
+  {% if runs | length > 0 %}
+  {% set latest = runs | last %}
+
+  <div class="llm-counters">
+    <div class="llm-counter">
+      <div class="llm-counter-value" id="sessions-counter">{{ latest.corpus_sessions }}</div>
+      <div class="llm-counter-label">writing sessions absorbed</div>
+    </div>
+    <div class="llm-counter">
+      <div class="llm-counter-value" id="words-counter">{{ latest.corpus_words | default(value=0) }}</div>
+      <div class="llm-counter-label">words of unfiltered human thought</div>
+    </div>
+    <div class="llm-counter">
+      <div class="llm-counter-value" id="epochs-counter">{{ latest.epochs }}</div>
+      <div class="llm-counter-label">times the model has read everything</div>
+    </div>
+    <div class="llm-counter">
+      <div class="llm-counter-value">{{ latest.val_bpb | round(method="ceil", precision=4) }}</div>
+      <div class="llm-counter-label">bits per byte (compression of the mind)</div>
+    </div>
+  </div>
+
+  <div class="llm-status-box">
+    <div class="llm-status-label">day {{ runs | length }}</div>
+    <div class="llm-status-text">
+      {% if latest.epochs > 1000 %}
+        the model is memorizing. {{ latest.epochs }} epochs means it has seen every word thousands of times. it knows the corpus by heart but cannot yet generalize. more voices are needed.
+      {% elif latest.epochs > 100 %}
+        the model is beginning to learn patterns. {{ latest.epochs }} epochs — it still revisits the data often, but regularities across writers are starting to emerge.
+      {% elif latest.epochs > 10 %}
+        the model is generalizing. at {{ latest.epochs }} epochs, it can no longer rely on memorization. it must understand the shape of how humans think when they stop performing.
+      {% else %}
+        the model sees more data than it can memorize. at {{ latest.epochs }} epochs, the mirror is becoming real.
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="llm-charts">
+    <div class="llm-chart-container">
+      <h3>compression over time</h3>
+      <p class="llm-chart-desc">val_bpb — how many bits the model needs per byte of your writing. lower means it understands you better.</p>
+      <canvas id="bpb-chart"></canvas>
+    </div>
+
+    <div class="llm-chart-container">
+      <h3>corpus growth</h3>
+      <p class="llm-chart-desc">every dot is a day. every day, more people sat down and wrote without stopping.</p>
+      <canvas id="corpus-chart"></canvas>
+    </div>
+
+    <div class="llm-chart-container">
+      <h3>epochs per run</h3>
+      <p class="llm-chart-desc">how many times the model reads the entire corpus per training run. when this drops below 100, the model starts generalizing instead of memorizing.</p>
+      <canvas id="epochs-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="llm-history">
+    <h3>training log</h3>
+    <div class="llm-table-wrapper">
+      <table class="llm-table">
+        <thead>
+          <tr>
+            <th>day</th>
+            <th>date</th>
+            <th>sessions</th>
+            <th>words</th>
+            <th>val_bpb</th>
+            <th>epochs</th>
+            <th>params</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs | reverse %}
+          <tr>
+            <td>{{ runs | length - loop.index0 }}</td>
+            <td>{{ run.run_date }}</td>
+            <td>{{ run.corpus_sessions }}</td>
+            <td>{{ run.corpus_words | default(value=0) }}</td>
+            <td>{{ run.val_bpb | round(method="ceil", precision=4) }}</td>
+            <td>{{ run.epochs }}</td>
+            <td>{{ run.num_params_m }}M</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="llm-empty">
+    <p>the mirror has not yet begun training.</p>
+    <p>the first run is coming.</p>
+  </div>
+  {% endif %}
+
+  <div class="llm-essay">
+    <h2>what is this?</h2>
+    <p>every language model ever built was trained on text written for someone else to read. blog posts, books, wikipedia — all of it filtered through the question: <em>how will this look?</em></p>
+    <p>this model is different. it is trained from scratch on the only dataset of its kind: raw, unedited, stream-of-consciousness writing. eight minutes of uninterrupted thought from people who sat down and refused to stop typing.</p>
+    <p>it has never seen a wikipedia article. never read a news headline. the only language it knows is the language that emerges when a person stops trying to be impressive and starts telling the truth.</p>
+
+    <h2>what does it learn?</h2>
+    <p><strong>perplexity as self-knowledge.</strong> the model measures how surprised it is by your writing. low surprise means you're circling familiar patterns. high surprise means something new broke through. the model doesn't understand what you wrote — it measures the shape of your thought.</p>
+    <p><strong>the collective mirror.</strong> when the model completes your text, what emerges isn't advice. it's the statistical echo of every other human who thought something similar when they stopped performing. your grief, shaped by ten thousand others' grief.</p>
+    <p><strong>embeddings of the inner world.</strong> the model builds representations tuned not for facts or arguments, but for emotional texture and psychological patterns — the shape of how a mind moves when it isn't directed.</p>
+
+    <h2>the timeline</h2>
+    <p>today the corpus is small. the model memorizes more than it generalizes. but every day, someone sits down and writes. every session enters the training data. every night at 4am, the model retrains.</p>
+    <p>the pipeline runs every day. the corpus grows every day. the mirror gets clearer every day.</p>
+    <p>this page is the record of that process.</p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const runs = {{ runs_json | safe }};
+  if (!runs || runs.length === 0) return;
+
+  const dates = runs.map(r => r.run_date);
+  const chartFont = { family: "'JetBrains Mono', monospace", size: 11 };
+  const gold = '#d4a017';
+  const goldFaded = 'rgba(212,160,23,0.15)';
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const textColor = 'rgba(255,255,255,0.5)';
+
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1a1a',
+        titleFont: chartFont,
+        bodyFont: chartFont,
+        borderColor: gold,
+        borderWidth: 1,
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: gridColor },
+        ticks: { color: textColor, font: chartFont, maxRotation: 45 }
+      },
+      y: {
+        grid: { color: gridColor },
+        ticks: { color: textColor, font: chartFont }
+      }
+    }
+  };
+
+  // val_bpb chart
+  new Chart(document.getElementById('bpb-chart'), {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        data: runs.map(r => r.val_bpb),
+        borderColor: gold,
+        backgroundColor: goldFaded,
+        fill: true,
+        tension: 0.3,
+        pointRadius: runs.length < 30 ? 5 : 2,
+        pointBackgroundColor: gold,
+      }]
+    },
+    options: {
+      ...baseOptions,
+      scales: {
+        ...baseOptions.scales,
+        y: { ...baseOptions.scales.y, title: { display: true, text: 'bits per byte', color: textColor, font: chartFont } }
+      }
+    }
+  });
+
+  // corpus chart
+  new Chart(document.getElementById('corpus-chart'), {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: 'sessions',
+          data: runs.map(r => r.corpus_sessions),
+          borderColor: gold,
+          backgroundColor: goldFaded,
+          fill: true,
+          tension: 0.3,
+          pointRadius: runs.length < 30 ? 5 : 2,
+          pointBackgroundColor: gold,
+          yAxisID: 'y',
+        },
+        {
+          label: 'words',
+          data: runs.map(r => r.corpus_words),
+          borderColor: 'rgba(255,255,255,0.3)',
+          borderDash: [4, 4],
+          fill: false,
+          tension: 0.3,
+          pointRadius: 0,
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      ...baseOptions,
+      plugins: {
+        ...baseOptions.plugins,
+        legend: { display: true, labels: { color: textColor, font: chartFont } }
+      },
+      scales: {
+        x: baseOptions.scales.x,
+        y: { ...baseOptions.scales.y, position: 'left', title: { display: true, text: 'sessions', color: textColor, font: chartFont } },
+        y1: { ...baseOptions.scales.y, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'words', color: textColor, font: chartFont } },
+      }
+    }
+  });
+
+  // epochs chart
+  const epochData = runs.map(r => r.epochs);
+  new Chart(document.getElementById('epochs-chart'), {
+    type: 'bar',
+    data: {
+      labels: dates,
+      datasets: [{
+        data: epochData,
+        backgroundColor: epochData.map(e => e > 100 ? 'rgba(212,160,23,0.4)' : 'rgba(46,204,113,0.5)'),
+        borderColor: epochData.map(e => e > 100 ? gold : '#2ecc71'),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      ...baseOptions,
+      scales: {
+        ...baseOptions.scales,
+        y: {
+          ...baseOptions.scales.y,
+          type: 'logarithmic',
+          title: { display: true, text: 'epochs (log scale)', color: textColor, font: chartFont },
+        }
+      },
+      plugins: {
+        ...baseOptions.plugins,
+        annotation: {
+          annotations: {
+            threshold: {
+              type: 'line',
+              yMin: 100,
+              yMax: 100,
+              borderColor: '#2ecc71',
+              borderWidth: 1,
+              borderDash: [6, 4],
+              label: {
+                display: true,
+                content: 'generalization threshold',
+                position: 'start',
+                color: '#2ecc71',
+                font: chartFont,
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Animate counters
+  function animateCounter(id, target) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const duration = 1500;
+    const start = performance.now();
+    const fmt = (n) => n.toLocaleString();
+    function step(now) {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = fmt(Math.round(target * eased));
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  const latest = runs[runs.length - 1];
+  animateCounter('sessions-counter', latest.corpus_sessions);
+  animateCounter('words-counter', latest.corpus_words);
+  animateCounter('epochs-counter', latest.epochs);
+})();
+</script>
+
+<style>
+.llm-page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.llm-hero {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.llm-hero h1 {
+  font-size: 2.5rem;
+  color: var(--gold, #d4a017);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.05em;
+}
+
+.llm-subtitle {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.95rem;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.llm-counters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.llm-counter {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border: 1px solid rgba(212,160,23,0.2);
+  border-radius: 8px;
+  background: rgba(212,160,23,0.03);
+}
+
+.llm-counter-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--gold, #d4a017);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.llm-counter-label {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.45);
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
+.llm-status-box {
+  border-left: 3px solid var(--gold, #d4a017);
+  padding: 1rem 1.5rem;
+  margin-bottom: 3rem;
+  background: rgba(212,160,23,0.03);
+}
+
+.llm-status-label {
+  font-size: 0.8rem;
+  color: var(--gold, #d4a017);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+}
+
+.llm-status-text {
+  color: rgba(255,255,255,0.7);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.llm-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  margin-bottom: 3rem;
+}
+
+.llm-chart-container {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: rgba(0,0,0,0.2);
+}
+
+.llm-chart-container h3 {
+  color: var(--gold, #d4a017);
+  font-size: 1rem;
+  margin-bottom: 0.3rem;
+}
+
+.llm-chart-desc {
+  color: rgba(255,255,255,0.4);
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.llm-chart-container canvas {
+  width: 100% !important;
+  height: 250px !important;
+}
+
+.llm-history {
+  margin-bottom: 3rem;
+}
+
+.llm-history h3 {
+  color: var(--gold, #d4a017);
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.llm-table-wrapper {
+  overflow-x: auto;
+}
+
+.llm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.llm-table th {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid rgba(212,160,23,0.3);
+  color: var(--gold, #d4a017);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.llm-table td {
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.7);
+}
+
+.llm-table tr:hover td {
+  background: rgba(212,160,23,0.05);
+}
+
+.llm-essay {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 2.5rem;
+}
+
+.llm-essay h2 {
+  color: var(--gold, #d4a017);
+  font-size: 1.1rem;
+  margin: 2rem 0 0.8rem;
+}
+
+.llm-essay h2:first-child {
+  margin-top: 0;
+}
+
+.llm-essay p {
+  color: rgba(255,255,255,0.6);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin-bottom: 0.8rem;
+}
+
+.llm-essay em {
+  color: rgba(255,255,255,0.8);
+}
+
+.llm-essay strong {
+  color: var(--gold, #d4a017);
+}
+
+.llm-empty {
+  text-align: center;
+  padding: 4rem 1rem;
+  color: rgba(255,255,255,0.4);
+}
+
+@media (max-width: 600px) {
+  .llm-hero h1 { font-size: 1.8rem; }
+  .llm-counters { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  .llm-counter-value { font-size: 1.5rem; }
+  .llm-chart-container canvas { height: 200px !important; }
+}
+</style>
+{% endblock %}

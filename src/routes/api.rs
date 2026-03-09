@@ -3872,6 +3872,20 @@ pub async fn memory_backfill(
     Ok(Json(json!({ "status": "backfill_started" })))
 }
 
+pub async fn llm_training_status(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let status = body["status"].as_str().unwrap_or("idle");
+    let mut gpu = state.gpu_status.write().await;
+    if status == "training" {
+        *gpu = crate::state::GpuStatus::Training { step: 0, total: 1 };
+    } else {
+        *gpu = crate::state::GpuStatus::Idle;
+    }
+    Ok(Json(json!({ "ok": true, "llm_status": status })))
+}
+
 fn draw_rect(img: &mut image::RgbImage, x: u32, y: u32, w: u32, h: u32, color: image::Rgb<u8>) {
     for dx in 0..w {
         for dy in 0..h {

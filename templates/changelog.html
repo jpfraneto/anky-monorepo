@@ -7,6 +7,22 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-08-autoresearch-llm-pipeline">
+    <div class="changelog-date">2026-03-08</div>
+    <h2 class="changelog-title">Anky LLM: daily training pipeline from scratch on raw stream-of-consciousness</h2>
+    <p class="changelog-desc">Built a complete pipeline to train a language model from scratch on Anky's writing corpus, adapted from Karpathy's autoresearch framework. Exports all writings to parquet, trains a domain-specific BPE tokenizer, and runs a 5-minute GPT training experiment on RTX 4090. First run: 237 sessions, 125K tokens, val_bpb=0.345, 13.9M params, 3012 epochs. Daily systemd timer at 4 AM Chile time retrains as corpus grows. New /llm page with live charts tracking compression, corpus growth, and epochs-per-run. THE_ANKY_MODEL.md documents the vision and downstream consequences.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-08-002-autoresearch-llm-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-08-autoresearch-llm-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-08-flux-lora-trigger-word">
+    <div class="changelog-date">2026-03-08</div>
+    <h2 class="changelog-title">Fix Flux LoRA not activating — missing trigger word</h2>
+    <p class="changelog-desc">Images from /generate weren't looking like Anky because the LoRA trigger word "anky" wasn't being injected into prompts sent to ComfyUI. Now all Flux generations automatically prepend the trigger word if it's missing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-08-001-flux-lora-trigger-word.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-08-flux-lora-trigger-word">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-07-swift-agent-brief-understanding-whitepaper">
     <div class="changelog-date">2026-03-07</div>
     <h2 class="changelog-title">SWIFT_AGENT_BRIEF.md, UNDERSTANDING_ANKY.md, and WHITEPAPER.tex</h2>

@@ -1,0 +1,1 @@
+im trying to henerate anky images on yhe /generate endpoint but it looks as if flux was not loaded because the images dont look like anky at all

@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+data/
+logs/
+run.log
+results.tsv
+tokenizer/
+upstream/

@@ -779,5 +779,28 @@ pub fn run(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_facilitator_bookings_user ON facilitator_bookings(user_id);",
     )?;
 
+    // --- Anky LLM Training History ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS llm_training_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date TEXT NOT NULL,
+            val_bpb REAL NOT NULL,
+            training_seconds REAL NOT NULL,
+            peak_vram_mb REAL NOT NULL,
+            mfu_percent REAL NOT NULL,
+            total_tokens_m REAL NOT NULL,
+            num_steps INTEGER NOT NULL,
+            num_params_m REAL NOT NULL,
+            depth INTEGER NOT NULL,
+            corpus_sessions INTEGER NOT NULL,
+            corpus_words INTEGER NOT NULL,
+            corpus_tokens INTEGER NOT NULL,
+            epochs INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'complete',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_training_runs_date ON llm_training_runs(run_date);",
+    )?;
+
     Ok(())
 }

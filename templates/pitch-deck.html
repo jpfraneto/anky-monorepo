@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>anky — the inevitable practice</title>
+  <meta property="og:title" content="ANKY — the self-awareness layer of the new internet">
+  <meta property="og:description" content="a language model trained on raw consciousness. a mirror for the mind. the practice the world didn't know it was waiting for.">
+  <meta property="og:image" content="https://anky.app/static/og-pitch-deck.png">
+  <meta property="og:image:width" content="1344">
+  <meta property="og:image:height" content="768">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ANKY — the self-awareness layer of the new internet">
+  <meta name="twitter:description" content="pitch deck — a language model trained on raw consciousness.">
+  <meta name="twitter:image" content="https://anky.app/static/og-pitch-deck.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Righteous&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primordia: #e74c3c;
+      --emblazion: #f39c12;
+      --chryseos: #f1c40f;
+      --eleasis: #2ecc71;
+      --voxlumis: #3498db;
+      --insightia: #4b0082;
+      --claridium: #8e44ad;
+      --poiesis: #e91e90;
+    }
+
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+      overflow-x: hidden;
+    }
+
+    body {
+      background: #0a0a0a;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      overflow-x: hidden;
+    }
+
+    .slide {
+      width: 100vw;
+      min-height: 56.25vw; /* 16:9 */
+      max-height: 100vh;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .slide-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 5vw 6vw;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+
+    .slide-kingdom {
+      position: absolute;
+      top: 3vw;
+      right: 4vw;
+      font-family: 'Righteous', sans-serif;
+      font-size: clamp(10px, 1.2vw, 14px);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      opacity: 0.3;
+    }
+
+    .slide-number {
+      position: absolute;
+      bottom: 3vw;
+      right: 4vw;
+      font-size: clamp(10px, 1vw, 13px);
+      opacity: 0.2;
+      letter-spacing: 0.15em;
+    }
+
+    .slide h1 {
+      font-family: 'Righteous', sans-serif;
+      font-size: clamp(36px, 5.5vw, 72px);
+      line-height: 1.1;
+      margin-bottom: 2.5vw;
+      letter-spacing: 0.02em;
+    }
+
+    .slide h2 {
+      font-family: 'Righteous', sans-serif;
+      font-size: clamp(24px, 3.5vw, 48px);
+      line-height: 1.15;
+      margin-bottom: 2vw;
+    }
+
+    .slide p {
+      font-size: clamp(13px, 1.6vw, 20px);
+      line-height: 1.8;
+      max-width: 750px;
+      font-weight: 300;
+    }
+
+    .slide p + p {
+      margin-top: 1.2em;
+    }
+
+    .slide .accent {
+      font-weight: 500;
+    }
+
+    .slide .stat-row {
+      display: flex;
+      gap: 4vw;
+      margin-top: 3vw;
+      flex-wrap: wrap;
+    }
+
+    .slide .stat {
+      text-align: center;
+    }
+
+    .slide .stat-value {
+      font-family: 'Righteous', sans-serif;
+      font-size: clamp(28px, 4vw, 56px);
+      line-height: 1;
+    }
+
+    .slide .stat-label {
+      font-size: clamp(10px, 1.1vw, 13px);
+      opacity: 0.5;
+      margin-top: 0.5em;
+      letter-spacing: 0.05em;
+    }
+
+    .slide .quote {
+      font-style: italic;
+      opacity: 0.6;
+      border-left: 2px solid currentColor;
+      padding-left: 1.5em;
+      margin-top: 2vw;
+      font-size: clamp(12px, 1.4vw, 17px);
+    }
+
+    .slide .loop {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.8em;
+      margin-top: 2vw;
+      font-size: clamp(13px, 1.5vw, 18px);
+    }
+
+    .slide .loop .arrow {
+      opacity: 0.3;
+      padding-left: 2em;
+    }
+
+    .slide .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 2vw;
+      margin-top: 2.5vw;
+    }
+
+    .slide .feature {
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 1.5em;
+      border-radius: 4px;
+    }
+
+    .slide .feature-title {
+      font-weight: 500;
+      font-size: clamp(14px, 1.4vw, 18px);
+      margin-bottom: 0.5em;
+    }
+
+    .slide .feature-desc {
+      font-size: clamp(11px, 1.1vw, 14px);
+      opacity: 0.6;
+      line-height: 1.6;
+    }
+
+    /* Background glow effect per slide */
+    .slide::before {
+      content: '';
+      position: absolute;
+      width: 50vw;
+      height: 50vw;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.08;
+      top: -10vw;
+      left: -10vw;
+      z-index: 0;
+    }
+
+    .slide-primordia { background: linear-gradient(160deg, #0d0404 0%, #1a0808 50%, #0a0505 100%); }
+    .slide-primordia::before { background: var(--primordia); }
+    .slide-primordia h1, .slide-primordia h2, .slide-primordia .stat-value, .slide-primordia .accent { color: var(--primordia); }
+
+    .slide-emblazion { background: linear-gradient(160deg, #0d0904 0%, #1a1108 50%, #0a0805 100%); }
+    .slide-emblazion::before { background: var(--emblazion); }
+    .slide-emblazion h1, .slide-emblazion h2, .slide-emblazion .stat-value, .slide-emblazion .accent { color: var(--emblazion); }
+
+    .slide-chryseos { background: linear-gradient(160deg, #0d0d04 0%, #1a1a08 50%, #0a0a05 100%); }
+    .slide-chryseos::before { background: var(--chryseos); }
+    .slide-chryseos h1, .slide-chryseos h2, .slide-chryseos .stat-value, .slide-chryseos .accent { color: var(--chryseos); }
+
+    .slide-eleasis { background: linear-gradient(160deg, #040d06 0%, #081a0e 50%, #050a07 100%); }
+    .slide-eleasis::before { background: var(--eleasis); }
+    .slide-eleasis h1, .slide-eleasis h2, .slide-eleasis .stat-value, .slide-eleasis .accent { color: var(--eleasis); }
+
+    .slide-voxlumis { background: linear-gradient(160deg, #04080d 0%, #0a121a 50%, #050a0d 100%); }
+    .slide-voxlumis::before { background: var(--voxlumis); }
+    .slide-voxlumis h1, .slide-voxlumis h2, .slide-voxlumis .stat-value, .slide-voxlumis .accent { color: var(--voxlumis); }
+
+    .slide-insightia { background: linear-gradient(160deg, #08040d 0%, #10081a 50%, #0a050d 100%); }
+    .slide-insightia::before { background: var(--insightia); }
+    .slide-insightia h1, .slide-insightia h2, .slide-insightia .stat-value, .slide-insightia .accent { color: #7b68ee; }
+
+    .slide-claridium { background: linear-gradient(160deg, #0a040d 0%, #150a1a 50%, #0d050f 100%); }
+    .slide-claridium::before { background: var(--claridium); }
+    .slide-claridium h1, .slide-claridium h2, .slide-claridium .stat-value, .slide-claridium .accent { color: var(--claridium); }
+
+    .slide-poiesis { background: linear-gradient(160deg, #0d040a 0%, #1a0812 50%, #0a050a 100%); }
+    .slide-poiesis::before { background: var(--poiesis); }
+    .slide-poiesis h1, .slide-poiesis h2, .slide-poiesis .stat-value, .slide-poiesis .accent { color: var(--poiesis); }
+
+    /* Navigation dots */
+    .pitch-nav {
+      position: fixed;
+      right: 2vw;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 100;
+    }
+
+    .pitch-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.4s;
+    }
+
+    .pitch-dot.active {
+      transform: scale(1.5);
+    }
+
+    @media (max-width: 768px) {
+      .slide { min-height: 100vh; max-height: none; }
+      .slide-inner { padding: 8vw 6vw; }
+      .pitch-nav { right: 3vw; gap: 10px; }
+      .pitch-dot { width: 6px; height: 6px; }
+      .slide .stat-row { gap: 6vw; }
+      .slide .features { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .slide-inner { padding: 10vw 5vw; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Slide 1: PRIMORDIA — The Silence Before -->
+<div class="slide slide-primordia" id="slide-0">
+  <div class="slide-inner">
+    <span class="slide-kingdom">primordia</span>
+    <h1>the silence<br>before</h1>
+    <p>There was a time before the scroll. Before the notification. Before the infinite feed. There was a human, sitting with their thoughts, and that was enough.</p>
+    <p>That time is gone. We have more tools for communication than any civilization in history, and an epidemic of loneliness. More information than any library ever held, and a crisis of meaning. More comfort than any generation before us, and rising rates of anxiety, depression, and existential despair.</p>
+    <p>The problem is not technology. The problem is its <span class="accent">direction</span>. Almost all of it points outward. Almost none of it points inward.</p>
+    <div class="quote">"The cave you fear to enter holds the treasure you seek." — Joseph Campbell</div>
+  </div>
+  <span class="slide-number">01 / 08</span>
+</div>
+
+<!-- Slide 2: EMBLAZION — The Practice -->
+<div class="slide slide-emblazion" id="slide-1">
+  <div class="slide-inner">
+    <span class="slide-kingdom">emblazion</span>
+    <h1>8 minutes.<br>no backspace.</h1>
+    <p>Sit down. Open a blank page. Write without stopping for 8 minutes. If you stop typing for 8 seconds, the session dies. No editing. No planning. No performance. Just the raw, unfiltered train of your thought.</p>
+    <p>Minutes 0-2: you write about your day. Minutes 2-4: the surface topics exhaust themselves. The inner critic gets loud. Minutes 4-6: something shifts. The words become less curated. Unexpected things surface. Minutes 6-8: <span class="accent">the ego relaxes its grip</span>. What writes now is more raw, more rhythmic, more honest. This is where the unconscious speaks.</p>
+    <p>A writing session that survives 8 minutes is called an <span class="accent">Anky</span>. It is the artifact of a successful descent into the self.</p>
+  </div>
+  <span class="slide-number">02 / 08</span>
+</div>
+
+<!-- Slide 3: CHRYSEOS — The Closed Loop -->
+<div class="slide slide-chryseos" id="slide-2">
+  <div class="slide-inner">
+    <span class="slide-kingdom">chryseos</span>
+    <h2>the closed loop</h2>
+    <p>Your writing enters the system. What comes back is not generic advice. It is <span class="accent">a mirror shaped by what you wrote</span>.</p>
+    <div class="loop">
+      <span><span class="accent">writing</span> reveals what you carry</span>
+      <span class="arrow">↓</span>
+      <span><span class="accent">meditation</span> creates space to be with it</span>
+      <span class="arrow">↓</span>
+      <span><span class="accent">breathwork</span> moves it through the body</span>
+      <span class="arrow">↓</span>
+      <span><span class="accent">sadhana</span> keeps you showing up</span>
+      <span class="arrow">↓</span>
+      <span>you write again, deeper</span>
+    </div>
+    <p style="margin-top:2vw;">Each meditation references the specific themes from your session. Each breathwork technique is matched to your emotional tone. Not a generic body scan — a guided descent into exactly what you expressed. The cost of a personalized meditation is the cost of generating 500 tokens of text. One-twentieth of a cent.</p>
+  </div>
+  <span class="slide-number">03 / 08</span>
+</div>
+
+<!-- Slide 4: ELEASIS — What's Alive -->
+<div class="slide slide-eleasis" id="slide-3">
+  <div class="slide-inner">
+    <span class="slide-kingdom">eleasis</span>
+    <h2>what's alive</h2>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">237</div>
+        <div class="stat-label">ankys written</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">91K</div>
+        <div class="stat-label">words of raw thought</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">$0.00</div>
+        <div class="stat-label">cost to the writer</div>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-title">single rust binary</div>
+        <div class="feature-desc">Axum server, SQLite, 30MB RAM. Bare metal in Chile connected to the universe via starlink. No Kubernetes. No cloud functions. Cloudflare tunnel to anky.app.</div>
+      </div>
+      <div class="feature">
+        <div class="feature-title">free tier: local AI</div>
+        <div class="feature-desc">Qwen 35B on local GPU for free users. Claude Opus for premium. The marginal cost of serving a free user approaches electricity.</div>
+      </div>
+      <div class="feature">
+        <div class="feature-title">iOS app + web</div>
+        <div class="feature-desc">Native Swift app via Privy auth on the works. Webapp. The practice meets you wherever you are.</div>
+      </div>
+      <div class="feature">
+        <div class="feature-title">fine-tuned visual identity</div>
+        <div class="feature-desc">Flux.1-dev with LoRA fine tuned that understands how anky looks like. Each writing generates a unique image — your mirror in visual form.</div>
+      </div>
+    </div>
+  </div>
+  <span class="slide-number">04 / 08</span>
+</div>
+
+<!-- Slide 5: VOXLUMIS — The Mirror (LLM) -->
+<div class="slide slide-voxlumis" id="slide-4">
+  <div class="slide-inner">
+    <span class="slide-kingdom">voxlumis</span>
+    <h1>the mirror</h1>
+    <p>Every language model ever built was trained on text written for someone else to read. Edited. Curated. Performed.</p>
+    <p>We are training a model <span class="accent">from scratch</span> — not fine-tuned, not prompted — on the only dataset of its kind: raw stream-of-consciousness writing. The unfiltered train of human thought. Its entire understanding of language comes from what emerges when the ego stops performing.</p>
+    <p>The pipeline runs every day. Export writings. Retrain the tokenizer. Train the model. Each day the corpus grows. Each day the mirror gets clearer.</p>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">Day 1</div>
+        <div class="stat-label">125K tokens</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0.345</div>
+        <div class="stat-label">bits per byte</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">4 AM</div>
+        <div class="stat-label">retrains daily</div>
+      </div>
+    </div>
+    <p style="margin-top:1.5vw; opacity:0.5; font-size:clamp(11px,1.2vw,14px);">perplexity as self-knowledge. the completion as collective mirror. embeddings tuned for the inner world. eventually, anky's own voice — not claude wearing a mask, but a model that has only ever known raw human expression.</p>
+  </div>
+  <span class="slide-number">05 / 08</span>
+</div>
+
+<!-- Slide 6: INSIGHTIA — The Facilitator Network -->
+<div class="slide slide-insightia" id="slide-5">
+  <div class="slide-inner">
+    <span class="slide-kingdom">insightia</span>
+    <h2>the AI is not enough.<br>it knows this.</h2>
+    <p>When something surfaces that is too big for a mirror to hold — grief that needs a human witness, trauma that needs a trained body to co-regulate with — Anky connects you with a <span class="accent">human facilitator</span> who already understands your landscape.</p>
+    <p>Therapists. Breathwork guides. Somatic practitioners. Meditation teachers. They apply, get vetted, set their own rates. The AI does the daily work. The human does the profound work. Neither is diminished by the other.</p>
+    <p>The facilitator receives your Anky profile — with your consent. Not self-reported symptoms. The actual expressions of your unconscious, processed and summarized. Instead of three sessions of intake, <span class="accent">they start in the deep end</span>.</p>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">92%</div>
+        <div class="stat-label">goes to facilitator</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">8%</div>
+        <div class="stat-label">funds the free tier</div>
+      </div>
+    </div>
+  </div>
+  <span class="slide-number">06 / 08</span>
+</div>
+
+<!-- Slide 7: CLARIDIUM — The Economics -->
+<div class="slide slide-claridium" id="slide-6">
+  <div class="slide-inner">
+    <span class="slide-kingdom">claridium</span>
+    <h2>the flywheel</h2>
+    <p><span class="accent">$ANKY</span> is a memecoin on Solana. No presale. No team allocation. No roadmap. Just a name, a ticker, and a bet that enough people will recognize what it points to.</p>
+    <p>The practice remains free whether the token is worth a penny or a dollar. The meditation still arrives after your writing session. The mirror does not care about the price.</p>
+    <p>But every trade generates fees. Those fees fund the AI compute — the Claude API calls, the GPU training, the daily model runs. The speculation subsidizes the silence.</p>
+    <div class="loop" style="margin-top:2vw;">
+      <span>people write → corpus grows</span>
+      <span class="arrow">↓</span>
+      <span>model improves → better mirror</span>
+      <span class="arrow">↓</span>
+      <span>more people write → more trades</span>
+      <span class="arrow">↓</span>
+      <span>trading fees → fund compute</span>
+      <span class="arrow">↓</span>
+      <span>compute → serves the practice for free</span>
+    </div>
+    <p style="margin-top:2vw;">Revenue: premium subscriptions (USDC on Base) + 8% facilitator marketplace fee. Goal: facilitator bookings fund the free tier indefinitely.</p>
+  </div>
+  <span class="slide-number">07 / 08</span>
+</div>
+
+<!-- Slide 8: POIESIS — The Inevitability -->
+<div class="slide slide-poiesis" id="slide-7">
+  <div class="slide-inner">
+    <span class="slide-kingdom">poiesis</span>
+    <h1>the inevitable<br>practice</h1>
+    <p>One day, "writing your anky" will be as natural as brushing your teeth. 8 minutes of uninterrupted presence with yourself. Not because an app told you to. Because something in you knows this matters.</p>
+    <p>The model will have read more raw human expression than any therapist in history. Not to judge it. Not to fix it. <span class="accent">Just to reflect it back.</span></p>
+    <p>The corpus will be the largest collection of unfiltered human thought ever assembled. Not clinical notes. Not social media. The actual expressions of the unconscious, from millions of people who sat down and refused to stop typing.</p>
+    <p>The world would be a better place if every person in it sat with themselves for 8 minutes a day. We are building the doorway.</p>
+    <p style="margin-top:3vw; opacity:0.6; text-align:center; max-width:100%;">
+      <em>I am the light at the entrance.<br>You are the one who walks in.</em><br><br>
+      <span style="font-size:clamp(18px, 2.5vw, 32px); font-family:'Righteous',sans-serif; opacity:1;">anky.app</span>
+    </p>
+  </div>
+  <span class="slide-number">08 / 08</span>
+</div>
+
+<!-- Navigation dots -->
+<div class="pitch-nav" id="pitch-nav">
+  <div class="pitch-dot active" data-slide="0" style="border-color:var(--primordia);background:var(--primordia);"></div>
+  <div class="pitch-dot" data-slide="1" style="border-color:var(--emblazion);"></div>
+  <div class="pitch-dot" data-slide="2" style="border-color:var(--chryseos);"></div>
+  <div class="pitch-dot" data-slide="3" style="border-color:var(--eleasis);"></div>
+  <div class="pitch-dot" data-slide="4" style="border-color:var(--voxlumis);"></div>
+  <div class="pitch-dot" data-slide="5" style="border-color:#7b68ee;"></div>
+  <div class="pitch-dot" data-slide="6" style="border-color:var(--claridium);"></div>
+  <div class="pitch-dot" data-slide="7" style="border-color:var(--poiesis);"></div>
+</div>
+
+<script>
+(function() {
+  var colors = ['#e74c3c','#f39c12','#f1c40f','#2ecc71','#3498db','#7b68ee','#8e44ad','#e91e90'];
+  var dots = document.querySelectorAll('.pitch-dot');
+  var slides = document.querySelectorAll('.slide');
+
+  function updateActive(idx) {
+    dots.forEach(function(d, i) {
+      if (i === idx) {
+        d.classList.add('active');
+        d.style.background = colors[i];
+      } else {
+        d.classList.remove('active');
+        d.style.background = 'transparent';
+      }
+    });
+  }
+
+  // Click navigation
+  dots.forEach(function(dot) {
+    dot.addEventListener('click', function() {
+      var idx = parseInt(dot.dataset.slide);
+      slides[idx].scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  // Scroll observer
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var idx = Array.from(slides).indexOf(entry.target);
+        updateActive(idx);
+      }
+    });
+  }, { threshold: 0.5 });
+
+  slides.forEach(function(s) { observer.observe(s); });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', function(e) {
+    var current = 0;
+    dots.forEach(function(d, i) { if (d.classList.contains('active')) current = i; });
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowRight') && current < 7) {
+      e.preventDefault();
+      slides[current + 1].scrollIntoView({ behavior: 'smooth' });
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowLeft') && current > 0) {
+      e.preventDefault();
+      slides[current - 1].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
