@@ -10,16 +10,25 @@ pub fn ensure_user(conn: &Connection, user_id: &str) -> Result<()> {
     Ok(())
 }
 
+fn normalize_wallet_address(wallet_address: &str) -> String {
+    let trimmed = wallet_address.trim();
+    if trimmed.starts_with("0x") && trimmed[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+        trimmed.to_lowercase()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 // --- Wallet address ---
 pub fn get_user_by_wallet(conn: &Connection, wallet_address: &str) -> Result<Option<String>> {
-    let addr_lower = wallet_address.to_lowercase();
+    let addr_lower = normalize_wallet_address(wallet_address);
     let mut stmt = conn.prepare("SELECT id FROM users WHERE wallet_address = ?1")?;
     let mut rows = stmt.query_map(params![addr_lower], |row| row.get::<_, String>(0))?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
 pub fn set_wallet_address(conn: &Connection, user_id: &str, wallet_address: &str) -> Result<()> {
-    let addr_lower = wallet_address.to_lowercase();
+    let addr_lower = normalize_wallet_address(wallet_address);
     conn.execute(
         "UPDATE users SET wallet_address = ?2 WHERE id = ?1",
         params![user_id, addr_lower],
@@ -32,7 +41,7 @@ pub fn create_user_with_wallet(
     user_id: &str,
     wallet_address: &str,
 ) -> Result<()> {
-    let addr_lower = wallet_address.to_lowercase();
+    let addr_lower = normalize_wallet_address(wallet_address);
     conn.execute(
         "INSERT OR IGNORE INTO users (id, wallet_address) VALUES (?1, ?2)",
         params![user_id, addr_lower],
@@ -67,10 +76,28 @@ pub fn create_user_with_wallet_and_privy(
     wallet_address: &str,
     privy_did: &str,
 ) -> Result<()> {
-    let addr_lower = wallet_address.to_lowercase();
+    let addr_lower = normalize_wallet_address(wallet_address);
     conn.execute(
         "INSERT OR IGNORE INTO users (id, wallet_address, privy_did) VALUES (?1, ?2, ?3)",
         params![user_id, addr_lower, privy_did],
+    )?;
+    Ok(())
+}
+
+pub fn set_generated_wallet(
+    conn: &Connection,
+    user_id: &str,
+    wallet_address: &str,
+    generated_wallet_secret: &str,
+) -> Result<()> {
+    let normalized_wallet = normalize_wallet_address(wallet_address);
+    conn.execute(
+        "UPDATE users
+         SET wallet_address = ?2,
+             generated_wallet_secret = ?3,
+             wallet_generated_at = COALESCE(wallet_generated_at, datetime('now'))
+         WHERE id = ?1 AND COALESCE(wallet_address, '') = ''",
+        params![user_id, normalized_wallet, generated_wallet_secret],
     )?;
     Ok(())
 }
@@ -127,7 +154,7 @@ pub fn create_user_with_farcaster(
     pfp_url: Option<&str>,
     wallet_address: Option<&str>,
 ) -> Result<()> {
-    let addr_lower = wallet_address.map(|a| a.to_lowercase());
+    let addr_lower = wallet_address.map(normalize_wallet_address);
     conn.execute(
         "INSERT OR IGNORE INTO users (id, farcaster_fid, farcaster_username, farcaster_pfp_url, wallet_address) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![user_id, fid, username, pfp_url, addr_lower],

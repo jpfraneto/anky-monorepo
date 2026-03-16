@@ -310,6 +310,20 @@ pub fn run(conn: &Connection) -> Result<()> {
         conn.execute_batch("ALTER TABLE users ADD COLUMN wallet_address TEXT;")?;
     }
 
+    let has_generated_wallet_secret: bool = conn
+        .prepare("SELECT generated_wallet_secret FROM users LIMIT 0")
+        .is_ok();
+    if !has_generated_wallet_secret {
+        conn.execute_batch("ALTER TABLE users ADD COLUMN generated_wallet_secret TEXT;")?;
+    }
+
+    let has_wallet_generated_at: bool = conn
+        .prepare("SELECT wallet_generated_at FROM users LIMIT 0")
+        .is_ok();
+    if !has_wallet_generated_at {
+        conn.execute_batch("ALTER TABLE users ADD COLUMN wallet_generated_at TEXT;")?;
+    }
+
     // --- privy_did on users ---
     let has_privy_did: bool = conn.prepare("SELECT privy_did FROM users LIMIT 0").is_ok();
     if !has_privy_did {

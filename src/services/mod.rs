@@ -9,4 +9,5 @@ pub mod ollama;
 pub mod payment;
 pub mod stream;
 pub mod twitter;
+pub mod wallet;
 pub mod x_bot;

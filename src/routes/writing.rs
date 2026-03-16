@@ -44,7 +44,7 @@ pub async fn process_writing(
     // Agent auth: if X-API-Key header is present, validate it.
     let api_key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
 
-    if let Some(key) = api_key {
+    if api_key.is_some() {
         // Agents can no longer batch-submit writing. They must use the chunked session API,
         // which enforces the same 8-second timeout that humans face on the frontend.
         return Ok((
@@ -54,6 +54,7 @@ pub async fn process_writing(
                 duration: 0.0,
                 is_anky: false,
                 anky_id: None,
+                wallet_address: None,
                 estimated_wait_seconds: None,
                 flow_score: None,
                 error: Some(
@@ -105,6 +106,7 @@ pub async fn process_writing(
                 duration: req.duration,
                 is_anky: false,
                 anky_id: None,
+                wallet_address: None,
                 estimated_wait_seconds: None,
                 flow_score: None,
                 error: Some("write more. stream-of-consciousness means letting words flow — at least a few sentences.".into()),
@@ -127,6 +129,28 @@ pub async fn process_writing(
     // Downgrade: 8+ minutes but fewer than 300 words is not a real anky
     if is_anky && word_count < 300 {
         is_anky = false;
+    }
+
+    if !is_anky {
+        tracing::info!(
+            user = %user_id,
+            duration = format!("{}m{}s", (req.duration / 60.0) as u32, (req.duration % 60.0) as u32),
+            words = word_count,
+            "Short writing stayed local-only"
+        );
+        return Ok((
+            jar,
+            Json(WriteResponse {
+                response: String::new(),
+                duration: req.duration,
+                is_anky: false,
+                anky_id: None,
+                wallet_address: None,
+                estimated_wait_seconds: None,
+                flow_score,
+                error: None,
+            }),
+        ));
     }
 
     let session_id = req
@@ -155,9 +179,20 @@ pub async fn process_writing(
     );
 
     // Save to DB FIRST — before Ollama call — so writing is never lost
-    {
+    let wallet_address = {
         let db = state.db.lock().await;
         crate::db::queries::ensure_user(&db, &user_id)?;
+        let mut wallet_address = crate::db::queries::get_user_wallet(&db, &user_id)?;
+        if wallet_address.is_none() {
+            let generated_wallet = crate::services::wallet::generate_custodial_wallet();
+            crate::db::queries::set_generated_wallet(
+                &db,
+                &user_id,
+                &generated_wallet.address,
+                &generated_wallet.secret_key,
+            )?;
+            wallet_address = Some(generated_wallet.address);
+        }
         let mut was_completed = false;
         if let Some(existing) = crate::db::queries::get_writing_session_state(&db, &session_id)? {
             if existing.user_id != user_id {
@@ -194,7 +229,8 @@ pub async fn process_writing(
                 let _ = crate::db::queries::update_user_flow_stats(&db, &user_id, fs, is_anky);
             }
         }
-    }
+        wallet_address
+    };
 
     // Call Ollama for feedback (writing is already saved above)
     // For anky sessions, skip the blocking Ollama call — return immediately so the
@@ -338,6 +374,7 @@ pub async fn process_writing(
             duration: req.duration,
             is_anky,
             anky_id,
+            wallet_address,
             estimated_wait_seconds: if is_anky { Some(45) } else { None },
             flow_score,
             error: None,
