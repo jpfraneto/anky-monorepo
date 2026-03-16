@@ -33,6 +33,9 @@ pub struct Config {
     pub openai_api_key: String,
     // Neynar (Farcaster)
     pub neynar_api_key: String,
+    pub neynar_signer_uuid: String,
+    pub neynar_webhook_secret: String,
+    pub farcaster_bot_fid: u64,
     // xAI (Grok video generation)
     pub xai_api_key: String,
     // Cloudflare (cache purge)
@@ -86,6 +89,12 @@ impl Config {
             pumpfun_stream_key: std::env::var("PUMPFUN_STREAM_KEY").unwrap_or_default(),
             openai_api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
             neynar_api_key: std::env::var("NEYNAR_API_KEY").unwrap_or_default(),
+            neynar_signer_uuid: std::env::var("NEYNAR_SIGNER_UUID").unwrap_or_default(),
+            neynar_webhook_secret: std::env::var("NEYNAR_WEBHOOK_SECRET").unwrap_or_default(),
+            farcaster_bot_fid: std::env::var("FARCASTER_BOT_FID")
+                .unwrap_or_else(|_| "0".into())
+                .parse()
+                .unwrap_or(0),
             xai_api_key: std::env::var("XAI_API_KEY").unwrap_or_default(),
             cloudflare_api_token: std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default(),
             cloudflare_zone_id: std::env::var("CLOUDFLARE_ZONE_ID").unwrap_or_default(),

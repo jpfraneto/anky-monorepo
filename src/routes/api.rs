@@ -72,6 +72,8 @@ pub async fn get_anky(
                 "created_at": detail.created_at,
                 "origin": detail.origin,
                 "image_model": detail.image_model,
+                "prompt_id": detail.prompt_id,
+                "prompt_text": detail.prompt_text,
             })))
         }
         None => Err(AppError::NotFound(format!("anky {} not found", id))),
@@ -244,19 +246,14 @@ pub async fn generate_anky_paid(
 
         payment_method = "flux_free".into();
     } else {
-        // Gemini requires payment
+        // Check if this is a registered agent — agents get everything free
         if let Some(axum::Extension(ref key_info)) = api_key_info {
             api_key_str = Some(key_info.key.clone());
             let db = state.db.lock().await;
             if let Ok(Some(agent)) = queries::get_agent_by_key(&db, &key_info.key) {
-                if agent.free_sessions_remaining > 0 {
-                    queries::decrement_free_session(&db, &agent.id)?;
-                    payment_method = "free_session".into();
-                    agent_id = Some(agent.id);
-                    drop(db);
-                } else {
-                    drop(db);
-                }
+                payment_method = "free".into();
+                agent_id = Some(agent.id);
+                drop(db);
             } else {
                 drop(db);
             }
@@ -366,6 +363,7 @@ pub async fn generate_anky_paid(
                 Some(&moment),
                 "generating",
                 "generated",
+                None,
             )?;
         }
 
@@ -433,6 +431,7 @@ pub async fn generate_anky_paid(
                 None,
                 "generating",
                 "generated",
+                None,
             )?;
         }
 
@@ -807,9 +806,11 @@ pub struct CheckpointRequest {
 
 pub async fn save_checkpoint(
     State(state): State<AppState>,
+    jar: CookieJar,
     Json(req): Json<CheckpointRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let word_count = req.text.split_whitespace().count() as i32;
+    let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
     let db = state.db.lock().await;
     let token = persist_checkpoint_record(
         &db,
@@ -818,6 +819,19 @@ pub async fn save_checkpoint(
         req.elapsed,
         req.session_token.as_deref(),
     )?;
+    // Ensure a writing_session row exists with the real user_id from the cookie.
+    // This prevents orphan recovery from guessing the wrong user later.
+    if let Some(ref uid) = user_id {
+        queries::ensure_checkpoint_session_owner(
+            &db,
+            &req.session_id,
+            uid,
+            &req.text,
+            req.elapsed,
+            word_count,
+            Some(&token),
+        )?;
+    }
     queries::update_checkpoint_backed_writing_session(
         &db,
         &req.session_id,
@@ -1330,8 +1344,9 @@ pub struct CreateVideoRequest {
 }
 
 fn create_video_card_value(prompt_id: &str) -> Result<serde_json::Value, AppError> {
-    let prompt = crate::create_videos::get_prompt(prompt_id)
-        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", prompt_id)))?;
+    let prompt = crate::create_videos::get_prompt(prompt_id).ok_or_else(|| {
+        AppError::NotFound(format!("create-videos prompt {} not found", prompt_id))
+    })?;
     let state = crate::create_videos::load_state(prompt_id)?;
     Ok(serde_json::to_value(state.to_card(&prompt))?)
 }
@@ -1390,11 +1405,14 @@ pub async fn generate_create_video_image(
     Json(req): Json<CreateVideoRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = require_create_videos_user(&state, &jar).await?;
-    let prompt = crate::create_videos::get_prompt(&req.prompt_id)
-        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id)))?;
+    let prompt = crate::create_videos::get_prompt(&req.prompt_id).ok_or_else(|| {
+        AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id))
+    })?;
 
     if state.config.gemini_api_key.is_empty() {
-        return Err(AppError::Unavailable("Gemini API key not configured".into()));
+        return Err(AppError::Unavailable(
+            "Gemini API key not configured".into(),
+        ));
     }
 
     let mut card_state = crate::create_videos::load_state(&prompt.id)?;
@@ -1444,17 +1462,15 @@ pub async fn generate_create_video_image(
             return Err(AppError::Internal(message));
         }
     };
-    let image_jpeg_path = match crate::services::gemini::save_image_jpeg(
-        &image_result.base64,
-        &asset_stem,
-    ) {
-        Ok(path) => path,
-        Err(err) => {
-            let message = format!("failed to save image jpeg: {}", err);
-            let _ = persist_create_video_failure(&prompt.id, "image", message.clone());
-            return Err(AppError::Internal(message));
-        }
-    };
+    let image_jpeg_path =
+        match crate::services::gemini::save_image_jpeg(&image_result.base64, &asset_stem) {
+            Ok(path) => path,
+            Err(err) => {
+                let message = format!("failed to save image jpeg: {}", err);
+                let _ = persist_create_video_failure(&prompt.id, "image", message.clone());
+                return Err(AppError::Internal(message));
+            }
+        };
 
     card_state = crate::create_videos::load_state(&prompt.id)?;
     card_state.image_status = "complete".to_string();
@@ -1502,8 +1518,9 @@ pub async fn generate_create_video_clip(
     Json(req): Json<CreateVideoRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = require_create_videos_user(&state, &jar).await?;
-    let prompt = crate::create_videos::get_prompt(&req.prompt_id)
-        .ok_or_else(|| AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id)))?;
+    let prompt = crate::create_videos::get_prompt(&req.prompt_id).ok_or_else(|| {
+        AppError::NotFound(format!("create-videos prompt {} not found", req.prompt_id))
+    })?;
 
     if state.config.xai_api_key.is_empty() {
         return Err(AppError::Unavailable("XAI_API_KEY not configured".into()));
@@ -1649,7 +1666,8 @@ pub async fn generate_create_video_clip(
                 Ok((_status, _)) => {
                     if attempts >= 180 {
                         let message =
-                            "Timed out waiting for Grok video generation after 15 minutes".to_string();
+                            "Timed out waiting for Grok video generation after 15 minutes"
+                                .to_string();
                         let _ = persist_create_video_failure(&prompt_id, "video", message.clone());
                         state_clone.emit_log("ERROR", "create-videos", &message);
                         return;

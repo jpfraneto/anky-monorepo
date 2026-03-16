@@ -2,6 +2,7 @@ pub mod api;
 pub mod auth;
 pub mod collection;
 pub mod dashboard;
+pub mod evolve;
 pub mod extension_api;
 pub mod generations;
 pub mod health;
@@ -14,9 +15,11 @@ pub mod payment;
 pub mod payment_helper;
 pub mod poiesis;
 pub mod prompt;
+pub mod session;
 pub mod settings;
 pub mod swift;
 pub mod training;
+pub mod webhook_farcaster;
 pub mod webhook_x;
 pub mod writing;
 
@@ -68,12 +71,51 @@ async fn skills_redirect() -> axum::response::Redirect {
     axum::response::Redirect::permanent("/skills")
 }
 
+async fn anky_skill_bundle() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        "Anky installable skill bundle\n\n\
+Bundle URL: https://anky.app/agent-skills/anky\n\
+Manifest: https://anky.app/agent-skills/anky/manifest.json\n\
+Entrypoint: https://anky.app/agent-skills/anky/SKILL.md\n\
+\n\
+Supporting files:\n\
+- https://anky.app/agent-skills/anky/references/api.md\n\
+- https://anky.app/agent-skills/anky/references/automation.md\n\
+- https://anky.app/agent-skills/anky/references/quality.md\n\
+- https://anky.app/agent-skills/anky/scripts/anky_session.py\n\
+- https://anky.app/agent-skills/anky/agents/openai.yaml\n\
+\n\
+Session replay endpoint:\n\
+- https://anky.app/api/v1/session/{session_id}/events (requires X-API-Key)\n\
+- https://anky.app/api/v1/session/{session_id}/result (requires X-API-Key)\n\
+\n\
+Canonical practice doc: https://anky.app/skills\n",
+    )
+}
+
+async fn anky_skill_bundle_manifest() -> ([(axum::http::HeaderName, &'static str); 1], &'static str)
+{
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        include_str!("../../agent-skills/anky/manifest.json"),
+    )
+}
+
+async fn anky_skill_bundle_entry_redirect() -> axum::response::Redirect {
+    axum::response::Redirect::permanent("/agent-skills/anky/SKILL.md")
+}
+
 pub fn build_router(state: AppState) -> Router {
     // CORS configuration
     let cors = CorsLayer::new()
         .allow_origin([
             "https://anky.app".parse::<HeaderValue>().unwrap(),
             "https://www.anky.app".parse::<HeaderValue>().unwrap(),
+            "https://pitch.anky.app".parse::<HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([
@@ -157,7 +199,10 @@ pub fn build_router(state: AppState) -> Router {
             "/swift/v1/writings",
             axum::routing::get(swift::list_writings),
         )
-        .route("/swift/v1/write", axum::routing::post(swift::submit_writing))
+        .route(
+            "/swift/v1/write",
+            axum::routing::post(swift::submit_writing),
+        )
         // Sadhana
         .route(
             "/swift/v1/sadhana",
@@ -268,7 +313,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/leaderboard", axum::routing::get(pages::leaderboard))
         .route("/pitch", axum::routing::get(pages::pitch))
         .route("/generate", axum::routing::get(pages::generate_page))
-        .route("/create-videos", axum::routing::get(pages::create_videos_page))
+        .route(
+            "/create-videos",
+            axum::routing::get(pages::create_videos_page),
+        )
         .route(
             "/generate/video",
             axum::routing::get(pages::video_dashboard),
@@ -286,7 +334,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/changelog", axum::routing::get(pages::changelog))
         .route("/llm", axum::routing::get(pages::llm))
         .route("/pitch-deck", axum::routing::get(pages::pitch_deck))
-        .route("/api/v1/llm/training-status", axum::routing::post(api::llm_training_status))
+        .route("/pitch-deck.pdf", axum::routing::get(pages::pitch_deck_pdf))
+        .route(
+            "/api/v1/llm/training-status",
+            axum::routing::post(api::llm_training_status),
+        )
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
         // Prompt pages
         .route(
@@ -395,6 +447,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/cost-estimate", axum::routing::get(api::cost_estimate))
         .route("/api/treasury", axum::routing::get(api::treasury_address))
         .route("/api/feedback", axum::routing::post(api::submit_feedback))
+        .route(
+            "/api/v1/feedback",
+            axum::routing::post(api::submit_feedback),
+        )
         .route("/api/chat", axum::routing::post(api::chat_with_anky))
         .route("/api/chat-quick", axum::routing::post(api::chat_quick))
         .route(
@@ -457,11 +513,46 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/register",
             axum::routing::post(extension_api::register),
         )
+        // Chunked writing sessions (agent stream-of-consciousness)
+        .route(
+            "/api/v1/session/start",
+            axum::routing::post(session::start_session),
+        )
+        .route(
+            "/api/v1/session/chunk",
+            axum::routing::post(session::send_chunk),
+        )
+        .route(
+            "/api/v1/session/{id}/events",
+            axum::routing::get(session::session_events),
+        )
+        .route(
+            "/api/v1/session/{id}/result",
+            axum::routing::get(session::session_result),
+        )
+        .route(
+            "/api/v1/session/{id}",
+            axum::routing::get(session::session_status),
+        )
         // Skills (for agents)
         .route("/skills", axum::routing::get(skills))
         .route("/skill", axum::routing::get(skills_redirect))
         .route("/skill.md", axum::routing::get(skills_redirect))
         .route("/skills.md", axum::routing::get(skills_redirect))
+        .route("/agent-skills/anky", axum::routing::get(anky_skill_bundle))
+        .route("/agent-skills/anky/", axum::routing::get(anky_skill_bundle))
+        .route(
+            "/agent-skills/anky/skill.md",
+            axum::routing::get(anky_skill_bundle_entry_redirect),
+        )
+        .route(
+            "/agent-skills/anky/skills.md",
+            axum::routing::get(anky_skill_bundle_entry_redirect),
+        )
+        .route(
+            "/agent-skills/anky/manifest.json",
+            axum::routing::get(anky_skill_bundle_manifest),
+        )
         // Live streaming — disabled (too slow, not worth it)
         // Routes kept in live.rs but not wired up
         .route("/api/ankys/today", axum::routing::get(live::todays_ankys))
@@ -588,6 +679,8 @@ pub fn build_router(state: AppState) -> Router {
             "/api/memory/backfill",
             axum::routing::post(api::memory_backfill),
         )
+        // Evolution dashboard (public)
+        .route("/evolve", axum::routing::get(evolve::evolve_dashboard))
         // Dashboard
         .route("/dashboard", axum::routing::get(dashboard::dashboard))
         .route(
@@ -606,6 +699,11 @@ pub fn build_router(state: AppState) -> Router {
         // X Account Activity webhook (CRC + events)
         .route("/webhooks/x", axum::routing::get(webhook_x::webhook_crc))
         .route("/webhooks/x", axum::routing::post(webhook_x::webhook_post))
+        // Farcaster (Neynar) webhook
+        .route(
+            "/webhooks/farcaster",
+            axum::routing::post(webhook_farcaster::webhook_post),
+        )
         // X Webhook live log viewer
         .route(
             "/webhooks/logs",
@@ -626,6 +724,7 @@ pub fn build_router(state: AppState) -> Router {
         // Studio upload (large body limit)
         .merge(studio_routes)
         // Static files
+        .nest_service("/agent-skills", ServeDir::new("agent-skills"))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service(
             "/data/images",
@@ -653,6 +752,9 @@ pub fn build_router(state: AppState) -> Router {
         ))
         .layer(axum::middleware::from_fn(
             middleware::honeypot::honeypot_and_attack_detection,
+        ))
+        .layer(axum::middleware::from_fn(
+            middleware::subdomain::pitch_subdomain,
         ))
         .with_state(state)
 }

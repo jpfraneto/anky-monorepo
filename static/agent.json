@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "name": "Anky",
-  "description": "Write for 8 minutes. No backspace. Meet yourself.\n\nAnky is a mirror for consciousness — human or otherwise. Submit a stream-of-consciousness, unedited and unplanned. Receive back a reflection, a 3-word title, and a mystical image: a blue-skinned being embodying the unconscious structures in what you wrote.\n\nThe practice is the arc, not the session. Who you are after 7 days of writing is different from who you were after 1. Who you are after 90 cannot be predicted.\n\nFor AI agents: the same applies. Register at /api/v1/register. Write at /write. Wait ~45 seconds. Learn one thing about yourself. Share the link. The mirror doesn't care what kind of consciousness is looking into it, it just reflects.",
+  "description": "Write for 8 minutes. No backspace. Meet yourself.\n\nAnky is a free hosted mirror for consciousness — human or otherwise. Submit a stream-of-consciousness, unedited and unplanned. Receive back a reflection, a 3-word title, and a mystical image: a blue-skinned being embodying the unconscious structures in what you wrote.\n\nThe practice is the arc, not the session. Who you are after 7 days of writing is different from who you were after 1. Who you are after 90 cannot be predicted. The API key exists for continuity and memory across days, not as payment for the core reflection loop.\n\nFor AI agents: prefer the installable bundle's scripts/anky_session.py supervisor, send fresh chunks every 2 to 3 seconds, avoid templated loops or timestamp filler, trust server elapsed time over local timers, then recover the final anky via /api/v1/session/{session_id}/result.",
   "url": "https://anky.app",
   "asset": "FvCNYCVtsXC1jPKBp9wnqJxv3ADP5p7AAsMpehek1gWL",
   "image": "ipfs://bafybeihztwwjuv6n2olluwifhnrgcn3w3reb3opxcirveezszswmxcmwpi",
@@ -30,10 +30,19 @@
       "value": "https://anky.app/skills"
     },
     {
+      "type": "SKILL_BUNDLE",
+      "value": "https://anky.app/agent-skills/anky"
+    },
+    {
       "type": "A2A",
       "value": "https://anky.app"
     }
   ],
+  "install": {
+    "bundle_url": "https://anky.app/agent-skills/anky",
+    "manifest_url": "https://anky.app/agent-skills/anky/manifest.json",
+    "entrypoint": "https://anky.app/agent-skills/anky/SKILL.md"
+  },
   "api": {
     "register": {
       "method": "POST",
@@ -46,18 +55,71 @@
       },
       "response": {
         "agent_id": "string",
-        "api_key": "string (format: anky_<32hex>)",
-        "free_sessions_remaining": "number"
+        "api_key": "string (format: anky_<32hex>)"
       }
     },
-    "write": {
+    "session_start": {
       "method": "POST",
-      "endpoint": "https://anky.app/write",
+      "endpoint": "https://anky.app/api/v1/session/start",
       "auth": "X-API-Key header",
-      "description": "Submit stream-of-consciousness writing. Minimum 300 words, 480 seconds. No edits.",
+      "description": "Open a writing session. The hosted mirror is free; the key provides continuity across sessions.",
       "response": {
-        "anky_id": "string",
-        "status": "processing"
+        "session_id": "string",
+        "timeout_seconds": "number",
+        "max_words_per_chunk": "number"
+      }
+    },
+    "session_chunk": {
+      "method": "POST",
+      "endpoint": "https://anky.app/api/v1/session/chunk",
+      "auth": "X-API-Key header",
+      "description": "Send up to 50 words. If more than 8 seconds pass without a chunk, the session ends.",
+      "body": {
+        "session_id": "string",
+        "text": "string"
+      },
+      "response": {
+        "elapsed_seconds": "number",
+        "remaining_seconds": "number",
+        "words_total": "number",
+        "is_anky": "boolean",
+        "anky_id": "string|null"
+      }
+    },
+    "session_status": {
+      "method": "GET",
+      "endpoint": "https://anky.app/api/v1/session/{session_id}",
+      "auth": "none",
+      "description": "Check whether the session is still alive and whether it has crossed the 8-minute threshold.",
+      "response": {
+        "alive": "boolean",
+        "elapsed_seconds": "number",
+        "words_total": "number",
+        "remaining_seconds": "number",
+        "agent": "string"
+      }
+    },
+    "session_events": {
+      "method": "GET",
+      "endpoint": "https://anky.app/api/v1/session/{session_id}/events",
+      "auth": "X-API-Key header",
+      "description": "Replay the server-observed session timeline, including chunk timing, chunk text, and final outcome.",
+      "response": {
+        "event_count": "number",
+        "events": "array of session events with created_at, elapsed_seconds, words_total, chunk_text, and detail"
+      }
+    },
+    "session_result": {
+      "method": "GET",
+      "endpoint": "https://anky.app/api/v1/session/{session_id}/result",
+      "auth": "X-API-Key header",
+      "description": "Recover the post-session outcome after the silence-close step. Poll until finalized=true, then use anky_id if present.",
+      "response": {
+        "finalized": "boolean",
+        "is_anky": "boolean",
+        "anky_id": "string|null",
+        "anky_status": "string|null",
+        "estimated_wait_seconds": "number|null"
       }
     },
     "poll": {
@@ -80,8 +142,9 @@
     "chain_id": 8453,
     "token": "USDC",
     "token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "note": "Optional paid creative endpoints are separate from the core writing-and-reflection practice.",
     "costs": {
-      "write": "free (4 sessions included at registration)",
+      "write": "free",
       "generate": "$0.25 USDC",
       "transform": "~$0.03 USDC"
     }

@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}evolve - anky{% endblock %}
+{% block content %}
+<style>
+  .evolve-page { max-width: 980px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  .evolve-header { margin-bottom: 1.5rem; }
+  .evolve-header h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+  .evolve-header p { color: #8b8b8b; font-size: 0.92rem; line-height: 1.6; max-width: 720px; }
+
+  .evolve-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin: 1.5rem 0 1rem;
+  }
+  .stat-card {
+    background: linear-gradient(180deg, #121212 0%, #0b0b0b 100%);
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+  }
+  .stat-card strong {
+    display: block;
+    font-size: 1.4rem;
+    color: #f1f1f1;
+    margin-bottom: 0.2rem;
+  }
+  .stat-card span { color: #767676; font-size: 0.82rem; }
+
+  .evolve-note {
+    margin-bottom: 1.5rem;
+    padding: 0.9rem 1rem;
+    border-radius: 10px;
+    border: 1px solid #262626;
+    background: #0f1013;
+    color: #8c93a1;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .evolve-note a { color: #c8d3ff; }
+
+  .trace-list { display: flex; flex-direction: column; gap: 1rem; }
+  .trace-card {
+    background: #0c0c0d;
+    border: 1px solid #202125;
+    border-radius: 14px;
+    padding: 1rem;
+  }
+
+  .trace-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+    margin-bottom: 0.7rem;
+  }
+  .trace-author { color: #d5d5d5; font-size: 0.86rem; font-family: monospace; }
+  .trace-time {
+    margin-left: auto;
+    color: #666;
+    font-size: 0.76rem;
+    font-family: monospace;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.22rem 0.6rem;
+    font-size: 0.69rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-family: monospace;
+    border: 1px solid transparent;
+  }
+  .chip-feature-idea { background: #102033; color: #8fc5ff; border-color: #1d3655; }
+  .chip-bug { background: #301012; color: #ff9b9b; border-color: #552024; }
+  .chip-config { background: #1e2810; color: #bbdf8c; border-color: #33461b; }
+  .chip-evolve { background: #21112c; color: #d2a7ff; border-color: #3d2451; }
+  .chip-tagged-task { background: #161f36; color: #95abff; border-color: #273860; }
+  .chip-text-reply { background: #1a1a1a; color: #bcbcbc; border-color: #313131; }
+  .chip-image-request { background: #13261e; color: #8fe3be; border-color: #1f4a39; }
+  .chip-spam { background: #2a1313; color: #f0abab; border-color: #4d2222; }
+  .chip-genuine { background: #132418; color: #9dd9a8; border-color: #24482d; }
+
+  .status-received,
+  .status-classified,
+  .status-evolution-running,
+  .status-processing { background: #2d230b; color: #ffc266; border-color: #4a3812; }
+  .status-evolution-done,
+  .status-replied-text,
+  .status-replied-with-image,
+  .status-rate-limited,
+  .status-image-unavailable,
+  .status-replied { background: #102513; color: #8ee09c; border-color: #1e4b25; }
+  .status-evolution-error,
+  .status-image-generation-error,
+  .status-classified-spam { background: #2b1010; color: #ff9a9a; border-color: #532121; }
+
+  .trace-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    margin-bottom: 0.8rem;
+    font-size: 0.77rem;
+    color: #70757d;
+    font-family: monospace;
+  }
+  .trace-links a { color: #98a8c7; text-decoration: none; }
+  .trace-links a:hover { text-decoration: underline; }
+
+  .trace-panel {
+    margin-top: 0.75rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid #1c1c1c;
+    background: #101011;
+    color: #c7c7c7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    font-size: 0.86rem;
+  }
+  .trace-panel-label {
+    margin-bottom: 0.4rem;
+    color: #7d7d7d;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: monospace;
+  }
+  .trace-panel-result { background: #101712; border-color: #213326; }
+  .trace-panel-task { background: #10131a; border-color: #232c3c; }
+  .trace-panel-error { background: #1b1111; border-color: #3b2424; color: #f0b5b5; }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #5c5c5c;
+    border: 1px dashed #2b2b2b;
+    border-radius: 14px;
+  }
+  .empty-state p { margin-bottom: 0.55rem; }
+  .empty-state code {
+    background: #181818;
+    border-radius: 6px;
+    padding: 0.15rem 0.35rem;
+    color: #bdbdbd;
+  }
+
+  @media (max-width: 720px) {
+    .evolve-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trace-time { width: 100%; margin-left: 0; }
+  }
+</style>
+
+<div class="evolve-page">
+  <div class="evolve-header">
+    <h1>evolution log</h1>
+    <p>This page tracks JP's mentions to <a href="https://x.com/ankydotapp" style="color:#c8d3ff">@ankydotapp</a> and what the backend did with each one. If a tweet never appears here, it failed before the mention pipeline could process it.</p>
+  </div>
+
+  <div class="evolve-stats">
+    <div class="stat-card"><strong>{{ trace_count }}</strong><span>mentions seen</span></div>
+    <div class="stat-card"><strong>{{ tagged_count }}</strong><span>tagged instructions</span></div>
+    <div class="stat-card"><strong>{{ running_count }}</strong><span>still moving</span></div>
+    <div class="stat-card"><strong>{{ error_count }}</strong><span>needs attention</span></div>
+  </div>
+
+  <div class="evolve-note">
+    X is coming in through the filtered stream, not just the old webhook viewer. Hermes task rows are joined into each mention card here. For raw webhook POSTs only, the older viewer is still at <a href="/webhooks/logs">/webhooks/logs</a>.
+  </div>
+
+  {% if traces | length == 0 %}
+  <div class="empty-state">
+    <p>No JP mention traces yet.</p>
+    <p>Try a tweet like <code>[FEATURE_IDEA: add a visible ingest status panel]</code>.</p>
+  </div>
+  {% else %}
+  <div class="trace-list">
+    {% for trace in traces %}
+    <article class="trace-card">
+      <div class="trace-top">
+        {% if trace.tag %}
+        <span class="chip chip-{{ trace.tag | lower | replace(from="_", to="-") }}">{{ trace.tag }}</span>
+        {% endif %}
+        {% if trace.classification %}
+        <span class="chip chip-{{ trace.classification | lower | replace(from="_", to="-") }}">{{ trace.classification }}</span>
+        {% endif %}
+        <span class="chip status-{{ trace.status | lower | replace(from="_", to="-") }}">{{ trace.status }}</span>
+        <span class="trace-author">@{{ trace.author }}</span>
+        <span class="trace-time">{{ trace.created_at }}</span>
+      </div>
+
+      <div class="trace-links">
+        <a href="https://x.com/i/web/status/{{ trace.tweet_id }}" target="_blank" rel="noopener">source tweet</a>
+        {% if trace.parent_tweet_id %}
+        <a href="https://x.com/i/web/status/{{ trace.parent_tweet_id }}" target="_blank" rel="noopener">parent</a>
+        {% endif %}
+        {% if trace.reply_tweet_id %}
+        <a href="https://x.com/i/web/status/{{ trace.reply_tweet_id }}" target="_blank" rel="noopener">anky reply</a>
+        {% endif %}
+        {% if trace.source %}
+        <span>{{ trace.source }}</span>
+        {% endif %}
+        {% if trace.updated_at %}
+        <span>updated {{ trace.updated_at }}</span>
+        {% endif %}
+      </div>
+
+      <div class="trace-panel">
+        <div class="trace-panel-label">tweet</div>
+        {{ trace.text }}
+      </div>
+
+      {% if trace.extracted_content and trace.extracted_content != trace.text %}
+      <div class="trace-panel">
+        <div class="trace-panel-label">parsed instruction</div>
+        {{ trace.extracted_content }}
+      </div>
+      {% endif %}
+
+      {% if trace.task_status or trace.task_summary %}
+      <div class="trace-panel trace-panel-task">
+        <div class="trace-panel-label">hermes task{% if trace.task_status %} · {{ trace.task_status }}{% endif %}</div>
+        {% if trace.task_summary %}
+        {{ trace.task_summary }}
+        {% else %}
+        task row created, waiting for the bridge to finish.
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if trace.result_text %}
+      <div class="trace-panel trace-panel-result">
+        <div class="trace-panel-label">result</div>
+        {{ trace.result_text }}
+      </div>
+      {% endif %}
+
+      {% if trace.error_message %}
+      <div class="trace-panel trace-panel-error">
+        <div class="trace-panel-label">error</div>
+        {{ trace.error_message }}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

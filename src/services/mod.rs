@@ -2,6 +2,7 @@ pub mod claude;
 pub mod comfyui;
 pub mod gemini;
 pub mod grok;
+pub mod hermes;
 pub mod neynar;
 pub mod notification;
 pub mod ollama;

@@ -90,7 +90,9 @@ pub fn prompt_catalog() -> Vec<CreateVideoPrompt> {
 }
 
 pub fn get_prompt(prompt_id: &str) -> Option<CreateVideoPrompt> {
-    prompt_catalog().into_iter().find(|prompt| prompt.id == prompt_id)
+    prompt_catalog()
+        .into_iter()
+        .find(|prompt| prompt.id == prompt_id)
 }
 
 pub fn load_state(prompt_id: &str) -> Result<CreateVideoState> {

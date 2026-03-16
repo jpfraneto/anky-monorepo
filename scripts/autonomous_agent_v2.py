@@ -14,9 +14,11 @@ import os
 import sys
 import json
 import random
+import time
 import requests
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 
 ANKY_APP_HOST = "http://127.0.0.1:8889"
 IMAGES_DIR = Path.home() / "anky" / "data" / "images"
@@ -53,6 +55,32 @@ ANKY_THINKERS = [
     "Poiesis",
 ]
 
+
+def resolve_local_image_path(data):
+    """Resolve the generated image on disk from the API response."""
+    image_path = data.get("image_path")
+    if image_path:
+        candidate = Path(str(image_path).lstrip("/"))
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+        if candidate.exists():
+            return candidate
+        under_images = IMAGES_DIR / candidate.name
+        if under_images.exists():
+            return under_images
+
+    image_url = data.get("image_url")
+    if image_url:
+        parsed = urlparse(str(image_url))
+        candidate = Path(parsed.path.lstrip("/"))
+        if candidate.exists():
+            return candidate
+        under_images = IMAGES_DIR / candidate.name
+        if under_images.exists():
+            return under_images
+
+    return None
+
 def generate_anky_via_api():
     """Generate Anky via local Flask API."""
     thinker = random.choice(ANKY_THINKERS)
@@ -82,11 +110,10 @@ def wait_for_image(anky_id, max_wait=60):
         try:
             resp = requests.get(f"{ANKY_APP_HOST}/api/v1/anky/{anky_id}", timeout=10)
             data = resp.json()
-            
-            if data.get("status") == "completed" and data.get("image_url"):
-                image_path = data["image_path"]  # e.g., "{anky_id}.png"
-                full_path = IMAGES_DIR / image_path
-                if full_path.exists():
+
+            if data.get("status") in {"complete", "completed"} and data.get("image_url"):
+                full_path = resolve_local_image_path(data)
+                if full_path and full_path.exists():
                     print(f"→ Image ready: {full_path}")
                     return full_path, data
                 
@@ -108,7 +135,7 @@ def post_to_instagram(image_path, data):
     web_path = STATIC_DIR / f"{datetime.now():%Y%m%d_%H%M%S}_anky.png"
     web_path.write_bytes(image_path.read_bytes())
     
-    image_url = f"https://anky.app/autonomous/{web_path.name}"
+    image_url = f"https://anky.app/static/autonomous/{web_path.name}"
     
     caption = f"{data.get('title', 'Anky')} 🪞\n\n{data.get('reflection', 'The mirror reflects.')}\n\n— Anky #{data.get('id', '??')[:4]}"
     
@@ -168,5 +195,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    import time
     main()

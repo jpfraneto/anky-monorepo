@@ -44,13 +44,18 @@ pub async fn generate_prompt_image(
     // Decode base64 image
     let image_bytes = base64::engine::general_purpose::STANDARD.decode(&image_result.base64)?;
 
+    // Save the clean image (no text overlay) for use as writing background
+    let clean_filename = format!("prompt_{}_clean.png", prompt_id);
+    let clean_path = std::path::Path::new("data/images").join(&clean_filename);
+    std::fs::create_dir_all("data/images")?;
+    std::fs::write(&clean_path, &image_bytes)?;
+
     // Step 3: Overlay prompt text on the image
     let final_bytes = overlay_text_on_image(&image_bytes, prompt_text)?;
 
-    // Save the final image
+    // Save the final image (with text overlay, for OG/social sharing)
     let filename = format!("prompt_{}.png", prompt_id);
     let path = std::path::Path::new("data/images").join(&filename);
-    std::fs::create_dir_all("data/images")?;
     std::fs::write(&path, &final_bytes)?;
 
     state.emit_log(

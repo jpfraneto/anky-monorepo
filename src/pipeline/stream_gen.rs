@@ -106,6 +106,7 @@ pub async fn generate_for_thinker(
                 Some(moment),
                 "generating",
                 "generated",
+                None,
             )?;
         }
         id

@@ -12,6 +12,8 @@ pub struct WriteRequest {
     pub keystroke_deltas: Option<Vec<f64>>,
     #[serde(default)]
     pub inquiry_id: Option<String>,
+    #[serde(default)]
+    pub prompt_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,7 +111,6 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub agent_id: String,
     pub api_key: String,
-    pub free_sessions_remaining: i32,
     pub message: String,
 }
 

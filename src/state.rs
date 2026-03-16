@@ -154,6 +154,8 @@ pub struct AppState {
     pub webhook_log_tx: broadcast::Sender<String>,
     /// Pre-warmed memory context cache: user_id -> formatted context string
     pub memory_cache: Arc<Mutex<HashMap<String, String>>>,
+    /// Active chunked writing sessions (agent stream-of-consciousness)
+    pub sessions: crate::routes::session::SessionMap,
 }
 
 impl AppState {

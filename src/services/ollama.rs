@@ -364,6 +364,29 @@ Reflection:"#,
     )
 }
 
+pub fn format_writing_prompt(text: &str) -> String {
+    format!(
+        r#"You are a text formatter. Take this raw stream-of-consciousness writing and make it readable:
+
+- Add proper punctuation (periods, commas, question marks)
+- Add paragraph breaks where natural thought transitions happen
+- Fix obvious typos only if the intended word is clear
+- Capitalize sentence beginnings and proper nouns
+- DO NOT change any words, add words, remove words, or rephrase anything
+- DO NOT add any commentary, headers, or notes
+- Preserve the author's voice, slang, and style exactly
+- Just output the formatted text, nothing else
+
+Raw writing:
+---
+{}
+---
+
+Formatted version:"#,
+        text
+    )
+}
+
 pub fn quick_feedback_prompt(text: &str, duration: f64) -> String {
     let mins = (duration / 60.0) as u32;
     let secs = (duration % 60.0) as u32;

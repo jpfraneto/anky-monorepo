@@ -26,17 +26,12 @@ pub async fn validate_payment(
     if let Some(axum::Extension(ref key_info)) = api_key_info {
         api_key_str = Some(key_info.key.clone());
 
-        // Check if this is an agent with free sessions
+        // Registered agents get everything free
         let db = state.db.lock().await;
         if let Ok(Some(agent)) = queries::get_agent_by_key(&db, &key_info.key) {
-            if agent.free_sessions_remaining > 0 {
-                queries::decrement_free_session(&db, &agent.id)?;
-                payment_method = "free_session".into();
-                agent_id = Some(agent.id);
-                drop(db);
-            } else {
-                drop(db);
-            }
+            payment_method = "free".into();
+            agent_id = Some(agent.id);
+            drop(db);
         } else {
             drop(db);
         }

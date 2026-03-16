@@ -13,12 +13,55 @@ use anyhow::Result;
 pub fn detect_breathwork_style(writing: &str) -> &'static str {
     let text = writing.to_lowercase();
 
-    let grief_loss = ["grief", "loss", "died", "death", "miss", "gone", "funeral", "mourn"];
-    let anxiety = ["anxious", "anxiety", "panic", "worry", "scared", "fear", "overwhelm", "stress", "dread"];
-    let anger = ["angry", "rage", "furious", "hate", "resentment", "frustrated", "mad"];
-    let low_energy = ["tired", "exhausted", "drained", "empty", "numb", "flat", "foggy", "unmotivated"];
-    let high_energy = ["excited", "electric", "alive", "energy", "fire", "passion", "burst", "surge"];
-    let spiritual = ["soul", "spirit", "god", "universe", "presence", "consciousness", "divine", "sacred", "awakening", "meditation", "yoga"];
+    let grief_loss = [
+        "grief", "loss", "died", "death", "miss", "gone", "funeral", "mourn",
+    ];
+    let anxiety = [
+        "anxious",
+        "anxiety",
+        "panic",
+        "worry",
+        "scared",
+        "fear",
+        "overwhelm",
+        "stress",
+        "dread",
+    ];
+    let anger = [
+        "angry",
+        "rage",
+        "furious",
+        "hate",
+        "resentment",
+        "frustrated",
+        "mad",
+    ];
+    let low_energy = [
+        "tired",
+        "exhausted",
+        "drained",
+        "empty",
+        "numb",
+        "flat",
+        "foggy",
+        "unmotivated",
+    ];
+    let high_energy = [
+        "excited", "electric", "alive", "energy", "fire", "passion", "burst", "surge",
+    ];
+    let spiritual = [
+        "soul",
+        "spirit",
+        "god",
+        "universe",
+        "presence",
+        "consciousness",
+        "divine",
+        "sacred",
+        "awakening",
+        "meditation",
+        "yoga",
+    ];
 
     let score = |words: &[&str]| words.iter().filter(|&&w| text.contains(w)).count();
 
@@ -29,22 +72,38 @@ pub fn detect_breathwork_style(writing: &str) -> &'static str {
     let high_score = score(&high_energy);
     let spiritual_score = score(&spiritual);
 
-    let max = [grief_score, anxiety_score, anger_score, low_score, high_score, spiritual_score]
-        .iter()
-        .copied()
-        .max()
-        .unwrap_or(0);
+    let max = [
+        grief_score,
+        anxiety_score,
+        anger_score,
+        low_score,
+        high_score,
+        spiritual_score,
+    ]
+    .iter()
+    .copied()
+    .max()
+    .unwrap_or(0);
 
     if max == 0 {
         return "box"; // neutral default
     }
 
-    if grief_score == max { "calming" }
-    else if anxiety_score == max { "4_7_8" }
-    else if anger_score == max { "wim_hof" } // channel it outward
-    else if low_score == max { "energizing" }
-    else if high_score == max { "wim_hof" }
-    else { "pranayama" } // spiritual
+    if grief_score == max {
+        "calming"
+    } else if anxiety_score == max {
+        "4_7_8"
+    } else if anger_score == max {
+        "wim_hof"
+    }
+    // channel it outward
+    else if low_score == max {
+        "energizing"
+    } else if high_score == max {
+        "wim_hof"
+    } else {
+        "pranayama"
+    } // spiritual
 }
 
 // ===== Prompts =====
@@ -321,21 +380,14 @@ pub async fn generate_breathwork_premium(
     }
 }
 
-pub async fn generate_meditation_free(
-    state: &AppState,
-    job_id: &str,
-    writing: Option<&str>,
-) {
+pub async fn generate_meditation_free(state: &AppState, job_id: &str, writing: Option<&str>) {
     let prompt = match writing {
         Some(w) => meditation_prompt(w, None),
         None => generic_meditation_prompt().to_string(),
     };
 
     // Wrap in instruction for Ollama to output JSON
-    let full_prompt = format!(
-        "Output only valid JSON, no markdown.\n\n{}",
-        prompt
-    );
+    let full_prompt = format!("Output only valid JSON, no markdown.\n\n{}", prompt);
 
     let result = crate::services::ollama::call_ollama(
         &state.config.ollama_base_url,
@@ -352,7 +404,11 @@ pub async fn generate_meditation_free(
             let _ = queries::set_meditation_script(&db, job_id, &json, "ready");
         }
         Err(e) => {
-            tracing::error!("Free meditation generation failed for {}: {}", &job_id[..8], e);
+            tracing::error!(
+                "Free meditation generation failed for {}: {}",
+                &job_id[..8],
+                e
+            );
             let db = state.db.lock().await;
             let _ = queries::set_meditation_status(&db, job_id, "failed");
         }
@@ -387,7 +443,11 @@ pub async fn generate_breathwork_free(
             let _ = queries::set_breathwork_script(&db, job_id, &json, "ready");
         }
         Err(e) => {
-            tracing::error!("Free breathwork generation failed for {}: {}", &job_id[..8], e);
+            tracing::error!(
+                "Free breathwork generation failed for {}: {}",
+                &job_id[..8],
+                e
+            );
             let db = state.db.lock().await;
             let _ = queries::set_breathwork_status(&db, job_id, "failed");
         }
@@ -416,10 +476,19 @@ pub async fn queue_post_writing_guidance(
     {
         let db = state.db.lock().await;
         let _ = queries::create_personalized_meditation(
-            &db, &med_id, user_id, Some(writing_session_id), tier,
+            &db,
+            &med_id,
+            user_id,
+            Some(writing_session_id),
+            tier,
         );
         let _ = queries::create_personalized_breathwork(
-            &db, &bw_id, user_id, Some(writing_session_id), style, tier,
+            &db,
+            &bw_id,
+            user_id,
+            Some(writing_session_id),
+            style,
+            tier,
         );
     }
 
@@ -441,7 +510,8 @@ pub async fn queue_post_writing_guidance(
 
             let s2 = state_clone.clone();
             tokio::spawn(async move {
-                generate_breathwork_premium(&s2, &bw_id_owned, &style_owned, Some(&writing_owned)).await;
+                generate_breathwork_premium(&s2, &bw_id_owned, &style_owned, Some(&writing_owned))
+                    .await;
             });
         });
     } else {
@@ -461,7 +531,14 @@ pub async fn queue_daily_guidance(state: &AppState, user_id: &str) {
     };
     let tier = if is_premium { "premium" } else { "free" };
 
-    let styles = ["box", "calming", "pranayama", "4_7_8", "energizing", "wim_hof"];
+    let styles = [
+        "box",
+        "calming",
+        "pranayama",
+        "4_7_8",
+        "energizing",
+        "wim_hof",
+    ];
     use chrono::Datelike;
     let day_of_year = chrono::Utc::now().ordinal() as usize;
     let style = styles[day_of_year % styles.len()];
@@ -510,7 +587,11 @@ pub async fn process_free_queue(state: &AppState) -> Result<bool> {
             None
         };
         generate_meditation_free(state, &id, writing.as_deref()).await;
-        state.emit_log("INFO", "queue", &format!("Free meditation ready for {}", &user_id[..8]));
+        state.emit_log(
+            "INFO",
+            "queue",
+            &format!("Free meditation ready for {}", &user_id[..8]),
+        );
         return Ok(true);
     }
 
@@ -533,7 +614,11 @@ pub async fn process_free_queue(state: &AppState) -> Result<bool> {
             None
         };
         generate_breathwork_free(state, &id, &style, writing.as_deref()).await;
-        state.emit_log("INFO", "queue", &format!("Free breathwork ready for {}", &user_id[..8]));
+        state.emit_log(
+            "INFO",
+            "queue",
+            &format!("Free breathwork ready for {}", &user_id[..8]),
+        );
         return Ok(true);
     }
 

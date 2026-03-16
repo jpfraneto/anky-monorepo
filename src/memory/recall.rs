@@ -35,6 +35,7 @@ pub struct MemoryContext {
 
 impl MemoryContext {
     /// Format the memory context as a string for injection into a system prompt.
+    /// This goes BEFORE the reflection instructions — it frames WHO you're reading.
     pub fn format_for_prompt(&self) -> String {
         if self.session_count == 0 {
             return String::new();
@@ -43,13 +44,13 @@ impl MemoryContext {
         let mut parts = Vec::new();
 
         parts.push(format!(
-            "This person has written {} stream-of-consciousness sessions with you.",
+            "# Who is writing\n\nThis is session {} with this person. You know them.",
             self.session_count
         ));
 
         if let Some(ref profile) = self.profile {
             if !profile.is_empty() {
-                parts.push(format!("\n## What you know about this person\n{}", profile));
+                parts.push(format!("\n## What you know about them\n{}", profile));
             }
         }
 
@@ -60,7 +61,7 @@ impl MemoryContext {
             .collect();
 
         if !significant_patterns.is_empty() {
-            let mut pattern_section = "\n## Recurring patterns across their writing\n".to_string();
+            let mut pattern_section = "\n## Their recurring patterns\n".to_string();
             for p in significant_patterns.iter().take(8) {
                 let freq = if p.occurrence_count >= 5 {
                     "deeply recurring"
@@ -78,7 +79,8 @@ impl MemoryContext {
         }
 
         if !self.similar_moments.is_empty() {
-            let mut moments_section = "\n## Relevant past writing moments\n".to_string();
+            let mut moments_section =
+                "\n## What they've written before that connects to this\n".to_string();
             for m in self.similar_moments.iter().take(3) {
                 let snippet: String = m.content.chars().take(200).collect();
                 let snippet = if m.content.len() > 200 {
@@ -86,15 +88,9 @@ impl MemoryContext {
                 } else {
                     snippet
                 };
-                moments_section.push_str(&format!("- (score {:.2}): \"{}\"\n", m.score, snippet));
+                moments_section.push_str(&format!("- \"{}\"\n", snippet));
             }
             parts.push(moments_section);
-        }
-
-        if !parts.is_empty() {
-            parts.push(
-                "\n## How to use this context\nUse this context to make your reflection DEEPLY personal. Reference their journey. Name patterns you see evolving. If something appears for the first time, note it. If something keeps recurring, name it directly. The person should feel KNOWN — like you remember them.".to_string()
-            );
         }
 
         parts.join("\n")

@@ -802,7 +802,7 @@ pub async fn llm(State(state): State<AppState>) -> Result<Html<String>, AppError
             "SELECT run_date, val_bpb, training_seconds, peak_vram_mb, mfu_percent,
                     total_tokens_m, num_steps, num_params_m, depth,
                     corpus_sessions, corpus_words, corpus_tokens, epochs
-             FROM llm_training_runs ORDER BY run_date ASC"
+             FROM llm_training_runs ORDER BY run_date ASC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(serde_json::json!({
@@ -826,7 +826,10 @@ pub async fn llm(State(state): State<AppState>) -> Result<Html<String>, AppError
 
     let mut ctx = tera::Context::new();
     ctx.insert("runs", &runs);
-    ctx.insert("runs_json", &serde_json::to_string(&runs).unwrap_or_default());
+    ctx.insert(
+        "runs_json",
+        &serde_json::to_string(&runs).unwrap_or_default(),
+    );
     let html = state.tera.render("llm.html", &ctx)?;
     Ok(Html(html))
 }
@@ -1045,6 +1048,30 @@ pub async fn pitch(State(state): State<AppState>) -> Result<Html<String>, AppErr
     Ok(Html(html))
 }
 
+/// Serve the auto-generated pitch deck PDF.
+pub async fn pitch_deck_pdf() -> Result<impl axum::response::IntoResponse, AppError> {
+    let path = std::path::Path::new("static/pitch-deck.pdf");
+    let bytes = tokio::fs::read(path)
+        .await
+        .map_err(|e| AppError::Internal(format!("pitch-deck.pdf not found: {e}")))?;
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "application/pdf"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "inline; filename=\"anky-pitch-deck.pdf\"",
+            ),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        bytes,
+    ))
+}
+
+/// Handler for pitch.anky.app subdomain — redirects everything to the PDF.
+pub async fn pitch_subdomain_redirect() -> axum::response::Redirect {
+    axum::response::Redirect::temporary("/pitch-deck.pdf")
+}
+
 pub async fn anky_detail(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -1084,11 +1111,18 @@ pub async fn anky_detail(
     ctx.insert("status", &anky.status);
     ctx.insert("created_at", &anky.created_at);
     ctx.insert("origin", &anky.origin);
+    ctx.insert("prompt_id", &anky.prompt_id.as_deref().unwrap_or(""));
+    ctx.insert("prompt_text", &anky.prompt_text.as_deref().unwrap_or(""));
 
     if show_writing {
         ctx.insert("writing", &anky.writing_text.as_deref().unwrap_or(""));
+        ctx.insert(
+            "formatted_writing",
+            &anky.formatted_writing.as_deref().unwrap_or(""),
+        );
     } else {
         ctx.insert("writing", &"");
+        ctx.insert("formatted_writing", &"");
     }
 
     let html = state.tera.render("anky.html", &ctx)?;

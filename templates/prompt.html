@@ -18,7 +18,7 @@
 
 {% block content %}
 <!-- Challenge overlay -->
-<div class="challenge-overlay" id="challenge-overlay">
+<div class="challenge-overlay" id="challenge-overlay" style="--prompt-bg: url('{{ bg_image_url }}');">
   <div class="challenge-inner">
     <p class="challenge-creator">@{{ creator_username }} challenged you</p>
     <p class="challenge-prompt">{{ prompt_text }}</p>
@@ -27,7 +27,7 @@
   </div>
 </div>
 
-<div class="writing-container">
+<div class="writing-container" style="--prompt-bg: url('{{ bg_image_url }}');">
   <div class="writing-main">
     <div id="life-bar"></div>
     <div class="prompt-display at-top" id="prompt-display">{{ prompt_text }}</div>
@@ -190,12 +190,30 @@ var lastStreamedReflection = '';
     if (!sessionActive || !textarea.value) return;
     var elapsed = (Date.now() - sessionStartTime) / 1000;
     if (!sessionId) sessionId = 'ses_' + Date.now().toString(36);
+    var payload = { session_id: sessionId, text: textarea.value, elapsed: elapsed };
+    // Also save to localStorage as a safety net
+    saveDraftToStorage();
     fetch('/api/checkpoint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, text: textarea.value, elapsed: elapsed }),
-    }).catch(function() {});
-    showCheckpoint('checkpoint saved');
+      body: JSON.stringify(payload),
+    }).then(function(r) { return r.json(); }).then(function() {
+      showCheckpoint('checkpoint saved');
+    }).catch(function() {
+      // Retry once on failure
+      showCheckpoint('checkpoint retry...');
+      setTimeout(function() {
+        fetch('/api/checkpoint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(function() {
+          showCheckpoint('checkpoint saved');
+        }).catch(function() {
+          showCheckpoint('writing saved locally');
+        });
+      }, 2000);
+    });
   }
 
   // --- Animation loop ---
@@ -588,8 +606,8 @@ var lastStreamedReflection = '';
     sessionProgress.style.width = '0%';
     sessionProgress.classList.remove('complete');
 
-    // Clear draft from localStorage — writing is being submitted
-    clearDraft();
+    // Save full text to localStorage BEFORE submitting — safety net
+    saveDraftToStorage();
 
     // Fire-and-forget: save prompt-specific session data
     fetch('/api/v1/prompt/' + promptId + '/write', {
@@ -633,37 +651,57 @@ var lastStreamedReflection = '';
     addChatBubble('anky', '<span class="processing">processing...</span>').id = 'anky-bubble';
 
     // POST to /write — triggers the full anky pipeline
-    fetch('/write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, duration: duration }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var ankyBubble = document.getElementById('anky-bubble');
-        if (data.error) {
-          ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
-          setTimeout(function() { showQuickChatInput(); }, 500);
-          return;
-        }
+    var submitRetries = 0;
+    var maxRetries = 3;
+    var writeBody = JSON.stringify({ text: text, duration: duration, session_id: sessionId, prompt_id: promptId });
 
-        if (data.is_anky && data.anky_id) {
-          currentAnkyId = data.anky_id;
-          saveAnkyId(data.anky_id);
-          ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
-          addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-          streamAnkyReflection(data.anky_id);
-        } else {
-          ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          chatContainer.scrollTop = chatContainer.scrollHeight;
-          setTimeout(function() { showQuickChatInput(); }, 1500);
-        }
+    function attemptSubmit() {
+      fetch('/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: writeBody,
       })
-      .catch(function() {
-        var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">something went wrong. try again?</span>';
-        setTimeout(function() { showQuickChatInput(); }, 500);
-      });
+        .then(function(r) {
+          if (!r.ok) {
+            return r.json().catch(function() { return { error: 'server error (' + r.status + ')' }; });
+          }
+          return r.json();
+        })
+        .then(function(data) {
+          var ankyBubble = document.getElementById('anky-bubble');
+          if (data.error) {
+            ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
+            setTimeout(function() { showQuickChatInput(); }, 500);
+            return;
+          }
+
+          clearDraft();  // only clear after confirmed success
+          if (data.is_anky && data.anky_id) {
+            currentAnkyId = data.anky_id;
+            saveAnkyId(data.anky_id);
+            ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
+            addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
+            streamAnkyReflection(data.anky_id);
+          } else {
+            ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            setTimeout(function() { showQuickChatInput(); }, 1500);
+          }
+        })
+        .catch(function() {
+          submitRetries++;
+          if (submitRetries < maxRetries) {
+            var ankyBubble = document.getElementById('anky-bubble');
+            ankyBubble.innerHTML = '<span class="processing">connection lost — retrying (' + submitRetries + '/' + maxRetries + ')...</span>';
+            setTimeout(attemptSubmit, 2000 * submitRetries);
+          } else {
+            var ankyBubble = document.getElementById('anky-bubble');
+            ankyBubble.innerHTML = '<span class="error">could not reach the server, but your writing is safe. it\'s saved locally and on the server via checkpoints. reload to try again.</span>';
+            setTimeout(function() { showQuickChatInput(); }, 500);
+          }
+        });
+    }
+    attemptSubmit();
   }
 
   // --- Input handling ---

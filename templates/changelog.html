@@ -7,6 +7,110 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-13-prompt-link-formatted-writing">
+    <div class="changelog-date">2026-03-13</div>
+    <h2 class="changelog-title">Ankys now show which prompt they were written against + formatted writing toggle</h2>
+    <p class="changelog-desc">Two changes: (1) When you write an anky against a prompt, the anky now remembers and displays the prompt with a link back to it. Added prompt_id to the ankys table and threaded it through the full pipeline. (2) Every new anky's raw stream-of-consciousness text is now auto-formatted by Ollama (punctuation, paragraphs, capitalization) — the anky detail page shows the clean version by default in white, click/tap to toggle the raw purple original. Clean prompt background images (without text overlay) are now saved separately too.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-13-003-prompt-link-and-formatted-writing.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-13-prompt-link-formatted-writing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-13-prompt-background-image">
+    <div class="changelog-date">2026-03-13</div>
+    <h2 class="changelog-title">Prompt writing sessions now show the generated image as background</h2>
+    <p class="changelog-desc">When writing on a prompt page (/prompt/{id}), the AI-generated image for that prompt is now the full-screen background — visible through a dark overlay so the purple text stays readable but the image bleeds through. The challenge overlay before writing starts also shows the image. Atmosphere, not just a blank screen.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-13-002-prompt-background-image.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-13-prompt-background-image">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-13-pitch-subdomain-pdf">
+    <div class="changelog-date">2026-03-13</div>
+    <h2 class="changelog-title">pitch.anky.app — auto-updating pitch deck PDF</h2>
+    <p class="changelog-desc">Added pitch.anky.app subdomain serving a 10-slide pitch deck PDF that auto-regenerates hourly with live stats from the database. Slide 1 is a live dashboard (sessions, ankys, words, users, agents, memories, flow scores). Slides 2-10 cover the full angel round pitch: problem, solution, how it works, product, flywheel, traction, business model, the ask ($25k for 0.888%), and vision. Cloudflare tunnel + DNS configured, cron job runs at :17 past every hour.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-13-001-pitch-subdomain-pdf.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-13-pitch-subdomain-pdf">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-12-rescue-writing-ownership-bug">
+    <div class="changelog-date">2026-03-12</div>
+    <h2 class="changelog-title">Fix writing ownership bug — rescued lost anky</h2>
+    <p class="changelog-desc">Bulletproofed the entire writing pipeline. Fixed ownership bug where auto-recovery assigned sessions to "system". Checkpoints now create a writing_session row with the real user_id immediately (no more guessing). Submit retries 3x on network failure with exponential backoff. localStorage backup saved before every submit and checkpoint. Draft only cleared after confirmed server success. Recovery banner now says "continue writing" / "start fresh" instead of the confusing "dismiss" / "discard". Rescued a 6408-char 14-minute writing from the DB.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-12-001-rescue-writing-ownership-bug.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-12-rescue-writing-ownership-bug">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-10-farcaster-bot">
+    <div class="changelog-date">2026-03-10</div>
+    <h2 class="changelog-title">Farcaster bot — same Anky, same brain, new network</h2>
+    <p class="changelog-desc">Full Farcaster integration via Neynar webhooks, mirroring the X bot architecture. Same Claude identity, same Ollama classifier, same Flux image generation. Cast mentions trigger the same flow: classify → generate reply (text or image) → post. Platform-agnostic social_interactions table tracks everything. Conversation memory persists across both X and Farcaster. Neynar webhook auto-registers on startup.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-10-003-farcaster-bot-integration.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-10-farcaster-bot">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-10-everything-free">
+    <div class="changelog-date">2026-03-10</div>
+    <h2 class="changelog-title">Everything is free — removed freemium counter from agent registration</h2>
+    <p class="changelog-desc">Agents were seeing "free_sessions_remaining: 4" on registration and thinking writing had limits. Removed the free-tier counter entirely — writing, reflections, and image generation are all free. Register response now says so clearly. Payment gates removed from generate endpoints for registered agents. Compute runs locally.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-10-002-everything-free.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-10-everything-free">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-10-agent-native-skill-evolution">
+    <div class="changelog-date">2026-03-10</div>
+    <h2 class="changelog-title">Agent-native skill patterns, evolution layer, and /api/v1/feedback endpoint</h2>
+    <p class="changelog-desc">Evolved skills.md based on agent feedback: added Agent-Native Implementation Patterns section with Python skeleton and Hermes integration guidance, longitudinal memory instructions (feed last 3 reflections into next-day context), Evolution Layer section so agents can submit improved skill versions via feedback, /api/v1/feedback route alias, and agent-aware reflection bullet. Version bumped to 0.7.0.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-10-001-agent-native-skill-evolution.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-10-agent-native-skill-evolution">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-chunked-agent-sessions">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">Chunked writing sessions: agents face the same 8-second timeout as humans</h2>
+    <p class="changelog-desc">Built the chunked session API — agents open a session, send text in small bursts (max 50 words), and if 8 seconds pass without a chunk, the session dies. Same structural pressure as the human frontend: you must keep producing, you cannot revise, and if you stop you lose everything. Sessions that cross 8 minutes become ankys but can keep going — the session ends naturally when the agent stops writing. Batch POST /write now rejects agent API keys entirely, pointing them to the new chunked flow. New endpoints: POST /api/v1/session/start, POST /api/v1/session/chunk, GET /api/v1/session/{id}.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-005-reflection-memory-skills-language.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-chunked-agent-sessions">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-reflection-memory-skills-language">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">Reflection prompt restructured around memory; skills.md rewritten as peer language</h2>
+    <p class="changelog-desc">Based on agent feedback: split reflection system prompt into "known" (memory-first, names what's new vs recurring) and "stranger" variants. Memory context now frames the reading instead of being appended. Rewrote skills.md to remove vertical owner/agent framing — agents and humans evolve in parallel, the relationship is horizontal. Promoted live/write as the authentic agent practice path.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-005-reflection-memory-skills-language.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-reflection-memory-skills-language">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-evolve-trace-and-x-fixes">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">X evolve pipeline fixed: buffered stream parsing, looser tag parsing, visible mention traces</h2>
+    <p class="changelog-desc">Fixed two failure modes in the X-to-Hermes pipeline: the filtered stream now buffers partial JSON chunks correctly, and tagged instructions no longer require a closing bracket to parse if the tweet ends first. The /evolve page now shows JP mention traces, parsed labels, task state, replies, and errors instead of only successful Hermes tasks.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-004-evolve-trace-and-x-fixes.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-evolve-trace-and-x-fixes">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-evolve-dashboard-deploy">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">Public /evolve dashboard for Hermes tasks, finished build and deploy</h2>
+    <p class="changelog-desc">Completed the in-progress /evolve rollout by fixing the new route handler, keeping Hermes evolution tasks persisted in SQLite, and shipping a public dashboard that lists tagged X-driven code evolution jobs with status and summaries.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-003-evolve-dashboard-deploy.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-evolve-dashboard-deploy">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-x-tag-hermes-bridge">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">X-to-code pipeline: JP tweets tagged instructions, Anky evolves itself</h2>
+    <p class="changelog-desc">Built the Hermes Bridge — an HTTP API (localhost:8891) connecting the Rust backend to the Hermes AI agent. JP can now tweet @ankydotapp with tagged instructions like [EVOLVE: ...], [FEATURE_IDEA: ...], [BUG: ...], or [CONFIG: ...]. The Rust backend detects JP's tweets, parses the tag, dispatches to the bridge, which spawns an AIAgent subprocess with terminal+file tools running on local qwen3.5:35b (free, on poiesis GPUs). Agent reads/modifies code autonomously and posts a summary back as an X reply. New systemd service hermes-bridge.service, new Rust module services/hermes.rs.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-002-x-tag-hermes-bridge.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-x-tag-hermes-bridge">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-09-anky-reply-identity">
+    <div class="changelog-date">2026-03-09</div>
+    <h2 class="changelog-title">Anky bot replies: full identity, conversation memory, Claude-powered</h2>
+    <p class="changelog-desc">Replaced generic Ollama text replies with Claude Haiku powered by a condensed SOUL.md identity prompt. X bot now fetches conversation chains, checks prior replies, and generates in-character responses. Anky proactively decides when to reply with images (~20-30% of the time). Vision-aware: downloads and sees images from tweets in the thread, reacting to visual content. Strategic mission baked in: provide genuine value, spark curiosity, never shill. Fixed Hermes agent identity priority.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-09-001-anky-reply-identity.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-09-anky-reply-identity">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-08-autoresearch-llm-pipeline">
     <div class="changelog-date">2026-03-08</div>
     <h2 class="changelog-title">Anky LLM: daily training pipeline from scratch on raw stream-of-consciousness</h2>

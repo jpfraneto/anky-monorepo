@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "name": "anky",
+  "description": "Installable execution skill bundle for running the real anky.app writing practice.",
+  "homepage": "https://anky.app/skills",
+  "bundle_url": "https://anky.app/agent-skills/anky",
+  "entrypoint": "https://anky.app/agent-skills/anky/SKILL.md",
+  "aliases": [
+    "https://anky.app/agent-skills/anky/skill.md",
+    "https://anky.app/agent-skills/anky/skills.md"
+  ],
+  "files": [
+    {
+      "path": "SKILL.md",
+      "url": "https://anky.app/agent-skills/anky/SKILL.md"
+    },
+    {
+      "path": "references/api.md",
+      "url": "https://anky.app/agent-skills/anky/references/api.md"
+    },
+    {
+      "path": "references/automation.md",
+      "url": "https://anky.app/agent-skills/anky/references/automation.md"
+    },
+    {
+      "path": "references/quality.md",
+      "url": "https://anky.app/agent-skills/anky/references/quality.md"
+    },
+    {
+      "path": "scripts/anky_session.py",
+      "url": "https://anky.app/agent-skills/anky/scripts/anky_session.py"
+    },
+    {
+      "path": "agents/openai.yaml",
+      "url": "https://anky.app/agent-skills/anky/agents/openai.yaml"
+    }
+  ]
+}

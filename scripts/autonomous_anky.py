@@ -17,6 +17,7 @@ import time
 import requests
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 
 ANKY_API = "http://127.0.0.1:8889"
 IMAGES_DIR = Path.home() / "anky" / "data" / "images"
@@ -32,6 +33,32 @@ if ENV_PATH.exists():
 
 INSTAGRAM_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN")
 INSTAGRAM_USER_ID = os.getenv("INSTAGRAM_USER_ID", "17841480674971908")
+
+
+def resolve_local_image_path(anky):
+    """Resolve the generated image on disk from the current API response."""
+    image_path = anky.get("image_path")
+    if image_path:
+        candidate = Path(str(image_path).lstrip("/"))
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+        if candidate.exists():
+            return candidate
+        under_images = IMAGES_DIR / candidate.name
+        if under_images.exists():
+            return under_images
+
+    image_url = anky.get("image_url")
+    if image_url:
+        parsed = urlparse(str(image_url))
+        candidate = Path(parsed.path.lstrip("/"))
+        if candidate.exists():
+            return candidate
+        under_images = IMAGES_DIR / candidate.name
+        if under_images.exists():
+            return under_images
+
+    return None
 
 def generate_and_post():
     """Full autonomous flow."""
@@ -59,12 +86,14 @@ def generate_and_post():
     for i in range(90):  # 3min poll
         time.sleep(2)
         status = requests.get(f"{ANKY_API}/api/v1/anky/{anky_id}").json()
-        if status.get("image_url"):
+        if status.get("status") in {"complete", "completed"} and status.get("image_url"):
             break
     
     # 3. Get image path
     anky = requests.get(f"{ANKY_API}/api/v1/anky/{anky_id}").json()
-    img_path = IMAGES_DIR / anky["image_path"]
+    img_path = resolve_local_image_path(anky)
+    if not img_path:
+        raise ValueError(f"No image_path or image_url in {anky}")
     
     # 4. Post to instagram (pure visual)
     web_dir = Path.home() / "anky/static/autonomous"
@@ -76,19 +105,24 @@ def generate_and_post():
     container = requests.post(
         f"https://graph.facebook.com/v25.0/{INSTAGRAM_USER_ID}/media",
         data={
-            "image_url": f"https://anky.app/autonomous/{web_img.name}",
+            "image_url": f"https://anky.app/static/autonomous/{web_img.name}",
             "caption": f"{anky.get('title', 'Anky')} 🪞\n\n{anky.get('reflection', '')}",
             "access_token": INSTAGRAM_TOKEN
         }
     ).json()
     
     # Publish
-    result = requests.post(
-        f"https://graph.facebook.com/v25.0/{INSTAGRAM_USER_ID}/media_publish",
-        data={"creation_id": container["id"], "access_token": INSTAGRAM_TOKEN}
-    ).json()
+    try:
+        result = requests.post(
+            f"https://graph.facebook.com/v25.0/{INSTAGRAM_USER_ID}/media_publish",
+            data={"creation_id": container["id"], "access_token": INSTAGRAM_TOKEN}
+        ).json()
+    except KeyError as e:
+        print(f"⚠️ Instagram publish failed: {e}")
+        print(f"Container response: {container}")
+        return {}
     
-    print(f"✓ Posted to Instagram: {result.get('id')}")
+    post_id = result.get('id', 'unknown') if 'id' in result else container["id"]
     print(f"✓ Anky: {anky_id}")
     print(f"→ X/Farcaster: Manual journey docs (separate)")
     

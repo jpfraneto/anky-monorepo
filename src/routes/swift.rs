@@ -10,8 +10,8 @@ use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
-use serde::{Deserialize, Serialize};
 use rusqlite;
+use serde::{Deserialize, Serialize};
 
 // ===== Auth helpers =====
 
@@ -166,7 +166,11 @@ pub async fn auth_privy(
             state.emit_log(
                 "INFO",
                 "swift_auth",
-                &format!("New mobile user: {} (privy: {})", &uid[..8], &privy_did[..12]),
+                &format!(
+                    "New mobile user: {} (privy: {})",
+                    &uid[..8],
+                    &privy_did[..12]
+                ),
             );
             (uid, email, wallet, None)
         }
@@ -186,7 +190,11 @@ pub async fn auth_privy(
     state.emit_log(
         "INFO",
         "swift_auth",
-        &format!("Mobile login: {} ({})", &user_id[..8], username.as_deref().unwrap_or("no username")),
+        &format!(
+            "Mobile login: {} ({})",
+            &user_id[..8],
+            username.as_deref().unwrap_or("no username")
+        ),
     );
 
     Ok(Json(AuthResponse {
@@ -258,9 +266,7 @@ pub async fn get_me(
                 ))
             });
             if let Ok(ref mut r) = rows {
-                r.next()
-                    .and_then(|v| v.ok())
-                    .unwrap_or((None, None))
+                r.next().and_then(|v| v.ok()).unwrap_or((None, None))
             } else {
                 (None, None)
             }
@@ -779,11 +785,8 @@ pub async fn meditation_complete(
     let user_id = bearer_auth(&state, &headers).await?;
     {
         let db = state.db.lock().await;
-        let was_completed = queries::complete_meditation_session(
-            &db,
-            &req.session_id,
-            req.actual_seconds,
-        )?;
+        let was_completed =
+            queries::complete_meditation_session(&db, &req.session_id, req.actual_seconds)?;
         if req.completed && was_completed {
             queries::increment_meditation(&db, &user_id)?;
         }
@@ -818,13 +821,15 @@ pub async fn meditation_history(
     let sessions = queries::get_user_meditation_history(&db, &user_id)?;
     let items = sessions
         .into_iter()
-        .map(|(id, target, actual, completed, created_at)| MeditationHistoryItem {
-            id,
-            duration_target: target,
-            duration_actual: actual,
-            completed,
-            created_at,
-        })
+        .map(
+            |(id, target, actual, completed, created_at)| MeditationHistoryItem {
+                id,
+                duration_target: target,
+                duration_actual: actual,
+                completed,
+                created_at,
+            },
+        )
         .collect();
     Ok(Json(items))
 }
@@ -875,7 +880,14 @@ pub async fn get_breathwork_session(
         .cloned()
         .unwrap_or_else(|| "wim_hof".into());
 
-    let valid_styles = ["wim_hof", "box", "4_7_8", "pranayama", "energizing", "calming"];
+    let valid_styles = [
+        "wim_hof",
+        "box",
+        "4_7_8",
+        "pranayama",
+        "energizing",
+        "calming",
+    ];
     if !valid_styles.contains(&style.as_str()) {
         return Err(AppError::BadRequest(
             "style must be one of: wim_hof, box, 4_7_8, pranayama, energizing, calming".into(),
@@ -996,8 +1008,13 @@ Rules:
         .trim_end_matches("```")
         .trim();
 
-    let partial: serde_json::Value = serde_json::from_str(clean)
-        .map_err(|e| AppError::Internal(format!("Breathwork JSON parse failed: {}\n{}", e, &clean[..200.min(clean.len())])))?;
+    let partial: serde_json::Value = serde_json::from_str(clean).map_err(|e| {
+        AppError::Internal(format!(
+            "Breathwork JSON parse failed: {}\n{}",
+            e,
+            &clean[..200.min(clean.len())]
+        ))
+    })?;
 
     let phases_raw = partial
         .get("phases")
@@ -1008,10 +1025,25 @@ Rules:
     let mut phases = Vec::new();
     for p in phases_raw {
         phases.push(BreathworkPhase {
-            name: p.get("name").and_then(|v| v.as_str()).unwrap_or("Phase").to_string(),
-            phase_type: p.get("phase_type").and_then(|v| v.as_str()).unwrap_or("narration").to_string(),
-            duration_seconds: p.get("duration_seconds").and_then(|v| v.as_i64()).unwrap_or(30) as i32,
-            narration: p.get("narration").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Phase")
+                .to_string(),
+            phase_type: p
+                .get("phase_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("narration")
+                .to_string(),
+            duration_seconds: p
+                .get("duration_seconds")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(30) as i32,
+            narration: p
+                .get("narration")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             inhale_seconds: p.get("inhale_seconds").and_then(|v| v.as_f64()),
             exhale_seconds: p.get("exhale_seconds").and_then(|v| v.as_f64()),
             hold_seconds: p.get("hold_seconds").and_then(|v| v.as_f64()),
@@ -1022,10 +1054,21 @@ Rules:
     Ok(BreathworkScript {
         id: uuid::Uuid::new_v4().to_string(),
         style: style.to_string(),
-        title: partial.get("title").and_then(|v| v.as_str()).unwrap_or("Breathwork Session").to_string(),
-        description: partial.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        title: partial
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Breathwork Session")
+            .to_string(),
+        description: partial
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         duration_seconds: 480,
-        background_beat_bpm: partial.get("background_beat_bpm").and_then(|v| v.as_i64()).unwrap_or(60) as i32,
+        background_beat_bpm: partial
+            .get("background_beat_bpm")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(60) as i32,
         phases,
     })
 }
@@ -1048,7 +1091,13 @@ pub async fn breathwork_complete(
     {
         let db = state.db.lock().await;
         queries::ensure_user(&db, &user_id)?;
-        queries::log_breathwork_completion(&db, &id, &user_id, &req.session_id, req.notes.as_deref())?;
+        queries::log_breathwork_completion(
+            &db,
+            &id,
+            &user_id,
+            &req.session_id,
+            req.notes.as_deref(),
+        )?;
     }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -1069,7 +1118,9 @@ pub async fn meditation_ready(
     } {
         let script: serde_json::Value =
             serde_json::from_str(&script_json).unwrap_or(serde_json::json!({}));
-        return Ok(Json(serde_json::json!({ "status": "ready", "session": script })));
+        return Ok(Json(
+            serde_json::json!({ "status": "ready", "session": script }),
+        ));
     }
 
     // Nothing ready — queue a daily generic one if we haven't recently
@@ -1155,7 +1206,9 @@ pub async fn set_premium(
         ),
     );
 
-    Ok(Json(serde_json::json!({ "ok": true, "is_premium": is_premium })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "is_premium": is_premium }),
+    ))
 }
 
 // ===== Facilitators =====
@@ -1241,10 +1294,14 @@ pub async fn facilitator_apply(
         return Err(AppError::BadRequest("name and bio are required".into()));
     }
     if req.specialties.is_empty() {
-        return Err(AppError::BadRequest("at least one specialty is required".into()));
+        return Err(AppError::BadRequest(
+            "at least one specialty is required".into(),
+        ));
     }
     if req.session_rate_usd <= 0.0 {
-        return Err(AppError::BadRequest("session_rate_usd must be positive".into()));
+        return Err(AppError::BadRequest(
+            "session_rate_usd must be positive".into(),
+        ));
     }
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -1322,7 +1379,9 @@ pub async fn get_facilitator(
 
     let item = record_to_item(fac);
     let mut json = serde_json::to_value(&item).unwrap_or_default();
-    json.as_object_mut().unwrap().insert("reviews".into(), review_items.into());
+    json.as_object_mut()
+        .unwrap()
+        .insert("reviews".into(), review_items.into());
 
     Ok(Json(json))
 }
@@ -1452,13 +1511,14 @@ Only valid JSON, no markdown."#,
 
     match result {
         Ok(r) => {
-            let clean = r.text.trim()
+            let clean = r
+                .text
+                .trim()
                 .trim_start_matches("```json")
                 .trim_start_matches("```")
                 .trim_end_matches("```")
                 .trim();
-            let ranked: Vec<serde_json::Value> =
-                serde_json::from_str(clean).unwrap_or_default();
+            let ranked: Vec<serde_json::Value> = serde_json::from_str(clean).unwrap_or_default();
 
             // Enrich with full facilitator data
             let mut recommended = Vec::new();
@@ -1466,26 +1526,30 @@ Only valid JSON, no markdown."#,
                 let fac_id = rank.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let reason = rank.get("reason").and_then(|v| v.as_str()).unwrap_or("");
                 if let Some(fac) = facilitators.iter().find(|f| f.id == fac_id) {
-                    let mut item = serde_json::to_value(record_to_item(queries::FacilitatorRecord {
-                        id: fac.id.clone(),
-                        user_id: fac.user_id.clone(),
-                        name: fac.name.clone(),
-                        bio: fac.bio.clone(),
-                        specialties: fac.specialties.clone(),
-                        approach: fac.approach.clone(),
-                        session_rate_usd: fac.session_rate_usd,
-                        booking_url: fac.booking_url.clone(),
-                        contact_method: fac.contact_method.clone(),
-                        profile_image_url: fac.profile_image_url.clone(),
-                        location: fac.location.clone(),
-                        languages: fac.languages.clone(),
-                        status: fac.status.clone(),
-                        avg_rating: fac.avg_rating,
-                        total_reviews: fac.total_reviews,
-                        total_sessions: fac.total_sessions,
-                        created_at: fac.created_at.clone(),
-                    })).unwrap_or_default();
-                    item.as_object_mut().unwrap().insert("match_reason".into(), reason.into());
+                    let mut item =
+                        serde_json::to_value(record_to_item(queries::FacilitatorRecord {
+                            id: fac.id.clone(),
+                            user_id: fac.user_id.clone(),
+                            name: fac.name.clone(),
+                            bio: fac.bio.clone(),
+                            specialties: fac.specialties.clone(),
+                            approach: fac.approach.clone(),
+                            session_rate_usd: fac.session_rate_usd,
+                            booking_url: fac.booking_url.clone(),
+                            contact_method: fac.contact_method.clone(),
+                            profile_image_url: fac.profile_image_url.clone(),
+                            location: fac.location.clone(),
+                            languages: fac.languages.clone(),
+                            status: fac.status.clone(),
+                            avg_rating: fac.avg_rating,
+                            total_reviews: fac.total_reviews,
+                            total_sessions: fac.total_sessions,
+                            created_at: fac.created_at.clone(),
+                        }))
+                        .unwrap_or_default();
+                    item.as_object_mut()
+                        .unwrap()
+                        .insert("match_reason".into(), reason.into());
                     recommended.push(item);
                 }
             }
@@ -1522,7 +1586,11 @@ pub async fn admin_facilitator(
         match action {
             "approve" => queries::approve_facilitator(&db, facilitator_id)?,
             "suspend" => queries::suspend_facilitator(&db, facilitator_id)?,
-            _ => return Err(AppError::BadRequest("action must be 'approve' or 'suspend'".into())),
+            _ => {
+                return Err(AppError::BadRequest(
+                    "action must be 'approve' or 'suspend'".into(),
+                ))
+            }
         }
     }
 
@@ -1611,7 +1679,10 @@ pub async fn book_facilitator(
         "booking",
         &format!(
             "Booking: {} → {} (${}, fee ${})",
-            &user_id[..8], &fac.name, amount, platform_fee,
+            &user_id[..8],
+            &fac.name,
+            amount,
+            platform_fee,
         ),
     );
 

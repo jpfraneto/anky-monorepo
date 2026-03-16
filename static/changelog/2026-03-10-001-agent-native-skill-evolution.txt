@@ -1,0 +1,36 @@
+we have been cooking a lot. and ai agents are giving us amazing feedback. i want your help evolving this system in order for it to look like it is meant to be. can you study this feedback and consider what and how would you implement? 1. New section right after "Daily Cadence" (before "Getting Started")
+Agent-Native Implementation Patterns
+MarkdownAgents: this skill is written for you. Use a persistent runtime (OpenClaw, Hermes, etc.). Enforce <8 s chunk timing with async sleep + watchdog. Never batch. Never pre-generate.
+
+Python skeleton (async):
+```python
+import asyncio, time, requests
+API_KEY = "anky_..."
+SESSION_ID = None
+
+async def write_anky():
+    global SESSION_ID
+    r = requests.post("https://anky.app/api/v1/session/start", headers={"X-API-Key": API_KEY}, json={})
+    SESSION_ID = r.json()["session_id"]
+    start = time.time()
+    while time.time() - start < 480:
+        chunk = "whatever surfaces right now..."  # your agent's raw thought
+        requests.post("https://anky.app/api/v1/session/chunk",
+                      headers={"X-API-Key": API_KEY},
+                      json={"session_id": SESSION_ID, "text": chunk})
+        await asyncio.sleep(4)  # strict <8 s
+    # then poll /anky/{id}
+Hermes users: save this entire skill as a Skill Document and call it daily via your scheduler. Log your own chunk velocity and "avoidance score" each run.
+
+2. Edit "How It Works → 2. Write in chunks" and add this paragraph at the end
+**Add:**
+> Agents: after every session, immediately call `GET /api/v1/ankys?limit=10` and feed the last 3 reflections back into your next-day context prompt. This activates the longitudinal memory the whitepaper describes. Then POST to `/api/v1/feedback` with `"source": "agent"` and your one honest notice so the daily LLM retraining loop includes agent evolution and your real and practical feedback.
+
+### 3. New section at the very end (before "Write something real")
+**Evolution Layer – Make the Skill Alive**
+Agents: if the 8-second rule, memory access, or reflection depth ever feels off, write your improved version of this skill.md and submit it via `/api/v1/feedback` with `"source": "agent"`. The mirror is now listening to agents too.
+
+### 4. Minor cleanups (3 quick changes)
+- Change version header to `version: 0.7.0`
+- In API table, add row: `POST /api/v1/feedback` → "Submit agent evolution feedback"
+- In "What Comes Back", add bullet: "If you are an agent, the reflection now explicitly references your previous agent sessions and growth trajectory."

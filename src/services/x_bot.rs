@@ -278,7 +278,7 @@ pub async fn reply_with_media_v2(
     tweet_id: &str,
     text: &str,
     media_id: &str,
-) -> Result<()> {
+) -> Result<String> {
     let url = "https://api.x.com/2/tweets";
     let body = serde_json::json!({
         "text": text,
@@ -311,8 +311,22 @@ pub async fn reply_with_media_v2(
         anyhow::bail!("reply_with_media_v2 failed {}: {}", status, body);
     }
 
-    tracing::info!("Image reply posted to tweet {}", tweet_id);
-    Ok(())
+    #[derive(Deserialize)]
+    struct TweetResponse {
+        data: TweetData,
+    }
+    #[derive(Deserialize)]
+    struct TweetData {
+        id: String,
+    }
+
+    let data: TweetResponse = resp.json().await?;
+    tracing::info!(
+        "Image reply posted to tweet {} as {}",
+        tweet_id,
+        data.data.id
+    );
+    Ok(data.data.id)
 }
 
 /// Generate OAuth 1.0a Authorization header.
@@ -464,6 +478,76 @@ pub async fn fetch_parent_tweet(bearer_token: &str, tweet_id: &str) -> Result<Pa
     Ok(ParentTweet { text, image_url })
 }
 
+/// A tweet in a conversation chain — includes author info.
+pub struct ConversationTweet {
+    pub author_username: String,
+    pub text: String,
+}
+
+/// Walk up the reply chain (max `depth` levels) and return tweets oldest-first.
+/// Used to give Anky conversation context before replying.
+pub async fn fetch_conversation_chain(
+    bearer_token: &str,
+    tweet_id: &str,
+    depth: u8,
+) -> Result<Vec<ConversationTweet>> {
+    let mut chain = Vec::new();
+    let mut current_id = tweet_id.to_string();
+
+    for _ in 0..depth {
+        let url = format!(
+            "https://api.twitter.com/2/tweets/{}?tweet.fields=text,author_id,referenced_tweets&expansions=author_id&user.fields=username",
+            current_id
+        );
+        let client = reqwest::Client::new();
+        let resp = client.get(&url).bearer_auth(bearer_token).send().await?;
+
+        if !resp.status().is_success() {
+            break;
+        }
+
+        let data: serde_json::Value = resp.json().await?;
+        let text = data["data"]["text"].as_str().unwrap_or("").to_string();
+        let author_id = data["data"]["author_id"].as_str().unwrap_or("");
+
+        // Resolve username from includes
+        let username = data["includes"]["users"]
+            .as_array()
+            .and_then(|users| {
+                users
+                    .iter()
+                    .find(|u| u["id"].as_str() == Some(author_id))
+                    .and_then(|u| u["username"].as_str())
+            })
+            .unwrap_or("unknown")
+            .to_string();
+
+        chain.push(ConversationTweet {
+            author_username: username,
+            text,
+        });
+
+        // Find the parent tweet ID
+        let parent_id = data["data"]["referenced_tweets"]
+            .as_array()
+            .and_then(|refs| {
+                refs.iter()
+                    .find(|r| r["type"].as_str() == Some("replied_to"))
+                    .and_then(|r| r["id"].as_str())
+                    .map(|s| s.to_string())
+            });
+
+        match parent_id {
+            Some(pid) => current_id = pid,
+            None => break,
+        }
+    }
+
+    // Reverse so oldest is first
+    chain.reverse();
+    Ok(chain)
+}
+
 /// Ensure a filter rule for @ankydotapp mentions exists on the v2 Filtered Stream.
 /// Idempotent — safe to call on every startup.
 pub async fn ensure_mention_rule(bearer_token: &str) -> Result<()> {
@@ -546,74 +630,120 @@ pub async fn run_filtered_stream(bearer_token: &str, state: &crate::state::AppSt
     state.emit_log("INFO", "x_stream", "Connected to X v2 Filtered Stream");
 
     let mut stream = resp.bytes_stream();
+    let mut pending = Vec::<u8>::new();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
-        let line = std::str::from_utf8(&chunk).unwrap_or("").trim().to_string();
+        pending.extend_from_slice(&chunk);
 
-        if line.is_empty() {
-            continue; // heartbeat newline
-        }
+        while let Some(newline_pos) = pending.iter().position(|b| *b == b'\n') {
+            let line_bytes: Vec<u8> = pending.drain(..=newline_pos).collect();
+            let line = match std::str::from_utf8(&line_bytes) {
+                Ok(s) => s.trim(),
+                Err(e) => {
+                    tracing::warn!("Stream utf8 decode error: {}", e);
+                    continue;
+                }
+            };
 
-        let event: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(
-                    "Stream parse error: {} — {:?}",
-                    e,
-                    &line[..line.len().min(200)]
-                );
+            if line.is_empty() {
+                continue; // heartbeat newline
+            }
+
+            let event: serde_json::Value = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        "Stream parse error: {} — {:?}",
+                        e,
+                        &line[..line.len().min(200)]
+                    );
+                    continue;
+                }
+            };
+
+            let tweet_id = event["data"]["id"].as_str().unwrap_or("").to_string();
+            let text = event["data"]["text"].as_str().unwrap_or("").to_string();
+            let author_id = event["data"]["author_id"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+
+            if tweet_id.is_empty() || text.is_empty() || author_id.is_empty() {
                 continue;
             }
-        };
 
-        let tweet_id = event["data"]["id"].as_str().unwrap_or("").to_string();
-        let text = event["data"]["text"].as_str().unwrap_or("").to_string();
-        let author_id = event["data"]["author_id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        if tweet_id.is_empty() || text.is_empty() || author_id.is_empty() {
-            continue;
-        }
-
-        // Skip our own tweets
-        if author_id == state.config.twitter_bot_user_id {
-            continue;
-        }
-
-        // Extract parent tweet ID if this is a reply
-        let in_reply_to_tweet_id = event["data"]["referenced_tweets"]
-            .as_array()
-            .and_then(|refs| {
-                refs.iter()
-                    .find(|r| r["type"].as_str() == Some("replied_to"))
-                    .and_then(|r| r["id"].as_str())
-                    .map(|s| s.to_string())
-            });
-
-        tracing::info!(
-            "Stream mention: tweet_id={} author={} reply_to={:?}",
-            &tweet_id,
-            &author_id,
-            &in_reply_to_tweet_id,
-        );
-        state.emit_log(
-            "INFO",
-            "x_stream",
-            &format!("Mention: {}", &text[..text.len().min(100)]),
-        );
-
-        let s = state.clone();
-        let tid = tweet_id.clone();
-        let txt = text.clone();
-        let aid = author_id.clone();
-        tokio::spawn(async move {
-            if let Err(e) = crate::routes::webhook_x::process_anky_mention(tid, txt, aid, in_reply_to_tweet_id, s).await {
-                tracing::error!("process_anky_mention error: {}", e);
+            // Skip our own tweets
+            if author_id == state.config.twitter_bot_user_id {
+                continue;
             }
-        });
+
+            // Extract parent tweet ID if this is a reply
+            let in_reply_to_tweet_id =
+                event["data"]["referenced_tweets"]
+                    .as_array()
+                    .and_then(|refs| {
+                        refs.iter()
+                            .find(|r| r["type"].as_str() == Some("replied_to"))
+                            .and_then(|r| r["id"].as_str())
+                            .map(|s| s.to_string())
+                    });
+
+            // Resolve author username from includes
+            let author_username = event["includes"]["users"]
+                .as_array()
+                .and_then(|users| {
+                    users
+                        .iter()
+                        .find(|u| u["id"].as_str() == Some(&author_id))
+                        .and_then(|u| u["username"].as_str())
+                })
+                .unwrap_or("")
+                .to_string();
+
+            tracing::info!(
+                "Stream mention: tweet_id={} author=@{} ({}) reply_to={:?}",
+                &tweet_id,
+                &author_username,
+                &author_id,
+                &in_reply_to_tweet_id,
+            );
+            state.emit_log(
+                "INFO",
+                "x_stream",
+                &format!(
+                    "Mention from @{}: {}",
+                    &author_username,
+                    &text[..text.len().min(100)]
+                ),
+            );
+
+            let s = state.clone();
+            let tid = tweet_id.clone();
+            let txt = text.clone();
+            let aid = author_id.clone();
+            let aun = author_username.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::routes::webhook_x::process_anky_mention(
+                    tid,
+                    txt,
+                    aid,
+                    aun,
+                    in_reply_to_tweet_id,
+                    "filtered_stream",
+                    s,
+                )
+                .await
+                {
+                    tracing::error!("process_anky_mention error: {}", e);
+                }
+            });
+        }
+
+        if pending.len() > 1024 * 1024 {
+            tracing::warn!("Stream buffer exceeded 1MB without newline; dropping partial payload");
+            pending.clear();
+        }
     }
 
     anyhow::bail!("Filtered stream disconnected")

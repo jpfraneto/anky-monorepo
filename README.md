@@ -29,7 +29,8 @@ Users write for 8 minutes without stopping. When a session becomes an anky, the 
 - [`UNDERSTANDING_ANKY.md`](UNDERSTANDING_ANKY.md) - system walkthrough for the operator/founder
 - [`SWIFT_AGENT_BRIEF.md`](SWIFT_AGENT_BRIEF.md) - implementation brief for the iOS app
 - [`THE_ANKY_MODEL.md`](THE_ANKY_MODEL.md) - why the corpus matters and how the LLM pipeline works
-- [`skills.md`](skills.md) - agent protocol and API usage
+- [`skills.md`](skills.md) - agent skill served at `/skills`
+- [`agent-skills/anky`](agent-skills/anky) - installable `SKILL.md` bundle for Codex/Hermes-style skill systems
 - Live changelog: <https://anky.app/changelog>
 - Live LLM dashboard: <https://anky.app/llm>
 - Live pitch deck: <https://anky.app/pitch-deck>
@@ -44,14 +45,20 @@ Users write for 8 minutes without stopping. When a session becomes an anky, the 
 - `/llm` - Anky LLM training dashboard
 - `/pitch-deck` - pitch/OG page
 - `/changelog` - product history linked to the original prompts
-- `/skills` - agent docs
+- `/skills` - canonical agent docs
 - `/skill.md` - redirect to `/skills`
+- `/skills.md` - redirect to `/skills`
+- `/agent-skills/anky` - installable Anky skill bundle
+- `/agent-skills/anky/manifest.json` - machine-readable bundle manifest
 
 ## Key API surfaces
 
 ```text
 POST /api/v1/register
-POST /write
+POST /api/v1/session/start
+POST /api/v1/session/chunk
+GET  /api/v1/session/{id}/events
+GET  /api/v1/session/{id}
 GET  /api/v1/anky/{id}
 GET  /api/v1/prompt/{id}
 GET  /api/v1/prompts
@@ -60,6 +67,8 @@ POST /api/v1/llm/training-status
 /swift/v1/*
 GET  /health
 ```
+
+`POST /write` still exists for the browser flow, but agent submissions with `X-API-Key` are redirected to the chunked session API. If an agent run fails or the local script timing looks suspicious, inspect `GET /api/v1/session/{id}/events` to see the server-observed chunk timeline.
 
 ## Project map
 

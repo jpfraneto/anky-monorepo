@@ -1,19 +1,25 @@
 {% extends "base.html" %}
 
-{% block title %}{{ title }} - anky{% endblock %}
+{% block title %}ANKY | {{ title }}{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="{{ title }} - anky">
-<meta property="og:description" content="{{ reflection | truncate(length=160) }}">
-{% if image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
+<meta property="og:title" content="ANKY | {{ title }}">
+<meta property="og:description" content="{{ writing | truncate(length=300) }}">
+{% if image_webp %}<meta property="og:image" content="https://anky.app/data/images/{{ image_webp }}">
+{% elif image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="1024">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://anky.app/anky/{{ id }}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@jpfraneto">
-<meta name="twitter:title" content="{{ title }} - anky">
-<meta name="twitter:description" content="{{ reflection | truncate(length=160) }}">
-{% if image_path %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_path }}">
-<meta name="twitter:image:alt" content="{{ title }}">{% endif %}
+<meta name="twitter:title" content="ANKY | {{ title }}">
+<meta name="twitter:description" content="{{ writing | truncate(length=300) }}">
+{% if image_webp %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_webp }}">
+<meta name="twitter:image:alt" content="ANKY | {{ title }}">
+{% elif image_path %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_path }}">
+<meta name="twitter:image:alt" content="ANKY | {{ title }}">
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -74,10 +80,24 @@
 
     <div class="anky-created">{{ created_at }}</div>
 
-    {% if writing %}
+    {% if prompt_text %}
     <div class="anky-section">
+      <h2>the prompt</h2>
+      <div class="anky-prompt-text"><a href="/prompt/{{ prompt_id }}">{{ prompt_text }}</a></div>
+    </div>
+    {% endif %}
+
+    {% if writing %}
+    <div class="anky-section" id="writing-section">
       <h2>the writing</h2>
+      {% if formatted_writing %}
+      <div class="anky-writing-toggle" id="writing-toggle-area">
+        <div class="anky-writing anky-writing-formatted" id="writing-formatted">{{ formatted_writing }}</div>
+        <div class="anky-writing anky-writing-raw" id="writing-raw" style="display:none;">{{ writing }}</div>
+      </div>
+      {% else %}
       <div class="anky-writing">{{ writing }}</div>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -93,6 +113,29 @@
 {% endblock %}
 
 {% block scripts %}
+{% if formatted_writing %}
+<script>
+(function() {
+  var toggle = document.getElementById('writing-toggle-area');
+  if (!toggle) return;
+  var formatted = document.getElementById('writing-formatted');
+  var raw = document.getElementById('writing-raw');
+  var showingFormatted = true;
+
+  toggle.style.cursor = 'pointer';
+  toggle.addEventListener('click', function() {
+    showingFormatted = !showingFormatted;
+    if (showingFormatted) {
+      formatted.style.display = '';
+      raw.style.display = 'none';
+    } else {
+      formatted.style.display = 'none';
+      raw.style.display = '';
+    }
+  });
+})();
+</script>
+{% endif %}
 {% if status == "generating" %}
 <script>
   setTimeout(function() { location.reload(); }, 15000);

@@ -196,10 +196,26 @@ pub async fn prompt_page(
         .map(|p| format!("https://anky.app/data/images/{}", p))
         .unwrap_or_else(|| "https://anky.app/static/references/anky-1.png".into());
 
+    // Clean version (no text overlay) for writing session background
+    let bg_image_url = prompt
+        .image_path
+        .as_ref()
+        .map(|p| {
+            let clean = p.replace(".png", "_clean.png");
+            let clean_path = std::path::Path::new("data/images").join(&clean);
+            if clean_path.exists() {
+                format!("https://anky.app/data/images/{}", clean)
+            } else {
+                format!("https://anky.app/data/images/{}", p)
+            }
+        })
+        .unwrap_or_else(|| "https://anky.app/static/references/anky-1.png".into());
+
     let mut ctx = tera::Context::new();
     ctx.insert("id", &prompt.id);
     ctx.insert("prompt_text", &prompt.prompt_text);
     ctx.insert("image_url", &image_url);
+    ctx.insert("bg_image_url", &bg_image_url);
     ctx.insert("status", &prompt.status);
     ctx.insert("creator_username", &creator_username);
 

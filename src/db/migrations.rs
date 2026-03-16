@@ -154,6 +154,28 @@ pub fn run(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS agent_session_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            agent_name TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            chunk_index INTEGER,
+            elapsed_seconds REAL NOT NULL DEFAULT 0,
+            words_total INTEGER NOT NULL DEFAULT 0,
+            chunk_text TEXT,
+            chunk_word_count INTEGER,
+            detail_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agent_session_events_session_id_id
+            ON agent_session_events(session_id, id);
+
+        CREATE INDEX IF NOT EXISTS idx_agent_session_events_agent_id_created_at
+            ON agent_session_events(agent_id, created_at);
+
         CREATE TABLE IF NOT EXISTS feedback (
             id TEXT PRIMARY KEY,
             source TEXT NOT NULL,
@@ -801,6 +823,136 @@ pub fn run(conn: &Connection) -> Result<()> {
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_training_runs_date ON llm_training_runs(run_date);",
     )?;
+
+    // --- X Conversation Memory ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS x_conversations (
+            tweet_id TEXT PRIMARY KEY,
+            author_id TEXT NOT NULL,
+            author_username TEXT,
+            parent_tweet_id TEXT,
+            mention_text TEXT,
+            anky_reply_text TEXT,
+            context_summary TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_x_conversations_author ON x_conversations(author_id);
+        CREATE INDEX IF NOT EXISTS idx_x_conversations_parent ON x_conversations(parent_tweet_id);",
+    )?;
+
+    // --- X Evolution Tasks (Hermes bridge) ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS x_evolution_tasks (
+            id TEXT PRIMARY KEY,
+            tweet_id TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            summary TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_x_evolution_tasks_tag ON x_evolution_tasks(tag);",
+    )?;
+
+    // --- X interaction tracing for /evolve ---
+    let has_source: bool = conn
+        .prepare("SELECT source FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_source {
+        conn.execute_batch(
+            "ALTER TABLE x_interactions ADD COLUMN source TEXT NOT NULL DEFAULT 'filtered_stream';",
+        )?;
+    }
+
+    let has_parent_tweet_id: bool = conn
+        .prepare("SELECT parent_tweet_id FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_parent_tweet_id {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN parent_tweet_id TEXT;")?;
+    }
+
+    let has_tag: bool = conn
+        .prepare("SELECT tag FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_tag {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN tag TEXT;")?;
+    }
+
+    let has_extracted_content: bool = conn
+        .prepare("SELECT extracted_content FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_extracted_content {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN extracted_content TEXT;")?;
+    }
+
+    let has_result_text: bool = conn
+        .prepare("SELECT result_text FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_result_text {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN result_text TEXT;")?;
+    }
+
+    let has_error_message: bool = conn
+        .prepare("SELECT error_message FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_error_message {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN error_message TEXT;")?;
+    }
+
+    let has_updated_at: bool = conn
+        .prepare("SELECT updated_at FROM x_interactions LIMIT 0")
+        .is_ok();
+    if !has_updated_at {
+        conn.execute_batch("ALTER TABLE x_interactions ADD COLUMN updated_at TEXT;")?;
+        conn.execute_batch(
+            "UPDATE x_interactions
+             SET updated_at = COALESCE(updated_at, created_at, datetime('now'))
+             WHERE updated_at IS NULL;",
+        )?;
+    }
+
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_x_interactions_user_created ON x_interactions(x_user_id, created_at);
+         CREATE INDEX IF NOT EXISTS idx_x_interactions_status ON x_interactions(status);",
+    )?;
+
+    // --- Social Interactions (platform-agnostic: farcaster, x, etc.) ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS social_interactions (
+            id TEXT PRIMARY KEY,
+            platform TEXT NOT NULL,
+            post_id TEXT NOT NULL,
+            author_id TEXT,
+            author_username TEXT,
+            post_text TEXT,
+            parent_id TEXT,
+            status TEXT NOT NULL DEFAULT 'received',
+            classification TEXT,
+            reply_text TEXT,
+            reply_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_social_interactions_platform_post ON social_interactions(platform, post_id);
+        CREATE INDEX IF NOT EXISTS idx_social_interactions_author ON social_interactions(platform, author_id);
+        CREATE INDEX IF NOT EXISTS idx_social_interactions_status ON social_interactions(status);",
+    )?;
+
+    // --- prompt_id on ankys: links anky to the prompt it was written against ---
+    let has_prompt_id: bool = conn.prepare("SELECT prompt_id FROM ankys LIMIT 0").is_ok();
+    if !has_prompt_id {
+        conn.execute_batch("ALTER TABLE ankys ADD COLUMN prompt_id TEXT;")?;
+    }
+
+    // --- formatted_writing on ankys: LLM-cleaned version of raw writing ---
+    let has_formatted: bool = conn
+        .prepare("SELECT formatted_writing FROM ankys LIMIT 0")
+        .is_ok();
+    if !has_formatted {
+        conn.execute_batch("ALTER TABLE ankys ADD COLUMN formatted_writing TEXT;")?;
+    }
 
     Ok(())
 }

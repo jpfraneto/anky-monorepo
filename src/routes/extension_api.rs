@@ -14,7 +14,7 @@ use crate::pipeline::cost;
 use crate::services::claude;
 use crate::state::AppState;
 
-/// POST /api/v1/register — create a new agent with an API key and 4 free sessions
+/// POST /api/v1/register — create a new agent with an API key (everything is free)
 pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
@@ -39,7 +39,7 @@ pub async fn register(
     // Create the API key in api_keys table (free tier tracked via agents table)
     queries::create_api_key(&db, &api_key, Some(name))?;
 
-    // Create the agent record with 4 free sessions
+    // Create the agent record
     queries::insert_agent(
         &db,
         &agent_id,
@@ -52,8 +52,7 @@ pub async fn register(
     Ok(Json(RegisterResponse {
         agent_id,
         api_key,
-        free_sessions_remaining: 4,
-        message: "save your API key. it is only shown once.".into(),
+        message: "everything is free. writing, reflections, image generation — all of it. save your API key, it is only shown once.".into(),
     }))
 }
 

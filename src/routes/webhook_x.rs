@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::services::{comfyui, ollama, x_bot};
+use crate::services::{claude, comfyui, hermes, ollama, x_bot};
 use crate::state::AppState;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -97,6 +97,10 @@ pub async fn webhook_post(
             let tweet_id = event["id_str"].as_str().unwrap_or("").to_string();
             let text = event["text"].as_str().unwrap_or("").to_string();
             let author_id = event["user"]["id_str"].as_str().unwrap_or("").to_string();
+            let author_username = event["user"]["screen_name"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
 
             if tweet_id.is_empty() || text.is_empty() {
                 continue;
@@ -118,8 +122,19 @@ pub async fn webhook_post(
                 let tid = tweet_id.clone();
                 let txt = text.clone();
                 let aid = author_id.clone();
+                let aun = author_username.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = process_anky_mention(tid, txt, aid, in_reply_to_tweet_id, s).await {
+                    if let Err(e) = process_anky_mention(
+                        tid,
+                        txt,
+                        aid,
+                        aun,
+                        in_reply_to_tweet_id,
+                        "account_activity_webhook",
+                        s,
+                    )
+                    .await
+                    {
                         tracing::error!("process_anky_mention error: {}", e);
                     }
                 });
@@ -255,6 +270,75 @@ fn build_flux_prompt_from_mention(text: &str) -> String {
     prompt.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+async fn upsert_x_interaction(
+    state: &AppState,
+    tweet_id: &str,
+    author_id: &str,
+    author_username: &str,
+    text: &str,
+    parent_tweet_id: Option<&str>,
+    source: &str,
+    status: &str,
+    classification: Option<&str>,
+    tag: Option<&str>,
+    extracted_content: Option<&str>,
+    result_text: Option<&str>,
+    reply_tweet_id: Option<&str>,
+    error_message: Option<&str>,
+) -> anyhow::Result<()> {
+    let db = state.db.lock().await;
+    db.execute(
+        "INSERT INTO x_interactions (
+            id, tweet_id, x_user_id, x_username, tweet_text, status, classification,
+            reply_tweet_id, source, parent_tweet_id, tag, extracted_content,
+            result_text, error_message, updated_at
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+            ?8, ?9, ?10, ?11, ?12,
+            ?13, ?14, datetime('now')
+        )
+        ON CONFLICT(tweet_id) DO UPDATE SET
+            x_user_id = COALESCE(excluded.x_user_id, x_interactions.x_user_id),
+            x_username = COALESCE(excluded.x_username, x_interactions.x_username),
+            tweet_text = COALESCE(excluded.tweet_text, x_interactions.tweet_text),
+            status = excluded.status,
+            classification = COALESCE(excluded.classification, x_interactions.classification),
+            reply_tweet_id = COALESCE(excluded.reply_tweet_id, x_interactions.reply_tweet_id),
+            source = COALESCE(excluded.source, x_interactions.source),
+            parent_tweet_id = COALESCE(excluded.parent_tweet_id, x_interactions.parent_tweet_id),
+            tag = COALESCE(excluded.tag, x_interactions.tag),
+            extracted_content = COALESCE(excluded.extracted_content, x_interactions.extracted_content),
+            result_text = COALESCE(excluded.result_text, x_interactions.result_text),
+            error_message = CASE
+                WHEN excluded.error_message IS NOT NULL THEN excluded.error_message
+                WHEN excluded.status IN ('evolution_done', 'replied_text', 'replied_with_image', 'rate_limited', 'image_unavailable') THEN NULL
+                ELSE x_interactions.error_message
+            END,
+            updated_at = datetime('now')",
+        rusqlite::params![
+            tweet_id,
+            tweet_id,
+            author_id,
+            if author_username.is_empty() {
+                None::<&str>
+            } else {
+                Some(author_username)
+            },
+            if text.is_empty() { None::<&str> } else { Some(text) },
+            status,
+            classification,
+            reply_tweet_id,
+            source,
+            parent_tweet_id,
+            tag,
+            extracted_content,
+            result_text,
+            error_message,
+        ],
+    )?;
+    Ok(())
+}
+
 // ── Core mention processing ──────────────────────────────────────────────────
 
 const JPFRANETO_ID: &str = "1430539235480719367";
@@ -266,20 +350,21 @@ async fn build_contextual_flux_prompt(
     mention_stripped: &str,
     parent_tweet_id: &str,
 ) -> String {
-    tracing::info!("Fetching parent tweet {} for contextual prompt", parent_tweet_id);
+    tracing::info!(
+        "Fetching parent tweet {} for contextual prompt",
+        parent_tweet_id
+    );
 
-    let parent = match x_bot::fetch_parent_tweet(
-        &state.config.twitter_bot_bearer_token,
-        parent_tweet_id,
-    )
-    .await
-    {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("fetch_parent_tweet failed, falling back: {}", e);
-            return mention_stripped.to_string();
-        }
-    };
+    let parent =
+        match x_bot::fetch_parent_tweet(&state.config.twitter_bot_bearer_token, parent_tweet_id)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("fetch_parent_tweet failed, falling back: {}", e);
+                return mention_stripped.to_string();
+            }
+        };
 
     tracing::info!(
         "Parent tweet: text={:?} image={:?}",
@@ -322,7 +407,10 @@ async fn build_contextual_flux_prompt(
     .await
     {
         Ok(prompt) if !prompt.is_empty() => {
-            tracing::info!("Contextual Flux prompt: {}", &prompt[..prompt.len().min(120)]);
+            tracing::info!(
+                "Contextual Flux prompt: {}",
+                &prompt[..prompt.len().min(120)]
+            );
             prompt
         }
         Ok(_) | Err(_) => {
@@ -336,15 +424,49 @@ pub async fn process_anky_mention(
     tweet_id: String,
     text: String,
     author_id: String,
+    author_username: String,
     in_reply_to_tweet_id: Option<String>,
+    source: &'static str,
     state: AppState,
 ) -> anyhow::Result<()> {
     tracing::info!(
-        "process_anky_mention: tweet_id={} author_id={} reply_to={:?}",
+        "process_anky_mention: tweet_id={} author=@{} ({}) reply_to={:?} source={}",
         &tweet_id,
+        &author_username,
         &author_id,
         &in_reply_to_tweet_id,
+        source,
     );
+
+    let parsed_tag = hermes::parse_tag(&text);
+    let initial_classification = if parsed_tag.is_some() {
+        Some("tagged_task")
+    } else {
+        None
+    };
+    let initial_tag = parsed_tag.as_ref().map(|(tag, _)| tag.as_str());
+    let initial_content = parsed_tag.as_ref().map(|(_, content)| content.as_str());
+
+    if let Err(e) = upsert_x_interaction(
+        &state,
+        &tweet_id,
+        &author_id,
+        &author_username,
+        &text,
+        in_reply_to_tweet_id.as_deref(),
+        source,
+        "received",
+        initial_classification,
+        initial_tag,
+        initial_content,
+        None,
+        None,
+        None,
+    )
+    .await
+    {
+        tracing::warn!("x_interactions upsert failed for {}: {}", &tweet_id, e);
+    }
 
     // Like the tweet immediately — signals "i see you, processing"
     let cfg = &state.config;
@@ -358,6 +480,162 @@ pub async fn process_anky_mention(
     )
     .await;
 
+    // ── JP-only: tagged task dispatch to Hermes agent ────────────────────
+    if author_id == JPFRANETO_ID {
+        if let Some((tag, content)) = parsed_tag.clone() {
+            tracing::info!(
+                "Tagged task from JP: [{}] {} (tweet {})",
+                &tag,
+                &content[..content.len().min(80)],
+                &tweet_id
+            );
+
+            // Ack immediately so JP knows it's being processed
+            let ack = format!(
+                "got it. [{}] task received. running the agent now... 🦍",
+                tag.to_lowercase()
+            );
+            let ack_id = post_reply(&state, &tweet_id, &ack).await.ok();
+
+            let _ = upsert_x_interaction(
+                &state,
+                &tweet_id,
+                &author_id,
+                &author_username,
+                &text,
+                in_reply_to_tweet_id.as_deref(),
+                source,
+                "evolution_running",
+                Some("tagged_task"),
+                Some(&tag),
+                Some(&content),
+                None,
+                None,
+                None,
+            )
+            .await;
+
+            // Dispatch to Hermes bridge (async, may take minutes)
+            let task = hermes::HermesTask {
+                tag: tag.clone(),
+                content: content.clone(),
+                source_tweet_id: tweet_id.clone(),
+                author: format!("@{}", author_username),
+            };
+
+            // Save task to DB as "running"
+            let task_db_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+            {
+                let db = state.db.lock().await;
+                let _ = db.execute(
+                    "INSERT INTO x_evolution_tasks (id, tweet_id, tag, content, author, status) VALUES (?1, ?2, ?3, ?4, ?5, 'running')",
+                    rusqlite::params![&task_db_id, &tweet_id, &tag, &content, &format!("@{}", author_username)],
+                );
+            }
+
+            match hermes::dispatch_task(&task).await {
+                Ok(result) => {
+                    let summary = result
+                        .summary
+                        .unwrap_or_else(|| "task processed, no summary returned".to_string());
+
+                    // Update DB with result
+                    {
+                        let db = state.db.lock().await;
+                        let _ = db.execute(
+                            "UPDATE x_evolution_tasks SET status = 'done', summary = ?1, completed_at = datetime('now') WHERE id = ?2",
+                            rusqlite::params![&summary, &task_db_id],
+                        );
+                    }
+
+                    // Truncate for tweet length (280 - ~20 for mention overhead)
+                    let reply = if summary.len() > 260 {
+                        format!("{}...", &summary[..257])
+                    } else {
+                        summary.clone()
+                    };
+                    tracing::info!("Hermes task {} done: {}", &tweet_id, &reply);
+                    let reply_id = match post_reply(&state, &tweet_id, &reply).await {
+                        Ok(id) => Some(id),
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to post Hermes completion reply for {}: {}",
+                                &tweet_id,
+                                e
+                            );
+                            None
+                        }
+                    };
+                    let _ = upsert_x_interaction(
+                        &state,
+                        &tweet_id,
+                        &author_id,
+                        &author_username,
+                        &text,
+                        in_reply_to_tweet_id.as_deref(),
+                        source,
+                        "evolution_done",
+                        Some("tagged_task"),
+                        Some(&tag),
+                        Some(&content),
+                        Some(&summary),
+                        reply_id.as_deref(),
+                        None,
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    tracing::error!("Hermes dispatch failed for tweet {}: {}", &tweet_id, e);
+                    let bridge_error = format!("Hermes dispatch failed: {}", e);
+                    // Update DB with error
+                    {
+                        let db = state.db.lock().await;
+                        let _ = db.execute(
+                            "UPDATE x_evolution_tasks SET status = 'error', summary = ?1, completed_at = datetime('now') WHERE id = ?2",
+                            rusqlite::params![&format!("error: {}", e), &task_db_id],
+                        );
+                    }
+                    let error_reply =
+                        "the bridge is down or the agent errored out. JP check the logs. 🦍";
+                    let reply_id = post_reply(&state, &tweet_id, error_reply).await.ok();
+                    let _ = upsert_x_interaction(
+                        &state,
+                        &tweet_id,
+                        &author_id,
+                        &author_username,
+                        &text,
+                        in_reply_to_tweet_id.as_deref(),
+                        source,
+                        "evolution_error",
+                        Some("tagged_task"),
+                        Some(&tag),
+                        Some(&content),
+                        Some(error_reply),
+                        reply_id.as_deref(),
+                        Some(&bridge_error),
+                    )
+                    .await;
+                }
+            }
+
+            // Delete the ack now that the real reply is up
+            if let Some(id) = ack_id {
+                let _ = x_bot::delete_tweet(
+                    &cfg.twitter_bot_api_key,
+                    &cfg.twitter_bot_api_secret,
+                    &cfg.twitter_bot_access_token,
+                    &cfg.twitter_bot_access_secret,
+                    &id,
+                )
+                .await;
+            }
+
+            return Ok(());
+        }
+    }
+
+    // Step 1: Classify — image request or text reply?
+    // Still use Ollama for fast classification (it's good at this binary task)
     let mention_response = ollama::classify_x_image_mention(
         &state.config.ollama_base_url,
         &state.config.ollama_model,
@@ -366,38 +644,50 @@ pub async fn process_anky_mention(
     .await
     .unwrap_or_else(|_| ollama::XImageMentionResponse {
         is_image_request: false,
-        text_reply: Some("🦍".to_string()),
+        text_reply: None,
     });
 
     let is_image_request = mention_response.is_image_request;
-    let text_reply = mention_response.text_reply.unwrap_or_default();
-
-    // Build the Flux prompt — for @jpfraneto replies, use Claude with parent context
-    let flux_prompt = if is_image_request {
-        let mention_stripped = build_flux_prompt_from_mention(&text);
-        if author_id == JPFRANETO_ID {
-            if let Some(ref parent_id) = in_reply_to_tweet_id {
-                build_contextual_flux_prompt(&state, &mention_stripped, parent_id).await
-            } else {
-                mention_stripped
-            }
-        } else {
-            mention_stripped
-        }
-    } else {
-        String::new()
-    };
 
     tracing::info!(
-        "Mention intent: is_image={}, prompt={}, reply={}",
+        "Mention classified: is_image={} for tweet {}",
         is_image_request,
-        &flux_prompt,
-        &text_reply
+        &tweet_id
     );
 
+    let _ = upsert_x_interaction(
+        &state,
+        &tweet_id,
+        &author_id,
+        &author_username,
+        &text,
+        in_reply_to_tweet_id.as_deref(),
+        source,
+        "classified",
+        Some(if is_image_request {
+            "image_request"
+        } else {
+            "text_reply"
+        }),
+        initial_tag,
+        initial_content,
+        None,
+        None,
+        None,
+    )
+    .await;
+
     if is_image_request {
+        // ── Image generation path — contextual prompts for everyone ──────
+        let mention_stripped = build_flux_prompt_from_mention(&text);
+        let flux_prompt = if let Some(ref parent_id) = in_reply_to_tweet_id {
+            build_contextual_flux_prompt(&state, &mention_stripped, parent_id).await
+        } else {
+            mention_stripped
+        };
+
         // Rate limit: 1 image per user per 5 minutes (bypassed for @jpfraneto)
-        let whitelisted = author_id == "1430539235480719367";
+        let whitelisted = author_id == JPFRANETO_ID;
         if !whitelisted {
             if let Err(wait_secs) = state.image_limiter.check(&author_id).await {
                 tracing::info!(
@@ -405,17 +695,48 @@ pub async fn process_anky_mention(
                     &author_id,
                     wait_secs
                 );
-                let _ =
-                    post_reply(&state, &tweet_id, &rate_limit_reply(wait_secs, &tweet_id)).await;
+                let rate_limited_text = rate_limit_reply(wait_secs, &tweet_id);
+                let reply_id = post_reply(&state, &tweet_id, &rate_limited_text).await.ok();
+                let _ = upsert_x_interaction(
+                    &state,
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "rate_limited",
+                    Some("image_request"),
+                    initial_tag,
+                    initial_content,
+                    Some(&rate_limited_text),
+                    reply_id.as_deref(),
+                    None,
+                )
+                .await;
                 return Ok(());
             }
         }
 
         if !comfyui::is_available().await {
-            let _ = post_reply(
+            let unavailable_text =
+                "the image portal is asleep right now. try me again in a minute.";
+            let reply_id = post_reply(&state, &tweet_id, unavailable_text).await.ok();
+            let _ = upsert_x_interaction(
                 &state,
                 &tweet_id,
-                "the image portal is asleep right now. try me again in a minute.",
+                &author_id,
+                &author_username,
+                &text,
+                in_reply_to_tweet_id.as_deref(),
+                source,
+                "image_unavailable",
+                Some("image_request"),
+                initial_tag,
+                initial_content,
+                Some(unavailable_text),
+                reply_id.as_deref(),
+                None,
             )
             .await;
             return Ok(());
@@ -430,7 +751,26 @@ pub async fn process_anky_mention(
         match generation_result {
             Ok(image_bytes) => {
                 let reply_text = "here you go.".to_string();
-                let _ = post_reply_with_image(&state, &tweet_id, &reply_text, image_bytes).await;
+                let reply_id = post_reply_with_image(&state, &tweet_id, &reply_text, image_bytes)
+                    .await
+                    .ok();
+                let _ = upsert_x_interaction(
+                    &state,
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "replied_with_image",
+                    Some("image_request"),
+                    initial_tag,
+                    initial_content,
+                    Some(&reply_text),
+                    reply_id.as_deref(),
+                    None,
+                )
+                .await;
             }
             Err(e) => {
                 tracing::error!(
@@ -438,10 +778,24 @@ pub async fn process_anky_mention(
                     &tweet_id,
                     e
                 );
-                let _ = post_reply(
+                let glitch_text = "the image portal glitched. try me again in a minute.";
+                let reply_id = post_reply(&state, &tweet_id, glitch_text).await.ok();
+                let generation_error = format!("Flux mention generation failed: {}", e);
+                let _ = upsert_x_interaction(
                     &state,
                     &tweet_id,
-                    "the image portal glitched. try me again in a minute.",
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "image_generation_error",
+                    Some("image_request"),
+                    initial_tag,
+                    initial_content,
+                    Some(glitch_text),
+                    reply_id.as_deref(),
+                    Some(&generation_error),
                 )
                 .await;
             }
@@ -460,12 +814,278 @@ pub async fn process_anky_mention(
             .await;
         }
     } else {
-        let reply = if text_reply.is_empty() {
-            "🦍".to_string()
+        // ── Reply path — Claude decides text-only or text+image ──────────
+
+        // 1. Fetch conversation chain (up to 3 parent tweets)
+        let conversation_context = if let Some(ref parent_id) = in_reply_to_tweet_id {
+            x_bot::fetch_conversation_chain(&state.config.twitter_bot_bearer_token, parent_id, 3)
+                .await
+                .unwrap_or_default()
         } else {
-            text_reply
+            Vec::new()
         };
-        let _ = post_reply(&state, &tweet_id, &reply).await;
+
+        let context_pairs: Vec<(String, String)> = conversation_context
+            .iter()
+            .map(|t| (t.author_username.clone(), t.text.clone()))
+            .collect();
+
+        // 2. Check if Anky already replied in this thread (conversation memory)
+        let prior_reply = {
+            let db = state.db.lock().await;
+            if let Some(ref parent_id) = in_reply_to_tweet_id {
+                db.query_row(
+                    "SELECT anky_reply_text FROM x_conversations WHERE tweet_id = ?1 OR parent_tweet_id = ?1 ORDER BY created_at DESC LIMIT 1",
+                    rusqlite::params![parent_id],
+                    |row| row.get::<_, String>(0),
+                ).ok()
+            } else {
+                None
+            }
+        };
+
+        // 3. Fetch image from the mention tweet or its parent (for vision)
+        //    Try the mention's parent first (the tweet they replied to with @ankydotapp),
+        //    since that's most likely to have the relevant image.
+        let tweet_image_data: Option<(Vec<u8>, String)> = {
+            let target_id = in_reply_to_tweet_id.as_deref().unwrap_or(&tweet_id);
+            match x_bot::fetch_parent_tweet(&state.config.twitter_bot_bearer_token, target_id).await
+            {
+                Ok(parent) => {
+                    if let Some(ref url) = parent.image_url {
+                        match reqwest::get(url).await {
+                            Ok(resp) if resp.status().is_success() => {
+                                let media_type =
+                                    if url.contains("format=png") || url.ends_with(".png") {
+                                        "image/png".to_string()
+                                    } else {
+                                        "image/jpeg".to_string()
+                                    };
+                                resp.bytes().await.ok().map(|b| (b.to_vec(), media_type))
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        };
+
+        if tweet_image_data.is_some() {
+            tracing::info!("Vision: found image in tweet chain for {}", &tweet_id);
+        }
+
+        // 4. Generate reply with Claude — it decides text or text+image
+        let username = if author_username.is_empty() {
+            None
+        } else {
+            Some(author_username.as_str())
+        };
+
+        let image_ref: Option<(&[u8], &str)> = tweet_image_data
+            .as_ref()
+            .map(|(bytes, mt)| (bytes.as_slice(), mt.as_str()));
+
+        let anky_reply = claude::generate_anky_reply(
+            &state.config.anthropic_api_key,
+            &text,
+            username,
+            &context_pairs,
+            prior_reply.as_deref(),
+            image_ref,
+        )
+        .await;
+
+        let reply_text = match anky_reply {
+            Ok(claude::AnkyReply::TextWithImage {
+                ref text,
+                ref flux_prompt,
+            }) => {
+                // Anky wants to reply with an image — try to generate it
+                tracing::info!(
+                    "Anky chose image reply for tweet {}: prompt={}",
+                    &tweet_id,
+                    &flux_prompt[..flux_prompt.len().min(100)]
+                );
+
+                if comfyui::is_available().await {
+                    match comfyui::generate_image(flux_prompt).await {
+                        Ok(image_bytes) => {
+                            let reply_id =
+                                post_reply_with_image(&state, &tweet_id, text, image_bytes)
+                                    .await
+                                    .ok();
+                            let _ = upsert_x_interaction(
+                                &state,
+                                &tweet_id,
+                                &author_id,
+                                &author_username,
+                                &text,
+                                in_reply_to_tweet_id.as_deref(),
+                                source,
+                                "replied_with_image",
+                                Some("text_reply"),
+                                initial_tag,
+                                initial_content,
+                                Some(text),
+                                reply_id.as_deref(),
+                                None,
+                            )
+                            .await;
+                            text.clone()
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Proactive image gen failed, falling back to text: {}",
+                                e
+                            );
+                            let reply_id = post_reply(&state, &tweet_id, text).await.ok();
+                            let fallback_error = format!(
+                                "Proactive image generation failed, fell back to text: {}",
+                                e
+                            );
+                            let _ = upsert_x_interaction(
+                                &state,
+                                &tweet_id,
+                                &author_id,
+                                &author_username,
+                                &text,
+                                in_reply_to_tweet_id.as_deref(),
+                                source,
+                                "replied_text",
+                                Some("text_reply"),
+                                initial_tag,
+                                initial_content,
+                                Some(text),
+                                reply_id.as_deref(),
+                                Some(&fallback_error),
+                            )
+                            .await;
+                            text.clone()
+                        }
+                    }
+                } else {
+                    // GPU busy — just send the text part
+                    tracing::info!("GPU unavailable for proactive image, sending text only");
+                    let reply_id = post_reply(&state, &tweet_id, text).await.ok();
+                    let _ = upsert_x_interaction(
+                        &state,
+                        &tweet_id,
+                        &author_id,
+                        &author_username,
+                        &text,
+                        in_reply_to_tweet_id.as_deref(),
+                        source,
+                        "replied_text",
+                        Some("text_reply"),
+                        initial_tag,
+                        initial_content,
+                        Some(text),
+                        reply_id.as_deref(),
+                        None,
+                    )
+                    .await;
+                    text.clone()
+                }
+            }
+            Ok(claude::AnkyReply::Text(ref reply)) if !reply.is_empty() => {
+                let reply_id = post_reply(&state, &tweet_id, reply).await.ok();
+                let _ = upsert_x_interaction(
+                    &state,
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "replied_text",
+                    Some("text_reply"),
+                    initial_tag,
+                    initial_content,
+                    Some(reply),
+                    reply_id.as_deref(),
+                    None,
+                )
+                .await;
+                reply.clone()
+            }
+            Ok(_) => {
+                let fallback = "🦍".to_string();
+                let reply_id = post_reply(&state, &tweet_id, &fallback).await.ok();
+                let _ = upsert_x_interaction(
+                    &state,
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "replied_text",
+                    Some("text_reply"),
+                    initial_tag,
+                    initial_content,
+                    Some(&fallback),
+                    reply_id.as_deref(),
+                    None,
+                )
+                .await;
+                fallback
+            }
+            Err(e) => {
+                tracing::error!("Claude reply generation failed: {}", e);
+                // Fallback to Ollama
+                let fallback = ollama::classify_x_image_mention(
+                    &state.config.ollama_base_url,
+                    &state.config.ollama_model,
+                    &text,
+                )
+                .await
+                .ok()
+                .and_then(|r| r.text_reply)
+                .unwrap_or_else(|| "🦍".to_string());
+                let reply_id = post_reply(&state, &tweet_id, &fallback).await.ok();
+                let claude_error = format!("Claude reply generation failed: {}", e);
+                let _ = upsert_x_interaction(
+                    &state,
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &text,
+                    in_reply_to_tweet_id.as_deref(),
+                    source,
+                    "replied_text",
+                    Some("text_reply"),
+                    initial_tag,
+                    initial_content,
+                    Some(&fallback),
+                    reply_id.as_deref(),
+                    Some(&claude_error),
+                )
+                .await;
+                fallback
+            }
+        };
+
+        tracing::info!("Anky reply for tweet {}: {}", &tweet_id, &reply_text);
+
+        // 4. Save to conversation memory
+        {
+            let db = state.db.lock().await;
+            let _ = db.execute(
+                "INSERT OR REPLACE INTO x_conversations (tweet_id, author_id, author_username, parent_tweet_id, mention_text, anky_reply_text)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    &tweet_id,
+                    &author_id,
+                    &author_username,
+                    &in_reply_to_tweet_id,
+                    &text,
+                    &reply_text,
+                ],
+            );
+        }
     }
 
     Ok(())
@@ -602,7 +1222,7 @@ async fn post_reply_with_image(
     tweet_id: &str,
     text: &str,
     image_bytes: Vec<u8>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let cfg = &state.config;
 
     tracing::info!(
@@ -622,7 +1242,7 @@ async fn post_reply_with_image(
         "post_reply_with_image: posting reply with media_id={}",
         &media_id
     );
-    x_bot::reply_with_media_v2(
+    let reply_id = x_bot::reply_with_media_v2(
         &cfg.twitter_bot_api_key,
         &cfg.twitter_bot_api_secret,
         &cfg.twitter_bot_access_token,
@@ -633,6 +1253,10 @@ async fn post_reply_with_image(
     )
     .await?;
 
-    tracing::info!("post_reply_with_image: done tweet_id={}", tweet_id);
-    Ok(())
+    tracing::info!(
+        "post_reply_with_image: done tweet_id={} reply_id={}",
+        tweet_id,
+        &reply_id
+    );
+    Ok(reply_id)
 }

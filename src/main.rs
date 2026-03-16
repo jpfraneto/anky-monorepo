@@ -75,7 +75,11 @@ async fn main() -> anyhow::Result<()> {
         image_limiter: state::RateLimiter::new(1, std::time::Duration::from_secs(300)),
         webhook_log_tx,
         memory_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        sessions: routes::session::new_session_map(),
     };
+
+    // Start chunked session reaper (kills sessions after 8s silence, finalizes ankys)
+    routes::session::spawn_session_reaper(state.sessions.clone(), state.clone());
 
     // Init health tracking
     routes::health::init_start_time();
@@ -220,6 +224,83 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     tracing::info!("Checkpoint recovery watchdog spawned (every 5 minutes)");
+
+    // Farcaster (Neynar) webhook — ensure subscription exists on startup
+    let fc_state = state.clone();
+    tokio::spawn(async move {
+        let cfg = &fc_state.config;
+        if cfg.neynar_api_key.is_empty() || cfg.farcaster_bot_fid == 0 {
+            tracing::info!("Neynar not configured, skipping Farcaster webhook setup");
+            return;
+        }
+        // Small delay to let server start first
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        match services::neynar::ensure_webhook(
+            &cfg.neynar_api_key,
+            "https://anky.app/webhooks/farcaster",
+            cfg.farcaster_bot_fid,
+        )
+        .await
+        {
+            Ok(id) => {
+                tracing::info!("Farcaster webhook ready: {}", id);
+                fc_state.emit_log(
+                    "INFO",
+                    "farcaster",
+                    &format!("Webhook subscription active: {}", id),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to set up Farcaster webhook: {}", e);
+                fc_state.emit_log(
+                    "ERROR",
+                    "farcaster",
+                    &format!("Webhook setup failed: {}", e),
+                );
+            }
+        }
+    });
+
+    // Farcaster notification backfill — catches mentions/replies if webhook
+    // delivery is delayed or dropped.
+    let fc_backfill_state = state.clone();
+    tokio::spawn(async move {
+        let cfg = &fc_backfill_state.config;
+        if cfg.neynar_api_key.is_empty() || cfg.farcaster_bot_fid == 0 {
+            return;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+        loop {
+            match routes::webhook_farcaster::backfill_recent_interactions(
+                fc_backfill_state.clone(),
+                25,
+            )
+            .await
+            {
+                Ok(queued) if queued > 0 => {
+                    tracing::info!("Farcaster backfill queued {} missed interactions", queued);
+                    fc_backfill_state.emit_log(
+                        "INFO",
+                        "farcaster",
+                        &format!("Backfill queued {} missed interactions", queued),
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("Farcaster backfill failed: {}", e);
+                    fc_backfill_state.emit_log(
+                        "WARN",
+                        "farcaster",
+                        &format!("Backfill failed: {}", e),
+                    );
+                }
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+        }
+    });
 
     // X v2 Filtered Stream — real-time mention detection, reconnects automatically
     let stream_state = state.clone();

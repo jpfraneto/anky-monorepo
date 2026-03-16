@@ -45,30 +45,27 @@ pub async fn process_writing(
     let api_key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
 
     if let Some(key) = api_key {
-        // Validate the API key
-        let valid = {
-            let db = state.db.lock().await;
-            crate::db::queries::get_agent_by_key(&db, key)
-                .ok()
-                .flatten()
-                .is_some()
-        };
-        if !valid {
-            return Ok((
-                jar,
-                Json(WriteResponse {
-                    response: String::new(),
-                    duration: 0.0,
-                    is_anky: false,
-                    anky_id: None,
-                    estimated_wait_seconds: None,
-                    flow_score: None,
-                    error: Some(
-                        "invalid API key. register at POST /api/v1/register to get one.".into(),
-                    ),
-                }),
-            ));
-        }
+        // Agents can no longer batch-submit writing. They must use the chunked session API,
+        // which enforces the same 8-second timeout that humans face on the frontend.
+        return Ok((
+            jar,
+            Json(WriteResponse {
+                response: String::new(),
+                duration: 0.0,
+                is_anky: false,
+                anky_id: None,
+                estimated_wait_seconds: None,
+                flow_score: None,
+                error: Some(
+                    "this endpoint no longer accepts agent submissions. \
+                     the practice changed: you now write in real time, chunk by chunk, \
+                     with the same 8-second timeout humans face. \
+                     read the updated instructions at https://anky.app/skills \
+                     and use POST /api/v1/session/start to begin."
+                        .into(),
+                ),
+            }),
+        ));
     }
 
     // Rate limit by IP (CF-Connecting-IP behind Cloudflare, fall back to cookie user id)
@@ -164,9 +161,16 @@ pub async fn process_writing(
         let mut was_completed = false;
         if let Some(existing) = crate::db::queries::get_writing_session_state(&db, &session_id)? {
             if existing.user_id != user_id {
-                return Err(AppError::Unauthorized(
-                    "that writing session belongs to another user".into(),
-                ));
+                // Allow claiming sessions that were auto-recovered with a guessed user_id
+                // (e.g. "system", "recovered-unknown") — the real user is submitting now.
+                let is_placeholder = existing.user_id == "system"
+                    || existing.user_id == "recovered-unknown"
+                    || existing.user_id.starts_with("recovered-");
+                if !is_placeholder {
+                    return Err(AppError::Unauthorized(
+                        "that writing session belongs to another user".into(),
+                    ));
+                }
             }
             was_completed = existing.status == "completed";
         }
@@ -290,6 +294,7 @@ pub async fn process_writing(
                 None,
                 "generating",
                 "written",
+                req.prompt_id.as_deref(),
             )?;
         }
 

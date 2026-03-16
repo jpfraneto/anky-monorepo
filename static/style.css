@@ -2059,12 +2059,43 @@ body.chat-active .writing-main {
 .anky-reflection hr { border: none; border-top: 1px solid #222; margin: 20px 0; }
 .anky-reflection p { margin-bottom: 12px; }
 
+.anky-prompt-text {
+  color: #ffd700;
+  font-size: 18px;
+  line-height: 1.5;
+  font-style: italic;
+}
+.anky-prompt-text a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+}
+.anky-prompt-text a:hover {
+  border-bottom-color: #ffd700;
+}
+
 .anky-writing {
   color: #888;
   line-height: 2;
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.anky-writing-formatted {
+  color: #ddd;
+  line-height: 1.8;
+  font-size: 16px;
+}
+.anky-writing-raw {
+  color: #7b5ea7;
+  font-size: 14px;
+}
+.anky-writing-toggle {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.anky-writing-toggle:hover {
+  opacity: 0.85;
 }
 
 
@@ -3525,6 +3556,46 @@ body.chat-active .writing-main {
   height: 100vh;
   height: 100dvh;
   height: var(--vh, 100dvh);
+}
+
+/* Prompt background image with dark overlay */
+.prompt-page .writing-container {
+  position: relative;
+  background-image: var(--prompt-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.prompt-page .writing-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 0;
+  pointer-events: none;
+}
+.prompt-page .writing-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Challenge overlay also gets the prompt background */
+.prompt-page .challenge-overlay {
+  background-image: var(--prompt-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.prompt-page .challenge-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 0;
+}
+.prompt-page .challenge-overlay .challenge-inner {
+  position: relative;
+  z-index: 1;
 }
 
 /* Navbar slide-up */

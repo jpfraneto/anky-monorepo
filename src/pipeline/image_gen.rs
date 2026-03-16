@@ -113,7 +113,10 @@ pub async fn generate_anky_from_writing(
             state.emit_log(
                 "WARN",
                 "qwen",
-                &format!("Ollama unavailable ({}), using raw writing text as prompt", e),
+                &format!(
+                    "Ollama unavailable ({}), using raw writing text as prompt",
+                    e
+                ),
             );
             writing_text.to_string()
         }
@@ -122,38 +125,39 @@ pub async fn generate_anky_from_writing(
     // Step 2: Generate image with Gemini — fall back to Flux on failure
     state.emit_log("INFO", "gemini", "Generating Anky image...");
     let references = gemini::load_references(std::path::Path::new("src/public"));
-    let (image_path, image_model) = match gemini::generate_image(gemini_key, &image_prompt, &references)
-        .await
-        .and_then(|r| gemini::save_image(&r.base64, anky_id))
-    {
-        Ok(p) => {
-            {
-                let db = state.db.lock().await;
-                queries::insert_cost_record(
-                    &db,
-                    "gemini",
-                    "gemini-2.5-flash-image",
-                    0,
-                    0,
-                    0.04,
-                    Some(anky_id),
-                )?;
+    let (image_path, image_model) =
+        match gemini::generate_image(gemini_key, &image_prompt, &references)
+            .await
+            .and_then(|r| gemini::save_image(&r.base64, anky_id))
+        {
+            Ok(p) => {
+                {
+                    let db = state.db.lock().await;
+                    queries::insert_cost_record(
+                        &db,
+                        "gemini",
+                        "gemini-2.5-flash-image",
+                        0,
+                        0,
+                        0.04,
+                        Some(anky_id),
+                    )?;
+                }
+                state.emit_log("INFO", "gemini", &format!("Image saved: {}", p));
+                (p, "gemini".to_string())
             }
-            state.emit_log("INFO", "gemini", &format!("Image saved: {}", p));
-            (p, "gemini".to_string())
-        }
-        Err(e) => {
-            state.emit_log(
-                "WARN",
-                "gemini",
-                &format!("Gemini failed ({}), falling back to Flux...", e),
-            );
-            let image_bytes = comfyui::generate_image(&image_prompt).await?;
-            let p = comfyui::save_image(&image_bytes, anky_id)?;
-            state.emit_log("INFO", "flux", &format!("Flux image saved: {}", p));
-            (p, "flux".to_string())
-        }
-    };
+            Err(e) => {
+                state.emit_log(
+                    "WARN",
+                    "gemini",
+                    &format!("Gemini failed ({}), falling back to Flux...", e),
+                );
+                let image_bytes = comfyui::generate_image(&image_prompt).await?;
+                let p = comfyui::save_image(&image_bytes, anky_id)?;
+                state.emit_log("INFO", "flux", &format!("Flux image saved: {}", p));
+                (p, "flux".to_string())
+            }
+        };
 
     // WebP conversion
     match convert_to_webp(&image_path) {
@@ -256,7 +260,42 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 5: Memory extraction (background, non-blocking, fully local)
+    // Step 5: Format writing text (Ollama — local, non-blocking)
+    {
+        let fmt_state = state.clone();
+        let fmt_ollama_url = state.config.ollama_base_url.clone();
+        let fmt_ollama_model = state.config.ollama_model.clone();
+        let fmt_anky_id = anky_id.to_string();
+        let fmt_text = writing_text.to_string();
+        tokio::spawn(async move {
+            let prompt = crate::services::ollama::format_writing_prompt(&fmt_text);
+            match crate::services::ollama::call_ollama(&fmt_ollama_url, &fmt_ollama_model, &prompt)
+                .await
+            {
+                Ok(formatted) => {
+                    let db = fmt_state.db.lock().await;
+                    let _ = db.execute(
+                        "UPDATE ankys SET formatted_writing = ?1 WHERE id = ?2",
+                        rusqlite::params![&formatted, &fmt_anky_id],
+                    );
+                    fmt_state.emit_log(
+                        "INFO",
+                        "format",
+                        &format!("Formatted writing saved for {}", &fmt_anky_id[..8]),
+                    );
+                }
+                Err(e) => {
+                    fmt_state.emit_log(
+                        "WARN",
+                        "format",
+                        &format!("Writing formatting failed: {}", e),
+                    );
+                }
+            }
+        });
+    }
+
+    // Step 6: Memory extraction (background, non-blocking, fully local)
     {
         let mem_state = state.clone();
         let mem_ollama_url = state.config.ollama_base_url.clone();

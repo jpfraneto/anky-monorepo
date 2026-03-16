@@ -345,6 +345,35 @@ pub fn upsert_active_writing_session(
     Ok(())
 }
 
+/// Ensure a writing_session row exists for this checkpoint session with the real user_id.
+/// If the row doesn't exist, create it with status='active' so recovery never has to guess.
+/// If it exists with a placeholder user_id (system, recovered-unknown), update it.
+pub fn ensure_checkpoint_session_owner(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    content: &str,
+    duration: f64,
+    word_count: i32,
+    session_token: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO writing_sessions (id, user_id, content, duration_seconds, word_count, is_anky, status, session_token)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 'active', ?6)
+         ON CONFLICT(id) DO UPDATE SET
+            user_id = CASE
+                WHEN writing_sessions.user_id IN ('system', 'recovered-unknown') THEN excluded.user_id
+                ELSE writing_sessions.user_id
+            END,
+            content = excluded.content,
+            duration_seconds = excluded.duration_seconds,
+            word_count = excluded.word_count,
+            session_token = COALESCE(excluded.session_token, writing_sessions.session_token)",
+        params![id, user_id, content, duration, word_count, session_token],
+    )?;
+    Ok(())
+}
+
 pub fn update_checkpoint_backed_writing_session(
     conn: &Connection,
     id: &str,
@@ -360,7 +389,7 @@ pub fn update_checkpoint_backed_writing_session(
              word_count = ?4,
              session_token = COALESCE(?5, session_token)
          WHERE id = ?1
-           AND status IN ('paused', 'resumed')",
+           AND status IN ('active', 'paused', 'resumed')",
         params![id, content, duration, word_count, session_token],
     )?;
     Ok(())
@@ -388,6 +417,7 @@ pub fn upsert_completed_writing_session_with_flow(
             ?8, ?9, 'completed', 0, ?10
          )
          ON CONFLICT(id) DO UPDATE SET
+            user_id = excluded.user_id,
             content = excluded.content,
             duration_seconds = excluded.duration_seconds,
             word_count = excluded.word_count,
@@ -795,10 +825,11 @@ pub fn insert_anky(
     thinker_moment: Option<&str>,
     status: &str,
     origin: &str,
+    prompt_id: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO ankys (id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        params![id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin],
+        "INSERT INTO ankys (id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin, prompt_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        params![id, writing_session_id, user_id, image_prompt, reflection, title, image_path, caption, thinker_name, thinker_moment, status, origin, prompt_id],
     )?;
     Ok(())
 }
@@ -1048,13 +1079,17 @@ pub struct AnkyDetail {
     pub origin: String,
     pub image_model: String,
     pub conversation_json: Option<String>,
+    pub prompt_id: Option<String>,
+    pub prompt_text: Option<String>,
+    pub formatted_writing: Option<String>,
 }
 
 pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini'), a.conversation_json
+        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini'), a.conversation_json, a.prompt_id, p.prompt_text, a.formatted_writing
          FROM ankys a
          LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
+         LEFT JOIN prompts p ON p.id = a.prompt_id
          WHERE a.id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], |row| {
@@ -1074,6 +1109,9 @@ pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>>
             origin: row.get(12)?,
             image_model: row.get(13)?,
             conversation_json: row.get(14)?,
+            prompt_id: row.get(15)?,
+            prompt_text: row.get(16)?,
+            formatted_writing: row.get(17)?,
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))
@@ -1447,7 +1485,7 @@ pub struct AgentRecord {
     pub description: Option<String>,
     pub model: Option<String>,
     pub api_key: String,
-    pub free_sessions_remaining: i32,
+    pub free_generations_remaining: i32,
     pub total_sessions: i32,
     pub created_at: String,
 }
@@ -1478,7 +1516,7 @@ pub fn get_agent_by_key(conn: &Connection, api_key: &str) -> Result<Option<Agent
             description: row.get(2)?,
             model: row.get(3)?,
             api_key: row.get(4)?,
-            free_sessions_remaining: row.get(5)?,
+            free_generations_remaining: row.get(5)?,
             total_sessions: row.get(6)?,
             created_at: row.get(7)?,
         })
@@ -1500,6 +1538,141 @@ pub fn increment_agent_sessions(conn: &Connection, agent_id: &str) -> Result<()>
         params![agent_id],
     )?;
     Ok(())
+}
+
+// --- Agent Session Events ---
+pub struct AgentSessionOwner {
+    pub user_id: String,
+    pub agent_id: String,
+    pub agent_name: String,
+}
+
+pub struct AgentSessionEventRecord {
+    pub id: i64,
+    pub session_id: String,
+    pub user_id: String,
+    pub agent_id: String,
+    pub agent_name: String,
+    pub event_type: String,
+    pub chunk_index: Option<i32>,
+    pub elapsed_seconds: f64,
+    pub words_total: i32,
+    pub chunk_text: Option<String>,
+    pub chunk_word_count: Option<i32>,
+    pub detail_json: Option<String>,
+    pub created_at: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_agent_session_event(
+    conn: &Connection,
+    session_id: &str,
+    user_id: &str,
+    agent_id: &str,
+    agent_name: &str,
+    event_type: &str,
+    chunk_index: Option<i32>,
+    elapsed_seconds: f64,
+    words_total: i32,
+    chunk_text: Option<&str>,
+    chunk_word_count: Option<i32>,
+    detail_json: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO agent_session_events (
+            session_id,
+            user_id,
+            agent_id,
+            agent_name,
+            event_type,
+            chunk_index,
+            elapsed_seconds,
+            words_total,
+            chunk_text,
+            chunk_word_count,
+            detail_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            session_id,
+            user_id,
+            agent_id,
+            agent_name,
+            event_type,
+            chunk_index,
+            elapsed_seconds,
+            words_total,
+            chunk_text,
+            chunk_word_count,
+            detail_json
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn get_agent_session_owner(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<AgentSessionOwner>> {
+    let mut stmt = conn.prepare(
+        "SELECT user_id, agent_id, agent_name
+         FROM agent_session_events
+         WHERE session_id = ?1
+         ORDER BY id ASC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![session_id], |row| {
+        Ok(AgentSessionOwner {
+            user_id: row.get(0)?,
+            agent_id: row.get(1)?,
+            agent_name: row.get(2)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn list_agent_session_events(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<AgentSessionEventRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT
+            id,
+            session_id,
+            user_id,
+            agent_id,
+            agent_name,
+            event_type,
+            chunk_index,
+            elapsed_seconds,
+            words_total,
+            chunk_text,
+            chunk_word_count,
+            detail_json,
+            created_at
+         FROM agent_session_events
+         WHERE session_id = ?1
+         ORDER BY id ASC",
+    )?;
+
+    let rows = stmt.query_map(params![session_id], |row| {
+        Ok(AgentSessionEventRecord {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            user_id: row.get(2)?,
+            agent_id: row.get(3)?,
+            agent_name: row.get(4)?,
+            event_type: row.get(5)?,
+            chunk_index: row.get(6)?,
+            elapsed_seconds: row.get(7)?,
+            words_total: row.get(8)?,
+            chunk_text: row.get(9)?,
+            chunk_word_count: row.get(10)?,
+            detail_json: row.get(11)?,
+            created_at: row.get(12)?,
+        })
+    })?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 // --- Writing Checkpoints ---
@@ -1589,15 +1762,38 @@ pub fn recover_orphaned_checkpoints(conn: &Connection) -> Result<i32> {
             |row| row.get(0),
         )?;
 
-        // Try to find which user this belongs to by looking at nearby sessions
-        let user_id: String = conn.query_row(
-            "SELECT COALESCE(
-                (SELECT user_id FROM writing_sessions WHERE created_at < ?1 ORDER BY created_at DESC LIMIT 1),
-                'recovered-unknown'
-            )",
-            params![&created_at],
+        // Try to find the real user from the checkpoint's session_token → auth_sessions,
+        // then fall back to the most recent writing_sessions row before this checkpoint.
+        let session_token: Option<String> = conn.query_row(
+            "SELECT session_token FROM writing_checkpoints WHERE session_id = ?1 AND session_token IS NOT NULL ORDER BY elapsed_seconds DESC LIMIT 1",
+            params![session_id],
             |row| row.get(0),
-        ).unwrap_or_else(|_| "recovered-unknown".to_string());
+        ).ok();
+
+        let user_id: String = if let Some(ref token) = session_token {
+            // Look up user from auth_sessions via session_token
+            conn.query_row(
+                "SELECT user_id FROM auth_sessions WHERE session_token = ?1 LIMIT 1",
+                params![token],
+                |row| row.get(0),
+            ).unwrap_or_else(|_| {
+                // Token didn't match auth_sessions — try writing_sessions with same token
+                conn.query_row(
+                    "SELECT user_id FROM writing_sessions WHERE session_token = ?1 AND user_id NOT IN ('system', 'recovered-unknown') LIMIT 1",
+                    params![token],
+                    |row| row.get(0),
+                ).unwrap_or_else(|_| "recovered-unknown".to_string())
+            })
+        } else {
+            conn.query_row(
+                "SELECT COALESCE(
+                    (SELECT user_id FROM writing_sessions WHERE created_at < ?1 AND user_id NOT IN ('system', 'recovered-unknown') ORDER BY created_at DESC LIMIT 1),
+                    'recovered-unknown'
+                )",
+                params![&created_at],
+                |row| row.get(0),
+            ).unwrap_or_else(|_| "recovered-unknown".to_string())
+        };
 
         // Use the checkpoint session_id as the writing_session id — this prevents
         // duplicate recovery since the NOT EXISTS check uses ws.id = c.session_id
@@ -3169,10 +3365,7 @@ pub fn set_meditation_script(
     Ok(())
 }
 
-pub fn get_ready_meditation(
-    conn: &Connection,
-    user_id: &str,
-) -> Result<Option<(String, String)>> {
+pub fn get_ready_meditation(conn: &Connection, user_id: &str) -> Result<Option<(String, String)>> {
     // (id, script_json) — most recent ready one
     let mut stmt = conn.prepare(
         "SELECT id, script_json FROM personalized_meditations
@@ -3185,7 +3378,9 @@ pub fn get_ready_meditation(
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
-pub fn get_pending_free_meditation(conn: &Connection) -> Result<Option<(String, String, Option<String>)>> {
+pub fn get_pending_free_meditation(
+    conn: &Connection,
+) -> Result<Option<(String, String, Option<String>)>> {
     // (id, user_id, writing_session_id)
     let mut stmt = conn.prepare(
         "SELECT id, user_id, writing_session_id FROM personalized_meditations
@@ -3272,7 +3467,9 @@ pub fn get_ready_breathwork(
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
-pub fn get_pending_free_breathwork(conn: &Connection) -> Result<Option<(String, String, Option<String>, String)>> {
+pub fn get_pending_free_breathwork(
+    conn: &Connection,
+) -> Result<Option<(String, String, Option<String>, String)>> {
     // (id, user_id, writing_session_id, style)
     let mut stmt = conn.prepare(
         "SELECT id, user_id, writing_session_id, style FROM personalized_breathwork
@@ -3395,7 +3592,8 @@ pub fn get_approved_facilitators(conn: &Connection) -> Result<Vec<FacilitatorRec
 
 pub fn get_facilitator(conn: &Connection, id: &str) -> Result<Option<FacilitatorRecord>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM facilitators WHERE id = ?1", FACILITATOR_COLS
+        "SELECT {} FROM facilitators WHERE id = ?1",
+        FACILITATOR_COLS
     ))?;
     let mut rows = stmt.query_map(params![id], row_to_facilitator)?;
     Ok(rows.next().and_then(|r| r.ok()))
@@ -3459,7 +3657,10 @@ pub fn insert_facilitator_review(
     Ok(())
 }
 
-pub fn get_facilitator_reviews(conn: &Connection, facilitator_id: &str) -> Result<Vec<FacilitatorReview>> {
+pub fn get_facilitator_reviews(
+    conn: &Connection,
+    facilitator_id: &str,
+) -> Result<Vec<FacilitatorReview>> {
     let mut stmt = conn.prepare(
         "SELECT id, user_id, rating, review_text, created_at
          FROM facilitator_reviews WHERE facilitator_id = ?1 ORDER BY created_at DESC",
@@ -3635,10 +3836,7 @@ pub fn upsert_sadhana_checkin(
     Ok(())
 }
 
-pub fn get_sadhana_checkins(
-    conn: &Connection,
-    commitment_id: &str,
-) -> Result<Vec<SadhanaCheckin>> {
+pub fn get_sadhana_checkins(conn: &Connection, commitment_id: &str) -> Result<Vec<SadhanaCheckin>> {
     let mut stmt = conn.prepare(
         "SELECT id, commitment_id, user_id, date, completed, notes, created_at
          FROM sadhana_checkins WHERE commitment_id = ?1 ORDER BY date DESC",

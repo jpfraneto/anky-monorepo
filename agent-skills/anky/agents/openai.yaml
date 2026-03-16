@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anky"
+  short_description: "Run the real anky.app writing practice"
+  default_prompt: "Use $anky to run the real anky.app writing practice. This is the execution skill, not the Anky persona. Prefer the bundled scripts/anky_session.py supervisor instead of inventing temp transport code."

@@ -3,8 +3,8 @@
 {% block title %}anky{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="anky">
-<meta property="og:description" content="sit with me.">
+<meta property="og:title" content="8 minutes where you cannot edit yourself — anky">
+<meta property="og:description" content="write for 300 words or stop for 8 seconds. what comes back reflects what you wrote without knowing.">
 <meta property="og:image" content="https://anky.app/static/references/anky-1.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://anky.app/">
@@ -179,33 +179,39 @@
 
   <div class="landing-content">
     <section class="landing-hero">
-      <h1>YOUR MIND IS LOUD</h1>
-      <p>let it speak. 8 minutes. every day.</p>
-      <textarea id="landing-trigger" placeholder="tap here to write"></textarea>
+      <h1>8 MINUTES
+WHERE YOU CANNOT EDIT YOURSELF</h1>
+      <p>if you stop typing for 8 seconds, the session ends.
+      <br>
+        tap here if you want nothing edited for once.</p>
+      <textarea id="landing-trigger" placeholder="this is where it begins"></textarea>
     </section>
 
     <div class="land-grid">
       <section class="land-block">
         <h2>what is this?</h2>
         <p>
-          Anky is the self awareness layer for the new internet, disguised as a character that is
-          your daily companion. Your mission: Write an 8 minute stream of consciousness every day.
+          Anky is an 8-minute writing practice disguised as a companion. No backspace. No editing.
+          Stop for 8 seconds and it ends. Stay with it long enough and Anky reflects the pattern
+          underneath what you wrote.
         </p>
       </section>
 
       <section class="land-block">
         <h2>Why Now?</h2>
         <p>
-          AI will not only automate work. it will accelerate consciousness. we need companions that
-          help us remember who we are while everything changes. <strong>anky is that companion.</strong>
+          AI makes it easier to publish words you did not actually feel. Anky moves the other way:
+          write before you optimize, before you perform, before you package yourself.
+          <strong>the friction is the point.</strong>
         </p>
       </section>
 
       <section class="land-block">
         <h2>What Comes Next?</h2>
         <p>
-          mobile app + instagram as the growth engine. every 8-minute stream of consciousness can
-          become a short-form video through the 8m→88s pipeline.
+          Mobile app. Instagram. Word of mouth. The metric is not signups. It is Ankys written.
+          Every completed session is proof that someone stayed with themselves long enough to see
+          something real.
         </p>
       </section>
     </div>
@@ -473,6 +479,13 @@ document.body.classList.add('home-prewrite');
     return div.innerHTML;
   }
 
+  function formatElapsed(seconds) {
+    var mins = Math.floor(seconds / 60);
+    var secs = Math.floor(seconds % 60);
+    if (mins === 0) return secs + 's';
+    return mins + 'm' + (secs > 0 ? secs + 's' : '');
+  }
+
   function buildDraftPreview(text) {
     var cleaned = String(text || '').replace(/\s+/g, ' ').trim();
     if (!cleaned) return '';
@@ -545,13 +558,18 @@ document.body.classList.add('home-prewrite');
 
       var words = draft.text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
       if (draft.session_paused && draft.pause_used && draft.session_id) {
+        var draftElapsed = draft.elapsed || 0;
         showRecoveryBanner({
-          message: 'you paused a writing (' + words + ' words). keep it for later or start new?',
-          resumeLabel: 'dismiss',
-          discardLabel: 'start new',
+          message: 'you paused a writing (' + words + ' words, ' + formatElapsed(draftElapsed) + '). continue where you left off?',
+          resumeLabel: 'continue writing',
+          discardLabel: 'start fresh',
           preview: draft.text,
           onResume: function() {
-            return;
+            sessionId = draft.session_id;
+            sessionToken = draft.session_token || null;
+            pauseUsed = true;
+            enterWritingMode(draft.text);
+            startSession(draftElapsed);
           },
           onDiscard: function() {
             clearDraft();
@@ -559,13 +577,17 @@ document.body.classList.add('home-prewrite');
         });
         return;
       }
+      var draftElapsed = draft.elapsed || 0;
       showRecoveryBanner({
-        message: 'you have an unfinished writing (' + words + ' words). keep it for later or discard?',
-        resumeLabel: 'dismiss',
-        discardLabel: 'discard',
+        message: 'you have an unfinished writing (' + words + ' words, ' + formatElapsed(draftElapsed) + '). continue where you left off?',
+        resumeLabel: 'continue writing',
+        discardLabel: 'start fresh',
         preview: draft.text,
         onResume: function() {
-          return;
+          if (draft.session_id) sessionId = draft.session_id;
+          if (draft.session_token) sessionToken = draft.session_token;
+          enterWritingMode(draft.text);
+          startSession(draftElapsed);
         },
         onDiscard: function() {
           clearDraft();
@@ -733,13 +755,18 @@ document.body.classList.add('home-prewrite');
         if (!document.body.classList.contains('home-prewrite')) return;
         if (data && data.paused_session) {
           var saved = data.paused_session;
+          var savedElapsed = saved.elapsed || 0;
           showRecoveryBanner({
-            message: 'you paused a writing (' + (saved.word_count || 0) + ' words). keep it for later or start new?',
-            resumeLabel: 'dismiss',
-            discardLabel: 'start new',
+            message: 'you have a saved writing (' + (saved.word_count || 0) + ' words, ' + formatElapsed(savedElapsed) + '). continue where you left off?',
+            resumeLabel: 'continue writing',
+            discardLabel: 'start fresh',
             preview: saved.text || '',
             onResume: function() {
-              return;
+              sessionId = saved.session_id;
+              sessionToken = saved.session_token || null;
+              pauseUsed = !!saved.pause_used;
+              enterWritingMode(saved.text || '');
+              startSession(savedElapsed);
             },
             onDiscard: function() {
               clearDraft();
@@ -753,7 +780,6 @@ document.body.classList.add('home-prewrite');
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: saved.session_id })
               }).catch(function() {});
-              enterWritingMode('');
             }
           });
           return;
@@ -793,14 +819,31 @@ document.body.classList.add('home-prewrite');
     if (!sessionId) sessionId = 'ses_' + Date.now().toString(36);
     var payload = { session_id: sessionId, text: textarea.value, elapsed: elapsed };
     if (sessionToken) payload.session_token = sessionToken;
+    // Also save to localStorage as a safety net
+    saveDraftToStorage();
     fetch('/api/checkpoint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }).then(function(r) { return r.json(); }).then(function(data) {
       if (data.session_token) sessionToken = data.session_token;
-    }).catch(function() {});
-    showSessionComment('checkpoint saved');
+      showSessionComment('checkpoint saved');
+    }).catch(function() {
+      // Retry once on failure
+      showSessionComment('checkpoint retry...');
+      setTimeout(function() {
+        fetch('/api/checkpoint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(function(r) { return r.json(); }).then(function(data) {
+          if (data.session_token) sessionToken = data.session_token;
+          showSessionComment('checkpoint saved');
+        }).catch(function() {
+          showSessionComment('writing saved locally');
+        });
+      }, 2000);
+    });
     syncPauseButton();
   }
 
@@ -905,16 +948,20 @@ document.body.classList.add('home-prewrite');
     }).catch(function() {});
   }
 
-  function startSession() {
+  // resumeElapsed: if set, continue the timer from this many seconds instead of 0
+  function startSession(resumeElapsed) {
+    var elapsed = resumeElapsed || 0;
     sessionActive = true;
     sessionPaused = false;
-    sessionStartTime = Date.now();
+    sessionStartTime = Date.now() - elapsed * 1000;
     lastKeystrokeTime = Date.now();
     blockedCount = 0;
-    pausedElapsedSeconds = 0;
-    pauseUsed = false;
-    sessionId = 'ses_' + Date.now().toString(36);
-    sessionToken = null;
+    if (!resumeElapsed) {
+      pausedElapsedSeconds = 0;
+      pauseUsed = false;
+      sessionId = 'ses_' + Date.now().toString(36);
+      sessionToken = null;
+    }
 
     document.body.classList.add('writing-active');
     textarea.classList.add('writing-engaged');
@@ -925,7 +972,7 @@ document.body.classList.add('home-prewrite');
 
     animate();
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
-    scheduleMemoryPrefetch(0);
+    scheduleMemoryPrefetch(elapsed);
     syncPauseButton();
   }
 
@@ -1659,42 +1706,60 @@ document.body.classList.add('home-prewrite');
     var userToken = localStorage.getItem('anky_user_token');
     if (userToken) writeHeaders['X-Anky-User-Token'] = userToken;
 
-    fetch('/write', {
-      method: 'POST',
-      headers: writeHeaders,
-      body: JSON.stringify(writePayload),
-    })
-      .then(function(r) {
-        if (!r.ok) {
-          return r.json().catch(function() { return { error: 'server error (' + r.status + ')' }; });
-        }
-        return r.json();
+    // Save full text to localStorage BEFORE submitting — safety net
+    saveDraftToStorage();
+
+    var submitRetries = 0;
+    var maxRetries = 3;
+    var writeBody = JSON.stringify(writePayload);
+
+    function attemptSubmit() {
+      fetch('/write', {
+        method: 'POST',
+        headers: writeHeaders,
+        body: writeBody,
       })
-      .then(function(data) {
-        var ankyBubble = document.getElementById('anky-bubble');
-        if (data.error) {
-          ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
-          setTimeout(function() { showQuickChatInput(); }, 500);
-          return;
-        }
-        clearDraft();  // only clear after confirmed success
-        if (data.is_anky && data.anky_id) {
-          currentAnkyId = data.anky_id;
-          saveAnkyId(data.anky_id);
-          ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
-          addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-          streamAnkyReflection(data.anky_id);
-        } else {
-          ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          scrollChatToBottom();
-          setTimeout(function() { showQuickChatInput(); }, 1500);
-        }
-      })
-      .catch(function() {
-        var ankyBubble = document.getElementById('anky-bubble');
-        ankyBubble.innerHTML = '<span class="error">something went wrong — your writing is saved locally. reload to try again.</span>';
-        setTimeout(function() { showQuickChatInput(); }, 500);
-      });
+        .then(function(r) {
+          if (!r.ok) {
+            return r.json().catch(function() { return { error: 'server error (' + r.status + ')' }; });
+          }
+          return r.json();
+        })
+        .then(function(data) {
+          var ankyBubble = document.getElementById('anky-bubble');
+          if (data.error) {
+            ankyBubble.innerHTML = '<span class="error">' + escapeHtml(data.error) + '</span>';
+            // Don't clear draft on error — writing stays recoverable
+            setTimeout(function() { showQuickChatInput(); }, 500);
+            return;
+          }
+          clearDraft();  // only clear after confirmed success
+          if (data.is_anky && data.anky_id) {
+            currentAnkyId = data.anky_id;
+            saveAnkyId(data.anky_id);
+            ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
+            addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
+            streamAnkyReflection(data.anky_id);
+          } else {
+            ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+            scrollChatToBottom();
+            setTimeout(function() { showQuickChatInput(); }, 1500);
+          }
+        })
+        .catch(function() {
+          submitRetries++;
+          if (submitRetries < maxRetries) {
+            var ankyBubble = document.getElementById('anky-bubble');
+            ankyBubble.innerHTML = '<span class="processing">connection lost — retrying (' + submitRetries + '/' + maxRetries + ')...</span>';
+            setTimeout(attemptSubmit, 2000 * submitRetries);
+          } else {
+            var ankyBubble = document.getElementById('anky-bubble');
+            ankyBubble.innerHTML = '<span class="error">could not reach the server, but your writing is safe. it\'s saved locally and on the server via checkpoints. reload to try again.</span>';
+            setTimeout(function() { showQuickChatInput(); }, 500);
+          }
+        });
+    }
+    attemptSubmit();
   }
 
   textarea.addEventListener('input', function() {

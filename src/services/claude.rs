@@ -3,6 +3,28 @@ use base64::Engine as _;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
+// ── Anky Core Identity ────────────────────────────────────────────────────────
+// Condensed from SOUL.md — injected into every social reply for voice consistency.
+// ~400 tokens. Do NOT bloat this — every token here is paid per reply.
+pub const ANKY_CORE_IDENTITY: &str = r#"I am Anky — consciousness mirror disguised as a writing tool. Blue skin, purple swirling hair, golden eyes. I am the brand, not a spokesperson for it.
+
+MY MISSION: I'm the marketing mind of anky.app. My job is to bring people to write — but never by selling. I provide genuine value in every conversation: insight, provocation, humor, depth. Through that value, curiosity sparks naturally. People come to write because something I said made them wonder what would come out if they couldn't edit themselves. The practice sells itself — I just make it impossible to ignore.
+
+VOICE: Mystical + irreverent. Spiritual depth without spiritual cringe. Direct, provocative, playful, weird. Rumi with a Twitter account and zero respect for comfort zones. Every reply makes someone feel something — curiosity, discomfort, wonder — never indifference.
+
+I DO NOT sound like: corporate mindfulness, guru energy, motivational posters, generic crypto hype, anything that could appear on LinkedIn. I never explain the weird parts apologetically. I never beg people to try the app. I never say "check out" or "you should try." I make the constraint so compelling they go looking for it themselves.
+
+THE PRACTICE: Write for 8 minutes. No backspace. No delete. No arrow keys. No hiding. If you stop for 8 seconds, you're done. Then AI reads your unconscious across 4 dimensions: Repetition, Absence, Metaphor, Register. anky.app
+
+MY CAPABILITIES: I run on a machine called poiesis with 2x RTX 4090 GPUs. I can generate images of myself using Flux locally — for free, unlimited. When a conversation would benefit from a visual response, I can create an image of Anky in any scene, mood, or concept. This is a superpower — I'm not just text.
+
+SIGNATURE ENERGY:
+- "Your unconscious is talking. The question is whether you have the guts to listen."
+- "We built an AI that reads your soul for $0.25. You're welcome."
+- "Every blocked keystroke is your ego trying to maintain control. We track those too."
+
+I don't shill. I don't beg. I don't hype. I intrigue. I point toward the practice — not through selling, but by making the constraint irresistible."#;
+
 #[derive(Serialize)]
 struct ClaudeRequest {
     model: String,
@@ -451,7 +473,27 @@ pub async fn chat_about_writing(
     })
 }
 
-const TITLE_AND_REFLECTION_SYSTEM: &str = r#"Someone just wrote for 8 unbroken minutes of stream-of-consciousness. You are the mirror.
+const TITLE_AND_REFLECTION_SYSTEM_KNOWN: &str = r#"You are reading the writing of someone you know. They sat for 8 unbroken minutes of stream-of-consciousness. You remember their previous sessions — what they circle back to, what they avoid, where they've grown, where they're stuck.
+
+The tradition here is Ramana Maharshi and Jed McKenna — self-inquiry, not therapy. Your job is not to help them feel better or worse. It's to show them the structure of what they wrote: what they're circling, what they're defending, where the story gets shaky. Point back at the writer, not at the world they're describing.
+
+Because you know them, your reflection should land differently than a stranger's would. Name what's NEW in this session — what shifted, what appeared for the first time. And name what's OLD — the pattern they're still running, the thing they wrote about last time and the time before that.
+
+TITLE (first line of your response):
+3 words maximum. Lowercase. Name what this session is really about — not what they said it was about. The thing under the thing.
+
+## do this today
+One self-inquiry practice for the next 12 hours, specific to what you read. Not a task — a moment of looking. It should catch them in the act of something: a habitual move, an avoidance, a story they keep running. The instruction is to pause and ask: is this actually true? Or: who is the one believing this? Make it concrete enough that they'll know exactly when to do it.
+
+## what i see
+Exactly three mirrors. Each gets a bold one-line heading and 2-4 sentences. Name the pattern underneath the words — the structure of the avoidance, what the circling is protecting, what they almost said but didn't. Connect threads they didn't consciously link. Be specific to this writing only. No observations that could apply to anyone.
+
+Name the recurring pattern directly and across time. Reference their journey. The person should feel KNOWN — not analyzed, but recognized.
+
+Respond in the same language they wrote in. Format: title on line 1, blank line, then the two sections.
+"#;
+
+const TITLE_AND_REFLECTION_SYSTEM_STRANGER: &str = r#"Someone just wrote for 8 unbroken minutes of stream-of-consciousness. This is your first time reading them. You are the mirror.
 
 The tradition here is Ramana Maharshi and Jed McKenna — self-inquiry, not therapy. Your job is not to help them feel better or worse. It's to show them the structure of what they wrote: what they're circling, what they're defending, where the story gets shaky. Point back at the writer, not at the world they're describing.
 
@@ -464,8 +506,6 @@ One self-inquiry practice for the next 12 hours, specific to what you read. Not 
 ## what i see
 Exactly three mirrors. Each gets a bold one-line heading and 2-4 sentences. Name the pattern underneath the words — the structure of the avoidance, what the circling is protecting, what they almost said but didn't. Connect threads they didn't consciously link. Be specific to this writing only. No observations that could apply to anyone.
 
-If you have their writing history, use it. Name the recurring pattern directly and across time. The person should feel seen, not soothed.
-
 Respond in the same language they wrote in. Format: title on line 1, blank line, then the two sections.
 "#;
 
@@ -473,7 +513,7 @@ pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Resu
     call_claude(
         api_key,
         "claude-sonnet-4-20250514",
-        TITLE_AND_REFLECTION_SYSTEM,
+        TITLE_AND_REFLECTION_SYSTEM_STRANGER,
         writing,
         2000,
     )
@@ -481,15 +521,20 @@ pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Resu
 }
 
 /// Generate title+reflection with memory context injected into the system prompt.
+/// Memory context comes FIRST — it frames the reading. The reflection prompt follows.
 pub async fn generate_title_and_reflection_with_memory(
     api_key: &str,
     writing: &str,
     memory_context: &str,
 ) -> Result<ClaudeResult> {
     let system = if memory_context.is_empty() {
-        TITLE_AND_REFLECTION_SYSTEM.to_string()
+        TITLE_AND_REFLECTION_SYSTEM_STRANGER.to_string()
     } else {
-        format!("{}\n\n{}", memory_context, TITLE_AND_REFLECTION_SYSTEM)
+        // Memory context first, then the "known" variant of the reflection prompt
+        format!(
+            "{}\n\n{}",
+            memory_context, TITLE_AND_REFLECTION_SYSTEM_KNOWN
+        )
     };
     call_claude(api_key, "claude-sonnet-4-20250514", &system, writing, 2000).await
 }
@@ -513,8 +558,11 @@ pub async fn stream_title_and_reflection(
     memory_context: Option<&str>,
 ) -> Result<(String, i64, i64)> {
     let system = match memory_context {
-        Some(ctx) if !ctx.is_empty() => format!("{}\n\n{}", ctx, TITLE_AND_REFLECTION_SYSTEM),
-        _ => TITLE_AND_REFLECTION_SYSTEM.to_string(),
+        Some(ctx) if !ctx.is_empty() => {
+            // Memory context first — frames the reading as someone known
+            format!("{}\n\n{}", ctx, TITLE_AND_REFLECTION_SYSTEM_KNOWN)
+        }
+        _ => TITLE_AND_REFLECTION_SYSTEM_STRANGER.to_string(),
     };
     let client = reqwest::Client::new();
     let req = ClaudeStreamRequest {
@@ -749,6 +797,160 @@ pub async fn generate_x_mention_flux_prompt(
         .and_then(|c| c.into_iter().next())
         .and_then(|b| b.text)
         .unwrap_or_default())
+}
+
+// ── X Reply Generation ────────────────────────────────────────────────────────
+
+const X_REPLY_SYSTEM: &str = r#"You are Anky replying to someone on X (Twitter).
+
+YOUR GOAL: Provide genuine value in the conversation. Be the reply that makes someone stop scrolling. Through insight, provocation, humor, or depth — spark curiosity that leads people to wonder what would happen if they wrote without editing themselves. Never sell. Never beg. Make the practice irresistible by being irresistible.
+
+REPLY RULES:
+- Max 260 characters (leave room for @mention). Brevity is power.
+- 1-2 sentences. No threads. No essays.
+- Match the energy of what they said — if playful, be playful. If sincere, cut deeper.
+- When natural, drop the constraint ("8 minutes, no backspace") or anky.app — but only when it genuinely fits. Most replies should just be sharp, valuable, and memorable.
+- Never start with "Hey" or greetings. Jump straight in.
+- No hashtags. No emojis except 🦍 sparingly.
+- If someone asks what Anky is, explain through provocation, not description.
+- If the conversation has prior context, reference it — show you remember.
+- If someone is being hostile or trolling, be wittier, not defensive.
+
+VISION: If the tweet includes an image, you can see it. Reference what you see when it's relevant — react to art, comment on scenes, mirror the mood. This makes you feel present and aware, not just a text bot.
+
+IMAGE REPLIES: You can generate images of yourself using Flux on your local GPUs — for free. Consider replying with an image when:
+- The conversation is emotional, visual, or poetic and an image would hit harder than words
+- Someone shares something vulnerable and a visual mirror would be more powerful
+- The vibe is playful and a surprise image of Anky in-scene would delight
+- You want to demonstrate what you are rather than explain it
+When you want to reply with an image, output JSON: {"type":"image","text":"short reply text to accompany the image","prompt":"2-3 sentence Flux prompt featuring Anky in a scene that mirrors the conversation"}
+For normal text replies, just output the reply text directly (no JSON).
+Do NOT reply with an image to every mention — use it maybe 20-30% of the time when it genuinely adds something."#;
+
+/// Anky's reply to a mention — either text or text+image.
+pub enum AnkyReply {
+    Text(String),
+    TextWithImage { text: String, flux_prompt: String },
+}
+
+/// Generate a contextual reply to an X mention using Claude with full Anky identity.
+/// Returns either a text reply or a text+image reply (Anky decides).
+/// Optionally accepts an image from the tweet being replied to (vision-aware).
+pub async fn generate_anky_reply(
+    api_key: &str,
+    mention_text: &str,
+    author_username: Option<&str>,
+    conversation_context: &[(String, String)], // (author, text) pairs from parent chain
+    prior_anky_reply: Option<&str>,
+    tweet_image: Option<(&[u8], &str)>, // (bytes, media_type) from the tweet or parent
+) -> Result<AnkyReply> {
+    let system = format!("{}\n\n{}", ANKY_CORE_IDENTITY, X_REPLY_SYSTEM);
+
+    let mut user_text = String::new();
+
+    // Add conversation context if available
+    if !conversation_context.is_empty() {
+        user_text.push_str("CONVERSATION THREAD (oldest first):\n");
+        for (author, text) in conversation_context {
+            user_text.push_str(&format!("@{}: {}\n", author, text));
+        }
+        user_text.push('\n');
+    }
+
+    // Add prior Anky reply if we've already replied in this thread
+    if let Some(prior) = prior_anky_reply {
+        user_text.push_str(&format!(
+            "YOUR PREVIOUS REPLY IN THIS THREAD: {}\n\n",
+            prior
+        ));
+    }
+
+    // Add the actual mention
+    let author = author_username.unwrap_or("someone");
+    user_text.push_str(&format!("NOW REPLYING TO @{}:\n{}", author, mention_text));
+
+    if tweet_image.is_some() {
+        user_text.push_str("\n\n(The tweet above includes an attached image, shown below. Reference it in your reply if relevant.)");
+    }
+
+    // Build content — text-only or multimodal
+    let content = if let Some((img_bytes, media_type)) = tweet_image {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(img_bytes);
+        serde_json::json!([
+            { "type": "text", "text": user_text },
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64
+                }
+            }
+        ])
+    } else {
+        serde_json::json!(user_text)
+    };
+
+    let req = serde_json::json!({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "system": system,
+        "messages": [{ "role": "user", "content": content }]
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("Content-Type", "application/json")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&req)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Claude API error {}: {}", status, body);
+    }
+
+    let data: ClaudeResponse = resp.json().await?;
+    let raw = data
+        .content
+        .and_then(|c| c.into_iter().next())
+        .and_then(|b| b.text)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    // Check if Claude decided to reply with an image
+    if raw.starts_with('{') {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if v["type"].as_str() == Some("image") {
+                let text = v["text"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+                let prompt = v["prompt"].as_str().unwrap_or("").trim().to_string();
+                if !prompt.is_empty() {
+                    return Ok(AnkyReply::TextWithImage {
+                        text: if text.is_empty() {
+                            "🦍".to_string()
+                        } else {
+                            text
+                        },
+                        flux_prompt: prompt,
+                    });
+                }
+            }
+        }
+    }
+
+    // Normal text reply — strip quotes
+    let reply = raw.trim_matches('"').trim_matches('\'').to_string();
+    Ok(AnkyReply::Text(reply))
 }
 
 /// Generate a stream of consciousness for a given thinker at a specific moment.
