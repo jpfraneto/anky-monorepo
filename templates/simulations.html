@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="icon" type="image/png" href="/static/icon.png">
+<title>yang — 8 parallel slots</title>
+
+<!-- Farcaster Mini App embed -->
+<meta name="fc:miniapp" content='{"version":"1","imageUrl":"https://anky.app/static/icon.png","button":{"title":"View Yang Slots","action":{"type":"launch_frame","name":"anky","url":"https://anky.app/simulations","splashBackgroundColor":"#0a0a0a"}}}' />
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .header {
+    padding: 16px 16px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1a1a1a;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .gpu-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #fff;
+  }
+
+  .gpu-badge {
+    font-size: 0.55rem;
+    padding: 2px 6px;
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    color: #7a7aff;
+    letter-spacing: 1px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.65rem;
+    color: #555;
+  }
+
+  .model-tag {
+    color: #4ade80;
+    border: 1px solid #1a3a1a;
+    padding: 2px 8px;
+    background: #0a1a0a;
+  }
+
+  .active-count {
+    font-size: 0.75rem;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .active-count .num {
+    color: #4ade80;
+    font-size: 1rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: #1a1a1a;
+    margin: 1px;
+  }
+
+  @media (min-width: 768px) {
+    .grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .slot {
+    background: #0a0a0a;
+    min-height: calc((100dvh - 56px) / 4);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+
+  @media (min-width: 768px) {
+    .slot { min-height: calc((100dvh - 56px) / 2); }
+  }
+
+  .slot.running { background: #0a0f0a; }
+
+  .slot-header {
+    padding: 12px 14px 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .slot-id {
+    font-size: 0.6rem;
+    color: #333;
+    letter-spacing: 2px;
+  }
+
+  .slot.running .slot-id { color: #555; }
+
+  .slot-status {
+    font-size: 0.5rem;
+    letter-spacing: 1px;
+    padding: 2px 5px;
+  }
+
+  .slot-status.idle { color: #333; }
+
+  .slot-status.running {
+    color: #4ade80;
+    background: #0a1a0a;
+    border: 1px solid #1a3a1a;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .slot-body {
+    flex: 1;
+    padding: 6px 14px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .slot.idle .slot-body {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .idle-indicator {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #1a1a1a;
+  }
+
+  .task-name {
+    font-size: 0.7rem;
+    color: #4ade80;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .prompt-preview {
+    font-size: 0.6rem;
+    color: #444;
+    line-height: 1.4;
+    word-break: break-word;
+    max-height: 3.6em;
+    overflow: hidden;
+  }
+
+  .slot-footer {
+    padding: 6px 14px 10px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.5rem;
+    color: #333;
+  }
+
+  .slot.running .slot-footer { color: #444; }
+  .elapsed { font-variant-numeric: tabular-nums; }
+  .tokens { color: #4ade80; }
+
+  .slot.running::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #4ade80, transparent);
+    animation: scan 2s linear infinite;
+    width: 40%;
+  }
+
+  @keyframes scan {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
+
+  .conn {
+    position: fixed;
+    bottom: 8px;
+    right: 10px;
+    font-size: 0.5rem;
+    color: #333;
+    letter-spacing: 1px;
+  }
+  .conn.ok { color: #4ade80; }
+  .conn.err { color: #ef4444; }
+
+  /* safe area for notched phones */
+  @supports (padding-top: env(safe-area-inset-top)) {
+    .header { padding-top: calc(16px + env(safe-area-inset-top)); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="gpu-name">YANG</div>
+    <div class="gpu-badge">RTX 4090</div>
+  </div>
+  <div class="header-right">
+    <span class="model-tag" id="model">...</span>
+    <span class="active-count"><span class="num" id="active">0</span>/8</span>
+  </div>
+</div>
+
+<div class="grid" id="g"></div>
+<div class="conn" id="c">CONNECTING</div>
+
+<script>
+var N=8, g=document.getElementById('g');
+for(var i=0;i<N;i++){
+  var d=document.createElement('div');
+  d.className='slot idle';d.id='s'+i;
+  d.innerHTML='<div class="slot-header"><span class="slot-id">SLOT '+String(i).padStart(2,'0')+'</span><span class="slot-status idle" id="st'+i+'">IDLE</span></div><div class="slot-body"><div class="idle-indicator"></div></div><div class="slot-footer"><span class="elapsed" id="el'+i+'"></span><span class="tokens" id="tk'+i+'"></span></div>';
+  g.appendChild(d);
+}
+
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function fmt(s){if(!s||s<=0)return'';return s<60?s.toFixed(1)+'s':Math.floor(s/60)+'m '+Math.floor(s%60)+'s'}
+
+function upd(slots){
+  var a=0;
+  slots.forEach(function(s){
+    var el=document.getElementById('s'+s.id),
+        st=document.getElementById('st'+s.id),
+        e=document.getElementById('el'+s.id),
+        t=document.getElementById('tk'+s.id);
+    if(s.status==='running'){
+      a++;el.className='slot running';st.className='slot-status running';st.textContent='RUNNING';
+      el.querySelector('.slot-body').innerHTML='<div class="task-name">'+esc(s.task||'inference')+'</div><div class="prompt-preview">'+esc(s.prompt_preview||'')+'</div>';
+      e.textContent=fmt(s.elapsed_s);t.textContent=s.tokens>0?s.tokens+' tok':'';
+    }else{
+      el.className='slot idle';st.className='slot-status idle';st.textContent='IDLE';
+      el.querySelector('.slot-body').innerHTML='<div class="idle-indicator"></div>';
+      e.textContent='';t.textContent='';
+    }
+  });
+  document.getElementById('active').textContent=a;
+}
+
+var es;
+function connect(){
+  var c=document.getElementById('c');c.textContent='CONNECTING';c.className='conn';
+  es=new EventSource('/api/simulations/slots/stream');
+  es.onopen=function(){c.textContent='LIVE';c.className='conn ok'};
+  es.onmessage=function(e){try{var d=JSON.parse(e.data);if(d.model)document.getElementById('model').textContent=d.model;if(d.slots)upd(d.slots)}catch(x){}};
+  es.onerror=function(){c.textContent='RECONNECTING';c.className='conn err';es.close();setTimeout(connect,3000)};
+}
+
+fetch('/api/simulations/slots').then(function(r){return r.json()}).then(function(d){
+  document.getElementById('model').textContent=d.model;upd(d.slots);
+}).catch(function(){});
+
+connect();
+
+// Farcaster Mini App SDK — tell Warpcast we're ready
+(function(){
+  var s=document.createElement('script');s.type='module';
+  s.textContent="import{sdk}from'https://esm.sh/@farcaster/miniapp-sdk';try{await sdk.actions.ready()}catch(e){}";
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@
 /// Auth: Bearer token in `Authorization: Bearer <session_token>` header.
 /// Session tokens are the same as web sessions (auth_sessions table).
 /// Mobile auth via Privy SDK: POST /swift/v1/auth/privy → returns session_token as JSON.
+/// Seed-phrase identity auth: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
 use crate::db::queries;
 use crate::error::AppError;
 use crate::services::claude;
@@ -10,6 +11,8 @@ use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use rand::RngCore;
 use rusqlite;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +33,44 @@ async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Ap
     Ok(user_id)
 }
 
+fn normalize_seed_wallet_address(wallet_address: &str) -> String {
+    wallet_address.trim().to_string()
+}
+
+fn parse_sol_public_key(wallet_address: &str) -> Result<VerifyingKey, AppError> {
+    let raw = bs58::decode(wallet_address)
+        .into_vec()
+        .map_err(|_| AppError::BadRequest("invalid public key".into()))?;
+    let key_bytes: [u8; 32] = raw
+        .try_into()
+        .map_err(|_| AppError::BadRequest("invalid public key length".into()))?;
+    VerifyingKey::from_bytes(&key_bytes)
+        .map_err(|_| AppError::BadRequest("invalid public key".into()))
+}
+
+fn build_seed_auth_message(wallet_address: &str, challenge_id: &str, nonce: &str) -> String {
+    format!(
+        "anky.app seed identity sign in\n\npublic key: {}\nchallenge id: {}\nnonce: {}\n\nsign this only inside the anky app.",
+        wallet_address, challenge_id, nonce
+    )
+}
+
+fn verify_seed_auth_signature(
+    wallet_address: &str,
+    message: &str,
+    signature_b58: &str,
+) -> Result<(), AppError> {
+    let verifying_key = parse_sol_public_key(wallet_address)?;
+    let raw_sig = bs58::decode(signature_b58.trim())
+        .into_vec()
+        .map_err(|_| AppError::BadRequest("invalid signature encoding".into()))?;
+    let signature = Signature::from_slice(&raw_sig)
+        .map_err(|_| AppError::BadRequest("invalid signature".into()))?;
+    verifying_key
+        .verify(message.as_bytes(), &signature)
+        .map_err(|_| AppError::Unauthorized("signature verification failed".into()))
+}
+
 // ===== Auth =====
 
 #[derive(Deserialize)]
@@ -48,6 +89,136 @@ pub struct AuthResponse {
     pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet_address: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct SeedAuthChallengeRequest {
+    pub wallet_address: String,
+}
+
+#[derive(Serialize)]
+pub struct SeedAuthChallengeResponse {
+    pub ok: bool,
+    pub challenge_id: String,
+    pub message: String,
+    pub expires_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct SeedAuthVerifyRequest {
+    pub wallet_address: String,
+    pub challenge_id: String,
+    pub signature: String,
+}
+
+/// POST /swift/v2/auth/challenge
+/// Create a one-time sign-in challenge for a locally derived seed-phrase identity.
+/// The iOS app should sign the returned `message` with the device's seed-derived keypair.
+pub async fn auth_seed_challenge(
+    State(state): State<AppState>,
+    Json(req): Json<SeedAuthChallengeRequest>,
+) -> Result<Json<SeedAuthChallengeResponse>, AppError> {
+    let wallet_address = normalize_seed_wallet_address(&req.wallet_address);
+    if wallet_address.is_empty() {
+        return Err(AppError::BadRequest("wallet_address is required".into()));
+    }
+    let _ = parse_sol_public_key(&wallet_address)?;
+
+    let challenge_id = uuid::Uuid::new_v4().to_string();
+    let mut nonce_bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = hex::encode(nonce_bytes);
+    let message = build_seed_auth_message(&wallet_address, &challenge_id, &nonce);
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::minutes(10))
+        .unwrap()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+
+    {
+        let db = state.db.lock().await;
+        queries::create_auth_challenge(&db, &challenge_id, &wallet_address, &message, &expires_at)?;
+    }
+
+    Ok(Json(SeedAuthChallengeResponse {
+        ok: true,
+        challenge_id,
+        message,
+        expires_at,
+    }))
+}
+
+/// POST /swift/v2/auth/verify
+/// Verify a signature from the seed-derived keypair and return a normal Anky session token.
+pub async fn auth_seed_verify(
+    State(state): State<AppState>,
+    Json(req): Json<SeedAuthVerifyRequest>,
+) -> Result<Json<AuthResponse>, AppError> {
+    let wallet_address = normalize_seed_wallet_address(&req.wallet_address);
+    if wallet_address.is_empty() {
+        return Err(AppError::BadRequest("wallet_address is required".into()));
+    }
+
+    let (user_id, username) = {
+        let db = state.db.lock().await;
+        let challenge = queries::get_active_auth_challenge(&db, &req.challenge_id)?
+            .ok_or_else(|| AppError::Unauthorized("invalid or expired challenge".into()))?;
+
+        if challenge.id != req.challenge_id {
+            return Err(AppError::Unauthorized("invalid challenge".into()));
+        }
+        if challenge.wallet_address != wallet_address {
+            return Err(AppError::Unauthorized(
+                "challenge does not match wallet".into(),
+            ));
+        }
+
+        verify_seed_auth_signature(&wallet_address, &challenge.challenge_text, &req.signature)?;
+
+        let user_id = if let Some(existing) = queries::get_user_by_wallet(&db, &wallet_address)? {
+            existing
+        } else {
+            let uid = uuid::Uuid::new_v4().to_string();
+            queries::create_user_with_wallet(&db, &uid, &wallet_address)?;
+            uid
+        };
+        let username = queries::get_user_username(&db, &user_id).ok().flatten();
+
+        if !queries::consume_auth_challenge(&db, &req.challenge_id)? {
+            return Err(AppError::Unauthorized("challenge already used".into()));
+        }
+
+        (user_id, username)
+    };
+
+    let session_token = uuid::Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(90))
+        .unwrap()
+        .to_rfc3339();
+    {
+        let db = state.db.lock().await;
+        queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
+    }
+
+    state.emit_log(
+        "INFO",
+        "swift_auth",
+        &format!(
+            "Seed identity login: {} ({})",
+            &user_id[..8],
+            wallet_address
+        ),
+    );
+
+    Ok(Json(AuthResponse {
+        ok: true,
+        session_token,
+        user_id,
+        username,
+        email: None,
+        wallet_address: Some(wallet_address),
+    }))
 }
 
 /// POST /swift/v1/auth/privy
@@ -354,10 +525,13 @@ pub struct MobileWriteResponse {
     pub is_anky: bool,
     pub word_count: i32,
     pub flow_score: Option<f64>,
+    pub persisted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anky_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wallet_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -378,8 +552,10 @@ pub async fn submit_writing(
             is_anky: false,
             word_count,
             flow_score: None,
+            persisted: false,
             response: None,
             anky_id: None,
+            wallet_address: None,
             error: Some("write more — at least a few sentences to stream".into()),
         }));
     }
@@ -429,7 +605,7 @@ pub async fn submit_writing(
         }
     }
 
-    let (response, anky_id) = if is_anky {
+    let (response, anky_id, wallet_address) = if is_anky {
         // Kick off Anky image generation in the background
         let anky_id = uuid::Uuid::new_v4().to_string();
         let state_bg = state.clone();
@@ -449,7 +625,11 @@ pub async fn submit_writing(
                 );
             }
         });
-        (None, Some(anky_id))
+        let wallet_address = {
+            let db = state.db.lock().await;
+            queries::get_user_wallet(&db, &user_id).ok().flatten()
+        };
+        (None, Some(anky_id), wallet_address)
     } else {
         // Short session — get Ollama feedback synchronously
         let prompt = crate::services::ollama::quick_feedback_prompt(&req.text, req.duration);
@@ -467,7 +647,7 @@ pub async fn submit_writing(
                 rusqlite::params![&feedback, &session_id],
             );
         }
-        (Some(feedback), None)
+        (Some(feedback), None, None)
     };
 
     // Queue personalized meditation + breathwork generation
@@ -491,10 +671,185 @@ pub async fn submit_writing(
         is_anky,
         word_count,
         flow_score,
+        persisted: true,
         response,
         anky_id,
+        wallet_address,
         error: None,
     }))
+}
+
+/// POST /swift/v2/write
+/// Seed-identity mobile writing flow.
+/// Short sessions are local-only and must not be persisted server-side.
+pub async fn submit_writing_v2(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<MobileWriteRequest>,
+) -> Result<Json<MobileWriteResponse>, AppError> {
+    let user_id = bearer_auth(&state, &headers).await?;
+
+    let word_count = req.text.split_whitespace().count() as i32;
+    if word_count < 10 {
+        return Ok(Json(MobileWriteResponse {
+            ok: false,
+            session_id: String::new(),
+            is_anky: false,
+            word_count,
+            flow_score: None,
+            persisted: false,
+            response: None,
+            anky_id: None,
+            wallet_address: None,
+            error: Some("write more — at least a few sentences to stream".into()),
+        }));
+    }
+
+    let flow_score = req
+        .keystroke_deltas
+        .as_ref()
+        .map(|d| queries::calculate_flow_score(d, req.duration, word_count));
+    let keystroke_json = req
+        .keystroke_deltas
+        .as_ref()
+        .map(|d| serde_json::to_string(d).unwrap_or_default());
+
+    let is_anky = req.duration >= 480.0 && word_count >= 300;
+    let session_id = req
+        .session_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    if !is_anky {
+        tracing::info!(
+            user = %user_id,
+            duration = req.duration,
+            words = word_count,
+            "Mobile v2 writing stayed local-only"
+        );
+        return Ok(Json(MobileWriteResponse {
+            ok: true,
+            session_id,
+            is_anky: false,
+            word_count,
+            flow_score,
+            persisted: false,
+            response: None,
+            anky_id: None,
+            wallet_address: None,
+            error: None,
+        }));
+    }
+
+    tracing::info!(
+        user = %user_id,
+        duration = req.duration,
+        words = word_count,
+        "Mobile v2 anky submitted"
+    );
+
+    let wallet_address = {
+        let db = state.db.lock().await;
+        queries::ensure_user(&db, &user_id)?;
+        if let Some(existing) = queries::get_writing_session_state(&db, &session_id)? {
+            if existing.user_id != user_id {
+                let is_placeholder = existing.user_id == "system"
+                    || existing.user_id == "recovered-unknown"
+                    || existing.user_id.starts_with("recovered-");
+                if !is_placeholder {
+                    return Err(AppError::Unauthorized(
+                        "that writing session belongs to another user".into(),
+                    ));
+                }
+            }
+        }
+
+        let wallet_address = queries::get_user_wallet(&db, &user_id)?
+            .ok_or_else(|| AppError::Unauthorized("seed identity required".into()))?;
+        queries::upsert_completed_writing_session_with_flow(
+            &db,
+            &session_id,
+            &user_id,
+            &req.text,
+            req.duration,
+            word_count,
+            true,
+            None,
+            keystroke_json.as_deref(),
+            flow_score,
+            None,
+        )?;
+        if let Some(fs) = flow_score {
+            let _ = queries::update_user_flow_stats(&db, &user_id, fs, true);
+        }
+        wallet_address
+    };
+
+    let anky_id = uuid::Uuid::new_v4().to_string();
+    let state_bg = state.clone();
+    let aid = anky_id.clone();
+    let sid = session_id.clone();
+    let text = req.text.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::pipeline::image_gen::generate_anky_from_writing(
+            &state_bg, &aid, &sid, "mobile", &text,
+        )
+        .await
+        {
+            state_bg.emit_log(
+                "ERROR",
+                "swift_write",
+                &format!("Anky gen failed for {}: {}", &aid[..8], e),
+            );
+        }
+    });
+
+    let guidance_state = state.clone();
+    let guidance_user = user_id.clone();
+    let guidance_session = session_id.clone();
+    let guidance_text = req.text.clone();
+    tokio::spawn(async move {
+        crate::pipeline::guidance_gen::queue_post_writing_guidance(
+            &guidance_state,
+            &guidance_user,
+            &guidance_session,
+            &guidance_text,
+        )
+        .await;
+    });
+
+    Ok(Json(MobileWriteResponse {
+        ok: true,
+        session_id,
+        is_anky: true,
+        word_count,
+        flow_score,
+        persisted: true,
+        response: None,
+        anky_id: Some(anky_id),
+        wallet_address: Some(wallet_address),
+        error: None,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+    use rand::rngs::OsRng;
+
+    #[test]
+    fn verifies_seed_auth_signatures() {
+        let mut rng = OsRng;
+        let signing_key = SigningKey::generate(&mut rng);
+        let wallet_address = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
+        let message = build_seed_auth_message(&wallet_address, "challenge-1", "nonce-1");
+        let signature = signing_key.sign(message.as_bytes());
+        let signature_b58 = bs58::encode(signature.to_bytes()).into_string();
+
+        let verified = verify_seed_auth_signature(&wallet_address, &message, &signature_b58);
+        assert!(verified.is_ok());
+    }
 }
 
 // ===== Sadhana =====

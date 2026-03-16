@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::routes::simulations::SlotTracker;
 use crate::services::stream::FrameBuffer;
 use crate::sse::logger::LogEntry;
 use rusqlite::Connection;
@@ -156,6 +157,8 @@ pub struct AppState {
     pub memory_cache: Arc<Mutex<HashMap<String, String>>>,
     /// Active chunked writing sessions (agent stream-of-consciousness)
     pub sessions: crate::routes::session::SessionMap,
+    /// 8 parallel inference slot tracker for Yang (GPU 1)
+    pub slot_tracker: SlotTracker,
 }
 
 impl AppState {

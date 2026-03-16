@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
         webhook_log_tx,
         memory_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         sessions: routes::session::new_session_map(),
+        slot_tracker: routes::simulations::SlotTracker::new(),
     };
 
     // Start chunked session reaper (kills sessions after 8s silence, finalizes ankys)

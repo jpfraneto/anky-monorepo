@@ -17,6 +17,7 @@ pub mod poiesis;
 pub mod prompt;
 pub mod session;
 pub mod settings;
+pub mod simulations;
 pub mod swift;
 pub mod training;
 pub mod webhook_farcaster;
@@ -54,6 +55,16 @@ async fn service_worker() -> ([(axum::http::HeaderName, &'static str); 2], &'sta
             ("Service-Worker-Allowed".parse().unwrap(), "/"),
         ],
         include_str!("../../static/sw.js"),
+    )
+}
+
+async fn prompt_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8",
+        )],
+        include_str!("../../PROMPT.md"),
     )
 }
 
@@ -189,19 +200,40 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(swift::auth_privy),
         )
         .route(
+            "/swift/v2/auth/challenge",
+            axum::routing::post(swift::auth_seed_challenge),
+        )
+        .route(
+            "/swift/v2/auth/verify",
+            axum::routing::post(swift::auth_seed_verify),
+        )
+        .route(
             "/swift/v1/auth/session",
+            axum::routing::delete(swift::auth_logout),
+        )
+        .route(
+            "/swift/v2/auth/session",
             axum::routing::delete(swift::auth_logout),
         )
         // Me
         .route("/swift/v1/me", axum::routing::get(swift::get_me))
+        .route("/swift/v2/me", axum::routing::get(swift::get_me))
         // Writings
         .route(
             "/swift/v1/writings",
             axum::routing::get(swift::list_writings),
         )
         .route(
+            "/swift/v2/writings",
+            axum::routing::get(swift::list_writings),
+        )
+        .route(
             "/swift/v1/write",
             axum::routing::post(swift::submit_writing),
+        )
+        .route(
+            "/swift/v2/write",
+            axum::routing::post(swift::submit_writing_v2),
         )
         // Sadhana
         .route(
@@ -332,6 +364,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
         .route("/changelog", axum::routing::get(pages::changelog))
+        // Simulations — 8-slot inference dashboard
+        .route(
+            "/simulations",
+            axum::routing::get(simulations::simulations_page),
+        )
+        .route(
+            "/api/simulations/slots",
+            axum::routing::get(simulations::slots_status),
+        )
+        .route(
+            "/api/simulations/slots/stream",
+            axum::routing::get(simulations::slots_stream),
+        )
+        .route(
+            "/api/simulations/slots/demo",
+            axum::routing::post(simulations::slots_demo),
+        )
         .route("/llm", axum::routing::get(pages::llm))
         .route("/pitch-deck", axum::routing::get(pages::pitch_deck))
         .route("/pitch-deck.pdf", axum::routing::get(pages::pitch_deck_pdf))
@@ -535,6 +584,7 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(session::session_status),
         )
         // Skills (for agents)
+        .route("/PROMPT.md", axum::routing::get(prompt_md))
         .route("/skills", axum::routing::get(skills))
         .route("/skill", axum::routing::get(skills_redirect))
         .route("/skill.md", axum::routing::get(skills_redirect))

@@ -262,6 +262,15 @@ pub fn run(conn: &Connection) -> Result<()> {
             code_verifier TEXT NOT NULL,
             redirect_to TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS auth_challenges (
+            id TEXT PRIMARY KEY,
+            wallet_address TEXT NOT NULL,
+            challenge_text TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            consumed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )?;
 

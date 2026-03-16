@@ -2276,7 +2276,9 @@ pub fn get_auth_session(
     token: &str,
 ) -> Result<Option<(String, Option<String>)>> {
     let mut stmt = conn.prepare(
-        "SELECT user_id, x_user_id FROM auth_sessions WHERE token = ?1 AND expires_at > datetime('now')",
+        "SELECT user_id, x_user_id
+         FROM auth_sessions
+         WHERE token = ?1 AND datetime(expires_at) > datetime('now')",
     )?;
     let mut rows = stmt.query_map(params![token], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
@@ -2287,6 +2289,61 @@ pub fn get_auth_session(
 pub fn delete_auth_session(conn: &Connection, token: &str) -> Result<()> {
     conn.execute("DELETE FROM auth_sessions WHERE token = ?1", params![token])?;
     Ok(())
+}
+
+pub struct AuthChallengeRecord {
+    pub id: String,
+    pub wallet_address: String,
+    pub challenge_text: String,
+    pub expires_at: String,
+}
+
+pub fn create_auth_challenge(
+    conn: &Connection,
+    id: &str,
+    wallet_address: &str,
+    challenge_text: &str,
+    expires_at: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO auth_challenges (id, wallet_address, challenge_text, expires_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![id, wallet_address.trim(), challenge_text, expires_at],
+    )?;
+    Ok(())
+}
+
+pub fn get_active_auth_challenge(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<AuthChallengeRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, wallet_address, challenge_text, expires_at
+         FROM auth_challenges
+         WHERE id = ?1
+           AND consumed_at IS NULL
+           AND datetime(expires_at) > datetime('now')
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        Ok(AuthChallengeRecord {
+            id: row.get(0)?,
+            wallet_address: row.get(1)?,
+            challenge_text: row.get(2)?,
+            expires_at: row.get(3)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn consume_auth_challenge(conn: &Connection, id: &str) -> Result<bool> {
+    let updated = conn.execute(
+        "UPDATE auth_challenges
+         SET consumed_at = datetime('now')
+         WHERE id = ?1 AND consumed_at IS NULL",
+        params![id],
+    )?;
+    Ok(updated > 0)
 }
 
 pub fn save_oauth_state(
