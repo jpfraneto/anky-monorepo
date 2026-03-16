@@ -356,6 +356,12 @@ pub async fn help(State(state): State<AppState>) -> Result<Html<String>, AppErro
     Ok(Html(html))
 }
 
+pub async fn mobile(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("mobile.html", &ctx)?;
+    Ok(Html(html))
+}
+
 pub async fn dca_bot_code(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let mut ctx = tera::Context::new();
     ctx.insert(

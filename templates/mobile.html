@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}anky | mobile{% endblock %}
+
+{% block head %}
+<meta property="og:title" content="anky mobile">
+<meta property="og:description" content="the anky mobile app turns identity into a quiet, local seed and turns writing into an 8 minute confrontation with now.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://anky.app/mobile">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="anky mobile">
+<meta name="twitter:description" content="a writing app where identity is sovereign, incomplete writing stays local, and only a real anky unlocks the full experience.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --mobile-bg: #050505;
+    --mobile-panel: rgba(255, 255, 255, 0.05);
+    --mobile-border: rgba(255, 255, 255, 0.12);
+    --mobile-text: #f4efe6;
+    --mobile-muted: rgba(244, 239, 230, 0.72);
+    --mobile-soft: rgba(244, 239, 230, 0.48);
+    --mobile-accent: #f08a5d;
+    --mobile-accent-soft: #ffd8b8;
+    --mobile-green: #c8f169;
+    --mobile-blue: #8cc8ff;
+  }
+
+  .mobile-page {
+    min-height: 100vh;
+    padding: 104px 24px 72px;
+    background:
+      radial-gradient(circle at top left, rgba(240, 138, 93, 0.18), transparent 28%),
+      radial-gradient(circle at 85% 18%, rgba(140, 200, 255, 0.14), transparent 25%),
+      linear-gradient(180deg, #050505 0%, #0d0a09 46%, #050505 100%);
+    color: var(--mobile-text);
+  }
+
+  .mobile-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .mobile-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+    gap: 28px;
+    align-items: stretch;
+    margin-bottom: 28px;
+  }
+
+  .mobile-hero-copy,
+  .mobile-hero-card,
+  .mobile-section {
+    border: 1px solid var(--mobile-border);
+    background: var(--mobile-panel);
+    backdrop-filter: blur(10px);
+    border-radius: 28px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  }
+
+  .mobile-hero-copy {
+    padding: 34px 34px 30px;
+  }
+
+  .mobile-kicker,
+  .mobile-card-label,
+  .mobile-section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mobile-soft);
+  }
+
+  .mobile-kicker::before,
+  .mobile-card-label::before,
+  .mobile-section-label::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.7;
+  }
+
+  .mobile-hero h1 {
+    margin: 18px 0 18px;
+    font-size: clamp(3rem, 8vw, 6rem);
+    line-height: 0.92;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .mobile-hero p {
+    max-width: 760px;
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.72;
+    color: var(--mobile-muted);
+  }
+
+  .mobile-hero-axes {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .mobile-axis {
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mobile-accent-soft);
+  }
+
+  .mobile-hero-card {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mobile-hero-card::after {
+    content: "";
+    position: absolute;
+    inset: auto -12% -24% 28%;
+    height: 240px;
+    background: radial-gradient(circle, rgba(200, 241, 105, 0.18), transparent 62%);
+    pointer-events: none;
+  }
+
+  .mobile-card-stack {
+    display: grid;
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  .mobile-card-metric {
+    padding: 16px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: rgba(7, 7, 7, 0.45);
+  }
+
+  .mobile-card-metric strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 1.6rem;
+    letter-spacing: 0.08em;
+    color: var(--mobile-green);
+  }
+
+  .mobile-card-metric span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--mobile-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .mobile-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 22px;
+  }
+
+  .mobile-section {
+    padding: 28px;
+  }
+
+  .mobile-section h2 {
+    margin: 18px 0 14px;
+    font-size: clamp(1.8rem, 3vw, 3rem);
+    line-height: 1.05;
+    text-transform: uppercase;
+  }
+
+  .mobile-section p {
+    color: var(--mobile-muted);
+    line-height: 1.76;
+    font-size: 1rem;
+  }
+
+  .mobile-section-wide {
+    grid-column: span 7;
+  }
+
+  .mobile-section-tall {
+    grid-column: span 5;
+  }
+
+  .mobile-section-half {
+    grid-column: span 6;
+  }
+
+  .mobile-manifesto {
+    display: grid;
+    gap: 14px;
+    margin-top: 22px;
+  }
+
+  .mobile-manifesto-line {
+    padding: 16px 18px;
+    border-left: 2px solid rgba(240, 138, 93, 0.7);
+    background: rgba(255, 255, 255, 0.03);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--mobile-text);
+  }
+
+  .mobile-principles,
+  .mobile-timeline,
+  .mobile-future-list {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0 0;
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-principles li,
+  .mobile-timeline li,
+  .mobile-future-list li {
+    padding: 16px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--mobile-muted);
+    line-height: 1.7;
+  }
+
+  .mobile-principles strong,
+  .mobile-timeline strong,
+  .mobile-future-list strong {
+    color: var(--mobile-text);
+  }
+
+  .mobile-now-card {
+    margin-top: 22px;
+    padding: 24px;
+    border-radius: 24px;
+    background:
+      radial-gradient(circle at center, rgba(255, 255, 255, 0.06), transparent 52%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+  }
+
+  .mobile-now-card .now-word {
+    display: block;
+    margin-bottom: 8px;
+    font-size: clamp(3rem, 8vw, 5.2rem);
+    line-height: 0.95;
+    letter-spacing: 0.16em;
+  }
+
+  .mobile-now-card .now-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--mobile-soft);
+    font-size: 11px;
+  }
+
+  .mobile-footer-note {
+    margin-top: 42px;
+    padding: 22px 24px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--mobile-soft);
+    line-height: 1.8;
+    font-size: 13px;
+  }
+
+  .mobile-footer-note strong {
+    color: var(--mobile-accent-soft);
+  }
+
+  @media (max-width: 980px) {
+    .mobile-hero {
+      grid-template-columns: 1fr;
+    }
+
+    .mobile-section-wide,
+    .mobile-section-tall,
+    .mobile-section-half {
+      grid-column: span 12;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .mobile-page {
+      padding: 88px 16px 48px;
+    }
+
+    .mobile-hero-copy,
+    .mobile-hero-card,
+    .mobile-section {
+      padding: 22px;
+      border-radius: 22px;
+    }
+
+    .mobile-hero h1 {
+      letter-spacing: 0.02em;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="mobile-page">
+  <div class="mobile-shell">
+    <section class="mobile-hero">
+      <div class="mobile-hero-copy">
+        <span class="mobile-kicker">mobile app philosophy</span>
+        <h1>identity melts.<br>now remains.</h1>
+        <p>
+          anky mobile is not a social profile dressed up as a writing app. it starts from a different
+          place: identity is created quietly on-device, held locally, and recovered only by the user.
+          then the interface does something even rarer. it removes almost everything except the fact
+          that you are here, writing, now.
+        </p>
+        <div class="mobile-hero-axes">
+          <span class="mobile-axis">24 words, never sent</span>
+          <span class="mobile-axis">8 minutes, no escape</span>
+          <span class="mobile-axis">short writing stays local</span>
+          <span class="mobile-axis">real ankys unlock the full system</span>
+        </div>
+      </div>
+
+      <aside class="mobile-hero-card">
+        <span class="mobile-card-label">why this matters</span>
+        <div class="mobile-card-stack">
+          <div class="mobile-card-metric">
+            <strong>NOW</strong>
+            <span>the screen should collapse attention into the living moment, not the performance of a profile.</span>
+          </div>
+          <div class="mobile-card-metric">
+            <strong>LOCAL</strong>
+            <span>unfinished writing belongs to the device until the user crosses the threshold of a true anky.</span>
+          </div>
+          <div class="mobile-card-metric">
+            <strong>SOVEREIGN</strong>
+            <span>the backend sees a public key and signed proof, not a recovery phrase, phone number, or email.</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="mobile-grid">
+      <article class="mobile-section mobile-section-wide">
+        <span class="mobile-section-label">the philosophy</span>
+        <h2>a writing practice disguised as software</h2>
+        <p>
+          most apps ask who you are before they let you do anything real. anky flips that. the app
+          gives you a private seed identity under the hood, but it does not make identity the main
+          event. the main event is contact. eight minutes with no backspace, no editing, no drifting
+          into self-curation. the center of gravity is not an account. it is the moment in which a
+          person stops managing their image and actually writes.
+        </p>
+        <div class="mobile-manifesto">
+          <div class="mobile-manifesto-line">identity should feel protected, not performed.</div>
+          <div class="mobile-manifesto-line">writing should feel immediate, not optimized for posting.</div>
+          <div class="mobile-manifesto-line">unlock should be earned through presence, not signup friction.</div>
+        </div>
+      </article>
+
+      <article class="mobile-section mobile-section-tall">
+        <span class="mobile-section-label">the core screen</span>
+        <h2>one glyph. one heart. one chance to stay.</h2>
+        <p>
+          the writing interface is intentionally severe. the current character dominates the center.
+          previous characters move into a subtle bottom ribbon. if the writer stops, the heart drains
+          and the glyph fractures open over the life window. the entire interaction is built to keep
+          the user inside `NOW`.
+        </p>
+        <div class="mobile-now-card">
+          <span class="now-word">NOW</span>
+          <span class="now-sub">write now • 8 minutes • no soft exits</span>
+        </div>
+      </article>
+
+      <article class="mobile-section mobile-section-half">
+        <span class="mobile-section-label">identity model</span>
+        <h2>account creation without account theater</h2>
+        <p>
+          on first open, the app generates a 24-word recovery phrase locally and derives the user's
+          seed identity from it. that phrase never touches the backend. day to day, the app signs a
+          challenge in the background and carries the identity for the user through keychain and
+          iCloud keychain. recovery is real. custody is real. but the ritual is hidden unless it is
+          needed.
+        </p>
+        <ul class="mobile-principles">
+          <li><strong>No email.</strong> No phone number. No social login as the center of trust.</li>
+          <li><strong>No phrase on the server.</strong> The backend only sees a public key and a signature.</li>
+          <li><strong>Real consequence.</strong> If the user loses the phrase and the keychain copy, the writings are gone.</li>
+        </ul>
+      </article>
+
+      <article class="mobile-section mobile-section-half">
+        <span class="mobile-section-label">unlock model</span>
+        <h2>private first. earned permanence second.</h2>
+        <p>
+          the app draws a hard line between local expression and persistent record. anything below the
+          true anky threshold stays on the device. no fake cloud history. no chat unlock. no loading
+          theater pretending something meaningful happened on the server. only when the user actually
+          writes a real anky does the fuller system open.
+        </p>
+        <ul class="mobile-timeline">
+          <li><strong>Before the first real anky:</strong> local-only writing, minimal shell, pure practice.</li>
+          <li><strong>At 8 minutes and 300+ words:</strong> the writing persists and the anky identity becomes a lived record.</li>
+          <li><strong>After unlock:</strong> ankys, reflections, and threaded conversation can exist under that seed identity.</li>
+        </ul>
+      </article>
+
+      <article class="mobile-section mobile-section-wide">
+        <span class="mobile-section-label">where this points</span>
+        <h2>toward a calmer kind of digital self</h2>
+        <p>
+          anky mobile points toward a system where a person can keep a deep archive of their own
+          consciousness without first being reduced to a commodity account. the device holds the root
+          identity. the user holds recovery. the backend becomes a mirror and a memory layer, not the
+          owner of the self. over time that opens room for something stronger than “content”: a body of
+          writing, a continuity of self-inquiry, and conversations that only unlock after someone has
+          actually stayed with themselves long enough to make them real.
+        </p>
+      </article>
+
+      <article class="mobile-section mobile-section-tall">
+        <span class="mobile-section-label">marketing language</span>
+        <h2>how to talk about it</h2>
+        <ul class="mobile-future-list">
+          <li><strong>Anky is a consciousness app built on a writing threshold.</strong> You do not unlock the full system by signing up. You unlock it by writing through the resistance.</li>
+          <li><strong>The mobile app makes identity invisible but sovereign.</strong> A recovery phrase exists, but it is not a crypto onboarding gimmick. It is quiet custody.</li>
+          <li><strong>The product is intentionally anti-feed.</strong> It is designed to move attention away from display and back into contact.</li>
+          <li><strong>NOW is the center.</strong> The interface should always feel like it is pulling the user back into the present tense of experience.</li>
+        </ul>
+      </article>
+    </section>
+
+    <div class="mobile-footer-note">
+      <strong>current direction:</strong> seed identity is already live on the backend through
+      <code>/swift/v2/*</code>. the mobile app is moving toward local-first unfinished writing,
+      true-anky unlocks, and a writing experience where identity is protected quietly in the
+      background while the foreground remains simple: write now.
+    </div>
+  </div>
+</main>
+{% endblock %}

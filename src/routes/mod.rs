@@ -338,6 +338,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/video-gallery", axum::routing::get(pages::videos_gallery))
         .route("/feed", axum::routing::get(pages::feed_page))
         .route("/help", axum::routing::get(pages::help))
+        .route("/mobile", axum::routing::get(pages::mobile))
         .route("/dca", axum::routing::get(pages::dca_dashboard))
         .route("/dca-bot-code", axum::routing::get(pages::dca_bot_code))
         .route("/login", axum::routing::get(pages::login_page))
