@@ -1,119 +1,124 @@
-# iOS NOW + Seed Identity Implementation Spec
+# iOS NOW + Base Seed Identity Spec
 
-This document is the implementation brief for the native iOS app.
+This is the implementation brief for the native iOS app.
 
-It combines two product shifts:
+It combines two product ideas:
 
-1. the new `NOW` writing experience
-2. the new seed-phrase-based identity model
+1. a `NOW`-centered writing experience
+2. a hidden Base/EVM seed identity that belongs to the user
 
-The goal is to make identity invisible, sovereign, and calm, while making writing feel immediate, stripped-down, and centered on `NOW`.
+The point is not to make people manage an account. The point is to let identity exist quietly in the background while the foreground stays radically simple: write now.
 
-## Product Intent
+## Product Position
 
-The app should feel like this:
+Anky mobile should feel like this:
 
-- identity is born quietly on first open
-- the user does not create an account with email, phone, or social login
-- the app generates a recovery phrase locally and carries the identity for them
-- the user experiences writing first, not account setup
-- the writing UI collapses attention into the present moment
-- incomplete writing remains local and private
-- only a true anky unlocks persistence, wallet-backed identity continuity, and the full reflective interface
+- identity is created locally, not requested socially
+- the app protects custody quietly under the hood
+- unfinished writing stays private and local
+- only a real anky crosses into persistence
+- the UI keeps pulling the person back into `NOW`
 
-The product rule is simple:
+This is not a feed app.
+This is not a sign-up funnel.
+This is a threshold practice.
 
-- before the first real anky, the experience is private, local, and minimal
-- after a real anky, the user steps into the fuller Anky system
-
-## Canonical Rules
-
-These are the product rules the app should treat as canonical.
+## Canonical Product Rules
 
 - A real anky is `>= 8 minutes` and `>= 300 words`.
 - Anything below that threshold is not a real anky.
-- Non-anky writing stays local-only on device.
-- Non-anky writing should not unlock chat, reflection, threads, or expanded account surfaces.
+- Short writing remains local-only on device.
+- Short writing must not unlock chat, reflections, or cloud history.
 - A real anky is persisted to the backend.
-- A real anky unlocks the full experience.
-- The full experience includes persisted ankys, identity continuity, and threaded conversation with Anky below ankys the user actually wrote.
+- A real anky unlocks the fuller Anky experience.
 
 ## Identity Model
 
 ### Core Principle
 
-The recovery phrase is the root identity secret.
+The app creates a seed identity for the user on first open.
 
-- It is generated on-device.
-- It never reaches the backend.
-- The backend never stores the phrase.
-- The backend never needs the phrase again.
-- The backend only knows the derived public key and signed proofs.
+- 24-word recovery phrase
+- generated locally on-device
+- never sent to the backend
+- used to derive a Base/EVM wallet
+- recovered only by the user
+
+The backend should know:
+
+- the derived `0x...` address
+- signed challenge proofs
+- normal session tokens
+
+The backend should never know:
+
+- the recovery phrase
+- the raw mnemonic seed
+
+### Canonical Derivation
+
+- BIP39 mnemonic
+- EVM/secp256k1 account
+- derivation path: `m/44'/60'/0'/0/0`
+
+Do not drift from that path once the app ships.
 
 ### Identity Lifecycle
 
 #### First app open
 
-- Generate a 24-word BIP39-compatible recovery phrase locally.
-- Derive a Solana-compatible Ed25519 keypair locally from that phrase.
-- Store the private key in iOS Keychain.
-- Prefer iCloud Keychain sync if product wants identity continuity across devices under the user's Apple account.
-- Show the recovery phrase to the user once in a dedicated backup ceremony.
+1. generate a 24-word phrase locally
+2. derive the EVM private key locally
+3. derive the `0x...` address locally
+4. store the private key in iOS Keychain
+5. present a recovery-phrase ceremony
+6. authenticate silently against `/swift/v2/auth/*`
 
 #### Normal daily use
 
-- Do not ask the user for the phrase.
-- Load the private key from Keychain.
-- Authenticate silently by signing a backend challenge.
-- Cache the returned backend session token in Keychain.
+- load the private key from Keychain
+- derive the same `0x...` address
+- request a challenge
+- sign it locally using Ethereum `personal_sign` / EIP-191 semantics
+- exchange it for a backend session token
 
-#### Recovery on new device or after reinstall
+The user should not experience this as “logging in.”
 
-- Ask the user to enter the 24 words locally.
-- Re-derive the same keypair locally.
-- Sign a backend challenge.
-- The backend restores the same identity because the public key matches.
+#### Recovery
+
+- user enters the 24 words locally
+- app re-derives the same EVM key
+- app signs a new challenge
+- backend restores the same identity because the wallet address matches
 
 #### Reboot identity
 
-- Explicit user action only.
-- Delete local private key, local phrase backup state, and local cached unfinished writing.
-- Generate a new phrase and new keypair.
-- Treat this as a fully new identity.
+- explicit user action only
+- wipe local private key
+- wipe local unfinished writing cache
+- wipe local session token
+- generate a brand-new phrase and address
 
-### Security Warnings
+This is a true identity reset.
 
-The user-facing copy should be direct:
+### User-Facing Warnings
 
-- if you lose this phrase, you lose your writings forever
+The copy should be direct:
+
+- this phrase is your identity
+- if you lose it, you lose your writings forever
 - Anky cannot recover it for you
 - the phrase never leaves your device
 
-This should be treated as a product truth, not marketing copy.
-
-## Key Management Requirements
-
-The iOS app should implement the following locally:
-
-- 24-word phrase generation
-- deterministic Ed25519 key derivation
-- public key derivation
-- raw message signing
-- secure Keychain persistence
-
-Use one stable derivation path and never change it after shipping.
-
-Recommended product choice:
-
-- BIP39 mnemonic
-- Solana/Ed25519 derivation
-- one canonical derivation path for all users, for example `m/44'/501'/0'/0'`
-
-If a different path is chosen, it must be frozen before public rollout.
-
 ## Backend Contract
 
-The backend seed-identity flow is live now.
+Base URL:
+
+```text
+https://anky.app
+```
+
+Target only the `/swift/v2/*` contract for new work.
 
 ### `POST /swift/v2/auth/challenge`
 
@@ -121,7 +126,7 @@ Request:
 
 ```json
 {
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
@@ -131,17 +136,17 @@ Response:
 {
   "ok": true,
   "challenge_id": "uuid",
-  "message": "anky.app seed identity sign in\n\npublic key: ...",
+  "message": "anky.app base identity sign in\n\naddress: 0x1234...\nchallenge id: ...",
   "expires_at": "2026-03-16 20:07:23"
 }
 ```
 
 Behavior:
 
-- validates public key shape
-- creates a one-time challenge
-- challenge expires after 10 minutes
-- app must sign the exact `message` bytes returned
+- validates an EVM address
+- stores a one-time challenge valid for 10 minutes
+- returns a plain-text message to sign
+- client must sign the exact returned message with Ethereum `personal_sign` / EIP-191 semantics
 
 ### `POST /swift/v2/auth/verify`
 
@@ -149,9 +154,9 @@ Request:
 
 ```json
 {
-  "wallet_address": "Base58PublicKey",
+  "wallet_address": "0x1234...",
   "challenge_id": "uuid",
-  "signature": "Base58Signature"
+  "signature": "0x..."
 }
 ```
 
@@ -162,20 +167,22 @@ Response:
   "ok": true,
   "session_token": "uuid",
   "user_id": "uuid",
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
 Behavior:
 
-- verifies Ed25519 signature over the stored challenge message
-- finds or creates the user for that public key
-- consumes the challenge so it cannot be replayed
-- returns a normal bearer session token
+- backend computes the EIP-191 hash of the stored message
+- backend recovers the signer address from the submitted signature
+- backend compares that recovered address to `wallet_address`
+- backend finds or creates the user for that address
+- backend consumes the challenge
+- backend returns a normal session token
 
 ### `GET /swift/v2/me`
 
-Use this after login or recovery to confirm identity.
+Use this after login or restore to confirm identity.
 
 Response includes:
 
@@ -186,11 +193,11 @@ Response includes:
 
 ### `GET /swift/v2/writings`
 
-Use this for the persisted history view after unlock.
+Returns persisted server-side writings for the authenticated identity.
 
 Important:
 
-- because short sessions are local-only in v2, this list should effectively represent persisted ankys and any older server-side writings
+- because short sessions are local-only in v2, this list should effectively represent real ankys and any old server-side content
 
 ### `POST /swift/v2/write`
 
@@ -229,86 +236,146 @@ Real-anky response:
   "flow_score": 0.83,
   "persisted": true,
   "anky_id": "uuid",
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
 Behavior:
 
-- requires bearer token from the seed auth flow
-- sessions under the anky threshold are not persisted
-- real ankys are persisted
-- real ankys trigger the normal generation pipeline
-- response makes persistence explicit through `persisted`
+- requires bearer auth from the v2 seed flow
+- short sessions are not persisted server-side
+- only real ankys persist
+- the `persisted` field is canonical and should drive client behavior
 
 ### `DELETE /swift/v2/auth/session`
 
-- invalidates the current session token
+- invalidates the current bearer token
 
-## Login Flow
+## Required Client Architecture
 
-The app should use this exact order:
+### `SeedIdentityManager`
 
-1. load private key from Keychain
-2. derive public key
-3. call `POST /swift/v2/auth/challenge`
-4. sign the returned `message` locally
-5. call `POST /swift/v2/auth/verify`
-6. store `session_token` in Keychain
-7. call `GET /swift/v2/me`
-8. route the user based on unlock state and local session state
+Responsibilities:
 
-If Keychain has no identity:
+- generate mnemonic
+- derive EVM private key
+- derive `0x...` address
+- sign challenge messages with EIP-191 semantics
+- store/retrieve key material in Keychain
+- wipe identity on reboot
+- restore from phrase
 
-1. generate phrase
-2. derive keypair
-3. save key locally
-4. show backup ceremony
-5. then perform the same challenge/verify flow
+### `AuthService`
+
+Responsibilities:
+
+- request challenge
+- sign it via `SeedIdentityManager`
+- verify and receive backend session token
+- store session token in Keychain
+- restore session on launch
+
+### `WritingSessionStore`
+
+Responsibilities:
+
+- local in-progress text
+- keystroke timing capture
+- life/idle state
+- pause/continue state
+- local unfinished-session persistence
+
+### `WritingAPI`
+
+Responsibilities:
+
+- submit completed sessions to `/swift/v2/write`
+- fetch `/swift/v2/me`
+- fetch `/swift/v2/writings`
+
+### Top-Level App State
+
+Recommended booleans:
+
+- `hasLocalIdentity`
+- `hasBackedUpPhrase`
+- `isAuthenticated`
+- `hasUnlockedFullExperience`
+- `hasInProgressWriting`
+
+The key distinction is:
+
+- having an identity is not the same thing as having unlocked the full experience
+
+## Onboarding Flow
+
+Recommended sequence:
+
+1. first open
+2. brief explanation of the practice
+3. generate identity silently
+4. present recovery phrase ceremony
+5. require user acknowledgment
+6. authenticate silently
+7. land on `WRITE NOW`
+
+Do not put email, phone, social login, or conventional profile creation in front of the practice.
+
+## Recovery Phrase Ceremony
+
+The backup moment should feel:
+
+- quiet
+- serious
+- beautiful
+- minimal
+
+The user should understand:
+
+- this phrase restores the identity
+- this phrase restores the writings
+- Anky cannot recover it
+- it never leaves the device
+
+Avoid generic crypto-wallet onboarding aesthetics.
 
 ## Writing Experience Spec
 
-This is the core interaction model the app should match.
+### Core Visual Principle
 
-### Visual Principle
+The interface should keep pulling attention into `NOW`.
 
-The screen must focus on `NOW`.
+- no conventional text editor feel
+- the current glyph dominates
+- old text is ambient
+- the present moment is the real object on screen
 
-- the dominant thing on screen is the current glyph
-- the UI should not feel like a traditional text editor
-- previous text is secondary and ambient
-- everything should reinforce immediacy and impermanence
+### Landing State
 
-### Initial state
-
-The landing state is minimal:
+Show only:
 
 - `WRITE NOW`
 - `8 minutes`
 
-No heavy chrome.
-No account ceremony before the writing invitation.
+### Active Writing
 
-### Active writing state
+- the latest glyph is huge and centered
+- the user should not feel like they are filling a normal text box
+- typed history is secondary
 
-- show only the latest glyph very large in the center
-- do not show a conventional multiline text field
-- preserve a sense of invisibility around the typed history
+### Bottom Ribbon
 
-### Bottom ribbon
-
-The bottom ribbon contains previously typed characters flowing endlessly to the left.
+The bottom ribbon contains previous characters flowing endlessly to the left.
 
 Rules:
 
 - base font size is `16pt`
-- apply the existing rhythm/inter-keystroke multiplier on top of that base
-- letters should be larger than before
-- letters should be mostly white
-- chakra colors should be visible only as a faint tint
-- the effect should stay subtle and atmospheric
+- apply rhythm/inter-keystroke multiplier on top
+- letters are mostly white
+- only a faint hint of chakra color remains
+- the effect should be subtle, not loud
 
-### Idle / life mechanic
+### Life / Idle Model
 
 There are 2 lives.
 
@@ -316,120 +383,100 @@ Rules:
 
 - after 3 seconds of inactivity, the active heart starts draining
 - by 8 seconds of inactivity, that life is lost
-- the main glyph must stay visible and fade during that window
-- the fade should happen in sync with the heart drain
-- over the same 8-second idle window, the glyph should crack or fracture open beautifully
+- the center glyph stays visible during that window
+- from 3s to 8s it should fade in sync with the heart drain
+- over the same window it should crack/fracture open beautifully
 
-Important correction:
+Do not make the glyph disappear abruptly at 3 seconds.
 
-- the current glyph must not disappear on a fixed 3-second timer
-- it should fade gradually from 3 seconds to 8 seconds
+### Pause / Continue State
 
-### Pause / continue state
+If the user loses one life but still has another:
 
-If the user loses one life but still has another left:
-
-- freeze the current writing state
-- show a `CONTINUE` action
-- pressing a key should resume immediately
+- freeze the writing state
+- show `CONTINUE`
+- keyboard input should resume immediately
 - tapping `CONTINUE` should resume immediately
 - the first resumed character must not be dropped
 
-### Failed / unfinished end state
+### Failed / Unfinished End State
 
 If the user does not complete a real anky:
 
 - no loading dots
-- no processing state
-- no fake waiting state
-- no chat
+- no fake processing state
 - no reflection
+- no chat
 
 Only show:
 
 - one subtle `try again` button
 - a small `(8 minutes)` label below it
 
-This state should feel clean, quiet, and final.
-
-### Successful anky end state
+### Successful End State
 
 If the user completes a real anky:
 
-- transition into the unlocked Anky experience
-- persisted writing now exists on the backend
-- full UI can open
-- the conversation interface with Anky becomes available
+- persist it to the backend
+- unlock the fuller shell
+- make the reflective/conversation layer available
 
 ## Local Persistence Rules
 
-Before the first real anky, local storage matters.
-
 Store locally:
 
-- current in-progress writing text
-- keystroke timing data if used for flow score
-- local draft/session id
-- whether the writing was interrupted
-- whether the backup ceremony was completed
+- current draft text
+- keystroke timing data
+- local session id
+- pause/life state if needed
+- unfinished sessions
 
-Do not send short writing to the backend through the v2 path.
+Do not send short writing to the backend through v2.
 
 If a short session ends:
 
-- keep it available locally if product still wants local reflection or recovery of unfinished text
-- but do not treat it as persisted identity content
-- do not show it inside the unlocked cloud history
+- it may remain visible locally if product wants recovery
+- it must not appear in server history
+- it must not unlock cloud features
 
-Once the user completes a real anky:
+After the first real anky:
 
-- send it through `POST /swift/v2/write`
-- let the backend persist it
-- clear any obsolete local-only draft fragments that should not remain part of the long-term record
+- send it through `/swift/v2/write`
+- trust `persisted`
+- unlock the full shell only when persistence succeeds
 
 ## Unlock Model
 
-The full UI should stay locked until the first real anky.
-
-### Locked mode
+### Locked Mode
 
 Allowed:
 
 - onboarding
 - backup ceremony
-- `NOW` writing flow
+- `NOW` writing
 - local-only unfinished writing
 
 Not allowed:
 
-- threaded conversation UI
-- expanded history UI that implies full sync
-- account/settings surfaces that conflict with the identity-less feel
+- conversation UI
+- persisted anky history implying cloud sync
+- broad account/profile UI
 
-### Unlocked mode
+### Unlocked Mode
 
-After first real anky:
+After the first real anky:
 
-- show persisted anky history
-- show reflection / conversation surfaces
+- show persisted history
+- show reflections and conversation surfaces
 - allow threaded conversation below ankys the user actually wrote
-- preserve the seed-identity model as the hidden account layer
 
-## Conversation Rules
-
-The user can thread conversations below ankys they have written.
-
-Interpretation for iOS:
-
-- no conversation surface for unfinished or local-only writing
-- conversation unlock is tied to real ankys
-- the conversation should feel like a continuation of a completed piece, not a generic chatbot
+If thread APIs are not in the app/backend yet, keep those surfaces hidden rather than faking them.
 
 ## Localization
 
 The app should follow device language.
 
-Current default language set:
+Default language set:
 
 - `en`
 - `es`
@@ -450,166 +497,58 @@ Current default language set:
 
 At minimum localize:
 
-- onboarding backup copy
+- backup ceremony copy
 - `WRITE NOW`
 - `8 minutes`
 - `CONTINUE`
 - `try again`
-- any resume hint
-- words / lives labels
+- lives / words labels
 - unlocked reflection and conversation labels
 
-## Suggested App Architecture
+## Security Requirements
 
-The native app should separate these concerns:
+The only acceptable signing model is local signing with the seed-derived EVM key.
 
-### IdentityManager
+Do not:
 
-Responsibilities:
+- send the 24 words to the backend
+- send the raw seed to the backend
+- use Privy as the primary identity model for the new app
+- let short writing persist server-side
+- let account UI dilute the feeling of `NOW`
 
-- phrase generation
-- key derivation
-- signing
-- Keychain persistence
-- wipe / reboot identity
-- recovery import
+Preferred next hardening step:
 
-### AuthService
+- use a vetted BIP39 + EVM derivation library if possible instead of custom crypto code
 
-Responsibilities:
+If any local implementation remains custom, require deterministic test vectors for:
 
-- request challenge
-- verify signature
-- store session token
-- refresh authenticated app state on launch
-
-### WritingSessionStore
-
-Responsibilities:
-
-- local in-progress writing state
-- local short-session history if product wants it
-- keystroke timing capture
-- life/pause state
-- recovery after interruption
-
-### WritingAPI
-
-Responsibilities:
-
-- submit real ankys to `/swift/v2/write`
-- fetch persisted writings from `/swift/v2/writings`
-- fetch `/swift/v2/me`
-
-### AppState
-
-Recommended top-level flags:
-
-- `hasLocalIdentity`
-- `hasBackedUpPhrase`
-- `isAuthenticated`
-- `hasUnlockedFullExperience`
-- `hasInProgressWriting`
-
-## Onboarding Flow
-
-Recommended sequence:
-
-1. first open
-2. brief statement of what Anky is
-3. generate identity silently
-4. show recovery phrase ceremony
-5. require user acknowledgment that Anky cannot recover it
-6. enter the `WRITE NOW` landing state
-
-Do not front-load the app with settings, profile creation, or social login choices.
-
-## Recovery Phrase Ceremony
-
-The backup ceremony is a critical product moment.
-
-It should feel:
-
-- slow
-- serious
-- beautiful
-- minimal
-
-The user should understand:
-
-- this phrase is their identity
-- this phrase restores their writings
-- this phrase never leaves the device
-- if they lose it, Anky cannot restore access
-
-Avoid turning this into a generic web3 wallet onboarding flow.
-
-## Migration From Current Mobile App
-
-The current mobile backend path used Privy.
-
-New direction:
-
-- new app versions should move to `/swift/v2/*`
-- seed identity should become the primary mobile identity model
-- Privy can remain in code temporarily as legacy support, but new product work should target seed identity
-
-Migration posture:
-
-- do not try to merge Privy identity and seed identity automatically in the first iteration
-- treat seed identity as the new canonical path
-- if legacy account migration is needed later, design it as a separate explicit migration project
-
-## Error Handling
-
-### Challenge expired
-
-- request a new challenge automatically
-- do not ask the user to do anything special
-
-### Signature verification failed
-
-- retry once with a fresh challenge
-- if still failing, surface a generic identity error
-- do not expose cryptographic jargon
-
-### Missing local key
-
-- if expected on cold start, route into recovery or new identity flow
-
-### Backend unavailable
-
-- keep local writing intact
-- never lose in-progress text because network auth failed
-
-### Session token invalid
-
-- repeat challenge/verify silently if local key exists
+- mnemonic checksum
+- derivation path
+- private key derivation
+- public address derivation
+- challenge signing
+- backend verification compatibility
 
 ## QA Checklist
 
-The mobile agent should verify all of this:
-
-- fresh install generates a new phrase
-- app can authenticate without showing login UI
-- reinstall + phrase restore recovers same wallet/public key
-- reboot identity produces a different wallet/public key
-- no phrase is sent over the network
-- short sessions return `persisted: false`
-- short sessions do not appear in persisted history
+- fresh install creates a new identity
+- app derives a valid `0x...` address
+- challenge/verify works silently
+- reinstall + phrase restore returns the same address
+- reboot identity produces a different address
+- short `/swift/v2/write` returns `persisted: false`
+- short sessions do not appear in `/swift/v2/writings`
 - real ankys return `persisted: true`
-- real ankys unlock full experience
+- real ankys unlock the full shell
 - continue flow does not drop the first resumed character
-- failed end state has no loading indicators
-- copy follows device language
-- Keychain persistence survives app relaunch
-- iCloud Keychain behavior is understood and tested
+- failed end state contains no loading state
+- device language localizes the core copy
 
 ## Current Backend Reality
 
 As of March 16, 2026:
 
-- the seed-identity backend path is live
 - `POST /swift/v2/auth/challenge` is live
 - `POST /swift/v2/auth/verify` is live
 - `GET /swift/v2/me` is live
@@ -617,28 +556,23 @@ As of March 16, 2026:
 - `POST /swift/v2/write` is live
 - `DELETE /swift/v2/auth/session` is live
 
-The backend has been verified end-to-end:
+The current backend model is Base/EVM wallet address identity with EIP-191-style challenge signing.
 
-- challenge creation
-- signature verification
-- session issuance
-- wallet-backed identity lookup
-- short `v2/write` returning `persisted: false`
-
-## Direct Instructions To The Mobile Agent
+## Direct Instruction To The Mobile Agent
 
 Build the updated app against `/swift/v2/*`.
 
-Implement this in order:
+Implement in this order:
 
 1. local seed identity generation
-2. Keychain persistence and recovery import
-3. challenge/verify auth flow
-4. `NOW` writing UI
-5. local-only short-session handling
-6. unlock transition after first real anky
-7. full persisted history and conversation surfaces
-8. localization pass
+2. Keychain persistence and restore
+3. challenge/verify auth
+4. locked vs unlocked shell
+5. `NOW` writing UI
+6. local-only short-session handling
+7. unlock after first persisted real anky
+8. persisted history and later conversation layer
+9. localization pass
 
 Do not build the new app around Privy.
 Do not send the 24-word phrase to the backend.

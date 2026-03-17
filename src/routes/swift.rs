@@ -3,7 +3,7 @@
 /// Auth: Bearer token in `Authorization: Bearer <session_token>` header.
 /// Session tokens are the same as web sessions (auth_sessions table).
 /// Mobile auth via Privy SDK: POST /swift/v1/auth/privy → returns session_token as JSON.
-/// Seed-phrase identity auth: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
+/// Seed-phrase identity auth on Base/EVM: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
 use crate::db::queries;
 use crate::error::AppError;
 use crate::services::claude;
@@ -11,10 +11,14 @@ use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use rand::RngCore;
 use rusqlite;
+use secp256k1::{
+    ecdsa::{RecoverableSignature, RecoveryId},
+    Message, PublicKey, Secp256k1,
+};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 
 // ===== Auth helpers =====
 
@@ -33,42 +37,93 @@ async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Ap
     Ok(user_id)
 }
 
-fn normalize_seed_wallet_address(wallet_address: &str) -> String {
-    wallet_address.trim().to_string()
+fn normalize_seed_wallet_address(wallet_address: &str) -> Result<String, AppError> {
+    let trimmed = wallet_address.trim();
+    let without_prefix = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+
+    if without_prefix.len() != 40 || !without_prefix.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(AppError::BadRequest(
+            "wallet_address must be a 0x-prefixed EVM address".into(),
+        ));
+    }
+
+    Ok(format!("0x{}", without_prefix.to_lowercase()))
 }
 
-fn parse_sol_public_key(wallet_address: &str) -> Result<VerifyingKey, AppError> {
-    let raw = bs58::decode(wallet_address)
-        .into_vec()
-        .map_err(|_| AppError::BadRequest("invalid public key".into()))?;
-    let key_bytes: [u8; 32] = raw
-        .try_into()
-        .map_err(|_| AppError::BadRequest("invalid public key length".into()))?;
-    VerifyingKey::from_bytes(&key_bytes)
-        .map_err(|_| AppError::BadRequest("invalid public key".into()))
+fn evm_address_from_public_key(public_key: &PublicKey) -> String {
+    let uncompressed = public_key.serialize_uncompressed();
+    let digest = Keccak256::digest(&uncompressed[1..]);
+    format!("0x{}", hex::encode(&digest[12..]))
 }
 
 fn build_seed_auth_message(wallet_address: &str, challenge_id: &str, nonce: &str) -> String {
     format!(
-        "anky.app seed identity sign in\n\npublic key: {}\nchallenge id: {}\nnonce: {}\n\nsign this only inside the anky app.",
+        "anky.app base identity sign in\n\naddress: {}\nchallenge id: {}\nnonce: {}\nchain id: 8453\n\nsign this only inside the anky app.",
         wallet_address, challenge_id, nonce
     )
+}
+
+fn ethereum_personal_sign_hash(message: &str) -> [u8; 32] {
+    let prefix = format!("\x19Ethereum Signed Message:\n{}", message.as_bytes().len());
+    let mut hasher = Keccak256::new();
+    hasher.update(prefix.as_bytes());
+    hasher.update(message.as_bytes());
+    let digest = hasher.finalize();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&digest);
+    hash
+}
+
+fn parse_evm_signature(signature_hex: &str) -> Result<[u8; 65], AppError> {
+    let trimmed = signature_hex.trim();
+    let without_prefix = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    let raw = hex::decode(without_prefix)
+        .map_err(|_| AppError::BadRequest("invalid signature encoding".into()))?;
+    raw.try_into()
+        .map_err(|_| AppError::BadRequest("invalid signature length".into()))
+}
+
+fn parse_recovery_id(recovery_byte: u8) -> Result<RecoveryId, AppError> {
+    let normalized = match recovery_byte {
+        0 | 1 => recovery_byte as i32,
+        27 | 28 => (recovery_byte - 27) as i32,
+        _ => return Err(AppError::BadRequest("invalid signature recovery id".into())),
+    };
+    RecoveryId::from_i32(normalized)
+        .map_err(|_| AppError::BadRequest("invalid signature recovery id".into()))
 }
 
 fn verify_seed_auth_signature(
     wallet_address: &str,
     message: &str,
-    signature_b58: &str,
+    signature_hex: &str,
 ) -> Result<(), AppError> {
-    let verifying_key = parse_sol_public_key(wallet_address)?;
-    let raw_sig = bs58::decode(signature_b58.trim())
-        .into_vec()
-        .map_err(|_| AppError::BadRequest("invalid signature encoding".into()))?;
-    let signature = Signature::from_slice(&raw_sig)
+    let normalized_wallet = normalize_seed_wallet_address(wallet_address)?;
+    let signature = parse_evm_signature(signature_hex)?;
+    let recovery_id = parse_recovery_id(signature[64])?;
+    let recoverable_signature = RecoverableSignature::from_compact(&signature[..64], recovery_id)
         .map_err(|_| AppError::BadRequest("invalid signature".into()))?;
-    verifying_key
-        .verify(message.as_bytes(), &signature)
-        .map_err(|_| AppError::Unauthorized("signature verification failed".into()))
+    let digest = ethereum_personal_sign_hash(message);
+    let message = Message::from_digest_slice(&digest)
+        .map_err(|_| AppError::BadRequest("invalid signature".into()))?;
+    let public_key = Secp256k1::new()
+        .recover_ecdsa(&message, &recoverable_signature)
+        .map_err(|_| AppError::Unauthorized("signature verification failed".into()))?;
+    let recovered_address = evm_address_from_public_key(&public_key);
+
+    if recovered_address != normalized_wallet {
+        return Err(AppError::Unauthorized(
+            "signature does not match wallet".into(),
+        ));
+    }
+
+    Ok(())
 }
 
 // ===== Auth =====
@@ -112,17 +167,13 @@ pub struct SeedAuthVerifyRequest {
 }
 
 /// POST /swift/v2/auth/challenge
-/// Create a one-time sign-in challenge for a locally derived seed-phrase identity.
-/// The iOS app should sign the returned `message` with the device's seed-derived keypair.
+/// Create a one-time sign-in challenge for a locally derived Base/EVM seed identity.
+/// The iOS app should sign the returned `message` using EIP-191 / personal_sign semantics.
 pub async fn auth_seed_challenge(
     State(state): State<AppState>,
     Json(req): Json<SeedAuthChallengeRequest>,
 ) -> Result<Json<SeedAuthChallengeResponse>, AppError> {
-    let wallet_address = normalize_seed_wallet_address(&req.wallet_address);
-    if wallet_address.is_empty() {
-        return Err(AppError::BadRequest("wallet_address is required".into()));
-    }
-    let _ = parse_sol_public_key(&wallet_address)?;
+    let wallet_address = normalize_seed_wallet_address(&req.wallet_address)?;
 
     let challenge_id = uuid::Uuid::new_v4().to_string();
     let mut nonce_bytes = [0u8; 32];
@@ -149,15 +200,12 @@ pub async fn auth_seed_challenge(
 }
 
 /// POST /swift/v2/auth/verify
-/// Verify a signature from the seed-derived keypair and return a normal Anky session token.
+/// Verify an EVM signature from the seed-derived keypair and return a normal Anky session token.
 pub async fn auth_seed_verify(
     State(state): State<AppState>,
     Json(req): Json<SeedAuthVerifyRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
-    let wallet_address = normalize_seed_wallet_address(&req.wallet_address);
-    if wallet_address.is_empty() {
-        return Err(AppError::BadRequest("wallet_address is required".into()));
-    }
+    let wallet_address = normalize_seed_wallet_address(&req.wallet_address)?;
 
     let (user_id, username) = {
         let db = state.db.lock().await;
@@ -835,19 +883,30 @@ pub async fn submit_writing_v2(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Signer, SigningKey};
-    use rand::rngs::OsRng;
+    use secp256k1::{Secp256k1, SecretKey};
 
     #[test]
     fn verifies_seed_auth_signatures() {
-        let mut rng = OsRng;
-        let signing_key = SigningKey::generate(&mut rng);
-        let wallet_address = bs58::encode(signing_key.verifying_key().to_bytes()).into_string();
+        let secp = Secp256k1::new();
+        let mut rng = secp256k1::rand::rngs::OsRng;
+        let secret_key = SecretKey::new(&mut rng);
+        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+        let wallet_address = evm_address_from_public_key(&public_key);
         let message = build_seed_auth_message(&wallet_address, "challenge-1", "nonce-1");
-        let signature = signing_key.sign(message.as_bytes());
-        let signature_b58 = bs58::encode(signature.to_bytes()).into_string();
+        let digest = ethereum_personal_sign_hash(&message);
+        let message = Message::from_digest_slice(&digest).unwrap();
+        let signature = secp.sign_ecdsa_recoverable(&message, &secret_key);
+        let (recovery_id, compact) = signature.serialize_compact();
+        let mut encoded = [0u8; 65];
+        encoded[..64].copy_from_slice(&compact);
+        encoded[64] = recovery_id.to_i32() as u8 + 27;
+        let signature_hex = format!("0x{}", hex::encode(encoded));
 
-        let verified = verify_seed_auth_signature(&wallet_address, &message, &signature_b58);
+        let verified = verify_seed_auth_signature(
+            &wallet_address,
+            &build_seed_auth_message(&wallet_address, "challenge-1", "nonce-1"),
+            &signature_hex,
+        );
         assert!(verified.is_ok());
     }
 }

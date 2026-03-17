@@ -17,7 +17,7 @@ Users write for 8 minutes without stopping. When a session becomes an anky, the 
 ## What lives in this repo
 
 - Rust/Axum backend and server-rendered web app
-- `/swift/v1/*` mobile API for the iOS app
+- `/swift/v1/*` legacy mobile API and `/swift/v2/*` seed-identity mobile API
 - Writing, memory, image, video, and livestream pipelines
 - Facilitator marketplace and AI-powered matching
 - x402 / USDC payment flows
@@ -27,7 +27,9 @@ Users write for 8 minutes without stopping. When a session becomes an anky, the 
 
 - [`WHITEPAPER.tex`](WHITEPAPER.tex) / [`WHITEPAPER.pdf`](WHITEPAPER.pdf) - philosophy, architecture, facilitator network, and token framing
 - [`UNDERSTANDING_ANKY.md`](UNDERSTANDING_ANKY.md) - system walkthrough for the operator/founder
-- [`SWIFT_AGENT_BRIEF.md`](SWIFT_AGENT_BRIEF.md) - implementation brief for the iOS app
+- [`docs/mobile-ios-now-seed-spec.md`](docs/mobile-ios-now-seed-spec.md) - canonical iOS implementation brief
+- [`docs/mobile-seed-identity.md`](docs/mobile-seed-identity.md) - Base/EVM seed identity contract for mobile
+- [`SWIFT_AGENT_BRIEF.md`](SWIFT_AGENT_BRIEF.md) - redirect note for the old mobile brief
 - [`THE_ANKY_MODEL.md`](THE_ANKY_MODEL.md) - why the corpus matters and how the LLM pipeline works
 - [`skills.md`](skills.md) - agent skill served at `/skills`
 - [`agent-skills/anky`](agent-skills/anky) - installable `SKILL.md` bundle for Codex/Hermes-style skill systems
@@ -64,7 +66,8 @@ GET  /api/v1/prompt/{id}
 GET  /api/v1/prompts
 POST /api/v1/prompt/{id}/write
 POST /api/v1/llm/training-status
-/swift/v1/*
+/swift/v1/*   # legacy mobile path
+/swift/v2/*   # current Base/EVM seed-identity mobile path
 GET  /health
 ```
 

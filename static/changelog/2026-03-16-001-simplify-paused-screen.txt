@@ -1,0 +1,1 @@
+i kust tried the thing that comes up qhen i stop writing for more than 8 seconds ans let me tell you you shouldnt display the texy that the user has elapsed ans the continue button. just diaplay "you have X life(s) left" and if the yser continues writing the session continues.

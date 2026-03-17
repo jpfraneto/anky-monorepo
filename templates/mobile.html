@@ -354,7 +354,7 @@
           </div>
           <div class="mobile-card-metric">
             <strong>SOVEREIGN</strong>
-            <span>the backend sees a public key and signed proof, not a recovery phrase, phone number, or email.</span>
+            <span>the backend sees a Base address and signed proof, not a recovery phrase, phone number, or email.</span>
           </div>
         </div>
       </aside>
@@ -398,14 +398,14 @@
         <h2>account creation without account theater</h2>
         <p>
           on first open, the app generates a 24-word recovery phrase locally and derives the user's
-          seed identity from it. that phrase never touches the backend. day to day, the app signs a
+          Base wallet identity from it. that phrase never touches the backend. day to day, the app signs a
           challenge in the background and carries the identity for the user through keychain and
           iCloud keychain. recovery is real. custody is real. but the ritual is hidden unless it is
           needed.
         </p>
         <ul class="mobile-principles">
           <li><strong>No email.</strong> No phone number. No social login as the center of trust.</li>
-          <li><strong>No phrase on the server.</strong> The backend only sees a public key and a signature.</li>
+          <li><strong>No phrase on the server.</strong> The backend only sees a Base address and a signature.</li>
           <li><strong>Real consequence.</strong> If the user loses the phrase and the keychain copy, the writings are gone.</li>
         </ul>
       </article>
@@ -452,8 +452,8 @@
     </section>
 
     <div class="mobile-footer-note">
-      <strong>current direction:</strong> seed identity is already live on the backend through
-      <code>/swift/v2/*</code>. the mobile app is moving toward local-first unfinished writing,
+      <strong>current direction:</strong> Base/EVM seed identity is already live on the backend
+      through <code>/swift/v2/*</code>. the mobile app is moving toward local-first unfinished writing,
       true-anky unlocks, and a writing experience where identity is protected quietly in the
       background while the foreground remains simple: write now.
     </div>

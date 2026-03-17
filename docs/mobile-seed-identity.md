@@ -1,17 +1,27 @@
 # Mobile Seed Identity
 
-This is the new identity model for the native iOS app.
+This is the current identity model for the native iOS app.
+
+It is Base/EVM-based, not Solana-based.
 
 ## Product Model
 
 - Identity is created locally on first app open.
 - The app generates a 24-word recovery phrase on-device.
 - The phrase never reaches the backend.
-- The phrase derives a Solana/Ed25519 keypair locally.
-- The private key lives in iOS Keychain and should be syncable with iCloud Keychain.
-- The backend only sees the public key (`wallet_address`) and signed challenges.
-- If the user loses the phrase and the local Keychain copy, they lose access forever.
-- "Reboot identity" means wiping the local key material and creating a new phrase.
+- The phrase derives a Base/EVM secp256k1 keypair locally.
+- The backend only sees the derived `0x...` wallet address and signed challenges.
+- The private key should live in iOS Keychain and may be synced through iCloud Keychain.
+- If the user loses the recovery phrase and the local Keychain copy, they lose access forever.
+- "Reboot identity" means wiping the local key material and creating a completely new identity.
+
+## Canonical Derivation
+
+- BIP39 mnemonic
+- EVM/secp256k1 account
+- canonical derivation path: `m/44'/60'/0'/0/0`
+
+Freeze that path before public rollout and do not drift later.
 
 ## Backend Endpoints
 
@@ -21,7 +31,7 @@ Request:
 
 ```json
 {
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
@@ -31,16 +41,17 @@ Response:
 {
   "ok": true,
   "challenge_id": "uuid",
-  "message": "anky.app seed identity sign in\n\npublic key: ...",
-  "expires_at": "2026-03-16 16:20:00"
+  "message": "anky.app base identity sign in\n\naddress: 0x1234...\nchallenge id: ...",
+  "expires_at": "2026-03-16 20:07:23"
 }
 ```
 
 Behavior:
 
-- Validates the public key shape.
-- Creates a one-time challenge that expires after 10 minutes.
-- The app must sign the exact `message` bytes locally.
+- validates that `wallet_address` is a valid EVM address
+- creates a one-time challenge valid for 10 minutes
+- the app must sign the exact returned `message`
+- signing semantics are Ethereum `personal_sign` / EIP-191 style
 
 ### `POST /swift/v2/auth/verify`
 
@@ -48,9 +59,9 @@ Request:
 
 ```json
 {
-  "wallet_address": "Base58PublicKey",
+  "wallet_address": "0x1234...",
   "challenge_id": "uuid",
-  "signature": "Base58Signature"
+  "signature": "0x..."
 }
 ```
 
@@ -61,31 +72,30 @@ Response:
   "ok": true,
   "session_token": "uuid",
   "user_id": "uuid",
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
 Behavior:
 
-- Verifies the Ed25519 signature against the stored challenge message.
-- Finds or creates the Anky user for that public key.
-- Consumes the challenge so it cannot be replayed.
-- Returns a normal Anky session token.
+- verifies the EVM signature by recovering the signer address from the stored challenge
+- finds or creates the Anky user for that wallet address
+- consumes the challenge so it cannot be replayed
+- returns a normal backend session token
 
 ### `DELETE /swift/v2/auth/session`
 
-- Same behavior as `DELETE /swift/v1/auth/session`.
-- Invalidates the bearer token.
+- invalidates the current bearer token
 
 ### `GET /swift/v2/me`
 
-- Same behavior as `GET /swift/v1/me`.
-- Useful to confirm the restored identity after recovery.
+- returns the authenticated user profile
+- includes `wallet_address`, `total_writings`, and `total_ankys`
 
 ### `GET /swift/v2/writings`
 
-- Same behavior as `GET /swift/v1/writings`.
-- Because short sessions are local-only in v2, this list effectively becomes the user's persisted ankys and any older stored writings.
+- returns persisted writings for the authenticated identity
+- because short sessions are local-only in v2, this list should effectively represent real persisted ankys and any older server-side writings
 
 ### `POST /swift/v2/write`
 
@@ -100,7 +110,7 @@ Request:
 }
 ```
 
-Response for a short or failed session:
+Short-session response:
 
 ```json
 {
@@ -113,7 +123,7 @@ Response for a short or failed session:
 }
 ```
 
-Response for a true anky:
+Real-anky response:
 
 ```json
 {
@@ -124,41 +134,46 @@ Response for a true anky:
   "flow_score": 0.83,
   "persisted": true,
   "anky_id": "uuid",
-  "wallet_address": "Base58PublicKey"
+  "wallet_address": "0x1234..."
 }
 ```
 
 Behavior:
 
-- Requires bearer auth from the new seed-identity sign-in flow.
-- Sessions under the real anky threshold are not written to the database.
-- A real anky remains `>= 8 minutes` and `>= 300 words`.
-- Real ankys are persisted and kick off the normal background generation pipeline.
-- If the authenticated user does not have a wallet/public key attached, the endpoint rejects the request.
+- requires bearer auth from the seed-identity flow
+- sessions under the true anky threshold are not written to the database
+- a true anky remains `>= 8 minutes` and `>= 300 words`
+- real ankys are persisted and kick off the normal generation pipeline
 
 ## Swift Client Responsibilities
 
-- Generate the 24-word phrase locally with a BIP39-compatible library.
-- Derive the Solana/Ed25519 keypair locally from that phrase.
-- Store the private key in Keychain.
-- Prefer `kSecAttrSynchronizable` for iCloud Keychain backup if that matches the desired UX.
-- Show the recovery phrase exactly once during onboarding, with explicit warning copy.
-- Never send the phrase to the backend.
-- On cold start:
-  - load key from Keychain
-  - if present, request challenge
-  - sign message
-  - verify
-  - store returned `session_token` in Keychain
-- On recovery:
-  - user enters 24 words locally
-  - app derives the same keypair
-  - app signs a new challenge
-  - backend restores the same identity because the public key matches
+- generate the 24-word phrase locally
+- derive the Base/EVM private key locally
+- derive the `0x...` address locally
+- store the private key in Keychain
+- sign the backend challenge with `personal_sign` / EIP-191 semantics
+- never send the recovery phrase to the backend
+- show the phrase once during onboarding with explicit warning copy
+
+Cold start flow:
+
+1. load key from Keychain
+2. derive `0x...` address
+3. request challenge
+4. sign the returned message locally
+5. verify and receive `session_token`
+6. store `session_token` in Keychain
+
+Recovery flow:
+
+1. user enters the 24 words locally
+2. app derives the same EVM account locally
+3. app signs a fresh challenge
+4. backend restores the same identity because the recovered wallet address matches
 
 ## Current Boundary
 
-- The new seed identity auth path exists on the backend.
+- The Base/EVM seed identity auth path exists on the backend.
 - The new mobile write path for this model is `POST /swift/v2/write`.
-- The legacy mobile write path (`/swift/v1/write`) still uses the older behavior and persists short sessions.
-- The web `NOW` flow is already on the newer product behavior, but it still uses anonymous UUID identity rather than seed identity.
+- The legacy mobile path `/swift/v1/*` still exists, but the new product direction should target `/swift/v2/*`.
+- The web `NOW` flow still uses anonymous UUID identity today; it has not yet been moved to seed identity.
