@@ -8,7 +8,6 @@ pub mod generations;
 pub mod health;
 pub mod interview;
 pub mod live;
-pub mod meditation;
 pub mod notification;
 pub mod pages;
 pub mod payment;
@@ -18,8 +17,10 @@ pub mod prompt;
 pub mod session;
 pub mod settings;
 pub mod simulations;
+pub mod social_context;
 pub mod swift;
 pub mod training;
+pub mod voices;
 pub mod webhook_farcaster;
 pub mod webhook_x;
 pub mod writing;
@@ -229,99 +230,76 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/swift/v1/write",
-            axum::routing::post(swift::submit_writing),
+            axum::routing::post(swift::submit_writing_unified),
         )
         .route(
             "/swift/v2/write",
-            axum::routing::post(swift::submit_writing_v2),
-        )
-        // Sadhana
-        .route(
-            "/swift/v1/sadhana",
-            axum::routing::get(swift::list_sadhana).post(swift::create_sadhana),
+            axum::routing::post(swift::submit_writing_unified),
         )
         .route(
-            "/swift/v1/sadhana/{id}",
-            axum::routing::get(swift::get_sadhana),
+            "/swift/v2/writing/{sessionId}/status",
+            axum::routing::get(swift::get_writing_status),
+        )
+        // Children
+        .route(
+            "/swift/v2/children",
+            axum::routing::get(swift::list_children).post(swift::create_child_profile),
         )
         .route(
-            "/swift/v1/sadhana/{id}/checkin",
-            axum::routing::post(swift::sadhana_checkin),
+            "/swift/v2/children/{childId}",
+            axum::routing::get(swift::get_child_profile),
         )
-        // Meditation
+        // Cuentacuentos
         .route(
-            "/swift/v1/meditation/start",
-            axum::routing::post(swift::meditation_start),
-        )
-        .route(
-            "/swift/v1/meditation/complete",
-            axum::routing::post(swift::meditation_complete),
+            "/swift/v2/cuentacuentos/ready",
+            axum::routing::get(swift::cuentacuentos_ready),
         )
         .route(
-            "/swift/v1/meditation/history",
-            axum::routing::get(swift::meditation_history),
-        )
-        // Breathwork
-        .route(
-            "/swift/v1/breathwork/session",
-            axum::routing::get(swift::get_breathwork_session),
+            "/swift/v2/cuentacuentos/history",
+            axum::routing::get(swift::cuentacuentos_history),
         )
         .route(
-            "/swift/v1/breathwork/ready",
-            axum::routing::get(swift::breathwork_ready),
+            "/swift/v2/cuentacuentos/{id}/complete",
+            axum::routing::post(swift::complete_cuentacuentos),
         )
         .route(
-            "/swift/v1/breathwork/complete",
-            axum::routing::post(swift::breathwork_complete),
+            "/swift/v2/cuentacuentos/{id}/assign",
+            axum::routing::post(swift::assign_cuentacuentos),
         )
+        // Next Prompt
         .route(
-            "/swift/v1/breathwork/history",
-            axum::routing::get(swift::breathwork_history),
+            "/swift/v2/next-prompt",
+            axum::routing::get(swift::get_next_prompt),
         )
-        // Personalized meditation ready
+        // You (profile)
+        .route("/swift/v2/you", axum::routing::get(swift::get_you))
+        // Device Token (legacy path)
         .route(
-            "/swift/v1/meditation/ready",
-            axum::routing::get(swift::meditation_ready),
+            "/swift/v2/device-token",
+            axum::routing::post(swift::register_device),
         )
-        // Facilitators
+        // Devices (new spec path)
         .route(
-            "/swift/v1/facilitators",
-            axum::routing::get(swift::list_facilitators),
+            "/swift/v2/devices",
+            axum::routing::post(swift::register_device).delete(swift::delete_device),
         )
+        // Settings
         .route(
-            "/swift/v1/facilitators/apply",
-            axum::routing::post(swift::facilitator_apply),
-        )
-        .route(
-            "/swift/v1/facilitators/recommended",
-            axum::routing::get(swift::recommended_facilitators),
-        )
-        .route(
-            "/swift/v1/facilitators/{id}",
-            axum::routing::get(swift::get_facilitator),
-        )
-        .route(
-            "/swift/v1/facilitators/{id}/review",
-            axum::routing::post(swift::review_facilitator),
-        )
-        .route(
-            "/swift/v1/facilitators/{id}/book",
-            axum::routing::post(swift::book_facilitator),
+            "/swift/v2/settings",
+            axum::routing::get(swift::get_settings).patch(swift::patch_settings),
         )
         // Admin
         .route(
             "/swift/v1/admin/premium",
             axum::routing::post(swift::set_premium),
         )
-        .route(
-            "/swift/v1/admin/facilitator",
-            axum::routing::post(swift::admin_facilitator),
-        )
         .layer(mobile_cors);
 
     Router::new()
         // Pages
         .route("/", axum::routing::get(pages::home))
+        .route("/stories", axum::routing::get(pages::stories_page))
+        .route("/you", axum::routing::get(pages::you_page))
         .route("/gallery", axum::routing::get(pages::gallery))
         .route(
             "/gallery/dataset-round-two",
@@ -390,6 +368,11 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(api::llm_training_status),
         )
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
+        // Public story deep link page (no auth)
+        .route(
+            "/story/{story_id}",
+            axum::routing::get(voices::story_deep_link_page),
+        )
         // Prompt pages
         .route(
             "/prompt/create",
@@ -436,6 +419,9 @@ pub fn build_router(state: AppState) -> Router {
             "/auth/privy/logout",
             axum::routing::post(auth::privy_logout),
         )
+        // Seed identity auth (web)
+        .route("/auth/seed/verify", axum::routing::post(auth::seed_verify))
+        .route("/auth/seed/logout", axum::routing::post(auth::seed_logout))
         // Farcaster MiniApp auth
         .route(
             "/auth/farcaster/verify",
@@ -552,12 +538,37 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/anky/{id}/like",
             axum::routing::post(api::toggle_like),
         )
+        .route("/api/v1/story/test", axum::routing::post(api::story_test))
+        // Admin
+        .route(
+            "/admin/story-tester",
+            axum::routing::get(api::admin_story_tester),
+        )
         .route(
             "/api/v1/check-prompt",
             axum::routing::post(api::check_prompt),
         )
         // Farcaster OG embed image
         .route("/api/v1/og-embed", axum::routing::get(api::og_embed_image))
+        // Public stories feed (no auth required)
+        .route(
+            "/api/v1/stories",
+            axum::routing::get(swift::list_all_stories),
+        )
+        .route("/api/v1/stories/{id}", axum::routing::get(swift::get_story))
+        // Anky Voices — story recordings
+        .route(
+            "/api/v1/stories/{story_id}/recordings",
+            axum::routing::get(voices::list_recordings).post(voices::create_recording),
+        )
+        .route(
+            "/api/v1/stories/{story_id}/voice",
+            axum::routing::get(voices::get_voice),
+        )
+        .route(
+            "/api/v1/stories/{story_id}/recordings/{recording_id}/complete",
+            axum::routing::post(voices::complete_listen),
+        )
         // Agent registration (no auth required)
         .route(
             "/api/v1/register",
@@ -696,35 +707,6 @@ pub fn build_router(state: AppState) -> Router {
             "/training/live/samples/{filename}",
             axum::routing::get(training::training_sample_image),
         )
-        // Meditation
-        .route(
-            "/api/v1/meditate/start",
-            axum::routing::post(meditation::start_meditation),
-        )
-        .route(
-            "/api/v1/meditate/complete",
-            axum::routing::post(meditation::complete_meditation),
-        )
-        .route(
-            "/api/v1/meditate/progression",
-            axum::routing::get(meditation::get_progression),
-        )
-        .route(
-            "/api/v1/meditate/reflect",
-            axum::routing::get(meditation::get_reflect_question),
-        )
-        .route(
-            "/api/v1/meditate/reflect/answer",
-            axum::routing::post(meditation::submit_reflect_answer),
-        )
-        .route(
-            "/api/v1/meditate/journal",
-            axum::routing::get(meditation::get_journal_prompt),
-        )
-        .route(
-            "/api/v1/meditate/journal/submit",
-            axum::routing::post(meditation::submit_journal_entry),
-        )
         // Memory
         .route(
             "/api/memory/backfill",
@@ -737,6 +719,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/dashboard/logs",
             axum::routing::get(dashboard::dashboard_logs),
+        )
+        .route(
+            "/dashboard/summaries",
+            axum::routing::get(dashboard::dashboard_summaries),
         )
         // Farcaster MiniApp manifest
         .route(
@@ -786,6 +772,16 @@ pub fn build_router(state: AppState) -> Router {
                 ))
                 .service(ServeDir::new("data/images")),
         )
+        .nest_service(
+            "/data/anky-images",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=31536000, immutable"),
+                ))
+                .service(ServeDir::new("data/anky-images")),
+        )
+        .nest_service("/data/writings", ServeDir::new("data/writings"))
         .nest_service("/videos", ServeDir::new("videos"))
         .nest_service("/data/videos", ServeDir::new("data/videos"))
         .nest_service("/gen-images", ServeDir::new("data/generations"))

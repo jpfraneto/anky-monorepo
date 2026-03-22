@@ -1023,28 +1023,22 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
         }
     });
 
-    // Background: image generation pipeline
-    let state_img = state.clone();
-    let aid = anky_id.clone();
-    let sid2 = session.session_id.clone();
-    let uid = session.user_id.clone();
-    let text_img = full_text.clone();
-    tokio::spawn(async move {
-        if let Err(e) = crate::pipeline::image_gen::generate_anky_from_writing(
-            &state_img, &aid, &sid2, &uid, &text_img,
-        )
-        .await
-        {
-            tracing::error!("Anky generation failed for {}: {}", &aid[..8], e);
-            state_img.emit_log(
-                "ERROR",
-                "image_gen",
-                &format!("Generation failed for {}: {}", &aid[..8], e),
-            );
-            let db = state_img.db.lock().await;
-            let _ = queries::mark_anky_failed(&db, &aid);
-        }
-    });
+    // Submit image generation to GPU priority queue
+    {
+        let is_pro = {
+            let db = state.db.lock().await;
+            queries::is_user_pro(&db, &session.user_id).unwrap_or(false)
+        };
+        state.gpu_queue.submit(
+            crate::state::GpuJob::AnkyImage {
+                anky_id: anky_id.clone(),
+                session_id: session.session_id.clone(),
+                user_id: session.user_id.clone(),
+                writing: full_text.clone(),
+            },
+            if is_pro { 1 } else { 0 },
+        );
+    }
 
     record_session_event(
         state,

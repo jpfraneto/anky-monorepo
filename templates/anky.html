@@ -3,6 +3,55 @@
 {% block title %}ANKY | {{ title }}{% endblock %}
 
 {% block head %}
+<style>
+  .anky-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .anky-tab {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.35);
+    font-size: 13px;
+    font-family: inherit;
+    padding: 8px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    letter-spacing: 0.04em;
+  }
+  .anky-tab:hover { color: rgba(255,255,255,0.6); }
+  .anky-tab.active {
+    color: rgba(255,255,255,0.9);
+    border-bottom-color: rgba(255,255,255,0.5);
+  }
+  .anky-tab-content { display: none; }
+  .anky-tab-content.active { display: block; }
+  .anky-story-meta {
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 6px;
+    letter-spacing: 0.03em;
+  }
+  .anky-story-kingdom {
+    text-transform: lowercase;
+  }
+  .anky-story-title {
+    font-size: 18px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.85);
+    margin: 0 0 14px 0;
+    font-style: italic;
+  }
+  .anky-story-content {
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.7);
+    white-space: pre-line;
+  }
+</style>
 <meta property="og:title" content="ANKY | {{ title }}">
 <meta property="og:description" content="{{ writing | truncate(length=300) }}">
 {% if image_webp %}<meta property="og:image" content="https://anky.app/data/images/{{ image_webp }}">
@@ -101,10 +150,33 @@
     </div>
     {% endif %}
 
-    {% if reflection %}
-    <div class="anky-section">
-      <h2>reflection</h2>
-      <div class="anky-reflection" id="reflection-content">{{ reflection }}</div>
+    {% if reflection or has_story %}
+    <div class="anky-section anky-tabs-section">
+      {% if reflection and has_story %}
+      <div class="anky-tabs">
+        <button class="anky-tab" data-tab="heart" id="tab-heart">heart</button>
+        <button class="anky-tab active" data-tab="mind" id="tab-mind">mind</button>
+      </div>
+      {% endif %}
+
+      {% if has_story %}
+      <div class="anky-tab-content {% if reflection %}{% else %}active{% endif %}" id="content-heart" {% if reflection %}style=""{% endif %}>
+        <div class="anky-story">
+          <div class="anky-story-meta">
+            {% if story_kingdom %}<span class="anky-story-kingdom">{{ story_kingdom }}</span>{% endif %}
+            {% if story_city %} &middot; {{ story_city }}{% endif %}
+          </div>
+          <h3 class="anky-story-title">{{ story_title }}</h3>
+          <div class="anky-story-content" id="story-text-content">{{ story_content }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if reflection %}
+      <div class="anky-tab-content" id="content-mind" {% if not has_story %}style=""{% endif %}>
+        <div class="anky-reflection" id="reflection-content">{{ reflection }}</div>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
     {% endif %}
@@ -113,6 +185,31 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+(function() {
+  var tabs = document.querySelectorAll('.anky-tab');
+  if (!tabs.length) {
+    // No tabs — show whichever content exists
+    var solo = document.querySelector('.anky-tab-content');
+    if (solo) solo.classList.add('active');
+    return;
+  }
+  // Default: show mind tab (fastest, gives actionable reflection immediately)
+  var heartContent = document.getElementById('content-heart');
+  var mindContent = document.getElementById('content-mind');
+  if (mindContent) mindContent.classList.add('active');
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var target = tab.dataset.tab;
+      if (heartContent) heartContent.classList.toggle('active', target === 'heart');
+      if (mindContent) mindContent.classList.toggle('active', target === 'mind');
+    });
+  });
+})();
+</script>
 {% if formatted_writing %}
 <script>
 (function() {

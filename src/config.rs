@@ -47,6 +47,23 @@ pub struct Config {
     pub dataset_password: String,
     // ComfyUI (local Flux image generation)
     pub comfyui_url: String,
+    // Honcho (user identity modeling)
+    pub honcho_api_key: String,
+    pub honcho_workspace_id: String,
+    // TTS (F5-TTS local service)
+    pub tts_base_url: String,
+    // Cloudflare R2 (audio storage for Anky Voices)
+    pub r2_account_id: String,
+    pub r2_bucket_name: String,
+    pub r2_access_key_id: String,
+    pub r2_secret_access_key: String,
+    pub r2_public_url: String,
+    // APNs (push notifications)
+    pub apns_key_path: String,
+    pub apns_key_id: String,
+    pub apns_team_id: String,
+    pub apns_bundle_id: String,
+    pub apns_environment: String, // "production" or "sandbox"
 }
 
 impl Config {
@@ -103,6 +120,23 @@ impl Config {
                 .unwrap_or_else(|_| "ankyisyou".into()),
             comfyui_url: std::env::var("COMFYUI_URL")
                 .unwrap_or_else(|_| "http://localhost:8188".into()),
+            tts_base_url: std::env::var("TTS_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:5001".into()),
+            honcho_api_key: std::env::var("HONCHO_API_KEY").unwrap_or_default(),
+            honcho_workspace_id: std::env::var("HONCHO_WORKSPACE_ID")
+                .unwrap_or_else(|_| "anky-prod".into()),
+            r2_account_id: std::env::var("R2_ACCOUNT_ID").unwrap_or_default(),
+            r2_bucket_name: std::env::var("R2_BUCKET_NAME")
+                .unwrap_or_else(|_| "anky-voices".into()),
+            r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").unwrap_or_default(),
+            r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").unwrap_or_default(),
+            r2_public_url: std::env::var("R2_PUBLIC_URL").unwrap_or_default(),
+            apns_key_path: std::env::var("APNS_KEY_PATH").unwrap_or_default(),
+            apns_key_id: std::env::var("APNS_KEY_ID").unwrap_or_default(),
+            apns_team_id: std::env::var("APNS_TEAM_ID").unwrap_or_default(),
+            apns_bundle_id: std::env::var("APNS_BUNDLE_ID").unwrap_or_default(),
+            apns_environment: std::env::var("APNS_ENVIRONMENT")
+                .unwrap_or_else(|_| "production".into()),
         })
     }
 }

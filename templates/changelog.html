@@ -7,6 +7,150 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-22-social-reply-pipeline-context">
+    <div class="changelog-date">2026-03-22</div>
+    <h2 class="changelog-title">social reply pipeline — honcho context + lowercase + unified voice</h2>
+    <p class="changelog-desc">anky now remembers who it's talking to on x and farcaster. honcho peer context and interaction history are injected into every social reply. unified identity prompt enforces lowercase always, platform-aware char limits, and consistent voice across both platforms. new social_peers table maps social handles to honcho peer IDs for cross-platform memory. all hardcoded reply strings converted to lowercase.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-22-001-social-reply-pipeline-context.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-22-social-reply-pipeline-context">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-21-tts-pipeline">
+    <div class="changelog-date">2026-03-21</div>
+    <h2 class="changelog-title">The Anky Voice — F5-TTS pipeline for story narration</h2>
+    <p class="changelog-desc">Local F5-TTS service on GPU 0 with cross-lingual voice cloning from a single reference clip. Same voice identity across EN/ES/ZH/HI/AR — only rhythm and pitch change per language. New cuentacuentos_audio table, TTS service module, R2 upload, GPU job queue integration. Stories auto-generate audio after translations complete. GET /voice falls back to TTS when no human recording exists. All 10 stories now have 48 audio tracks (~3 min narration each).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-21-002-tts-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-21-tts-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-21-push-notifications">
+    <div class="changelog-date">2026-03-21</div>
+    <h2 class="changelog-title">APNs push notifications for iOS app</h2>
+    <p class="changelog-desc">Device token registration (POST/DELETE /swift/v2/devices) with upsert on user+platform. Daily cron at 5:30 AM UTC generates personalized notification messages via Claude Haiku using each user's psychological profile, then sends via APNs (a2 crate). Configurable via APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID env vars.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-21-002-push-notifications.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-21-push-notifications">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-21-fix-mobile-api-gaps">
+    <div class="changelog-date">2026-03-21</div>
+    <h2 class="changelog-title">Fix 4 mobile API gaps for iOS app</h2>
+    <p class="changelog-desc">History endpoint now includes image URLs (was missing, causing "no images" on played stories). Recording responses now include recorder userId and username. New GET/PATCH /swift/v2/settings endpoint for cross-device preferences sync. Added preferred_language to user_settings and GET /me response.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-21-001-fix-mobile-api-gaps.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-21-fix-mobile-api-gaps">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-20-anky-voices">
+    <div class="changelog-date">2026-03-20</div>
+    <h2 class="changelog-title">Anky Voices — parents can record cuentacuentos stories</h2>
+    <p class="changelog-desc">New backend for story recordings: parents record up to 4 attempts per story in any language, audio uploaded to Cloudflare R2 via presigned URLs, quality checked via local Whisper transcription (auto-approved if Whisper unavailable). Language-aware playback endpoint matches Accept-Language. Listen completion tracking. Public deep link pages at /story/{id} with embedded audio player and iOS app download modal.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-20-003-anky-voices-backend.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-20-anky-voices">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-20-ritual-lifecycle">
+    <div class="changelog-date">2026-03-20</div>
+    <h2 class="changelog-title">Ritual lifecycle — writing sessions now have a defined end</h2>
+    <p class="changelog-desc">Writing sessions are no longer permanent. After the cuentacuentos story is generated, the training pair is exported (exported_at set), the raw writing content is nullified (content = NULL, content_deleted_at recorded), the next prompt is generated as the final sequential step, and the anky status transitions to "archived". The lifecycle reads: writing → story → training pair → nullification → next prompt → archived. The writing served its purpose — it became the story — and is released.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-20-002-ritual-lifecycle.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-20-ritual-lifecycle">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-20-local-qwen-gpu-queue-story-tester">
+    <div class="changelog-date">2026-03-20</div>
+    <h2 class="changelog-title">Story generation moves to local Qwen + GPU priority queue + model tester</h2>
+    <p class="changelog-desc">Swapped cuentacuentos story generation from Claude Haiku API to local Ollama qwen3.5:35b with 5-minute timeout and JSON parse retry. Added is_pro field on users and a two-channel GPU job queue (pro drained first) replacing direct tokio::spawn for image generation. New POST /api/v1/story/test endpoint accepts any model/provider (ollama, openrouter, anthropic) for side-by-side story quality comparison. Admin story tester UI at /admin/story-tester.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-20-001-swap-story-to-local-qwen-gpu-priority-queue.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-20-local-qwen-gpu-queue-story-tester">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-soul-document-story-pipeline">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Soul document powers story generation + training data + heart/mind tabs</h2>
+    <p class="changelog-desc">Replaced the 32-line story prompt with the full anky.soul.md — territory detection heuristics, narrator voice spec, kingdom-specific pacing, structural constraints. Stories now get the complete Anky voice instead of generic instructions. Added story_training_pairs table that logs every (writing, story) pair for future LoRA fine-tuning of the local Qwen model. Anky detail page now shows two tabs: heart (the cuentacuentos story) and mind (the Claude reflection).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-007-soul-document-story-pipeline.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-soul-document-story-pipeline">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-match-story-language">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Cuentacuentos stories match the parent's writing language</h2>
+    <p class="changelog-desc">Updated the cuentacuentos generation prompt to produce the story in the same language the parent wrote in, instead of always generating in English. Reflections already had this behavior. The four translation targets (es/zh/hi/ar) still run afterward.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-006-match-story-language-to-writing.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-match-story-language">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-mobile-web-design-system">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Mobile web design system with iOS-spec bottom nav</h2>
+    <p class="changelog-desc">Built a complete mobile-first design system that transforms the web experience on viewports under 768px. Adds a 72px fixed bottom nav with three tabs (historias, anky, tu), hides desktop chrome (navbar, drawer, live bar), and applies iOS-spec design tokens (#07070d background, thin typography, subtle borders). Created /stories page for cuentacuentos history with a full-screen story player overlay, and /you page showing psychological profile insights and writing stats. The nav hides during active writing sessions.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-005-mobile-web-design-system.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-mobile-web-design-system">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-web-seed-auth">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Web seed identity auth replaces Privy login</h2>
+    <p class="changelog-desc">Replaced the Privy-based web login with a 12-word BIP39 seed identity system. The new login page generates or imports a recovery phrase, encrypts the private key with a user passphrase via PBKDF2+AES-GCM, and authenticates via the same EIP-191 challenge/verify flow used by mobile. Backend adds POST /auth/seed/verify (cookie-setting) and POST /auth/seed/logout. iOS specs updated from 24-word to 12-word phrases.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-004-web-seed-auth.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-web-seed-auth">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-mobile-next-prompt-you-device-token">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Mobile next-prompt, profile, and device token endpoints</h2>
+    <p class="changelog-desc">Added three new mobile endpoints: GET /swift/v2/next-prompt returns a personalized writing prompt generated after each session via Ollama + Honcho context, GET /swift/v2/you returns the full user profile with Honcho peer context for the You tab, and POST /swift/v2/device-token registers APNs tokens. Post-write pipeline now spawns async prompt generation for both short sessions and ankys.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-003-mobile-next-prompt-you-device-token.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-mobile-next-prompt-you-device-token">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-remove-guidance-features">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">Remove sadhana, meditation, breathwork, and facilitator code</h2>
+    <p class="changelog-desc">Deleted all sadhana commitment tracking, meditation sessions, breathwork generation, personalized guidance queue, and facilitator marketplace code. The codebase now focuses on the core writing flow: write, generate anky image, and spawn cuentacuentos for seed users. Migration tables left in SQLite harmlessly.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-002-remove-sadhana-meditation-breathwork-facilitators.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-remove-guidance-features">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-19-system-summaries">
+    <div class="changelog-date">2026-03-19</div>
+    <h2 class="changelog-title">30-minute system summaries on the dashboard</h2>
+    <p class="changelog-desc">A background worker now generates an Ollama-powered summary of all system activity every 30 minutes. It queries DB stats (writings, ankys, meditations, breathwork, cuentacuentos, new users, failures) and collects the log buffer, then produces a natural language digest stored in a new system_summaries table. The dashboard now has a sidebar showing these summaries as a scrollable list, auto-refreshing when new ones arrive via SSE.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-19-001-system-summaries.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-19-system-summaries">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-18-honcho-identity-modeling">
+    <div class="changelog-date">2026-03-18</div>
+    <h2 class="changelog-title">Honcho integration for living user identity modeling</h2>
+    <p class="changelog-desc">Every writing (anky, short session, and checkpoint) is now sent to Honcho's peer modeling API, building a persistent evolving representation of each user. Cuentacuentos, meditation, breathwork, and reflection generation now fetch Honcho's peer context before prompting, so every artifact is personally shaped. Every 5th session, Honcho populates all four profile fields (psychological_profile, core_tensions, growth_edges, emotional_signature). Gracefully degrades to existing Ollama behavior when HONCHO_API_KEY is unset.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-18-003-honcho-identity-modeling.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-18-honcho-identity-modeling">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-18-unify-mobile-write-api">
+    <div class="changelog-date">2026-03-18</div>
+    <h2 class="changelog-title">Unified mobile write API with checkpoint support and status polling</h2>
+    <p class="changelog-desc">Merged v1/v2 write endpoints into one handler. Fixed critical bug where anky DB record was never created before spawning the image pipeline. Added checkpoint support (is_checkpoint field) and a new GET /swift/v2/writing/{sessionId}/status endpoint that returns downstream pipeline status for anky, cuentacuentos, meditation, and breathwork.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-18-002-unify-mobile-write-api.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-18-unify-mobile-write-api">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-18-ankyverse-stories">
+    <div class="changelog-date">2026-03-18</div>
+    <h2 class="changelog-title">Ankyverse cosmology embedded into story generation pipeline</h2>
+    <p class="changelog-desc">Stories are now generated in English by Claude, set inside the 8 kingdoms of the Ankyverse. Claude detects which chakra the parent's writing resonates with, places the story in the matching kingdom and city, and narrates from inside one character. Each story is then translated into Spanish, Mandarin, Hindi, and Arabic via Ollama, with per-phase TTS JSON for all 5 languages. The Moving House concept is woven into the lore.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-18-001-ankyverse-stories.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-18-ankyverse-stories">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-17-simple-og-metadata">
+    <div class="changelog-date">2026-03-17</div>
+    <h2 class="changelog-title">Homepage OG metadata simplified to Anky + 8 minutes</h2>
+    <p class="changelog-desc">The homepage social metadata now uses the simplest possible card: title "anky", description "write for 8 minutes", and a plain black SVG OG image.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-17-001-simple-og-metadata.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-17-simple-og-metadata">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-16-simplify-paused-screen">
     <div class="changelog-date">2026-03-16</div>
     <h2 class="changelog-title">Simplified pause screen — just lives count, no frozen text or button</h2>

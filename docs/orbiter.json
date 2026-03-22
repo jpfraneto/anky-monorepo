@@ -1,0 +1,6 @@
+{
+  "siteId": "dfc17ddb-2353-477a-a75e-68e119d371be",
+  "domain": "anky-docs",
+  "buildCommand": "npm install && node build.js",
+  "buildDir": "dist"
+}

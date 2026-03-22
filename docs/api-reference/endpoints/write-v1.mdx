@@ -1,0 +1,55 @@
+---
+title: "POST /swift/v1/write"
+description: "Submit a writing session (Privy auth)"
+---
+
+# POST /swift/v1/write
+
+Submit a writing session. If the duration crosses the 8-minute threshold, it becomes an anky and triggers image + guidance generation.
+
+**Auth:** Bearer token required.
+
+## Request
+
+```json
+{
+  "writing": "your stream of consciousness text...",
+  "duration_seconds": 512,
+  "new_line_count": 3
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `writing` | string | yes | Raw text content |
+| `duration_seconds` | integer | yes | Total writing duration |
+| `new_line_count` | integer | yes | Number of newlines in the text |
+
+## Response (Under Threshold)
+
+```json
+{
+  "is_anky": false,
+  "feedback": "Ollama-generated feedback about the writing...",
+  "flow_score": 0.45
+}
+```
+
+## Response (Real Anky)
+
+```json
+{
+  "is_anky": true,
+  "persisted": true,
+  "writing_id": "uuid",
+  "anky_id": "uuid",
+  "flow_score": 0.87
+}
+```
+
+## Side Effects
+
+When `is_anky: true`:
+1. Writing persisted to `writing_sessions`
+2. Anky image pipeline spawned (async)
+3. Cuentacuentos pipeline spawned (v2 users)

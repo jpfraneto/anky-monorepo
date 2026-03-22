@@ -1,0 +1,15 @@
+Implement the following plan:
+
+# Plan: Simplify Mobile Writing API
+
+## Context
+
+The mobile app has two write endpoints (v1/v2) doing overlapping things, no mobile checkpoint support, no way to poll for downstream status, and a critical bug where mobile writes never create the anky DB record before spawning the image pipeline (so `UPDATE ankys` silently fails). We're collapsing this into one clean flow.
+
+## Changes
+
+### 1. Fix the anky creation bug (critical)
+### 2. Unify to one write endpoint: `POST /swift/v2/write`
+### 3. Add status endpoint: `GET /swift/v2/writing/{sessionId}/status`
+### 4. Route changes in `src/routes/mod.rs`
+### 5. Deprecate v1/write behavior

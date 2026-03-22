@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}anky — tu{% endblock %}
+{% block content %}
+<div class="you-page">
+  <header class="you-header">
+    <h1 id="you-name">tu</h1>
+    <p class="you-meta" id="you-meta"></p>
+  </header>
+
+  <div class="you-insights" id="you-insights">
+    <div class="you-loading">cargando...</div>
+  </div>
+
+  <div class="you-stats" id="you-stats"></div>
+</div>
+
+<script>
+(function() {
+  var bearerToken = localStorage.getItem('anky_session_token') || '';
+  var isLoggedIn = localStorage.getItem('anky_logged_in') === 'true';
+
+  if (!isLoggedIn || !bearerToken) {
+    document.getElementById('you-insights').innerHTML = '<div class="you-empty"><p>inicia sesion para ver tu perfil.</p><a href="/login">entrar</a></div>';
+    return;
+  }
+
+  fetch('/swift/v2/you', { headers: { 'Authorization': 'Bearer ' + bearerToken }})
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data) {
+        document.getElementById('you-insights').innerHTML = '<div class="you-empty"><p>algo salio mal.</p></div>';
+        return;
+      }
+
+      // Meta
+      var meta = document.getElementById('you-meta');
+      var parts = [];
+      if (data.totalAnkys > 0) parts.push(data.totalAnkys + ' sesiones');
+      if (data.currentStreak > 0) parts.push(data.currentStreak + ' dias seguidos');
+      meta.textContent = parts.join(' \u00b7 ');
+
+      // Insights
+      var insights = document.getElementById('you-insights');
+      var blocks = [];
+
+      if (!data.psychologicalProfile && !data.emotionalSignature && !data.honchoContext) {
+        insights.innerHTML = '<div class="you-empty">' +
+          '<p>write for your children. let it flow.</p>' +
+          '<p>after a few sessions, anky will show you what it sees.</p>' +
+          '<p class="you-empty-dim">the more you write, the deeper the mirror.</p>' +
+        '</div>';
+      } else {
+        if (data.psychologicalProfile) {
+          blocks.push({ label: 'lo que anky ve', text: data.psychologicalProfile, opacity: 0.80 });
+        }
+        if (data.emotionalSignature) {
+          blocks.push({ label: 'tu firma emocional', text: data.emotionalSignature, opacity: 0.75 });
+        }
+        if (data.coreTensions) {
+          blocks.push({ label: 'tus tensiones', text: data.coreTensions, opacity: 0.80 });
+        }
+        if (data.growthEdges) {
+          blocks.push({ label: 'donde estas creciendo', text: data.growthEdges, opacity: 0.75 });
+        }
+        if (data.honchoContext && data.honchoContext !== data.psychologicalProfile) {
+          blocks.push({ label: 'lo que anky ve ahora', text: data.honchoContext, opacity: 0.55 });
+        }
+
+        insights.innerHTML = blocks.map(function(b) {
+          return '<div class="you-insight-block">' +
+            '<div class="you-insight-label">' + b.label + '</div>' +
+            '<div class="you-insight-text" style="opacity:' + b.opacity + '">' + b.text + '</div>' +
+          '</div>';
+        }).join('');
+      }
+
+      // Stats
+      var stats = document.getElementById('you-stats');
+      stats.innerHTML =
+        '<div class="you-stat-card">' +
+          '<div class="you-stat-number">' + (data.currentStreak || 0) + '</div>' +
+          '<div class="you-stat-label">racha dias</div>' +
+        '</div>' +
+        '<div class="you-stat-card">' +
+          '<div class="you-stat-number">' + (data.avgFlowScore ? data.avgFlowScore.toFixed(2) : '\u2014') + '</div>' +
+          '<div class="you-stat-label">flow promedio</div>' +
+        '</div>' +
+        '<div class="you-stat-card">' +
+          '<div class="you-stat-number">' + (data.totalWords ? Math.round(data.totalWords / 1000) + 'k' : '0') + '</div>' +
+          '<div class="you-stat-label">palabras</div>' +
+        '</div>';
+    })
+    .catch(function(err) {
+      console.error('Failed to load profile:', err);
+      document.getElementById('you-insights').innerHTML = '<div class="you-empty"><p>no se pudo cargar.</p></div>';
+    });
+})();
+</script>
+{% endblock %}

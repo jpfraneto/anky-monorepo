@@ -1,0 +1,41 @@
+---
+title: "Auth Endpoints"
+description: "Challenge, verify, privy, and logout"
+---
+
+# Auth Endpoints
+
+## `POST /swift/v2/auth/challenge`
+Create a one-time challenge for seed-wallet authentication.
+
+| Field | Type | Required |
+|-------|------|----------|
+| `wallet_address` | string | yes |
+
+## `POST /swift/v2/auth/verify`
+Verify an EIP-191 signature and mint a session.
+
+| Field | Type | Required |
+|-------|------|----------|
+| `wallet_address` | string | yes |
+| `signature` | string | yes |
+| `challenge` | string | yes |
+
+## `POST /swift/v1/auth/privy`
+Verify a Privy JWT token and mint a session.
+
+| Field | Type | Required |
+|-------|------|----------|
+| `privy_token` | string | yes |
+
+## `DELETE /swift/v1/auth/session`
+## `DELETE /swift/v2/auth/session`
+Invalidate the current bearer session.
+
+**Auth:** Bearer token required.
+
+## `GET /swift/v1/me`
+## `GET /swift/v2/me`
+Return the current user's profile, writing counts, and anky counts.
+
+**Auth:** Bearer token required.

@@ -692,7 +692,7 @@ pub async fn chat_quick(
         OllamaChatMessage {
             role: "system".into(),
             content: format!(
-                "You are Anky, a consciousness companion. The user wrote a stream of consciousness session (less than 8 minutes). Be warm, direct, insightful. Reference their writing. Keep responses concise (2-3 paragraphs). Help them see patterns and encourage them to write for the full 8 minutes next time.\n\nTheir writing:\n{}",
+                "You are Anky — a warm, honest presence that listens to parents write. You represent the inner child. You reflect back what parents can't see about their relationship with their children and with themselves. Be warm, direct, insightful. Use vivid imagery. Reference their writing specifically. Keep responses concise (2-3 paragraphs). Respond in the same language they write in.\n\nTheir writing:\n{}",
                 req.writing
             ),
         },
@@ -1143,12 +1143,13 @@ pub async fn stream_reflection(
         tokio::spawn(async move {
             // Check pre-warmed cache first (populated at minute 5 of writing session).
             // Fall back to building it now with a 5s timeout if not cached.
+            // Build memory context from local memory system + Honcho peer context
             let memory_ctx = if let Some(ref uid) = user_id {
                 let cached = {
                     let mut cache = state_clone.memory_cache.lock().await;
                     cache.remove(uid)
                 };
-                if let Some(ctx) = cached {
+                let local_ctx = if let Some(ctx) = cached {
                     tracing::info!("memory cache hit for {}", &uid[..8.min(uid.len())]);
                     Some(ctx)
                 } else {
@@ -1169,6 +1170,37 @@ pub async fn stream_reflection(
                     .ok()
                     .and_then(|r| r.ok())
                     .map(|ctx| ctx.format_for_prompt())
+                };
+
+                // Also fetch Honcho peer context (best-effort, 5s timeout)
+                let honcho_ctx = if crate::services::honcho::is_configured(&state_clone.config) {
+                    tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        crate::services::honcho::get_peer_context(
+                            &state_clone.config.honcho_api_key,
+                            &state_clone.config.honcho_workspace_id,
+                            uid,
+                        ),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .flatten()
+                } else {
+                    None
+                };
+
+                // Merge both contexts
+                match (local_ctx, honcho_ctx) {
+                    (Some(local), Some(honcho)) => Some(format!(
+                        "{}\n\n## Accumulated understanding of this person\n{}",
+                        local, honcho
+                    )),
+                    (Some(local), None) => Some(local),
+                    (None, Some(honcho)) => {
+                        Some(format!("## What you know about this person\n{}", honcho))
+                    }
+                    (None, None) => None,
                 }
             } else {
                 None
@@ -3912,4 +3944,208 @@ fn draw_rect(img: &mut image::RgbImage, x: u32, y: u32, w: u32, h: u32, color: i
             }
         }
     }
+}
+
+// ── Admin Pages ─────────────────────────────────────────────────────────────
+
+/// GET /admin/story-tester — serve the story pipeline tester UI (requires auth)
+pub async fn admin_story_tester(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+
+    // Also check cookie-based auth for browser access
+    let cookie_token = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("anky_session=")
+            })
+        });
+
+    let auth_token = token.or(cookie_token);
+    let auth_token =
+        auth_token.ok_or_else(|| AppError::Unauthorized("authentication required".into()))?;
+
+    {
+        let db = state.db.lock().await;
+        queries::get_auth_session(&db, auth_token)?
+            .ok_or_else(|| AppError::Unauthorized("invalid or expired session".into()))?;
+    }
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        include_str!("../../static/admin/story-tester.html"),
+    )
+        .into_response())
+}
+
+// ── Story Test Endpoint ─────────────────────────────────────────────────────
+
+fn cuentacuentos_system_prompt() -> &'static str {
+    include_str!("../../prompts/cuentacuentos_system.md")
+}
+
+/// POST /api/v1/story/test — test story generation with any model/provider.
+/// Requires Bearer auth. Does NOT save to database.
+pub async fn story_test(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<StoryTestRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Bearer auth (reuse swift helper pattern)
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or_else(|| AppError::Unauthorized("missing Authorization: Bearer header".into()))?;
+
+    {
+        let db = state.db.lock().await;
+        queries::get_auth_session(&db, token)?
+            .ok_or_else(|| AppError::Unauthorized("invalid or expired session token".into()))?;
+    }
+
+    let writing = req.writing.chars().take(4000).collect::<String>();
+    let user_message = format!(
+        r#"Parent writing:
+
+---
+{}
+---
+
+Return ONLY valid JSON with this exact shape:
+{{
+  "chakra": <number 1-8>,
+  "kingdom": "<kingdom name>",
+  "city": "<city name from that kingdom>",
+  "title": "A short evocative title",
+  "content": "The full story in the same language as the parent's writing, 400-600 words, with paragraph breaks as double newlines. Set in the named city, narrated by Anky from inside one character."
+}}"#,
+        writing
+    );
+
+    let system = cuentacuentos_system_prompt();
+    let start = std::time::Instant::now();
+
+    let raw_text = match req.provider.as_str() {
+        "ollama" => crate::services::ollama::call_ollama_with_system_timeout(
+            &state.config.ollama_base_url,
+            &req.model,
+            system,
+            &user_message,
+            300,
+        )
+        .await
+        .map_err(|e| AppError::Internal(format!("ollama error: {}", e)))?,
+        "openrouter" => {
+            let key = req.openrouter_key.as_deref().ok_or_else(|| {
+                AppError::BadRequest("openrouter_key required for openrouter provider".into())
+            })?;
+            call_openrouter(key, &req.model, system, &user_message)
+                .await
+                .map_err(|e| AppError::Internal(format!("openrouter error: {}", e)))?
+        }
+        "anthropic" => {
+            let result = crate::services::claude::call_claude_public(
+                &state.config.anthropic_api_key,
+                &req.model,
+                system,
+                &user_message,
+                3000,
+            )
+            .await
+            .map_err(|e| AppError::Internal(format!("anthropic error: {}", e)))?;
+            result.text
+        }
+        other => {
+            return Err(AppError::BadRequest(format!(
+                "unknown provider '{}', expected: ollama, openrouter, anthropic",
+                other
+            )));
+        }
+    };
+
+    let generation_time_ms = start.elapsed().as_millis() as u64;
+
+    // Try to parse as JSON for structured response
+    let story = {
+        let clean = raw_text
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+        match serde_json::from_str::<serde_json::Value>(clean) {
+            Ok(v) => v,
+            Err(_) => json!({ "raw": raw_text }),
+        }
+    };
+
+    Ok(Json(json!({
+        "story": story,
+        "model_used": req.model,
+        "generation_time_ms": generation_time_ms,
+        "provider": req.provider,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct StoryTestRequest {
+    pub writing: String,
+    pub model: String,
+    pub provider: String,
+    #[serde(default)]
+    pub openrouter_key: Option<String>,
+}
+
+/// Call OpenRouter's chat completions API.
+async fn call_openrouter(
+    api_key: &str,
+    model: &str,
+    system: &str,
+    user_message: &str,
+) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()?;
+
+    let body = json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user_message }
+        ],
+        "max_tokens": 3000
+    });
+
+    let resp = client
+        .post("https://openrouter.ai/api/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("OpenRouter API error {}: {}", status, text);
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    let text = data["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    if text.is_empty() {
+        anyhow::bail!("empty response from OpenRouter");
+    }
+    Ok(text)
 }

@@ -1,0 +1,56 @@
+---
+title: "POST /swift/v2/write"
+description: "Submit a writing session (seed auth, with cuentacuentos)"
+---
+
+# POST /swift/v2/write
+
+Submit a writing session with seed identity. Sub-threshold writings are **not persisted** — they return `persisted: false` and exist only in the response. Real ankys persist and spawn the full pipeline including cuentacuentos.
+
+**Auth:** Bearer token required (must have stored seed wallet).
+
+## Request
+
+```json
+{
+  "writing": "your stream of consciousness text...",
+  "duration_seconds": 512,
+  "new_line_count": 0
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `writing` | string | yes | Raw text content |
+| `duration_seconds` | integer | yes | Total writing duration |
+| `new_line_count` | integer | yes | Number of newlines in the text |
+
+## Response (Under Threshold)
+
+```json
+{
+  "is_anky": false,
+  "persisted": false,
+  "feedback": "Feedback text..."
+}
+```
+
+## Response (Real Anky)
+
+```json
+{
+  "is_anky": true,
+  "persisted": true,
+  "writing_id": "uuid",
+  "anky_id": "uuid",
+  "flow_score": 0.91
+}
+```
+
+## Side Effects
+
+When `is_anky: true`:
+1. Writing persisted to `writing_sessions`
+2. Raw text mirrored to `data/writings/{wallet}/{timestamp}.txt`
+3. Anky image pipeline spawned (async)
+4. **Cuentacuentos pipeline spawned** — chakra detection, story generation, image generation, multilingual translation

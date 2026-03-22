@@ -7,7 +7,53 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 use tera::Tera;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
+
+// ── GPU Job Priority Queue ──────────────────────────────────────────────────
+
+/// A GPU-bound job submitted for async processing after a writing session.
+pub enum GpuJob {
+    /// Generate anky image from writing
+    AnkyImage {
+        anky_id: String,
+        session_id: String,
+        user_id: String,
+        writing: String,
+    },
+    /// Generate images for cuentacuentos story paragraphs
+    CuentacuentosImages { cuentacuentos_id: String },
+    /// Generate TTS audio for cuentacuentos story
+    CuentacuentosAudio { cuentacuentos_id: String },
+}
+
+/// Two-channel priority queue: pro jobs are drained before free jobs.
+#[derive(Clone)]
+pub struct GpuJobQueue {
+    pub pro_tx: mpsc::UnboundedSender<GpuJob>,
+    pub free_tx: mpsc::UnboundedSender<GpuJob>,
+}
+
+impl GpuJobQueue {
+    pub fn new() -> (
+        Self,
+        mpsc::UnboundedReceiver<GpuJob>,
+        mpsc::UnboundedReceiver<GpuJob>,
+    ) {
+        let (pro_tx, pro_rx) = mpsc::unbounded_channel();
+        let (free_tx, free_rx) = mpsc::unbounded_channel();
+        (GpuJobQueue { pro_tx, free_tx }, pro_rx, free_rx)
+    }
+
+    /// Submit a job. Pro users (priority 1) go to the pro channel.
+    pub fn submit(&self, job: GpuJob, priority: i32) {
+        let tx = if priority >= 1 {
+            &self.pro_tx
+        } else {
+            &self.free_tx
+        };
+        let _ = tx.send(job);
+    }
+}
 
 /// Simple in-memory rate limiter: tracks request timestamps per key.
 #[derive(Clone)]
@@ -159,6 +205,10 @@ pub struct AppState {
     pub sessions: crate::routes::session::SessionMap,
     /// 8 parallel inference slot tracker for Yang (GPU 1)
     pub slot_tracker: SlotTracker,
+    /// Ring buffer of recent log entries for periodic summaries
+    pub log_history: Arc<Mutex<VecDeque<LogEntry>>>,
+    /// Priority job queue for GPU-bound work (pro channel drained first)
+    pub gpu_queue: GpuJobQueue,
 }
 
 impl AppState {
@@ -170,6 +220,14 @@ impl AppState {
             message: message.to_string(),
             metadata: None,
         };
-        let _ = self.log_tx.send(entry);
+        let _ = self.log_tx.send(entry.clone());
+        // Also push into the ring buffer for periodic summaries
+        if let Ok(mut history) = self.log_history.try_lock() {
+            history.push_back(entry);
+            // Keep at most 5000 entries
+            while history.len() > 5000 {
+                history.pop_front();
+            }
+        }
     }
 }

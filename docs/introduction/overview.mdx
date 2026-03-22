@@ -1,0 +1,39 @@
+---
+title: "What is Anky?"
+description: "A writing practice that turns your inner world into artifacts for yourself and your children"
+---
+
+# What is Anky?
+
+Anky is a writing-practice backend that transmutes raw, honest, stream-of-consciousness writing into reflection, images, and stories.
+
+The core loop is simple:
+
+1. **You write for 8 minutes.** No editing. No backspace. Pure flow.
+2. **Anky reads what you wrote.** Not to judge — to reflect.
+3. **Artifacts emerge.** An image. A story for your child set in the Ankyverse.
+
+If you write for less than 8 minutes, you get feedback to help you go deeper next time. The threshold exists because real writing — the kind that matters — lives on the other side of resistance.
+
+## The Parent/Child System
+
+Anky is explicitly a parent/child system. A parent writes an honest 8-minute anky. The backend turns that writing into:
+
+- **Reflection** — what did you actually say?
+- **Image** — a visual artifact generated from your words
+- **Cuentacuentos** — an asynchronous story in the Ankyverse that can be assigned to your child's derived identity
+
+The point is to transmute a parent's inner life into artifacts that help both parent and child feel less alone.
+
+## Privacy is Structural
+
+The backend never sees seedphrases. It only sees derived wallet addresses and signed challenges. Your unfinished work stays private. Custody stays local.
+
+## The Stack
+
+- **Backend**: Rust + Axum, single binary on bare metal
+- **Database**: SQLite (not Postgres, not a cloud DB)
+- **Local AI**: Ollama (text) + ComfyUI/Flux (images)
+- **Cloud AI**: Claude for premium features
+- **Identity**: EVM seed-based wallet derivation
+- **Payments**: x402 USDC on Base

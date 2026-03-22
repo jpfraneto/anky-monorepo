@@ -1,0 +1,76 @@
+---
+title: "Cuentacuentos (Stories)"
+description: "Async stories generated from your writing, set in the Ankyverse, told to your children"
+---
+
+# Cuentacuentos
+
+Cuentacuentos (Spanish for "storyteller") are the stories generated from your ankys and delivered to your children. They're the bridge between a parent's inner world and a child's imagination.
+
+## How Stories Are Generated
+
+1. **You write an anky** (8+ minutes, v2 seed identity)
+2. **Claude reads your writing** and determines chakra resonance (1-8)
+3. **A story is generated** set in the matching Ankyverse kingdom and city
+4. **Anky narrates** from inside one of the characters — never breaking the fourth wall
+5. **The story is structured** into guidance phases (scenes) with per-phase narration
+6. **Images are generated** for each phase using Flux/ComfyUI on the local GPU
+7. **Translations happen** — Spanish, Mandarin Chinese, Hindi, and Arabic via Ollama
+
+## Story Structure
+
+Each cuentacuentos has:
+
+```json
+{
+  "id": "uuid",
+  "chakra": 4,
+  "kingdom": "Eleasis",
+  "city": "Verdantia",
+  "content": "The full English story text...",
+  "content_es": "Spanish translation...",
+  "content_zh": "Mandarin translation...",
+  "content_hi": "Hindi translation...",
+  "content_ar": "Arabic translation...",
+  "guidance_phases": [
+    {
+      "phase": 1,
+      "text": "Scene description...",
+      "narration_en": "English narration...",
+      "narration_es": "Spanish narration...",
+      "narration_zh": "Mandarin narration...",
+      "narration_hi": "Hindi narration...",
+      "narration_ar": "Arabic narration...",
+      "image_url": "/static/cuentacuentos/uuid_phase1.webp"
+    }
+  ],
+  "played": false,
+  "child_wallet_address": null
+}
+```
+
+## The Ready/Play Cycle
+
+Stories are consumed through a ready/play/complete cycle:
+
+1. `GET /swift/v2/cuentacuentos/ready` — returns the oldest unplayed story for the parent (or a specific child)
+2. The client presents the story with images and narration
+3. `POST /swift/v2/cuentacuentos/{id}/complete` — marks the story as played
+4. `POST /swift/v2/cuentacuentos/{id}/assign` — optionally assigns the story to a child wallet
+
+## Important: Text-First Delivery
+
+Stories are delivered as soon as the text is ready, even if images are still generating. Phase `image_url` fields will be `null` until the GPU finishes rendering. The client should handle graceful fallback — show text, show images as they appear.
+
+This is intentional. The story matters more than the illustration. A parent writing at 11pm shouldn't have to wait for GPU rendering before their child can hear a bedtime story.
+
+## Image Pipeline
+
+Each story phase gets its own image:
+
+1. **Ollama generates an image prompt** using the phase text + kingdom visual language
+2. **Flux/ComfyUI renders** a vertical image (768x1344) with the Anky LoRA
+3. **Images are saved** as WebP files and URLs written back to SQLite
+4. **Failed images retry** up to 3 times via the startup retry worker
+
+The vertical format is intentional — these are meant to be viewed on phones during bedtime.

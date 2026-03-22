@@ -1,0 +1,42 @@
+---
+title: "Configuration"
+description: "Environment variables and configuration options"
+---
+
+# Configuration
+
+Anky reads configuration from environment variables. Create a `.env` file in the project root or set them in your systemd service.
+
+## Required
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | Path to SQLite database | `data/anky.db` |
+| `ANTHROPIC_API_KEY` | Claude API key for premium features | `sk-ant-...` |
+
+## Ollama
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `qwen3.5:35b` | Default text model |
+
+## ComfyUI
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMFYUI_URL` | `http://localhost:8188` | ComfyUI API endpoint |
+| `COMFYUI_LORA_MODEL` | `anky_flux_lora_v2.safetensors` | LoRA model file name |
+
+## Payments
+
+| Variable | Description |
+|----------|-------------|
+| `TREASURY_ADDRESS` | EVM address for USDC payments on Base |
+
+## Server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8889` | HTTP listen port |
+| `HOST` | `0.0.0.0` | HTTP listen address |

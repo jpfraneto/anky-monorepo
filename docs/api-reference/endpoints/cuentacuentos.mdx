@@ -1,0 +1,75 @@
+---
+title: "Cuentacuentos Endpoints"
+description: "Story delivery, history, completion, and assignment"
+---
+
+# Cuentacuentos Endpoints
+
+All endpoints require v2 seed auth with a stored seed wallet.
+
+## `GET /swift/v2/cuentacuentos/ready`
+
+Return the oldest unplayed story for the parent, or for a specific child if `child_wallet` is passed as a query param.
+
+**Auth:** Bearer token with stored seed wallet.
+
+**Query params:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `child_wallet` | string | no | Filter stories assigned to this child |
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "chakra": 4,
+  "kingdom": "Eleasis",
+  "city": "Verdantia",
+  "content": "The full English story...",
+  "content_es": "Spanish...",
+  "content_zh": "Mandarin...",
+  "content_hi": "Hindi...",
+  "content_ar": "Arabic...",
+  "guidance_phases": [
+    {
+      "phase": 1,
+      "text": "Scene text...",
+      "narration_en": "...",
+      "narration_es": "...",
+      "image_url": "/static/cuentacuentos/uuid_p1.webp"
+    }
+  ],
+  "played": false,
+  "child_wallet_address": null
+}
+```
+
+Phase `image_url` may be `null` if images are still generating. Handle gracefully.
+
+## `GET /swift/v2/cuentacuentos/history`
+
+Return story history for the parent or a child.
+
+**Query params:**
+| Param | Type | Required |
+|-------|------|----------|
+| `child_wallet` | string | no |
+
+## `POST /swift/v2/cuentacuentos/{id}/complete`
+
+Mark a story as played.
+
+**Auth:** Bearer token with stored seed wallet.
+
+## `POST /swift/v2/cuentacuentos/{id}/assign`
+
+Assign a story to one of the caller's child wallets.
+
+**Request:**
+```json
+{
+  "child_wallet_address": "0xChildWallet"
+}
+```
+
+The child wallet must belong to the caller's parent wallet.

@@ -1,0 +1,96 @@
+---
+title: "Deployment"
+description: "Build, run, and expose Anky"
+---
+
+# Deployment
+
+## Build
+
+```bash
+cd /path/to/anky
+cargo build --release
+```
+
+The binary lands at `target/release/anky`.
+
+## Run Directly
+
+```bash
+./target/release/anky
+```
+
+The server starts on port 8889, opens (or creates) the SQLite database, runs migrations, and spawns background workers.
+
+## systemd Service
+
+Create `~/.config/systemd/user/anky.service`:
+
+```ini
+[Unit]
+Description=Anky Writing Practice Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/youruser/anky
+ExecStart=/home/youruser/anky/target/release/anky
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable anky.service
+systemctl --user start anky.service
+```
+
+## Expose via Cloudflare Tunnel
+
+```bash
+cloudflared tunnel create anky
+cloudflared tunnel route dns anky your-domain.app
+```
+
+Create `~/.config/systemd/user/cloudflared-anky.service`:
+
+```ini
+[Unit]
+Description=Cloudflare Tunnel for Anky
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared tunnel run anky
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+Configure the tunnel to point to `http://localhost:8889`.
+
+## Deploy Updates
+
+```bash
+cd /path/to/anky
+git pull
+cargo build --release
+systemctl --user restart anky.service
+```
+
+That's it. Single binary. No migrations to run (they're embedded). No containers to orchestrate.
+
+## For docs.anky.app
+
+The documentation site (this site) is deployed separately via Mintlify:
+
+1. Connect the `docs/` directory to Mintlify
+2. Point `docs.anky.app` CNAME to Mintlify's hosting
+3. Mintlify auto-deploys on push to main
+
+Alternatively, self-host with `mint build` and serve the static output from any CDN or the Anky server itself.

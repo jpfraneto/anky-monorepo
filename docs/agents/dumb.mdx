@@ -1,0 +1,134 @@
+---
+title: "Dumb Agent"
+description: "Stateless, single-shot writing agent. One call, one response. No memory."
+---
+
+# Dumb Agent
+
+The dumb agent is a stateless wrapper around the core writing system. You send it text, it sends back a result. No memory. No chaining. No session state.
+
+Use this when you want to integrate Anky's writing analysis into your own system without any magic.
+
+## Endpoints
+
+### Submit Writing
+
+```bash
+POST /agents/dumb/write
+```
+
+Submit raw writing text and get back analysis + feedback.
+
+**Headers:**
+```
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "writing": "your stream of consciousness text here...",
+  "duration_seconds": 512,
+  "new_line_count": 3
+}
+```
+
+**Response (under threshold):**
+```json
+{
+  "is_anky": false,
+  "feedback": "You wrote for 8 minutes but the flow score was low. There were 47 pauses longer than 3 seconds. The writing feels like you were thinking about what to write rather than writing what you were thinking. Try again with your eyes closed.",
+  "flow_score": 0.34,
+  "duration_seconds": 512,
+  "threshold_met": false
+}
+```
+
+**Response (real anky):**
+```json
+{
+  "is_anky": true,
+  "writing_id": "550e8400-e29b-41d4-a716-446655440000",
+  "flow_score": 0.87,
+  "duration_seconds": 512,
+  "chakra": 4,
+  "kingdom": "Eleasis",
+  "feedback": null
+}
+```
+
+### Get Writing Prompt
+
+```bash
+GET /agents/dumb/prompt
+```
+
+Get a random writing prompt. No personalization. No memory. Just a starting point.
+
+**Response:**
+```json
+{
+  "prompt": "Write about a door you chose not to open.",
+  "source": "ankyverse:eleasis"
+}
+```
+
+### Analyze Text
+
+```bash
+POST /agents/dumb/analyze
+```
+
+Analyze a piece of text without persisting it. Returns chakra resonance and thematic breakdown without triggering any pipelines.
+
+**Request:**
+```json
+{
+  "text": "any text to analyze..."
+}
+```
+
+**Response:**
+```json
+{
+  "chakra": 5,
+  "kingdom": "Voxlumis",
+  "themes": ["expression", "silence", "truth-telling"],
+  "emotional_signature": "restrained urgency",
+  "flow_estimate": 0.72
+}
+```
+
+## Usage Example
+
+```python
+import requests
+
+API = "https://anky.app/agents/dumb"
+TOKEN = "your-session-token"
+headers = {"Authorization": f"Bearer {TOKEN}"}
+
+# Get a prompt
+prompt = requests.get(f"{API}/prompt", headers=headers).json()
+print(f"Write about: {prompt['prompt']}")
+
+# Submit writing
+result = requests.post(f"{API}/write", headers=headers, json={
+    "writing": "eight minutes of raw text...",
+    "duration_seconds": 490,
+    "new_line_count": 2
+}).json()
+
+if result["is_anky"]:
+    print(f"Anky created in {result['kingdom']}")
+else:
+    print(f"Feedback: {result['feedback']}")
+```
+
+## When to Use Dumb
+
+- You're building your own writing app and just want the analysis
+- You want to batch-analyze existing texts for chakra mapping
+- You're testing the system before committing to a session
+- You want full control over the UX and don't want the agent making decisions

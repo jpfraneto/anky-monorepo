@@ -1,44 +1,48 @@
 {
   "posted": {
-    "49ee1b49-ad74-477b-b211-ec0d646b9bd6": {
-      "rank": 2,
-      "title": "finding trust friction",
-      "post_type": "quote-carousel",
-      "posted_at": "2026-03-12T16:02:14.692069+00:00",
-      "instagram_post_id": "17949179072962701",
-      "instagram_creation_id": "17850559068689166",
-      "instagram_child_creation_ids": [
-        "17850558981689166",
-        "17850559014689166",
-        "17850559026689166",
-        "17850559041689166"
-      ],
+    "b8c7dc6d-153f-4c99-945b-025b9de841e1": {
+      "rank": 3,
+      "title": "perfect repetition protection",
+      "post_type": "reel-text",
+      "posted_at": "2026-03-20T17:39:58.299110+00:00",
+      "instagram_post_id": "17930704821212711",
+      "instagram_creation_id": "17852066607689166",
+      "instagram_child_creation_ids": [],
       "asset_names": [
-        "20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide01.jpg",
-        "20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide02.jpg",
-        "20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide03.jpg",
-        "20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide04.jpg"
+        "20260320_143946_b8c7dc6d-153f-4c99-945b-025b9de841e1.png"
       ],
       "public_urls": [
-        "https://anky.app/static/autonomous/20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide01.jpg",
-        "https://anky.app/static/autonomous/20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide02.jpg",
-        "https://anky.app/static/autonomous/20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide03.jpg",
-        "https://anky.app/static/autonomous/20260312_130141_49ee1b49-ad74-477b-b211-ec0d646b9bd6_slide04.jpg"
+        "https://anky.app/static/autonomous/20260320_143946_b8c7dc6d-153f-4c99-945b-025b9de841e1.png"
+      ]
+    },
+    "c1d73dbf-67a2-4b6f-a43c-9a9e250148bc": {
+      "rank": 4,
+      "title": "parallel desperation",
+      "post_type": "still-image",
+      "posted_at": "2026-03-20T17:45:14.508123+00:00",
+      "instagram_post_id": "17894928864424070",
+      "instagram_creation_id": "17852067525689166",
+      "instagram_child_creation_ids": [],
+      "asset_names": [
+        "20260320_144504_c1d73dbf-67a2-4b6f-a43c-9a9e250148bc.png"
+      ],
+      "public_urls": [
+        "https://anky.app/static/autonomous/20260320_144504_c1d73dbf-67a2-4b6f-a43c-9a9e250148bc.png"
       ]
     },
     "cbd512da-65ab-4ed6-9020-f94e7869f242": {
       "rank": 1,
       "title": "rock bottom sacred",
       "post_type": "still-image",
-      "posted_at": "2026-03-16T16:15:29.183239+00:00",
-      "instagram_post_id": "18094958972094368",
-      "instagram_creation_id": "17851235292689166",
+      "posted_at": "2026-03-20T17:55:12.517335+00:00",
+      "instagram_post_id": "17865849753601092",
+      "instagram_creation_id": "17852068767689166",
       "instagram_child_creation_ids": [],
       "asset_names": [
-        "20260316_131516_cbd512da-65ab-4ed6-9020-f94e7869f242.png"
+        "20260320_145503_cbd512da-65ab-4ed6-9020-f94e7869f242.png"
       ],
       "public_urls": [
-        "https://anky.app/static/autonomous/20260316_131516_cbd512da-65ab-4ed6-9020-f94e7869f242.png"
+        "https://anky.app/static/autonomous/20260320_145503_cbd512da-65ab-4ed6-9020-f94e7869f242.png"
       ]
     }
   }

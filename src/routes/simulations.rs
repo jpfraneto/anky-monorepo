@@ -247,7 +247,7 @@ pub async fn slots_demo(State(state): State<AppState>) -> Result<Json<DemoRespon
         let resp = client
             .post(format!("{}/api/generate", OLLAMA_URL))
             .json(&serde_json::json!({
-                "model": "qwen3.5:9b",
+                "model": "qwen3.5:35b",
                 "prompt": "In one sentence, describe what a simulation slot is.",
                 "stream": false,
                 "options": {"num_predict": 60}

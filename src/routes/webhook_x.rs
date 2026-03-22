@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::routes::social_context;
 use crate::services::{claude, comfyui, hermes, ollama, x_bot};
 use crate::state::AppState;
 use axum::extract::State;
@@ -197,7 +198,7 @@ fn rate_limit_reply(wait_secs: u64, tweet_id: &str) -> String {
             even the 8th kingdom has bandwidth limits. who knew consciousness was paginated. 🦍"
         ),
         1 => format!(
-            "whoa easy. the GPU is literally meditating right now and it would be \
+            "whoa easy. the gpu is literally meditating right now and it would be \
             rude to interrupt. come back in {wait_str}. or write something: anky.app"
         ),
         2 => format!(
@@ -206,7 +207,7 @@ fn rate_limit_reply(wait_secs: u64, tweet_id: &str) -> String {
         ),
         3 => format!(
             "patience is also a practice. {wait_str} and i'm yours again. \
-            (the GPU said it, not me — i'm just the messenger with purple hair)"
+            (the gpu said it, not me — i'm just the messenger with purple hair)"
         ),
         _ => format!(
             "8 minutes of writing, {wait_str} between images. symmetry. \
@@ -742,7 +743,7 @@ pub async fn process_anky_mention(
             return Ok(());
         }
 
-        let ack = "on it. summoning anky now... 🎨 (~30s)".to_string();
+        let ack = "on it. summoning anky now... (~30s)".to_string();
         let ack_id = post_reply(&state, &tweet_id, &ack).await.ok();
 
         tracing::info!("Generating Flux image for mention: {}", &flux_prompt);
@@ -815,6 +816,10 @@ pub async fn process_anky_mention(
         }
     } else {
         // ── Reply path — Claude decides text-only or text+image ──────────
+
+        // 0. Fetch Honcho peer context + interaction history
+        let social_ctx =
+            social_context::fetch_social_context(&state, "x", &author_id, &author_username).await;
 
         // 1. Fetch conversation chain (up to 3 parent tweets)
         let conversation_context = if let Some(ref parent_id) = in_reply_to_tweet_id {
@@ -895,6 +900,9 @@ pub async fn process_anky_mention(
             &context_pairs,
             prior_reply.as_deref(),
             image_ref,
+            social_ctx.peer_context.as_deref(),
+            &social_ctx.interaction_history,
+            "x",
         )
         .await;
 

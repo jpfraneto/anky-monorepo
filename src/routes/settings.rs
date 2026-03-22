@@ -117,6 +117,8 @@ pub async fn save_settings(
             }
         }
 
+        // Preserve existing preferred_language when saving from web form
+        let existing = queries::get_user_settings(&db, &user.user_id)?;
         queries::upsert_user_settings(
             &db,
             &user.user_id,
@@ -125,6 +127,7 @@ pub async fn save_settings(
             &theme,
             idle_timeout,
             &keyboard_layout,
+            &existing.preferred_language,
         )?;
     }
 

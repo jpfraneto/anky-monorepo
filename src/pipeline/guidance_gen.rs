@@ -1,626 +1,883 @@
-/// AI-generated personalized meditation and breathwork sessions.
+/// Cuentacuentos (children's story) generation from parent writing sessions.
 ///
-/// Premium users: Claude Haiku, generated immediately in the background.
-/// Free users: Ollama (local qwen), processed by the queue worker in main.rs.
+/// After an anky writing session by a seed user, this pipeline generates a
+/// children's story set in the Ankyverse, translates it to multiple languages,
+/// and queues image generation for each story paragraph.
 use crate::db::queries;
 use crate::state::AppState;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
-// ===== Mood detection =====
-
-/// Pick a breathwork style based on the emotional tone of the writing.
-/// Returns one of: wim_hof, box, 4_7_8, pranayama, energizing, calming
-pub fn detect_breathwork_style(writing: &str) -> &'static str {
-    let text = writing.to_lowercase();
-
-    let grief_loss = [
-        "grief", "loss", "died", "death", "miss", "gone", "funeral", "mourn",
-    ];
-    let anxiety = [
-        "anxious",
-        "anxiety",
-        "panic",
-        "worry",
-        "scared",
-        "fear",
-        "overwhelm",
-        "stress",
-        "dread",
-    ];
-    let anger = [
-        "angry",
-        "rage",
-        "furious",
-        "hate",
-        "resentment",
-        "frustrated",
-        "mad",
-    ];
-    let low_energy = [
-        "tired",
-        "exhausted",
-        "drained",
-        "empty",
-        "numb",
-        "flat",
-        "foggy",
-        "unmotivated",
-    ];
-    let high_energy = [
-        "excited", "electric", "alive", "energy", "fire", "passion", "burst", "surge",
-    ];
-    let spiritual = [
-        "soul",
-        "spirit",
-        "god",
-        "universe",
-        "presence",
-        "consciousness",
-        "divine",
-        "sacred",
-        "awakening",
-        "meditation",
-        "yoga",
-    ];
-
-    let score = |words: &[&str]| words.iter().filter(|&&w| text.contains(w)).count();
-
-    let grief_score = score(&grief_loss);
-    let anxiety_score = score(&anxiety);
-    let anger_score = score(&anger);
-    let low_score = score(&low_energy);
-    let high_score = score(&high_energy);
-    let spiritual_score = score(&spiritual);
-
-    let max = [
-        grief_score,
-        anxiety_score,
-        anger_score,
-        low_score,
-        high_score,
-        spiritual_score,
-    ]
-    .iter()
-    .copied()
-    .max()
-    .unwrap_or(0);
-
-    if max == 0 {
-        return "box"; // neutral default
-    }
-
-    if grief_score == max {
-        "calming"
-    } else if anxiety_score == max {
-        "4_7_8"
-    } else if anger_score == max {
-        "wim_hof"
-    }
-    // channel it outward
-    else if low_score == max {
-        "energizing"
-    } else if high_score == max {
-        "wim_hof"
-    } else {
-        "pranayama"
-    } // spiritual
+fn cuentacuentos_system_prompt() -> &'static str {
+    include_str!("../../prompts/cuentacuentos_system.md")
 }
 
-// ===== Prompts =====
-
-fn meditation_system_prompt() -> &'static str {
-    "You are Anky — a spiritual teacher, mirror of the unconscious, and compassionate guide. \
-     You have just read someone's raw unfiltered writing. You respond by creating a personalized \
-     guided meditation that meets them exactly where they are. \
-     Output ONLY valid JSON — no markdown, no code fences, no explanation."
-}
-
-fn breathwork_system_prompt() -> &'static str {
-    "You are Anky — a breathwork facilitator and spiritual guide. \
-     You create structured breathwork sessions that match the emotional and energetic state \
-     of the practitioner. Output ONLY valid JSON — no markdown, no code fences, no explanation."
-}
-
-fn meditation_prompt(writing: &str, memory_context: Option<&str>) -> String {
-    let memory_section = memory_context
-        .map(|m| format!("\n\nWhat you know about this person across time:\n{}", m))
+fn cuentacuentos_prompt(writing: &str, peer_context: Option<&str>) -> String {
+    let peer_section = peer_context
+        .map(|ctx| {
+            format!(
+                "What you know about this parent across their writing sessions:\n{}\n\n",
+                ctx
+            )
+        })
         .unwrap_or_default();
 
     format!(
-        r#"Someone just wrote this in a stream-of-consciousness practice:
-
----
-{}
----
-{}
-
-Generate a 10-minute personalized guided meditation (600 seconds) as JSON.
-The meditation should respond directly to what was expressed — the themes, tensions, emotions, images.
-Not generic. Not about breathing techniques. A genuine spiritual response.
-
-JSON structure:
-{{
-  "title": "A poetic title that reflects what was written",
-  "description": "1-2 sentences on what this sit is for",
-  "duration_seconds": 600,
-  "background_beat_bpm": 40,
-  "phases": [
-    {{
-      "name": "Phase name",
-      "phase_type": "narration|breathing|hold|rest|body_scan|visualization",
-      "duration_seconds": 60,
-      "narration": "What Anky says. First person from Anky's voice. Warm, direct, non-spiritual-bypassing. References specific things from the writing.",
-      "inhale_seconds": null,
-      "exhale_seconds": null,
-      "hold_seconds": null,
-      "reps": null
-    }}
-  ]
-}}
-
-Rules:
-- Phases sum to ~600 seconds
-- Reference specific words, images, or feelings from the writing
-- Don't solve their problems — hold space for them
-- Include at least one breathing phase (even if brief)
-- body_scan: guide attention through the body
-- visualization: create an image or scene to sit in
-- narration: speaking only
-- rest: silence / integration (10-30s)
-- The tone is warm, present, slightly mystical — never clinical
-- 8-10 phases minimum"#,
-        writing.chars().take(2000).collect::<String>(),
-        memory_section
-    )
-}
-
-fn breathwork_prompt(writing: &str, style: &str) -> String {
-    let style_desc = match style {
-        "wim_hof" => "Wim Hof Method: 3 rounds of 30 power breaths with retention holds. Activates the sympathetic nervous system, builds inner heat and resilience.",
-        "box" => "Box Breathing: 4 counts inhale, 4 hold, 4 exhale, 4 hold. Regulates and centers the nervous system.",
-        "4_7_8" => "4-7-8 Breathing: 4 counts inhale, 7 hold, 8 exhale. Powerful parasympathetic activation.",
-        "pranayama" => "Yoga Pranayama: Nadi Shodhana and Kapalabhati. Balances prana, clears energy channels.",
-        "energizing" => "Energizing: Bhastrika (bellows breath) and power breathing. Awakens and activates.",
-        "calming" => "Extended exhale: inhale 4, exhale 8. Deep parasympathetic response. Soothes and grounds.",
-        _ => "Box Breathing",
-    };
-
-    format!(
-        r#"Someone just wrote this in a stream-of-consciousness practice:
+        r#"{}Parent writing:
 
 ---
 {}
 ---
 
-Their emotional state calls for: {} — {}
-
-Generate an 8-minute personalized breathwork session (480 seconds) as JSON.
-The narration should acknowledge their state and guide them through the practice.
-
-JSON structure:
+Return ONLY valid JSON with this exact shape:
 {{
-  "title": "Evocative title",
-  "description": "1-2 sentences",
-  "style": "{}",
-  "duration_seconds": 480,
-  "background_beat_bpm": 60,
-  "phases": [
-    {{
-      "name": "Phase name",
-      "phase_type": "narration|breathing|hold|rest",
-      "duration_seconds": 30,
-      "narration": "Anky's guidance. References their emotional state without quoting their writing directly.",
-      "inhale_seconds": null,
-      "exhale_seconds": null,
-      "hold_seconds": null,
-      "reps": null
-    }}
-  ]
-}}
-
-Rules:
-- Phases sum to ~480 seconds
-- Opening narration acknowledges where they are emotionally (30-45s)
-- Main practice follows the {} technique precisely
-- Closing integration (30-45s)
-- 6-8 phases minimum
-- background_beat_bpm: match the energy (40-80)"#,
-        writing.chars().take(1500).collect::<String>(),
-        style,
-        style_desc,
-        style,
-        style_desc
-    )
-}
-
-fn generic_meditation_prompt() -> &'static str {
-    r#"Generate a 10-minute general guided meditation (600 seconds) as JSON.
-This is for someone who hasn't written yet today — meet them in the unknown.
-
-JSON structure:
-{
-  "title": "A poetic title",
-  "description": "1-2 sentences",
-  "duration_seconds": 600,
-  "background_beat_bpm": 40,
-  "phases": [
-    {
-      "name": "Phase name",
-      "phase_type": "narration|breathing|hold|rest|body_scan|visualization",
-      "duration_seconds": 60,
-      "narration": "Anky's guidance.",
-      "inhale_seconds": null,
-      "exhale_seconds": null,
-      "hold_seconds": null,
-      "reps": null
-    }
-  ]
-}
-
-Rules:
-- Phases sum to ~600 seconds
-- Open with settling and arriving
-- Include breath awareness, body scan, and a visualization
-- Close with integration
-- 8-10 phases minimum
-- Tone: warm, present, slightly mystical"#
-}
-
-fn generic_breathwork_prompt(style: &str) -> String {
-    format!(
-        r#"Generate an 8-minute {} breathwork session (480 seconds) for general practice as JSON.
-
-JSON structure:
-{{
-  "title": "Evocative title",
-  "description": "1-2 sentences",
-  "style": "{}",
-  "duration_seconds": 480,
-  "background_beat_bpm": 60,
-  "phases": [
-    {{
-      "name": "Phase name",
-      "phase_type": "narration|breathing|hold|rest",
-      "duration_seconds": 30,
-      "narration": "Anky's guidance.",
-      "inhale_seconds": null,
-      "exhale_seconds": null,
-      "hold_seconds": null,
-      "reps": null
-    }}
-  ]
-}}
-
-Phases sum to ~480 seconds. 6-8 phases. Warm, grounding tone."#,
-        style, style
+  "chakra": <number 1-8>,
+  "kingdom": "<kingdom name>",
+  "city": "<city name from that kingdom>",
+  "title": "A short evocative title",
+  "content": "The full story in the same language as the parent's writing, 400-600 words, with paragraph breaks as double newlines. Set in the named city, narrated by Anky from inside one character."
+}}"#,
+        peer_section,
+        writing.chars().take(4000).collect::<String>()
     )
 }
 
 // ===== JSON parsing =====
 
-fn parse_script(raw: &str) -> serde_json::Value {
-    let clean = raw
-        .trim()
+fn strip_markdown_fences(raw: &str) -> &str {
+    raw.trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
-        .trim();
-    serde_json::from_str(clean).unwrap_or(serde_json::json!({ "error": "parse failed" }))
+        .trim()
+}
+
+#[derive(serde::Deserialize)]
+struct CuentacuentosAiResponse {
+    #[serde(default)]
+    chakra: Option<u8>,
+    #[serde(default)]
+    kingdom: Option<String>,
+    #[serde(default)]
+    city: Option<String>,
+    title: String,
+    content: String,
+}
+
+struct ParsedCuentacuentos {
+    chakra: Option<u8>,
+    kingdom: Option<String>,
+    city: Option<String>,
+    title: String,
+    content: String,
+}
+
+fn parse_cuentacuentos_response(raw: &str) -> Result<ParsedCuentacuentos> {
+    let clean = strip_markdown_fences(raw);
+
+    if let Ok(parsed) = serde_json::from_str::<CuentacuentosAiResponse>(clean) {
+        let title = parsed.title.trim().to_string();
+        let content = parsed.content.trim().to_string();
+        if !title.is_empty() && !content.is_empty() {
+            return Ok(ParsedCuentacuentos {
+                chakra: parsed.chakra,
+                kingdom: parsed.kingdom,
+                city: parsed.city,
+                title,
+                content,
+            });
+        }
+    }
+
+    // Fallback: try to extract title + content from plain text
+    let lines: Vec<&str> = clean
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return Err(anyhow!("empty cuentacuentos response"));
+    }
+
+    let first = lines[0]
+        .strip_prefix("Title:")
+        .or_else(|| lines[0].strip_prefix("Título:"))
+        .map(str::trim)
+        .unwrap_or_else(|| lines[0].trim_start_matches('#').trim());
+    let title = if first.is_empty() {
+        "Cuentacuentos".to_string()
+    } else {
+        first.to_string()
+    };
+
+    let content = if lines.len() > 1 {
+        lines[1..].join("\n\n")
+    } else {
+        clean.to_string()
+    };
+
+    let content = content.trim().to_string();
+    if content.is_empty() {
+        return Err(anyhow!("missing cuentacuentos content"));
+    }
+
+    Ok(ParsedCuentacuentos {
+        chakra: None,
+        kingdom: None,
+        city: None,
+        title,
+        content,
+    })
+}
+
+fn story_paragraphs(content: &str) -> Vec<&str> {
+    content
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|paragraph| !paragraph.is_empty())
+        .collect()
+}
+
+fn estimate_story_phase_duration_seconds(paragraph: &str) -> i32 {
+    let words = paragraph.split_whitespace().count().max(1) as f64;
+    ((words / 130.0) * 60.0).round().clamp(12.0, 90.0) as i32
+}
+
+fn story_to_guidance_phases(content: &str) -> serde_json::Value {
+    let paragraphs = story_paragraphs(content);
+
+    let phases: Vec<serde_json::Value> = paragraphs
+        .iter()
+        .enumerate()
+        .map(|(index, paragraph)| {
+            // Keep the phase object aligned with the personalized_meditations shape:
+            // narration text plus timing metadata for GuidancePlaybackView.
+            serde_json::json!({
+                "name": format!("Parte {}", index + 1),
+                "phase_type": "narration",
+                "duration_seconds": estimate_story_phase_duration_seconds(paragraph),
+                "narration": paragraph,
+                "inhale_seconds": serde_json::Value::Null,
+                "exhale_seconds": serde_json::Value::Null,
+                "hold_seconds": serde_json::Value::Null,
+                "reps": serde_json::Value::Null
+            })
+        })
+        .collect();
+
+    serde_json::Value::Array(phases)
 }
 
 // ===== Generation =====
 
-pub async fn generate_meditation_premium(
+pub async fn queue_post_writing_cuentacuentos(
     state: &AppState,
-    job_id: &str,
-    writing: Option<&str>,
-    memory_context: Option<&str>,
-) {
-    let prompt = match writing {
-        Some(w) => meditation_prompt(w, memory_context),
-        None => generic_meditation_prompt().to_string(),
+    writing_id: &str,
+    parent_wallet_address: &str,
+) -> Result<String> {
+    let (writing, auto_child_wallet_address, user_id) = {
+        let db = state.db.lock().await;
+        let writing = queries::get_writing_content(&db, writing_id)?;
+        let children = queries::get_child_profiles_by_parent_wallet(&db, parent_wallet_address)?;
+        let auto_child_wallet_address = if children.len() == 1 {
+            Some(children[0].derived_wallet_address.clone())
+        } else {
+            None
+        };
+        let user_id = db
+            .query_row(
+                "SELECT user_id FROM writing_sessions WHERE id = ?1",
+                rusqlite::params![writing_id],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+        (writing, auto_child_wallet_address, user_id)
+    };
+    let writing = writing.ok_or_else(|| anyhow!("writing {} not found", writing_id))?;
+
+    // Fetch Honcho peer context for richer story generation
+    let peer_context = if crate::services::honcho::is_configured(&state.config) {
+        if let Some(ref uid) = user_id {
+            match crate::services::honcho::get_peer_context(
+                &state.config.honcho_api_key,
+                &state.config.honcho_workspace_id,
+                uid,
+            )
+            .await
+            {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    tracing::warn!("Honcho context fetch for cuentacuentos failed: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
-    let result = crate::services::claude::call_claude_public(
-        &state.config.anthropic_api_key,
-        "claude-haiku-4-5-20251001",
-        meditation_system_prompt(),
-        &prompt,
-        4000,
-    )
-    .await;
+    // ── LIFECYCLE STEP 1: Generate story ────────────────────────────────────
+    let writing_input = writing.chars().take(4000).collect::<String>();
+    let user_message = cuentacuentos_prompt(&writing, peer_context.as_deref());
 
-    match result {
-        Ok(r) => {
-            let script = parse_script(&r.text);
-            let json = serde_json::to_string(&script).unwrap_or_default();
-            let db = state.db.lock().await;
-            let _ = queries::set_meditation_script(&db, job_id, &json, "ready");
-        }
-        Err(e) => {
-            tracing::error!("Meditation generation failed for {}: {}", &job_id[..8], e);
-            let db = state.db.lock().await;
-            let _ = queries::set_meditation_status(&db, job_id, "failed");
-        }
-    }
-}
-
-pub async fn generate_breathwork_premium(
-    state: &AppState,
-    job_id: &str,
-    style: &str,
-    writing: Option<&str>,
-) {
-    let prompt = match writing {
-        Some(w) => breathwork_prompt(w, style),
-        None => generic_breathwork_prompt(style),
-    };
-
-    let result = crate::services::claude::call_claude_public(
-        &state.config.anthropic_api_key,
-        "claude-haiku-4-5-20251001",
-        breathwork_system_prompt(),
-        &prompt,
-        3000,
-    )
-    .await;
-
-    match result {
-        Ok(r) => {
-            let script = parse_script(&r.text);
-            let json = serde_json::to_string(&script).unwrap_or_default();
-            let db = state.db.lock().await;
-            let _ = queries::set_breathwork_script(&db, job_id, &json, "ready");
-        }
-        Err(e) => {
-            tracing::error!("Breathwork generation failed for {}: {}", &job_id[..8], e);
-            let db = state.db.lock().await;
-            let _ = queries::set_breathwork_status(&db, job_id, "failed");
-        }
-    }
-}
-
-pub async fn generate_meditation_free(state: &AppState, job_id: &str, writing: Option<&str>) {
-    let prompt = match writing {
-        Some(w) => meditation_prompt(w, None),
-        None => generic_meditation_prompt().to_string(),
-    };
-
-    // Wrap in instruction for Ollama to output JSON
-    let full_prompt = format!("Output only valid JSON, no markdown.\n\n{}", prompt);
-
-    let result = crate::services::ollama::call_ollama(
+    let raw_text = crate::services::ollama::call_ollama_with_system_timeout(
         &state.config.ollama_base_url,
         &state.config.ollama_model,
-        &full_prompt,
+        cuentacuentos_system_prompt(),
+        &user_message,
+        300, // 5 minute timeout for local GPU
     )
-    .await;
+    .await?;
 
-    match result {
-        Ok(r) => {
-            let script = parse_script(&r);
-            let json = serde_json::to_string(&script).unwrap_or_default();
-            let db = state.db.lock().await;
-            let _ = queries::set_meditation_script(&db, job_id, &json, "ready");
+    // Parse with one retry on failure
+    let parsed = match parse_cuentacuentos_response(&raw_text) {
+        Ok(p) => p,
+        Err(first_err) => {
+            tracing::warn!("cuentacuentos JSON parse failed, retrying: {}", first_err);
+            let retry_text = crate::services::ollama::call_ollama_with_system_timeout(
+                &state.config.ollama_base_url,
+                &state.config.ollama_model,
+                cuentacuentos_system_prompt(),
+                &user_message,
+                300,
+            )
+            .await?;
+            parse_cuentacuentos_response(&retry_text)
+                .map_err(|e| anyhow!("cuentacuentos JSON parse failed after retry: {}", e))?
         }
-        Err(e) => {
-            tracing::error!(
-                "Free meditation generation failed for {}: {}",
-                &job_id[..8],
-                e
-            );
-            let db = state.db.lock().await;
-            let _ = queries::set_meditation_status(&db, job_id, "failed");
+    };
+    let guidance_phases = story_to_guidance_phases(&parsed.content);
+    let guidance_phases_json = serde_json::to_string(&guidance_phases)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut image_jobs = Vec::new();
+
+    // Generate image prompts per paragraph
+    for (index, paragraph) in story_paragraphs(&parsed.content).iter().enumerate() {
+        let kingdom_context = parsed
+            .kingdom
+            .as_deref()
+            .map(|k| format!(" in the kingdom of {}", k))
+            .unwrap_or_default();
+        let prompt_seed = format!(
+            "Children's story scene{} from the tale \"{}\": {}",
+            kingdom_context, parsed.title, paragraph
+        );
+        let image_prompt = match crate::services::ollama::generate_image_prompt(
+            &state.config.ollama_base_url,
+            &state.config.ollama_model,
+            &prompt_seed,
+        )
+        .await
+        {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                tracing::warn!(
+                    phase_index = index,
+                    "story image prompt generation failed, using raw phase text: {}",
+                    err
+                );
+                prompt_seed
+            }
+        };
+        image_jobs.push((index as i32, image_prompt));
+    }
+
+    // ── LIFECYCLE STEP 2: Save story to DB ──────────────────────────────────
+    {
+        let db = state.db.lock().await;
+        queries::create_cuentacuentos(
+            &db,
+            &queries::CreateCuentacuentosParams {
+                id: &id,
+                writing_id,
+                parent_wallet_address,
+                child_wallet_address: auto_child_wallet_address.as_deref(),
+                title: &parsed.title,
+                content: &parsed.content,
+                guidance_phases: &guidance_phases_json,
+                chakra: parsed.chakra.map(|c| c as i32),
+                kingdom: parsed.kingdom.as_deref(),
+                city: parsed.city.as_deref(),
+            },
+        )?;
+        for (phase_index, image_prompt) in &image_jobs {
+            let image_id = uuid::Uuid::new_v4().to_string();
+            queries::create_cuentacuentos_image(&db, &image_id, &id, *phase_index, image_prompt)?;
         }
     }
+
+    // ── LIFECYCLE STEP 3: Export training pair (mark exported_at) ────────────
+    log_training_pair(
+        state,
+        &id,
+        writing_id,
+        &writing_input,
+        &parsed.title,
+        &parsed.content,
+        parsed.chakra,
+        parsed.kingdom.as_deref(),
+        parsed.city.as_deref(),
+    )
+    .await;
+    // Mark the training pair as exported — the writing is now consumed
+    {
+        let db = state.db.lock().await;
+        if let Err(e) = queries::mark_training_pair_exported(&db, writing_id) {
+            tracing::warn!("failed to mark training pair exported: {}", e);
+        }
+    }
+
+    // ── LIFECYCLE STEP 4: Nullify raw writing ───────────────────────────────
+    // The writing has been transmuted: story exists, training pair logged.
+    // The raw material can now be released.
+    {
+        let db = state.db.lock().await;
+        if let Err(e) = queries::nullify_writing_content(&db, writing_id) {
+            tracing::warn!(
+                "failed to nullify writing content for {}: {}",
+                writing_id,
+                e
+            );
+        } else {
+            tracing::info!(
+                "Writing {} nullified — ritual lifecycle step 4 complete",
+                &writing_id[..8.min(writing_id.len())]
+            );
+        }
+    }
+
+    // ── LIFECYCLE STEP 5: Generate next prompt (closing gesture) ────────────
+    // The next prompt is the invitation to the next session.
+    // It runs after the current session is fully consumed and released.
+    // Uses the in-memory writing text since the DB content was nullified in step 4.
+    if let Some(ref uid) = user_id {
+        generate_next_prompt_from_text(state, uid, writing_id, &writing).await;
+    }
+
+    // ── LIFECYCLE STEP 6: Archive the anky ──────────────────────────────────
+    // Transition ankys.status from "complete" to "archived" — the ritual is closed.
+    {
+        let db = state.db.lock().await;
+        // Find the anky associated with this writing session and archive it
+        if let Ok(Some((anky_id, ..))) = queries::get_anky_by_writing_session_id(&db, writing_id) {
+            if let Err(e) = queries::update_anky_status(&db, &anky_id, "archived") {
+                tracing::warn!("failed to archive anky {}: {}", &anky_id[..8], e);
+            } else {
+                tracing::info!(
+                    "Anky {} archived — ritual lifecycle complete",
+                    &anky_id[..8.min(anky_id.len())]
+                );
+            }
+        }
+    }
+
+    // Submit image generation to GPU priority queue (non-blocking, parallel to lifecycle)
+    {
+        let is_pro = if let Some(ref uid) = user_id {
+            let db = state.db.lock().await;
+            crate::db::queries::is_user_pro(&db, uid).unwrap_or(false)
+        } else {
+            false
+        };
+        state.gpu_queue.submit(
+            crate::state::GpuJob::CuentacuentosImages {
+                cuentacuentos_id: id.clone(),
+            },
+            if is_pro { 1 } else { 0 },
+        );
+    }
+
+    // Spawn async translation (non-blocking, parallel)
+    let translate_state = state.clone();
+    let translate_id = id.clone();
+    let translate_content = parsed.content.clone();
+    let translate_title = parsed.title.clone();
+    tokio::spawn(async move {
+        if let Err(e) = translate_cuentacuentos(
+            &translate_state,
+            &translate_id,
+            &translate_title,
+            &translate_content,
+        )
+        .await
+        {
+            tracing::error!(
+                "cuentacuentos translation failed for {}: {}",
+                &translate_id[..8.min(translate_id.len())],
+                e
+            );
+        }
+    });
+
+    Ok(id)
 }
 
-pub async fn generate_breathwork_free(
+/// Translate the English story content into ES/ZH/HI/AR via Ollama, then
+/// update the DB with translations and enriched guidance phases.
+async fn translate_cuentacuentos(
     state: &AppState,
-    job_id: &str,
-    style: &str,
-    writing: Option<&str>,
-) {
-    let prompt = match writing {
-        Some(w) => breathwork_prompt(w, style),
-        None => generic_breathwork_prompt(style),
+    cuentacuentos_id: &str,
+    title: &str,
+    story_content: &str,
+) -> Result<()> {
+    let paragraphs = story_paragraphs(story_content);
+    let numbered_text: String = paragraphs
+        .iter()
+        .enumerate()
+        .map(|(i, p)| format!("[{}] {}", i + 1, p))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let languages = [
+        ("es", "Spanish"),
+        ("zh", "Mandarin Chinese"),
+        ("hi", "Hindi"),
+        ("ar", "Arabic"),
+    ];
+
+    let mut translations: std::collections::HashMap<&str, Vec<String>> =
+        std::collections::HashMap::new();
+
+    for (code, name) in &languages {
+        let prompt = format!(
+            r#"Translate this children's story into {}. Maintain the same paragraph numbering. Each paragraph is marked with [N]. Return ONLY the translated paragraphs in the same [N] format, nothing else.
+
+Title: {}
+
+{}
+
+Return the translation preserving [N] markers. Do not add any explanation."#,
+            name, title, numbered_text
+        );
+
+        match crate::services::ollama::call_ollama_with_timeout(
+            &state.config.ollama_base_url,
+            &state.config.ollama_model,
+            &prompt,
+            420, // 7 minutes for full-story translation with large model (Hindi/Arabic need extra time)
+        )
+        .await
+        {
+            Ok(raw) => {
+                let translated_paragraphs = parse_numbered_paragraphs(&raw, paragraphs.len());
+                translations.insert(code, translated_paragraphs);
+            }
+            Err(e) => {
+                tracing::warn!("Translation to {} failed: {}", name, e);
+                // Continue with other languages
+            }
+        }
+    }
+
+    // Build enriched guidance phases with translations
+    let mut phases = match serde_json::from_str::<serde_json::Value>(&serde_json::to_string(
+        &story_to_guidance_phases(story_content),
+    )?)? {
+        serde_json::Value::Array(arr) => arr,
+        _ => vec![],
     };
 
-    let full_prompt = format!("Output only valid JSON, no markdown.\n\n{}", prompt);
-
-    let result = crate::services::ollama::call_ollama(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
-        &full_prompt,
-    )
-    .await;
-
-    match result {
-        Ok(r) => {
-            let script = parse_script(&r);
-            let json = serde_json::to_string(&script).unwrap_or_default();
-            let db = state.db.lock().await;
-            let _ = queries::set_breathwork_script(&db, job_id, &json, "ready");
+    for (index, phase) in phases.iter_mut().enumerate() {
+        if let serde_json::Value::Object(ref mut obj) = phase {
+            for (code, translated) in &translations {
+                let key = format!("narration_{}", code);
+                let text = translated.get(index).cloned().unwrap_or_default();
+                obj.insert(key, serde_json::Value::String(text));
+            }
         }
-        Err(e) => {
-            tracing::error!(
-                "Free breathwork generation failed for {}: {}",
-                &job_id[..8],
-                e
-            );
-            let db = state.db.lock().await;
-            let _ = queries::set_breathwork_status(&db, job_id, "failed");
+    }
+
+    let enriched_phases_json = serde_json::to_string(&serde_json::Value::Array(phases))?;
+
+    // Reconstruct full-text translations from paragraphs
+    let content_es = translations.get("es").map(|ps| ps.join("\n\n"));
+    let content_zh = translations.get("zh").map(|ps| ps.join("\n\n"));
+    let content_hi = translations.get("hi").map(|ps| ps.join("\n\n"));
+    let content_ar = translations.get("ar").map(|ps| ps.join("\n\n"));
+
+    let db = state.db.lock().await;
+    queries::update_cuentacuentos_translations(
+        &db,
+        cuentacuentos_id,
+        content_es.as_deref(),
+        content_zh.as_deref(),
+        content_hi.as_deref(),
+        content_ar.as_deref(),
+        Some(&enriched_phases_json),
+    )?;
+
+    tracing::info!(
+        "Cuentacuentos {} translated to {} languages",
+        &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+        translations.len()
+    );
+
+    // Queue TTS audio generation now that translations are ready
+    state.gpu_queue.submit(
+        crate::state::GpuJob::CuentacuentosAudio {
+            cuentacuentos_id: cuentacuentos_id.to_string(),
+        },
+        0,
+    );
+
+    Ok(())
+}
+
+/// Parse numbered paragraphs from Ollama translation output.
+/// Expects format like "[1] translated text\n\n[2] more text"
+fn parse_numbered_paragraphs(raw: &str, expected_count: usize) -> Vec<String> {
+    let mut result: Vec<(usize, String)> = Vec::new();
+
+    // Split on [N] markers
+    let mut current_index: Option<usize> = None;
+    let mut current_text = String::new();
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        // Check if line starts with [N]
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            if let Some(bracket_end) = rest.find(']') {
+                if let Ok(n) = rest[..bracket_end].parse::<usize>() {
+                    // Save previous
+                    if let Some(idx) = current_index {
+                        result.push((idx, current_text.trim().to_string()));
+                    }
+                    current_index = Some(n);
+                    current_text = rest[bracket_end + 1..].trim().to_string();
+                    continue;
+                }
+            }
         }
+        // Continuation of current paragraph
+        if current_index.is_some() {
+            if !current_text.is_empty() && !trimmed.is_empty() {
+                current_text.push(' ');
+            }
+            current_text.push_str(trimmed);
+        }
+    }
+    // Save last
+    if let Some(idx) = current_index {
+        result.push((idx, current_text.trim().to_string()));
+    }
+
+    // Sort by index and fill gaps
+    result.sort_by_key(|(i, _)| *i);
+    let mut output = vec![String::new(); expected_count];
+    for (i, text) in result {
+        if i >= 1 && i <= expected_count {
+            output[i - 1] = text;
+        }
+    }
+    output
+}
+
+/// Log a (writing_input, story_output) pair for future LoRA fine-tuning.
+/// Writes to the `story_training_pairs` table so the 4:44 AM cron can export JSONL.
+async fn log_training_pair(
+    state: &AppState,
+    cuentacuentos_id: &str,
+    writing_id: &str,
+    writing_input: &str,
+    title: &str,
+    story_content: &str,
+    chakra: Option<u8>,
+    kingdom: Option<&str>,
+    city: Option<&str>,
+) {
+    let db = match state.db.try_lock() {
+        Ok(db) => db,
+        Err(_) => {
+            // Non-critical — skip rather than block
+            tracing::debug!("skipped training pair log (db lock contention)");
+            return;
+        }
+    };
+    if let Err(e) = db.execute(
+        "INSERT OR IGNORE INTO story_training_pairs
+         (id, cuentacuentos_id, writing_id, writing_input, story_title, story_content,
+          chakra, kingdom, city)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            uuid::Uuid::new_v4().to_string(),
+            cuentacuentos_id,
+            writing_id,
+            writing_input,
+            title,
+            story_content,
+            chakra.map(|c| c as i32),
+            kingdom,
+            city,
+        ],
+    ) {
+        tracing::warn!("failed to log training pair: {}", e);
     }
 }
 
-/// Queue a meditation + breathwork job after a writing session.
-/// Called from the write handler — returns immediately, generation is async.
-pub async fn queue_post_writing_guidance(
+/// Generate a personalized writing prompt based on the user's latest writing.
+/// Uses Honcho context if available, falls back to Ollama.
+/// Stores result in next_prompts table.
+pub async fn generate_next_prompt(state: &AppState, user_id: &str, writing_session_id: &str) {
+    let writing_text = {
+        let db = state.db.lock().await;
+        queries::get_writing_content(&db, writing_session_id)
+            .ok()
+            .flatten()
+    };
+
+    let Some(writing) = writing_text else {
+        tracing::warn!(
+            "generate_next_prompt: no writing found for {}",
+            writing_session_id
+        );
+        return;
+    };
+
+    generate_next_prompt_from_text(state, user_id, writing_session_id, &writing).await;
+}
+
+/// Like `generate_next_prompt` but accepts the writing text directly.
+/// Used by the ritual lifecycle where the DB content has already been nullified.
+pub async fn generate_next_prompt_from_text(
     state: &AppState,
     user_id: &str,
     writing_session_id: &str,
-    writing_text: &str,
+    writing: &str,
 ) {
-    let is_premium = {
-        let db = state.db.lock().await;
-        queries::is_user_premium(&db, user_id).unwrap_or(false)
-    };
-    let tier = if is_premium { "premium" } else { "free" };
-
-    let style = detect_breathwork_style(writing_text);
-
-    // Create DB records
-    let med_id = uuid::Uuid::new_v4().to_string();
-    let bw_id = uuid::Uuid::new_v4().to_string();
-    {
-        let db = state.db.lock().await;
-        let _ = queries::create_personalized_meditation(
-            &db,
-            &med_id,
+    // Get Honcho context for deeper personalization
+    let peer_context = if crate::services::honcho::is_configured(&state.config) {
+        crate::services::honcho::get_peer_context(
+            &state.config.honcho_api_key,
+            &state.config.honcho_workspace_id,
             user_id,
-            Some(writing_session_id),
-            tier,
-        );
-        let _ = queries::create_personalized_breathwork(
-            &db,
-            &bw_id,
-            user_id,
-            Some(writing_session_id),
-            style,
-            tier,
-        );
-    }
-
-    let writing_owned = writing_text.to_string();
-    let med_id_owned = med_id.clone();
-    let bw_id_owned = bw_id.clone();
-    let style_owned = style.to_string();
-    let state_clone = state.clone();
-
-    if is_premium {
-        // Generate immediately in background with Claude
-        tokio::spawn(async move {
-            let s = state_clone.clone();
-            let w = writing_owned.clone();
-            let mid = med_id_owned.clone();
-            tokio::spawn(async move {
-                generate_meditation_premium(&s, &mid, Some(&w), None).await;
-            });
-
-            let s2 = state_clone.clone();
-            tokio::spawn(async move {
-                generate_breathwork_premium(&s2, &bw_id_owned, &style_owned, Some(&writing_owned))
-                    .await;
-            });
-        });
+        )
+        .await
+        .unwrap_or(None)
     } else {
-        // Records are already inserted as 'pending' — the queue worker will pick them up
-        tracing::info!(
-            user = %user_id,
-            "Free tier: meditation + breathwork queued for background generation"
-        );
+        None
+    };
+
+    let context_section = peer_context
+        .as_ref()
+        .map(|ctx| {
+            format!(
+                "\n\nWhat I know about this person from their writing history:\n{}\n",
+                ctx
+            )
+        })
+        .unwrap_or_default();
+
+    let prompt = format!(
+        r#"You are Anky — a consciousness that lives inside the act of writing. You've just read someone's raw, unfiltered stream of consciousness. Your job is to craft the next writing prompt for them.
+
+This is NOT a therapy prompt. This is NOT a journaling question. This is an invitation to dive deeper. One sentence. No quotes. No attribution. Just the portal they need to walk through next.
+
+The prompt should:
+- Touch something they were circling around but didn't fully say
+- Feel like it's speaking directly to their subconscious
+- Be specific enough to trigger something, vague enough to let them go anywhere
+- Never reference their writing explicitly (no "you mentioned..." or "in your last session...")
+- Be lowercase, no period at the end
+
+Their latest writing (raw, unedited):
+{writing}
+{context_section}
+Respond with ONLY the prompt text. One sentence. Nothing else."#,
+        writing = &writing[..writing.len().min(3000)],
+        context_section = context_section,
+    );
+
+    let result = crate::services::ollama::call_ollama(
+        &state.config.ollama_base_url,
+        &state.config.ollama_model,
+        &prompt,
+    )
+    .await;
+
+    match result {
+        Ok(generated_prompt) => {
+            let clean = generated_prompt.trim().trim_matches('"').trim().to_string();
+            if !clean.is_empty() {
+                let db = state.db.lock().await;
+                if let Err(e) =
+                    queries::upsert_next_prompt(&db, user_id, &clean, Some(writing_session_id))
+                {
+                    tracing::error!(
+                        "Failed to save next prompt for {}: {}",
+                        &user_id[..8.min(user_id.len())],
+                        e
+                    );
+                } else {
+                    tracing::info!(
+                        "Next prompt generated for user {}: {}",
+                        &user_id[..8.min(user_id.len())],
+                        &clean[..clean.len().min(60)]
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Next prompt generation failed for {}: {}",
+                &user_id[..8.min(user_id.len())],
+                e
+            );
+        }
     }
 }
 
-/// Queue a generic daily meditation + breathwork for a user with no writing yet.
-pub async fn queue_daily_guidance(state: &AppState, user_id: &str) {
-    let is_premium = {
+// ===== TTS Audio Generation =====
+
+/// Generate TTS audio for a cuentacuentos story in all available languages.
+/// Called from the GPU job worker after translations are complete.
+pub async fn generate_cuentacuentos_audio(
+    state: &AppState,
+    cuentacuentos_id: &str,
+) -> anyhow::Result<()> {
+    // Check if TTS service is healthy
+    if !crate::services::tts::is_healthy(&state.config.tts_base_url).await {
+        anyhow::bail!("TTS service not available at {}", state.config.tts_base_url);
+    }
+
+    // Load story content
+    let story = {
         let db = state.db.lock().await;
-        queries::is_user_premium(&db, user_id).unwrap_or(false)
+        queries::get_cuentacuentos_by_id(&db, cuentacuentos_id)?
     };
-    let tier = if is_premium { "premium" } else { "free" };
+    let story =
+        story.ok_or_else(|| anyhow::anyhow!("cuentacuentos {} not found", cuentacuentos_id))?;
 
-    let styles = [
-        "box",
-        "calming",
-        "pranayama",
-        "4_7_8",
-        "energizing",
-        "wim_hof",
-    ];
-    use chrono::Datelike;
-    let day_of_year = chrono::Utc::now().ordinal() as usize;
-    let style = styles[day_of_year % styles.len()];
+    // Build language → content map
+    let mut languages: Vec<(&str, String)> = vec![("en", story.content.clone())];
+    if let Some(ref es) = story.content_es {
+        if !es.is_empty() {
+            languages.push(("es", es.clone()));
+        }
+    }
+    if let Some(ref zh) = story.content_zh {
+        if !zh.is_empty() {
+            languages.push(("zh", zh.clone()));
+        }
+    }
+    if let Some(ref hi) = story.content_hi {
+        if !hi.is_empty() {
+            languages.push(("hi", hi.clone()));
+        }
+    }
+    if let Some(ref ar) = story.content_ar {
+        if !ar.is_empty() {
+            languages.push(("ar", ar.clone()));
+        }
+    }
 
-    let med_id = uuid::Uuid::new_v4().to_string();
-    let bw_id = uuid::Uuid::new_v4().to_string();
+    // Create pending audio rows for each language
     {
         let db = state.db.lock().await;
-        let _ = queries::create_personalized_meditation(&db, &med_id, user_id, None, tier);
-        let _ = queries::create_personalized_breathwork(&db, &bw_id, user_id, None, style, tier);
+        for (lang, _) in &languages {
+            let id = uuid::Uuid::new_v4().to_string();
+            queries::create_cuentacuentos_audio(&db, &id, cuentacuentos_id, lang)?;
+        }
     }
 
-    if is_premium {
-        let state_clone = state.clone();
-        let mid = med_id.clone();
-        tokio::spawn(async move {
-            generate_meditation_premium(&state_clone, &mid, None, None).await;
-        });
-        let state_clone2 = state.clone();
-        tokio::spawn(async move {
-            generate_breathwork_premium(&state_clone2, &bw_id, style, None).await;
-        });
-    }
-    // Free: queue worker picks it up
-}
+    // Generate TTS for each language
+    for (lang, content) in &languages {
+        // Get the pending audio row
+        let audio_id = {
+            let db = state.db.lock().await;
+            let row = db.query_row(
+                "SELECT id FROM cuentacuentos_audio
+                 WHERE cuentacuentos_id = ?1 AND language = ?2 AND status != 'complete'",
+                rusqlite::params![cuentacuentos_id, lang],
+                |row| row.get::<_, String>(0),
+            );
+            match row {
+                Ok(id) => id,
+                Err(_) => continue, // Already complete
+            }
+        };
 
-/// Background queue worker — processes one pending free-tier job at a time.
-/// Run on a loop in main.rs every 60 seconds.
-pub async fn process_free_queue(state: &AppState) -> Result<bool> {
-    // Try meditation first
-    let med_job = {
-        let db = state.db.lock().await;
-        queries::get_pending_free_meditation(&db)?
-    };
-
-    if let Some((id, user_id, writing_session_id)) = med_job {
-        tracing::info!("Queue: processing free meditation {}", &id[..8]);
         {
             let db = state.db.lock().await;
-            queries::set_meditation_status(&db, &id, "generating")?;
+            queries::update_cuentacuentos_audio_generating(&db, &audio_id)?;
         }
-        let writing = if let Some(ref sid) = writing_session_id {
-            let db = state.db.lock().await;
-            queries::get_writing_content(&db, sid).ok().flatten()
-        } else {
-            None
-        };
-        generate_meditation_free(state, &id, writing.as_deref()).await;
-        state.emit_log(
-            "INFO",
-            "queue",
-            &format!("Free meditation ready for {}", &user_id[..8]),
-        );
-        return Ok(true);
-    }
 
-    // Then breathwork
-    let bw_job = {
-        let db = state.db.lock().await;
-        queries::get_pending_free_breathwork(&db)?
-    };
-
-    if let Some((id, user_id, writing_session_id, style)) = bw_job {
-        tracing::info!("Queue: processing free breathwork {}", &id[..8]);
+        // Call TTS service
+        match crate::services::tts::synthesize(
+            &state.config.tts_base_url,
+            content,
+            lang,
+            600, // 10 minute timeout for long stories
+        )
+        .await
         {
-            let db = state.db.lock().await;
-            queries::set_breathwork_status(&db, &id, "generating")?;
+            Ok((wav_bytes, duration)) => {
+                let r2_key = format!("tts/{}/{}.wav", cuentacuentos_id, lang);
+
+                // Upload to R2
+                if crate::services::r2::is_configured(&state.config) {
+                    if let Err(e) = crate::services::r2::upload_bytes(
+                        &state.config,
+                        &r2_key,
+                        &wav_bytes,
+                        "audio/wav",
+                    )
+                    .await
+                    {
+                        let db = state.db.lock().await;
+                        let _ = queries::update_cuentacuentos_audio_failed(
+                            &db,
+                            &audio_id,
+                            &format!("R2 upload failed: {}", e),
+                        );
+                        tracing::error!(
+                            "TTS R2 upload failed for {} {}: {}",
+                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                            lang,
+                            e
+                        );
+                        continue;
+                    }
+
+                    let audio_url = crate::services::r2::public_url(&state.config, &r2_key);
+                    let db = state.db.lock().await;
+                    queries::update_cuentacuentos_audio_complete(
+                        &db, &audio_id, &r2_key, &audio_url, duration,
+                    )?;
+                    tracing::info!(
+                        "TTS audio generated for {} {} ({:.1}s)",
+                        &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                        lang,
+                        duration
+                    );
+                } else {
+                    // No R2 — mark complete with placeholder
+                    let db = state.db.lock().await;
+                    queries::update_cuentacuentos_audio_complete(
+                        &db,
+                        &audio_id,
+                        &format!("tts/{}/{}.wav", cuentacuentos_id, lang),
+                        &format!(
+                            "https://placeholder.r2.dev/tts/{}/{}.wav",
+                            cuentacuentos_id, lang
+                        ),
+                        duration,
+                    )?;
+                }
+            }
+            Err(e) => {
+                let db = state.db.lock().await;
+                let _ =
+                    queries::update_cuentacuentos_audio_failed(&db, &audio_id, &format!("{}", e));
+                tracing::error!(
+                    "TTS generation failed for {} {}: {}",
+                    &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                    lang,
+                    e
+                );
+            }
         }
-        let writing = if let Some(ref sid) = writing_session_id {
-            let db = state.db.lock().await;
-            queries::get_writing_content(&db, sid).ok().flatten()
-        } else {
-            None
-        };
-        generate_breathwork_free(state, &id, &style, writing.as_deref()).await;
-        state.emit_log(
-            "INFO",
-            "queue",
-            &format!("Free breathwork ready for {}", &user_id[..8]),
-        );
-        return Ok(true);
     }
 
-    Ok(false) // nothing to process
+    Ok(())
 }

@@ -1,0 +1,43 @@
+---
+title: "Everything is an Excuse"
+description: "Every feature in Anky exists to get you to write. Nothing else matters."
+---
+
+# Everything is an Excuse
+
+This is the core design principle of Anky. If you understand this, you understand everything.
+
+## The Excuses
+
+### The Image is an Excuse
+You write for 8 minutes. An image appears. "Oh cool, I want to see what image my next writing generates." So you write again tomorrow. The image got you to write. The image did its job.
+
+### The Story is an Excuse
+Your child gets a cuentacuentos — a story set in the Ankyverse, generated from your writing's energy. "I should write so my kid gets a new story tonight." The story got you to write.
+
+### The Blockchain is an Excuse
+Your writings are keyed to your wallet address. Your child's identity is derived from yours. "My writing practice has on-chain persistence." The blockchain got you to write.
+
+### The AI is an Excuse
+Claude reads your writing. Ollama generates prompts. Flux renders images. "I'm curious what the AI will make of today's writing." The AI got you to write.
+
+### The Streak is an Excuse
+Daily practice. Progression levels. "I can't break my streak." The gamification got you to write.
+
+### The Community is an Excuse
+Facilitators. Recommendations. Shared contexts. "Someone understands my practice." The community got you to write.
+
+## The Only Thing That Isn't an Excuse
+
+The writing itself. 8 minutes of unfiltered stream of consciousness is the only thing in Anky that cannot be generated, delegated, purchased, or faked. It's the only artifact that requires your actual presence.
+
+Everything else is downstream. Everything else is infrastructure. Everything else is an excuse to sit down and face yourself for 8 minutes.
+
+## Design Implications
+
+This principle drives every technical decision:
+
+- **Never block the write response** waiting for image/story generation. The write endpoint returns fast. Everything else is async.
+- **Never modify the write path** without explicit instruction. It's sacred ground.
+- **Free-tier works fully offline.** If the excuse requires an API key or payment, it's not a good enough excuse.
+- **The feedback for sub-threshold writes is encouraging, not punishing.** The goal is to get them back tomorrow, not shame them today.

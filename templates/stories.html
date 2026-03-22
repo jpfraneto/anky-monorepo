@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% block title %}anky — historias{% endblock %}
+{% block head %}
+<style>
+  .story-player-image {
+    transition: opacity 0.4s ease;
+  }
+  .story-player-image.fading {
+    opacity: 0;
+  }
+  .story-player-content {
+    transition: opacity 0.3s ease;
+  }
+  .story-player-content.fading {
+    opacity: 0;
+  }
+  .voice-picker {
+    position: absolute;
+    top: 48px;
+    left: 16px;
+    z-index: 10002;
+  }
+  .voice-picker-btn {
+    background: rgba(0,0,0,0.5);
+    border: 0.5px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 6px 12px;
+    color: rgba(255,255,255,0.8);
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .voice-picker-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+  .voice-menu {
+    display: none;
+    position: absolute;
+    top: 36px;
+    left: 0;
+    background: rgba(10,10,20,0.95);
+    border: 0.5px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 6px 0;
+    min-width: 220px;
+    max-height: 300px;
+    overflow-y: auto;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .voice-menu.open {
+    display: block;
+  }
+  .voice-menu-item {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.15s;
+  }
+  .voice-menu-item:hover, .voice-menu-item:active {
+    background: rgba(255,255,255,0.06);
+  }
+  .voice-menu-item.active {
+    color: rgba(255,255,255,0.95);
+  }
+  .voice-menu-item .voice-check {
+    opacity: 0;
+    font-size: 14px;
+  }
+  .voice-menu-item.active .voice-check {
+    opacity: 1;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="stories-page">
+  <header class="stories-header">
+    <h1>historias</h1>
+  </header>
+
+  <div class="stories-list" id="stories-list">
+    <div class="stories-empty" id="stories-empty" style="display:none;"></div>
+  </div>
+
+  <!-- Story player overlay -->
+  <div class="story-player" id="story-player" style="display:none;">
+    <div class="story-player-image" id="story-player-image">
+      <!-- Preloaded next image for smooth transitions -->
+      <div class="story-player-image" id="story-player-image-next" style="position:absolute;top:0;left:0;right:0;bottom:0;opacity:0;transition:opacity 0.4s ease;background-size:cover;background-position:center;"></div>
+    </div>
+    <div class="story-player-dots" id="story-player-dots"></div>
+    <div class="story-player-gradient"></div>
+    <div class="story-player-controls">
+      <h2 class="story-player-title" id="story-player-title"></h2>
+      <div class="story-player-meta" id="story-player-meta"></div>
+      <div class="story-player-content" id="story-player-content"></div>
+      <div class="story-player-btns">
+        <button class="story-player-btn" id="story-player-prev">&#8249;</button>
+        <button class="story-player-btn story-player-btn-main" id="story-player-play">&#9654;</button>
+        <button class="story-player-btn" id="story-player-next">&#8250;</button>
+      </div>
+    </div>
+    <!-- Voice picker -->
+    <div class="voice-picker" id="voice-picker">
+      <button class="voice-picker-btn" id="voice-picker-btn" onclick="toggleVoiceMenu()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        <span id="voice-picker-label">voice</span>
+      </button>
+      <div class="voice-menu" id="voice-menu"></div>
+    </div>
+    <button class="story-player-close" id="story-player-close">&#10005;</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  // --- Language detection ---
+  var userLang = (navigator.language || navigator.userLanguage || 'en').split('-')[0].toLowerCase();
+  var supportedLangs = { en: 'en', es: 'es', zh: 'zh', hi: 'hi', ar: 'ar' };
+  var lang = supportedLangs[userLang] || 'en';
+
+  var i18n = {
+    en: { stories: 'stories', images: 'images', noStories: 'your words become bedtime stories for your children.', writeFirst: 'write for 8 minutes to create the first one.', couldNotLoad: 'could not load stories.' },
+    es: { stories: 'historias', images: 'imágenes', noStories: 'tus palabras se convierten en cuentos para tus hijos.', writeFirst: 'escribe 8 minutos para crear el primero.', couldNotLoad: 'no se pudieron cargar las historias.' },
+    zh: { stories: '故事', images: '图片', noStories: '你的文字会变成孩子的睡前故事。', writeFirst: '写8分钟来创建第一个。', couldNotLoad: '无法加载故事。' },
+    hi: { stories: 'कहानियाँ', images: 'चित्र', noStories: 'आपके शब्द आपके बच्चों की कहानियाँ बन जाते हैं।', writeFirst: 'पहली कहानी बनाने के लिए 8 मिनट लिखें।', couldNotLoad: 'कहानियाँ लोड नहीं हो सकीं।' },
+    ar: { stories: 'قصص', images: 'صور', noStories: 'كلماتك تصبح قصص نوم لأطفالك.', writeFirst: 'اكتب لمدة 8 دقائق لإنشاء أول قصة.', couldNotLoad: 'تعذر تحميل القصص.' }
+  };
+  var t = i18n[lang] || i18n.en;
+  document.querySelector('.stories-header h1').textContent = t.stories;
+
+  function getLocalizedNarration(phase) {
+    if (lang === 'en') return phase.narration || phase.content || '';
+    var key = 'narration_' + lang;
+    return phase[key] || phase.narration || phase.content || '';
+  }
+
+  // --- Preload images ---
+  var preloadedImages = {};
+  function preloadImage(url) {
+    if (!url || preloadedImages[url]) return;
+    var img = new Image();
+    img.src = url;
+    preloadedImages[url] = img;
+  }
+
+  function preloadStoryImages(story) {
+    var phases = Array.isArray(story.guidancePhases) ? story.guidancePhases : [];
+    phases.forEach(function(p) { if (p.image_url) preloadImage(p.image_url); });
+  }
+
+  // --- Fetch stories ---
+  fetch('/api/v1/stories')
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(stories) {
+      var list = document.getElementById('stories-list');
+      var empty = document.getElementById('stories-empty');
+
+      if (!stories || stories.length === 0) {
+        empty.innerHTML = '<p>' + t.noStories + '</p><p class="stories-empty-sub">' + t.writeFirst + '</p>';
+        empty.style.display = 'block';
+        return;
+      }
+
+      list.innerHTML = stories.map(function(story) {
+        var phases = Array.isArray(story.guidancePhases) ? story.guidancePhases : [];
+        var firstImage = null;
+        var imageCount = 0;
+        phases.forEach(function(p) {
+          if (p.image_url) { imageCount++; if (!firstImage) firstImage = p.image_url; }
+        });
+
+        return '<div class="story-card" data-story-id="' + story.id + '" onclick="playStory(\'' + story.id + '\')">' +
+          '<div class="story-card-thumb" style="' + (firstImage ? 'background-image:url(' + firstImage + ')' : '') + '">' +
+            (!firstImage ? '<div class="story-card-thumb-placeholder"></div>' : '') +
+          '</div>' +
+          '<div class="story-card-info">' +
+            '<div class="story-card-title">' + (story.title || 'historia') + '</div>' +
+            '<div class="story-card-meta">' +
+              (story.kingdom ? '<span class="story-card-kingdom">' + story.kingdom + '</span>' : '') +
+              (story.city ? ' &middot; ' + story.city : '') +
+              (imageCount > 0 ? ' &middot; ' + imageCount + ' ' + t.images : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="story-card-play">&#9654;</div>' +
+        '</div>';
+      }).join('');
+
+      window._stories = stories;
+      // Preload first story images eagerly
+      if (stories[0]) preloadStoryImages(stories[0]);
+    })
+    .catch(function(err) {
+      console.error('Failed to load stories:', err);
+      document.getElementById('stories-empty').style.display = 'block';
+      document.getElementById('stories-empty').innerHTML = '<p>' + t.couldNotLoad + '</p>';
+    });
+
+  // --- TTS + Voice picker ---
+  var ttsPlaying = false;
+  var ttsUtterance = null;
+  var langMap = { en: 'en-US', es: 'es-ES', zh: 'zh-CN', hi: 'hi-IN', ar: 'ar-SA' };
+  var ttsLang = langMap[lang] || 'en-US';
+  var availableVoices = [];
+  var selectedVoice = null;
+
+  function loadVoices() {
+    if (!window.speechSynthesis) return;
+    var voices = speechSynthesis.getVoices();
+    // Filter to voices matching our language
+    availableVoices = voices.filter(function(v) {
+      return v.lang.toLowerCase().indexOf(lang) === 0;
+    });
+    // If none match, try broader match
+    if (availableVoices.length === 0) {
+      availableVoices = voices.filter(function(v) {
+        return v.lang.toLowerCase().indexOf(ttsLang.split('-')[0]) === 0;
+      });
+    }
+    // Fallback: show all voices
+    if (availableVoices.length === 0) {
+      availableVoices = voices;
+    }
+    // Auto-select first voice
+    if (!selectedVoice && availableVoices.length > 0) {
+      // Prefer a voice that matches the lang exactly
+      selectedVoice = availableVoices.find(function(v) { return v.lang.toLowerCase() === ttsLang.toLowerCase(); }) || availableVoices[0];
+      updateVoiceLabel();
+    }
+    buildVoiceMenu();
+  }
+
+  if (window.speechSynthesis) {
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  }
+
+  function updateVoiceLabel() {
+    var label = document.getElementById('voice-picker-label');
+    if (selectedVoice) {
+      var name = selectedVoice.name.replace(/Microsoft |Google |Apple /, '');
+      if (name.length > 18) name = name.substring(0, 16) + '…';
+      label.textContent = name;
+    } else {
+      label.textContent = 'voice';
+    }
+  }
+
+  function buildVoiceMenu() {
+    var menu = document.getElementById('voice-menu');
+    menu.innerHTML = availableVoices.map(function(v, i) {
+      var isActive = selectedVoice && selectedVoice.voiceURI === v.voiceURI;
+      var name = v.name.replace(/Microsoft |Google |Apple /, '');
+      return '<div class="voice-menu-item ' + (isActive ? 'active' : '') + '" onclick="selectVoice(' + i + ')">' +
+        '<span>' + name + ' <span style="opacity:0.3;font-size:10px;">' + v.lang + '</span></span>' +
+        '<span class="voice-check">✓</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.toggleVoiceMenu = function() {
+    var menu = document.getElementById('voice-menu');
+    menu.classList.toggle('open');
+  };
+
+  window.selectVoice = function(index) {
+    selectedVoice = availableVoices[index];
+    updateVoiceLabel();
+    buildVoiceMenu();
+    document.getElementById('voice-menu').classList.remove('open');
+    // If currently playing, restart with new voice
+    if (ttsPlaying) {
+      var phases = window._currentStory ? (window._currentStory.guidancePhases || []) : [];
+      var phase = phases[window._currentPhase] || {};
+      speakPhase(getLocalizedNarration(phase));
+    }
+  };
+
+  // Close voice menu on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.voice-picker')) {
+      document.getElementById('voice-menu').classList.remove('open');
+    }
+  });
+
+  function speakPhase(text) {
+    if (!window.speechSynthesis) return;
+    stopSpeech();
+    if (!text) return;
+    ttsUtterance = new SpeechSynthesisUtterance(text);
+    ttsUtterance.lang = ttsLang;
+    ttsUtterance.rate = 0.9;
+    ttsUtterance.pitch = 1.0;
+    if (selectedVoice) ttsUtterance.voice = selectedVoice;
+    ttsUtterance.onend = function() {
+      ttsPlaying = false;
+      updatePlayButton();
+      // Auto-advance
+      var phases = window._currentStory ? (window._currentStory.guidancePhases || []) : [];
+      if (window._currentPhase < phases.length - 1) {
+        window._currentPhase++;
+        transitionToPhase();
+        setTimeout(function() {
+          speakPhase(getLocalizedNarration(phases[window._currentPhase] || {}));
+        }, 450);
+      }
+    };
+    speechSynthesis.speak(ttsUtterance);
+    ttsPlaying = true;
+    updatePlayButton();
+  }
+
+  function stopSpeech() {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    ttsPlaying = false;
+    updatePlayButton();
+  }
+
+  function updatePlayButton() {
+    var btn = document.getElementById('story-player-play');
+    if (btn) {
+      btn.innerHTML = ttsPlaying ? '&#9646;&#9646;' : '&#9654;';
+      btn.classList.toggle('playing', ttsPlaying);
+    }
+  }
+
+  // --- Player ---
+  window._currentStory = null;
+  window._currentPhase = 0;
+
+  window.playStory = function(storyId) {
+    var story = window._stories ? window._stories.find(function(s) { return s.id === storyId; }) : null;
+    if (!story) return;
+    window._currentStory = story;
+    window._currentPhase = 0;
+    preloadStoryImages(story);
+    document.getElementById('story-player').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    setPhaseImmediate();
+  };
+
+  function setPhaseImmediate() {
+    var story = window._currentStory;
+    if (!story) return;
+    var phases = Array.isArray(story.guidancePhases) ? story.guidancePhases : [];
+    var phase = phases[window._currentPhase] || {};
+
+    var imageEl = document.getElementById('story-player-image');
+    if (phase.image_url) {
+      imageEl.style.backgroundImage = 'url(' + phase.image_url + ')';
+      imageEl.style.backgroundColor = '';
+    } else {
+      imageEl.style.backgroundImage = 'none';
+      imageEl.style.backgroundColor = '#0a0a1a';
+    }
+
+    updateMeta(story, phases);
+    updateContent(phase);
+  }
+
+  function transitionToPhase() {
+    var story = window._currentStory;
+    if (!story) return;
+    var phases = Array.isArray(story.guidancePhases) ? story.guidancePhases : [];
+    var phase = phases[window._currentPhase] || {};
+
+    var imageEl = document.getElementById('story-player-image');
+    var nextEl = document.getElementById('story-player-image-next');
+    var contentEl = document.getElementById('story-player-content');
+
+    // Fade in next image on top
+    if (phase.image_url) {
+      nextEl.style.backgroundImage = 'url(' + phase.image_url + ')';
+      nextEl.style.backgroundColor = '';
+    } else {
+      nextEl.style.backgroundImage = 'none';
+      nextEl.style.backgroundColor = '#0a0a1a';
+    }
+
+    // Fade content out
+    contentEl.classList.add('fading');
+
+    // Cross-dissolve: fade in next layer
+    nextEl.style.opacity = '1';
+
+    setTimeout(function() {
+      // Swap: copy next to main, hide next layer
+      if (phase.image_url) {
+        imageEl.style.backgroundImage = 'url(' + phase.image_url + ')';
+        imageEl.style.backgroundColor = '';
+      } else {
+        imageEl.style.backgroundImage = 'none';
+        imageEl.style.backgroundColor = '#0a0a1a';
+      }
+      nextEl.style.opacity = '0';
+
+      // Update text
+      updateContent(phase);
+      contentEl.classList.remove('fading');
+    }, 400);
+
+    updateMeta(story, phases);
+  }
+
+  function updateMeta(story, phases) {
+    document.getElementById('story-player-title').textContent = story.title || '';
+    var meta = [];
+    if (story.kingdom) meta.push(story.kingdom);
+    if (story.city) meta.push(story.city);
+    document.getElementById('story-player-meta').textContent = meta.join(' \u00b7 ');
+
+    var dotsEl = document.getElementById('story-player-dots');
+    dotsEl.innerHTML = phases.map(function(_, i) {
+      return '<span class="story-dot ' + (i === window._currentPhase ? 'active' : '') + '"></span>';
+    }).join('');
+  }
+
+  function updateContent(phase) {
+    var narration = getLocalizedNarration(phase);
+    document.getElementById('story-player-content').textContent = narration;
+  }
+
+  document.getElementById('story-player-next').onclick = function() {
+    var phases = window._currentStory ? (window._currentStory.guidancePhases || []) : [];
+    if (window._currentPhase < phases.length - 1) {
+      stopSpeech();
+      window._currentPhase++;
+      transitionToPhase();
+    }
+  };
+
+  document.getElementById('story-player-prev').onclick = function() {
+    if (window._currentPhase > 0) {
+      stopSpeech();
+      window._currentPhase--;
+      transitionToPhase();
+    }
+  };
+
+  document.getElementById('story-player-play').onclick = function() {
+    if (ttsPlaying) {
+      stopSpeech();
+    } else {
+      var phases = window._currentStory ? (window._currentStory.guidancePhases || []) : [];
+      var phase = phases[window._currentPhase] || {};
+      speakPhase(getLocalizedNarration(phase));
+    }
+  };
+
+  document.getElementById('story-player-close').onclick = function() {
+    stopSpeech();
+    document.getElementById('story-player').style.display = 'none';
+    document.body.style.overflow = '';
+  };
+
+  // Swipe support
+  (function() {
+    var player = document.getElementById('story-player');
+    var startX = 0, startY = 0;
+    player.addEventListener('touchstart', function(e) {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+    player.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - startX;
+      var dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+        if (dx < 0) document.getElementById('story-player-next').click();
+        else document.getElementById('story-player-prev').click();
+      }
+    }, { passive: true });
+  })();
+})();
+</script>
+{% endblock %}

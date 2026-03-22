@@ -12,7 +12,87 @@
     <label class="dash-toggle"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
   </div>
 </div>
-<div class="console" id="log-console"></div>
+
+<div class="dash-layout">
+  <div class="dash-main">
+    <div class="console" id="log-console"></div>
+  </div>
+
+  <div class="dash-sidebar">
+    <h3>system summaries <span class="dim">(every 30m)</span></h3>
+    <div id="summaries-list">
+      {% for s in summaries %}
+      <div class="summary-card">
+        <div class="summary-time">{{ s.period_start }} — {{ s.period_end }}</div>
+        <div class="summary-text">{{ s.summary }}</div>
+      </div>
+      {% endfor %}
+      {% if summaries | length == 0 %}
+      <div class="summary-card dim">no summaries yet — first one generates in ~30 minutes</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<style>
+  .dash-layout {
+    display: flex;
+    gap: 1rem;
+    height: calc(100vh - 120px);
+  }
+  .dash-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .dash-main .console {
+    height: 100%;
+  }
+  .dash-sidebar {
+    width: 380px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+  .dash-sidebar h3 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: #aaa;
+  }
+  .summary-card {
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  .summary-time {
+    font-size: 0.75rem;
+    color: #666;
+    margin-bottom: 0.4rem;
+    font-family: monospace;
+  }
+  .summary-text {
+    color: #ccc;
+    white-space: pre-wrap;
+  }
+  .dim { color: #555; }
+
+  @media (max-width: 900px) {
+    .dash-layout {
+      flex-direction: column;
+      height: auto;
+    }
+    .dash-main .console {
+      height: 50vh;
+    }
+    .dash-sidebar {
+      width: 100%;
+      max-height: 50vh;
+    }
+  }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -59,6 +139,10 @@
 
   evtSource.onmessage = function(e) {
     appendLine(e.data);
+    // Check if this is a summary log — refresh summaries sidebar
+    if (e.data.includes('[summary]')) {
+      refreshSummaries();
+    }
   };
 
   evtSource.onerror = function() {
@@ -66,6 +150,29 @@
   };
 
   appendLine('[connected to server log stream]');
+
+  // Poll for new summaries when a summary log arrives
+  function refreshSummaries() {
+    fetch('/dashboard/summaries')
+      .then(r => r.json())
+      .then(summaries => {
+        const list = document.getElementById('summaries-list');
+        if (!summaries.length) return;
+        list.innerHTML = summaries.map(s =>
+          '<div class="summary-card">' +
+            '<div class="summary-time">' + escapeHtml(s.period_start) + ' — ' + escapeHtml(s.period_end) + '</div>' +
+            '<div class="summary-text">' + escapeHtml(s.summary) + '</div>' +
+          '</div>'
+        ).join('');
+      })
+      .catch(() => {});
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
 })();
 </script>
 {% endblock %}

@@ -1,0 +1,93 @@
+let's implement notifications for the anky swift app. this is the spec that our swift dev sent us  Table: device_tokens
+
+  ┌──────────────┬─────────────┬────────────────────────────────┐
+  │    Column    │    Type     │             Notes              │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ id           │ uuid        │ PK, default gen                │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ user_id      │ uuid        │ FK → users, NOT NULL           │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ device_token │ text        │ NOT NULL, hex string from APNs │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ platform     │ text        │ NOT NULL, "ios" for now        │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ created_at   │ timestamptz │ default now()                  │
+  ├──────────────┼─────────────┼────────────────────────────────┤
+  │ updated_at   │ timestamptz │ default now()                  │
+  └──────────────┴─────────────┴────────────────────────────────┘
+
+  Unique constraint on (user_id, platform) — one token per user per platform. On conflict, update
+  device_token and updated_at.
+
+  ---
+  POST /swift/v2/devices
+
+  Auth: Bearer token (same as other /swift/v2 endpoints)
+
+  Request body:
+  {
+    "deviceToken": "a1b2c3d4e5f6...hex string...64+ chars",
+    "platform": "ios"
+  }
+
+  Response (200):
+  {
+    "ok": true
+  }
+
+  Errors: 401 if unauthorized, 400 if missing fields.
+
+  Logic: Upsert — if (user_id, platform) exists, update the token. Tokens rotate so the iOS app sends
+  this on every launch.
+
+  ---
+  DELETE /swift/v2/devices
+
+  Auth: Bearer token
+
+  Request body:
+  {
+    "platform": "ios"
+  }
+
+  Logic: Remove the device token for this user+platform. Called on logout/identity reboot so we stop
+  sending pushes.
+
+  ---
+  Daily notification cron (runs once per day, e.g. 5:30 AM UTC)
+
+  Pseudocode:
+  for each user in device_tokens JOIN users WHERE total_writings > 0:
+      profile = get_user_psychological_profile(user.id)  // from /you data
+
+      message = generate_message(profile)  // Claude API call or template
+      // e.g. "you haven't written in 3 days. the page doesn't judge. 8 minutes."
+      // e.g. "yesterday you wrote about your daughters. what came after that?"
+
+      send_apns_push(
+          device_token: user.device_token,
+          title: "anky",
+          body: message,
+          sound: "default"
+      )
+
+  APNs sending (Rust):
+
+  Use the https://crates.io/crates/a2 crate (Rust APNs client). Config needed:
+  - .p8 key file (from step 1)
+  - Key ID (10-char string from Apple)
+  - Team ID (10-char string from Apple)
+  - Bundle ID (your app's bundle identifier)
+  - Use .production environment for App Store builds, .sandbox for development
+
+  APNs payload:
+  {
+    "aps": {
+      "alert": {
+        "title": "anky",
+        "body": "the generated message here"
+      },
+      "sound": "default",
+      "badge": 1
+    }
+  }

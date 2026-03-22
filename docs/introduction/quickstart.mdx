@@ -1,0 +1,89 @@
+---
+title: "Quickstart"
+description: "Get up and running with the Anky API in 5 minutes"
+---
+
+# Quickstart
+
+## 1. Authenticate
+
+Anky uses EVM seed-based identity. Request a challenge, sign it with your wallet, and get a session token.
+
+```bash
+# Get a challenge
+curl -X POST https://anky.app/swift/v2/auth/challenge \
+  -H "Content-Type: application/json" \
+  -d '{"wallet_address": "0xYourWalletAddress"}'
+
+# Returns: { "challenge": "Sign this message to authenticate with Anky: abc123...", "expires_at": "..." }
+```
+
+```bash
+# Sign the challenge and verify
+curl -X POST https://anky.app/swift/v2/auth/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wallet_address": "0xYourWalletAddress",
+    "signature": "0xYourEIP191Signature",
+    "challenge": "Sign this message to authenticate with Anky: abc123..."
+  }'
+
+# Returns: { "session_token": "your-bearer-token", "user": { ... } }
+```
+
+## 2. Write
+
+Submit a writing session. If it crosses the 8-minute threshold, it becomes an anky and triggers downstream generation.
+
+```bash
+curl -X POST https://anky.app/swift/v2/write \
+  -H "Authorization: Bearer your-bearer-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "writing": "your stream of consciousness text here...",
+    "duration_seconds": 512,
+    "new_line_count": 0
+  }'
+```
+
+**Under 8 minutes?** You get feedback:
+```json
+{ "is_anky": false, "persisted": false, "feedback": "You wrote for 6 minutes. The resistance showed up around minute 4..." }
+```
+
+**Over 8 minutes?** It becomes an anky:
+```json
+{ "is_anky": true, "persisted": true, "writing_id": "uuid", "anky_id": "uuid" }
+```
+
+## 3. Check What Was Generated
+
+After a real anky, the system asynchronously generates an image and (for v2 users) a cuentacuentos story.
+
+```bash
+# Get your latest story (v2 seed users)
+curl https://anky.app/swift/v2/cuentacuentos/ready \
+  -H "Authorization: Bearer your-bearer-token"
+```
+
+## 4. Use an Agent
+
+Pick your tier and let the agent handle the flow for you:
+
+```bash
+# Dumb agent — just writes and gets feedback
+curl https://anky.app/agents/dumb/write \
+  -H "Authorization: Bearer your-bearer-token" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "tell me what to write about"}'
+
+# Smart agent — orchestrates writing + guidance + stories
+curl https://anky.app/agents/smart/session \
+  -H "Authorization: Bearer your-bearer-token"
+
+# AGI agent — full autonomous loop with memory and adaptation
+curl https://anky.app/agents/agi/engage \
+  -H "Authorization: Bearer your-bearer-token"
+```
+
+See the [Agents documentation](/agents/overview) for full details on each tier.

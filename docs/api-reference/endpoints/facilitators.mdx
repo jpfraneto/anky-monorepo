@@ -1,0 +1,98 @@
+---
+title: "Facilitator Endpoints"
+description: "Marketplace for human facilitators — browse, apply, review, book"
+---
+
+# Facilitator Endpoints
+
+The facilitator marketplace connects writers with human guides. AI-powered matching uses your writing profile to recommend facilitators.
+
+## `GET /swift/v1/facilitators`
+
+List approved facilitator profiles.
+
+**Auth:** None required.
+
+**Response:**
+```json
+{
+  "facilitators": [
+    {
+      "id": "uuid",
+      "name": "Maria Santos",
+      "bio": "Somatic writing facilitator...",
+      "specialties": ["grief", "embodiment", "creative blocks"],
+      "price_per_session_usdc": 50,
+      "rating": 4.8,
+      "total_sessions": 127,
+      "status": "approved"
+    }
+  ]
+}
+```
+
+## `POST /swift/v1/facilitators/apply`
+
+Submit a facilitator application.
+
+**Auth:** Bearer token.
+
+## `GET /swift/v1/facilitators/recommended`
+
+AI-ranked facilitators based on your writing profile and history.
+
+**Auth:** Bearer token.
+
+**Response:**
+```json
+{
+  "recommendations": [
+    {
+      "facilitator": { ... },
+      "match_score": 0.92,
+      "rationale": "Your recent writings show grief integration in the Heart sojourn. Maria specializes in somatic grief work and has guided 23 writers through similar territory."
+    }
+  ]
+}
+```
+
+## `GET /swift/v1/facilitators/{id}`
+
+Get a facilitator profile with reviews.
+
+**Auth:** None required.
+
+## `POST /swift/v1/facilitators/{id}/review`
+
+Upsert your rating and review.
+
+**Auth:** Bearer token.
+
+**Request:**
+```json
+{
+  "rating": 5,
+  "text": "She helped me break through a wall I'd been circling for weeks."
+}
+```
+
+## `POST /swift/v1/facilitators/{id}/book`
+
+Book a session. Payment via USDC.
+
+**Auth:** Bearer token.
+
+**Headers:**
+```
+payment-signature: 0xTransactionHash
+```
+
+**Request:**
+```json
+{
+  "share_context": true,
+  "message": "I'd like to work on the avoidance pattern around family."
+}
+```
+
+When `share_context: true`, your writing profile summary is shared with the facilitator.

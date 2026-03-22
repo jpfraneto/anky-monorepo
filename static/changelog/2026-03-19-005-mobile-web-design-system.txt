@@ -1,0 +1,23 @@
+Build the mobile web design system for Anky at /home/kithkui/anky. This delivers a completely different experience on mobile viewports vs desktop, following the iOS app design spec.
+
+## Design tokens (from the iOS spec)
+
+- Background: #07070d (near-black with blue-black tint)
+- Text: white at varying opacities (0.85 primary, 0.35 secondary, 0.20 tertiary, 0.08 borders)
+- Typography: font-weight 300 for body, 400-500 for labels
+- Border style: 0.5px solid rgba(255,255,255,0.07)
+- Card backgrounds: rgba(255,255,255,0.04)
+- Nav bar: 72px height, rgba(7,7,13,0.95) background, border-top: 0.5px solid rgba(255,255,255,0.07)
+- Mobile breakpoint: max-width 768px
+
+## What to build
+
+### 1. Mobile CSS file: `/home/kithkui/anky/static/mobile.css`
+### 2. Update `templates/base.html` with mobile nav
+### 3. Create `/home/kithkui/anky/templates/stories.html` — Stories tab
+### 4. Create `/home/kithkui/anky/templates/you.html` — Psychological mirror page
+### 5. Add routes in `src/routes/pages.rs`
+### 6. Register routes in `src/routes/mod.rs`
+### 7. Update the home handler with active_tab
+### 8. Create the mobile CSS with comprehensive mobile overrides
+### 9. Desktop defaults (outside media query)

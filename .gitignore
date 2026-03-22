@@ -6,6 +6,7 @@ data/
 *.log
 .secrets/
 .DS_Store
+*.p8
 .idea
 anky.db
 scripts/__pycache__/
@@ -28,3 +29,7 @@ interview-engine/.venv/
 interview-engine/__pycache__/
 interview-engine/models/
 interview-engine/memory.db
+
+# Docs site build artifacts
+docs/node_modules/
+docs/dist/

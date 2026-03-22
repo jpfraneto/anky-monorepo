@@ -1,0 +1,201 @@
+---
+title: "Smart Agent"
+description: "Session-aware agent that chains writing, guidance, and stories into a coherent practice session"
+---
+
+# Smart Agent
+
+The smart agent maintains session state and orchestrates the full Anky loop: prompt → write → feedback/anky → story. It remembers what happened within the current session and adapts accordingly.
+
+Use this when you want Anky to run the practice for you within a single sitting.
+
+## Endpoints
+
+### Start Session
+
+```bash
+POST /agents/smart/session
+```
+
+Start a new agent session. The agent analyzes your recent writing history and prepares a personalized prompt.
+
+**Headers:**
+```
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "intention": "optional free-text about what you want to explore today"
+}
+```
+
+**Response:**
+```json
+{
+  "session_id": "agent-session-uuid",
+  "prompt": "Last time you wrote about the gap between what you say and what you mean. Today, write about a time you said exactly what you meant and it changed something.",
+  "context": {
+    "sojourn": "Throat (Voxlumis)",
+    "sojourn_day": 47,
+    "sojourn_phase": "integration",
+    "recent_chakras": [5, 5, 4, 5, 3],
+    "streak_days": 12
+  }
+}
+```
+
+### Submit Writing
+
+```bash
+POST /agents/smart/session/{session_id}/write
+```
+
+Submit writing within the session context. The agent handles threshold detection, pipeline triggering, and next-step orchestration.
+
+**Request:**
+```json
+{
+  "writing": "eight minutes of raw text...",
+  "duration_seconds": 523,
+  "new_line_count": 1
+}
+```
+
+**Response (real anky):**
+```json
+{
+  "is_anky": true,
+  "writing_id": "uuid",
+  "flow_score": 0.91,
+  "chakra": 5,
+  "kingdom": "Voxlumis",
+  "next_steps": {
+    "story_generating": true,
+    "story_eta_seconds": 120
+  },
+  "reflection": "You wrote about the moment you told your mother the truth about leaving. The throat chakra is wide open today."
+}
+```
+
+### Poll Session Status
+
+```bash
+GET /agents/smart/session/{session_id}/status
+```
+
+Check what's ready in the current session.
+
+**Response:**
+```json
+{
+  "session_id": "agent-session-uuid",
+  "writing_submitted": true,
+  "is_anky": true,
+  "story": {
+    "status": "ready",
+    "kingdom": "Voxlumis",
+    "phases": 5,
+    "images_ready": 3,
+    "images_total": 5
+  },
+  "suggested_next": "story"
+}
+```
+
+### Get Session Guidance
+
+```bash
+GET /agents/smart/session/{session_id}/guidance
+```
+
+The agent picks the most appropriate next step based on your writing and current state.
+
+**Response:**
+```json
+{
+  "type": "story",
+  "rationale": "Your writing carried restrained urgency. A Voxlumis story is ready — truth crystallized into narrative.",
+  "content": {
+    "kingdom": "Voxlumis",
+    "phases": 5,
+    "images_ready": 5
+  }
+}
+```
+
+### End Session
+
+```bash
+POST /agents/smart/session/{session_id}/end
+```
+
+Close the session. Returns a summary.
+
+**Response:**
+```json
+{
+  "session_id": "agent-session-uuid",
+  "duration_minutes": 34,
+  "writing_submitted": true,
+  "is_anky": true,
+  "chakra": 5,
+  "story_delivered": true,
+  "summary": "You showed up, wrote the hard truth, and delivered a Voxlumis story to your child. Day 13 of the streak."
+}
+```
+
+## Usage Example
+
+```python
+import requests
+import time
+
+API = "https://anky.app/agents/smart"
+TOKEN = "your-session-token"
+headers = {"Authorization": f"Bearer {TOKEN}"}
+
+# Start session
+session = requests.post(f"{API}/session", headers=headers, json={
+    "intention": "I want to write about something I've been avoiding"
+}).json()
+
+print(f"Prompt: {session['prompt']}")
+print(f"Sojourn: {session['context']['sojourn']}, Day {session['context']['sojourn_day']}")
+
+# ... user writes for 8+ minutes ...
+
+# Submit writing
+result = requests.post(
+    f"{API}/session/{session['session_id']}/write",
+    headers=headers,
+    json={"writing": "the raw text...", "duration_seconds": 510, "new_line_count": 0}
+).json()
+
+# Poll until guidance is ready
+while True:
+    status = requests.get(
+        f"{API}/session/{session['session_id']}/status",
+        headers=headers
+    ).json()
+    if status["story"]["status"] == "ready":
+        break
+    time.sleep(5)
+
+# Get the agent's recommended next step
+guidance = requests.get(
+    f"{API}/session/{session['session_id']}/guidance",
+    headers=headers
+).json()
+
+print(f"Next: {guidance['type']} — {guidance['rationale']}")
+```
+
+## When to Use Smart
+
+- You want a guided practice session without managing the orchestration yourself
+- You're building a mobile app that needs session flow management
+- You want the agent to manage story delivery and reflection based on context
+- You want per-session memory without long-term commitment

@@ -1,0 +1,67 @@
+---
+title: "Children Endpoints"
+description: "Create and manage child profiles under a parent's seed identity"
+---
+
+# Children Endpoints
+
+All child endpoints require v2 seed auth with a stored seed wallet.
+
+## `POST /swift/v2/children`
+
+Create a child profile linked to the parent's wallet.
+
+**Auth:** Bearer token with stored seed wallet.
+
+**Request:**
+```json
+{
+  "derived_wallet_address": "0xChildDerivedWallet",
+  "birthdate": "2022-06-15",
+  "emoji_pattern": ["🌊", "🔥", "🌿", "💎", "🎭", "⭐", "🌙", "🦋", "🌈", "🎨", "🌸", "🎵"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `derived_wallet_address` | string | yes | Child wallet derived on-device |
+| `birthdate` | string (date) | yes | Child's birth date |
+| `emoji_pattern` | array of 12 strings | yes | 12-item emoji identity pattern |
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "parent_wallet_address": "0xParentWallet",
+  "derived_wallet_address": "0xChildWallet",
+  "birthdate": "2022-06-15",
+  "emoji_pattern": ["🌊", "🔥", "🌿", "💎", "🎭", "⭐", "🌙", "🦋", "🌈", "🎨", "🌸", "🎵"],
+  "created_at": "2026-03-18T10:00:00Z"
+}
+```
+
+## `GET /swift/v2/children`
+
+List all child profiles under the parent's wallet.
+
+**Auth:** Bearer token with stored seed wallet.
+
+**Response:**
+```json
+{
+  "children": [
+    {
+      "id": "uuid",
+      "derived_wallet_address": "0xChildWallet",
+      "birthdate": "2022-06-15",
+      "emoji_pattern": [...]
+    }
+  ]
+}
+```
+
+## `GET /swift/v2/children/{childId}`
+
+Fetch a single child profile. Must belong to the caller's wallet.
+
+**Auth:** Bearer token with stored seed wallet.

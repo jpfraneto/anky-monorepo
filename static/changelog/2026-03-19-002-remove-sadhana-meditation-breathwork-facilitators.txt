@@ -1,0 +1,1 @@
+I need you to delete all sadhana, breathwork, meditation, and facilitator code from the Anky codebase. This is a cleanup to focus on the core writing flow.

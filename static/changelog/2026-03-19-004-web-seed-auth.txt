@@ -1,0 +1,7 @@
+Build the web seed auth system for Anky at /home/kithkui/anky. This replaces Privy with a 12-word BIP39 seed identity + passphrase encryption.
+
+Backend: Add POST /auth/seed/verify endpoint that wraps the same EIP-191 verification logic as /swift/v2/auth/verify but sets cookies for the web. Refactor swift.rs to extract auth_seed_verify_inner. Add seed_logout handler.
+
+Frontend: Rewrite login.html with three screens — welcome (unlock existing or create/import), generate (12-word BIP39 mnemonic with passphrase encryption), import (restore from recovery phrase). Uses Web Crypto API for PBKDF2+AES-GCM encryption of the private key in localStorage.
+
+Update base.html logout to clear seed vault. Update iOS specs to use 12-word instead of 24-word recovery phrases.

@@ -1,3 +1,4 @@
+use super::swift;
 use crate::db::queries;
 use crate::error::AppError;
 use crate::services::twitter;
@@ -752,4 +753,66 @@ pub async fn privy_logout(
         .remove(Cookie::build("anky_user_id").path("/").build());
 
     Ok((jar, Redirect::temporary("/")))
+}
+
+/// POST /auth/seed/verify — Web-side seed identity verification.
+/// Same logic as /swift/v2/auth/verify but sets browser cookies.
+pub async fn seed_verify(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<swift::SeedAuthVerifyRequest>,
+) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
+    let result = swift::auth_seed_verify_inner(&state, &req).await?;
+
+    let session_cookie = Cookie::build(("anky_session", result.session_token.clone()))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .max_age(time::Duration::days(90))
+        .build();
+    let user_cookie = Cookie::build(("anky_user_id", result.user_id.clone()))
+        .path("/")
+        .http_only(false)
+        .secure(true)
+        .max_age(time::Duration::days(365))
+        .build();
+    let jar = jar.add(session_cookie).add(user_cookie);
+
+    state.emit_log(
+        "INFO",
+        "auth",
+        &format!(
+            "Seed login (web): {} ({})",
+            &result.user_id[..8],
+            result.wallet_address.as_deref().unwrap_or("?")
+        ),
+    );
+
+    Ok((
+        jar,
+        Json(serde_json::json!({
+            "ok": true,
+            "user_id": result.user_id,
+            "wallet_address": result.wallet_address,
+            "username": result.username,
+            "session_token": result.session_token,
+        })),
+    ))
+}
+
+/// POST /auth/seed/logout — clear seed session cookies and invalidate session.
+pub async fn seed_logout(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
+    if let Some(token) = jar.get("anky_session") {
+        let db = state.db.lock().await;
+        let _ = queries::delete_auth_session(&db, token.value());
+    }
+
+    let jar = jar
+        .remove(Cookie::build("anky_session").path("/").build())
+        .remove(Cookie::build("anky_user_id").path("/").build());
+
+    Ok((jar, Json(serde_json::json!({ "ok": true }))))
 }

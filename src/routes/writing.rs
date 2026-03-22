@@ -131,28 +131,6 @@ pub async fn process_writing(
         is_anky = false;
     }
 
-    if !is_anky {
-        tracing::info!(
-            user = %user_id,
-            duration = format!("{}m{}s", (req.duration / 60.0) as u32, (req.duration % 60.0) as u32),
-            words = word_count,
-            "Short writing stayed local-only"
-        );
-        return Ok((
-            jar,
-            Json(WriteResponse {
-                response: String::new(),
-                duration: req.duration,
-                is_anky: false,
-                anky_id: None,
-                wallet_address: None,
-                estimated_wait_seconds: None,
-                flow_score,
-                error: None,
-            }),
-        ));
-    }
-
     let session_id = req
         .session_id
         .clone()
@@ -336,35 +314,20 @@ pub async fn process_writing(
 
         anky_id = Some(aid.clone());
 
-        let state_clone = state.clone();
-        let text = req.text.clone();
-        let sid = session_id.clone();
-        let uid = user_id.clone();
-        tokio::spawn(async move {
-            if let Err(e) = crate::pipeline::image_gen::generate_anky_from_writing(
-                &state_clone,
-                &aid,
-                &sid,
-                &uid,
-                &text,
-            )
-            .await
-            {
-                tracing::error!("Anky generation failed: {}", e);
-                state_clone.emit_log(
-                    "ERROR",
-                    "image_gen",
-                    &format!(
-                        "Generation failed for {}: {}. will retry later.",
-                        &aid[..8],
-                        e
-                    ),
-                );
-                // Mark as failed so retry can pick it up
-                let db = state_clone.db.lock().await;
-                let _ = crate::db::queries::mark_anky_failed(&db, &aid);
-            }
-        });
+        // Submit to GPU priority queue
+        let is_pro = {
+            let db = state.db.lock().await;
+            crate::db::queries::is_user_pro(&db, &user_id).unwrap_or(false)
+        };
+        state.gpu_queue.submit(
+            crate::state::GpuJob::AnkyImage {
+                anky_id: aid,
+                session_id: session_id.clone(),
+                user_id: user_id.clone(),
+                writing: req.text.clone(),
+            },
+            if is_pro { 1 } else { 0 },
+        );
     }
 
     Ok((

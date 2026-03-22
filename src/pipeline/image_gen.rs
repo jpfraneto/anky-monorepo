@@ -1,7 +1,7 @@
 use crate::db::queries;
 use crate::services::{claude, comfyui, gemini};
 use crate::state::AppState;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::process::Command;
 
 /// Generate a 400px thumbnail WebP. Returns the thumbnail filename.
@@ -207,16 +207,33 @@ pub async fn generate_anky_from_writing(
                 "No reflection found, generating fallback with memory...",
             );
 
-            // Build memory context for the fallback reflection too
-            let memory_ctx = crate::memory::recall::build_memory_context(
-                &state.db,
-                &state.config.ollama_base_url,
-                _user_id,
-                writing_text,
-            )
-            .await
-            .ok()
-            .map(|ctx| ctx.format_for_prompt());
+            // Build memory context — prefer Honcho if configured, else local recall
+            let memory_ctx = if crate::services::honcho::is_configured(&state.config) {
+                match crate::services::honcho::get_peer_context(
+                    &state.config.honcho_api_key,
+                    &state.config.honcho_workspace_id,
+                    _user_id,
+                )
+                .await
+                {
+                    Ok(Some(ctx)) => Some(ctx),
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("Honcho context for reflection failed: {}", e);
+                        None
+                    }
+                }
+            } else {
+                crate::memory::recall::build_memory_context(
+                    &state.db,
+                    &state.config.ollama_base_url,
+                    _user_id,
+                    writing_text,
+                )
+                .await
+                .ok()
+                .map(|ctx| ctx.format_for_prompt())
+            };
 
             let tr = claude::generate_title_and_reflection_with_memory(
                 api_key,
@@ -447,6 +464,47 @@ pub async fn generate_image_only(
 pub async fn generate_flux_image(prompt: &str, comfy_url: &str) -> anyhow::Result<Vec<u8>> {
     tracing::info!("generate_flux_image: prompt len={}", prompt.len());
     comfyui::generate_image_at_url(prompt, comfy_url).await
+}
+
+/// Generate queued cuentacuentos phase images sequentially on the single GPU.
+pub async fn generate_cuentacuentos_images(cuentacuentos_id: &str, state: &AppState) -> Result<()> {
+    let rows = {
+        let db = state.db.lock().await;
+        queries::get_pending_cuentacuentos_images(&db, cuentacuentos_id)?
+    };
+
+    for row in rows {
+        {
+            let db = state.db.lock().await;
+            queries::mark_cuentacuentos_image_generating(&db, &row.id)?;
+        }
+
+        let attempts = row.attempts + 1;
+        match comfyui::generate_story_image(&row.image_prompt).await {
+            Ok(bytes) => {
+                let phase_index = usize::try_from(row.phase_index)
+                    .map_err(|_| anyhow!("invalid phase index {}", row.phase_index))?;
+                let image_url = comfyui::save_story_image(bytes, cuentacuentos_id, phase_index)?;
+                let db = state.db.lock().await;
+                queries::set_cuentacuentos_image_generated(&db, &row.id, &image_url)?;
+            }
+            Err(err) => {
+                let next_status = "failed";
+                let db = state.db.lock().await;
+                queries::set_cuentacuentos_image_status(&db, &row.id, next_status)?;
+                tracing::warn!(
+                    cuentacuentos_id = %row.cuentacuentos_id,
+                    phase_index = row.phase_index,
+                    attempts,
+                    status = next_status,
+                    "cuentacuentos image generation failed: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Image-only pipeline using Flux.1-dev + anky LoRA via ComfyUI (free, local GPU).

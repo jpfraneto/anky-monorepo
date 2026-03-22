@@ -1,0 +1,9 @@
+Implement the following plan:
+
+# Plan: Integrate Honcho as Anky's Identity Modeling Layer
+
+## Context
+
+Anky's mission is to invite every human on earth to write for 8 minutes. Anky is not an AI agent — it's an orchestration of intelligence in service of that mission. Currently, the backend extracts user psychology via local Ollama every 5th anky session, stores a single `psychological_profile` text field, and mostly ignores it in downstream generation. Three DB columns (`core_tensions`, `growth_edges`, `emotional_signature`) exist but are never populated. Cuentacuentos, meditation, and breathwork pipelines generate without any user context.
+
+Honcho (`https://api.honcho.dev/v3/`) is a user modeling API that builds persistent, evolving representations of users through background reasoning over their messages. By sending every writing to Honcho and querying its peer model before generation, Anky gets a living identity model that deepens with every session — and every artifact (stories, meditations, breathwork) becomes personally shaped.

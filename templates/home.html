@@ -3,12 +3,15 @@
 {% block title %}anky{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="write now — 8 minutes — anky">
-<meta property="og:description" content="only the last character. only now. write for 8 minutes or lose everything.">
-<meta property="og:image" content="https://anky.app/static/references/anky-1.png">
+<meta property="og:title" content="anky">
+<meta property="og:description" content="8 minutes of truth. your words become stories for your children.">
+<meta property="og:image" content="https://anky.app/static/og-black.svg">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://anky.app/">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="anky">
+<meta name="twitter:description" content="8 minutes of truth. your words become stories for your children.">
+<meta name="twitter:image" content="https://anky.app/static/og-black.svg">
 <style>
   /* ═══════════════════════════════════════════
      STATES: landing → writing → paused → ended → reflection
@@ -104,64 +107,50 @@
   }
 
   /* ═══════════════════════════════════════════
-     WRITING — last character only
+     WRITING — simple flowing text
      ═══════════════════════════════════════════ */
   .anky-writing {
-    text-align: center;
     flex: 1;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 20px 28px 0;
+    -webkit-overflow-scrolling: touch;
   }
-  .last-char-shell {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 1em;
-    line-height: 1;
-    transition: transform 0.12s linear;
-    will-change: transform;
+  #writing-stream {
+    flex: 1;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.7;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    text-align: left;
+    white-space: pre-wrap;
   }
-  #last-char,
-  .last-char-fracture {
-    font-family: 'Righteous', monospace;
-    font-size: clamp(120px, 30vw, 300px);
-    color: #fff;
-    line-height: 1;
-    min-height: 1em;
-    text-shadow: 0 0 40px currentColor;
+  /* Blinking cursor at end of text */
+  #writing-stream::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 18px;
+    background: rgba(255,255,255,0.7);
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    animation: cursorBlink 1s step-end infinite;
   }
-  #last-char {
-    position: relative;
-    z-index: 2;
-    transition: opacity 0.12s linear, color 0.25s ease, text-shadow 0.12s linear;
-    will-change: opacity, color, text-shadow;
+  @keyframes cursorBlink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
   }
-  .last-char-fracture {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.12s linear, transform 0.12s linear, filter 0.12s linear, text-shadow 0.12s linear;
-    will-change: opacity, transform, filter, text-shadow;
-  }
-  .last-char-fracture-left {
-    clip-path: inset(0 50% 0 0);
-  }
-  .last-char-fracture-right {
-    clip-path: inset(0 0 0 50%);
-  }
-  #last-char.faded {
-    opacity: 0;
-  }
-  @keyframes charFlash {
-    0% { opacity: 1; transform: scale(1.15); }
-    100% { opacity: 1; transform: scale(1); }
-  }
-  #last-char.flash {
-    animation: charFlash 0.12s ease-out;
-  }
+  /* Hide the old big char + fracture elements */
+  .last-char-shell { display: none; }
+  #last-char { display: none; }
+  .last-char-fracture { display: none; }
 
   /* Hidden textarea */
   #anky-input {
@@ -192,32 +181,12 @@
     z-index: 110;
   }
 
-  /* Flow text ribbon — single infinite horizontal line */
+  /* Flow ribbon — hidden, replaced by unified stream */
   .flow-ribbon {
-    width: 100%;
-    overflow: hidden;
-    height: 72px;
-    position: relative;
-    border-top: 1px solid rgba(255,255,255,0.04);
+    display: none;
   }
-  .flow-ribbon-inner {
-    position: absolute;
-    right: 0;
-    bottom: 2px;
-    white-space: nowrap;
-    display: flex;
-    align-items: baseline;
-    height: 100%;
-    padding-right: 8px;
-  }
-  .flow-char {
-    font-family: 'Righteous', monospace;
-    display: inline-block;
-    line-height: 1;
-    transition: none;
-    flex-shrink: 0;
-    text-shadow: 0 0 10px rgba(255,255,255,0.08);
-  }
+  .flow-ribbon-inner { display: none; }
+  .flow-char { display: none; }
 
   /* Stats row: hearts left, words + time right */
   .stats-row {
@@ -537,8 +506,9 @@
     <p class="anky-landing-sub" id="anky-landing-sub"><em>8 minutes</em></p>
   </div>
 
-  <!-- ═══ WRITING — last character ═══ -->
+  <!-- ═══ WRITING — unified text stream ═══ -->
   <div class="anky-writing" id="anky-writing">
+    <div id="writing-stream"></div>
     <div class="last-char-shell" id="last-char-shell">
       <div class="last-char-fracture last-char-fracture-left" id="last-char-left" aria-hidden="true"></div>
       <div class="last-char-fracture last-char-fracture-right" id="last-char-right" aria-hidden="true"></div>
@@ -639,6 +609,7 @@
   var statWords = document.getElementById('stat-words');
   var statTime = document.getElementById('stat-time');
   var flowRibbonInner = document.getElementById('flow-ribbon-inner');
+  var writingStream = document.getElementById('writing-stream');
   var livesLabel = document.getElementById('lives-label');
   var resumeHint = document.getElementById('resume-hint');
   var endedRestartBtn = document.getElementById('ended-restart-btn');
@@ -647,8 +618,8 @@
   {% raw %}
   var UI_COPY = {
     en: {
-      landing_title_html: "WRITE<br>NOW",
-      landing_sub: "8 minutes",
+      landing_title_html: "WRITE<br>FOR THEM",
+      landing_sub: "8 minutes — your words become their bedtime story",
       try_again: "try again",
       continue: "CONTINUE",
       resume_hint: "just keep writing",
@@ -670,8 +641,8 @@
       error: "something went wrong."
     },
     es: {
-      landing_title_html: "ESCRIBE<br>AHORA",
-      landing_sub: "8 minutos",
+      landing_title_html: "ESCRIBE<br>PARA ELLOS",
+      landing_sub: "8 minutos — tus palabras se convierten en su cuento",
       try_again: "intenta otra vez",
       continue: "CONTINUAR",
       resume_hint: "sigue escribiendo",
@@ -693,8 +664,8 @@
       error: "algo salió mal."
     },
     pt: {
-      landing_title_html: "ESCREVA<br>AGORA",
-      landing_sub: "8 minutos",
+      landing_title_html: "ESCREVA<br>PARA ELES",
+      landing_sub: "8 minutos — suas palavras viram a história de ninar deles",
       try_again: "tente de novo",
       continue: "CONTINUAR",
       resume_hint: "continue escrevendo",
@@ -716,8 +687,8 @@
       error: "algo deu errado."
     },
     fr: {
-      landing_title_html: "ÉCRIS<br>MAINTENANT",
-      landing_sub: "8 minutes",
+      landing_title_html: "ÉCRIS<br>POUR EUX",
+      landing_sub: "8 minutes — tes mots deviennent leur histoire du soir",
       try_again: "essaie encore",
       continue: "CONTINUER",
       resume_hint: "continue d'écrire",
@@ -739,7 +710,7 @@
       error: "quelque chose s'est mal passé."
     },
     de: {
-      landing_title_html: "SCHREIB<br>JETZT",
+      landing_title_html: "SCHREIB<br>FÜR SIE",
       landing_sub: "8 Minuten",
       try_again: "noch einmal",
       continue: "WEITER",
@@ -762,7 +733,7 @@
       error: "etwas ist schiefgelaufen."
     },
     it: {
-      landing_title_html: "SCRIVI<br>ORA",
+      landing_title_html: "SCRIVI<br>PER LORO",
       landing_sub: "8 minuti",
       try_again: "riprova",
       continue: "CONTINUA",
@@ -785,7 +756,7 @@
       error: "qualcosa è andato storto."
     },
     nl: {
-      landing_title_html: "SCHRIJF<br>NU",
+      landing_title_html: "SCHRIJF<br>VOOR HEN",
       landing_sub: "8 minuten",
       try_again: "probeer opnieuw",
       continue: "DOORGAAN",
@@ -808,7 +779,7 @@
       error: "er ging iets mis."
     },
     pl: {
-      landing_title_html: "PISZ<br>TERAZ",
+      landing_title_html: "PISZ<br>DLA NICH",
       landing_sub: "8 minut",
       try_again: "spróbuj ponownie",
       continue: "KONTYNUUJ",
@@ -831,7 +802,7 @@
       error: "coś poszło nie tak."
     },
     tr: {
-      landing_title_html: "YAZ<br>ŞİMDİ",
+      landing_title_html: "ONLAR<br>İÇİN YAZ",
       landing_sub: "8 dakika",
       try_again: "tekrar dene",
       continue: "DEVAM ET",
@@ -854,7 +825,7 @@
       error: "bir şeyler yanlış gitti."
     },
     ru: {
-      landing_title_html: "ПИШИ<br>СЕЙЧАС",
+      landing_title_html: "ПИШИ<br>ДЛЯ НИХ",
       landing_sub: "8 минут",
       try_again: "попробуй снова",
       continue: "ПРОДОЛЖИТЬ",
@@ -877,7 +848,7 @@
       error: "что-то пошло не так."
     },
     ja: {
-      landing_title_html: "今、<br>書け",
+      landing_title_html: "彼らの<br>ために書け",
       landing_sub: "8分",
       try_again: "もう一度",
       continue: "続ける",
@@ -900,7 +871,7 @@
       error: "問題が発生しました。"
     },
     ko: {
-      landing_title_html: "지금<br>써",
+      landing_title_html: "아이를<br>위해 써",
       landing_sub: "8분",
       try_again: "다시 해보기",
       continue: "계속",
@@ -923,7 +894,7 @@
       error: "문제가 발생했습니다."
     },
     zh: {
-      landing_title_html: "现在<br>写",
+      landing_title_html: "为他们<br>而写",
       landing_sub: "8 分钟",
       try_again: "再试一次",
       continue: "继续",
@@ -946,7 +917,7 @@
       error: "出错了。"
     },
     ar: {
-      landing_title_html: "اكتب<br>الآن",
+      landing_title_html: "اكتب<br>لأجلهم",
       landing_sub: "8 دقائق",
       try_again: "حاول مرة أخرى",
       continue: "متابعة",
@@ -969,7 +940,7 @@
       error: "حدث خطأ ما."
     },
     hi: {
-      landing_title_html: "अभी<br>लिखो",
+      landing_title_html: "उनके लिए<br>लिखो",
       landing_sub: "8 मिनट",
       try_again: "फिर से कोशिश करें",
       continue: "जारी रखें",
@@ -992,7 +963,7 @@
       error: "कुछ गलत हो गया।"
     },
     id: {
-      landing_title_html: "TULIS<br>SEKARANG",
+      landing_title_html: "TULIS<br>UNTUK MEREKA",
       landing_sub: "8 menit",
       try_again: "coba lagi",
       continue: "LANJUTKAN",
@@ -1359,6 +1330,7 @@
     input.value = '';
     reflectionContent.innerHTML = '';
     flowRibbonInner.innerHTML = '';
+    if (writingStream) writingStream.textContent = '';
     progressBar.style.width = '0%';
     progressBar.classList.remove('complete');
     lastCharEl.textContent = '';
@@ -1537,18 +1509,13 @@
     stopSessionTimers();
 
     var duration = elapsed || (Date.now() - sessionStartTime) / 1000;
-    var isAnky = duration >= TOTAL_SECONDS && fullText.split(/\s+/).filter(function(w) { return w.length > 0; }).length >= 300;
+    var wordCount = fullText.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    var isAnky = duration >= TOTAL_SECONDS && wordCount >= 300;
 
-    if (isAnky) {
-      reflectionContent.innerHTML = '';
-      setState('reflection');
-      submitWriting(duration, true);
-      return;
-    }
-
-    saveDraftToStorage();
-    storeLocalWriting(duration);
-    showEndedRestart();
+    // Always submit and show reflection — anky always listens
+    reflectionContent.innerHTML = '';
+    setState('reflection');
+    submitWriting(duration, isAnky);
   }
 
   function submitWriting(duration, isAnky) {
@@ -1575,18 +1542,24 @@
             showEndedRestart();
             return;
           }
-          if (!data.is_anky || !data.anky_id) {
-            storeLocalWriting(duration);
-            showEndedRestart();
-            return;
-          }
           clearDraft();
-          localStorage.setItem('anky_full_ui_unlocked', 'true');
           if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
+
           if (data.is_anky && data.anky_id) {
+            // Full anky — stream Claude reflection
+            localStorage.setItem('anky_full_ui_unlocked', 'true');
             currentAnkyId = data.anky_id;
             saveAnkyId(data.anky_id);
             streamAnkyReflection(data.anky_id);
+          } else if (data.response) {
+            // Short session — show Ollama feedback directly
+            setState('reflection');
+            reflectionContent.innerHTML =
+              '<div class="anky-reflection-text"><p>' + renderMarkdown(data.response) + '</p></div>';
+            // Enable conversation continuation
+            addShortSessionChat(data.response);
+          } else {
+            showEndedRestart();
           }
         })
         .catch(function() {
@@ -1881,6 +1854,70 @@
   }
 
   // ═══════════════════════════════════════════
+  // SHORT SESSION CHAT — anky always listens
+  // ═══════════════════════════════════════════
+  function addShortSessionChat(initialResponse) {
+    chatHistory = [{ role: 'assistant', content: initialResponse }];
+
+    var wrap = document.createElement('div');
+    wrap.id = 'reply-wrap';
+    wrap.className = 'reply-options-wrap';
+    var inputWrap = document.createElement('div');
+    inputWrap.className = 'reply-custom-input';
+    var ta = document.createElement('textarea');
+    ta.placeholder = copy('write_reply');
+    ta.rows = 1;
+    var sendBtn = document.createElement('button');
+    sendBtn.disabled = true;
+    sendBtn.textContent = copy('send');
+    inputWrap.appendChild(ta);
+    inputWrap.appendChild(sendBtn);
+    wrap.appendChild(inputWrap);
+    reflectionContent.appendChild(wrap);
+
+    ta.addEventListener('input', function() {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+      sendBtn.disabled = !ta.value.trim();
+    });
+    ta.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) sendBtn.click(); }
+    });
+    sendBtn.onclick = function() {
+      var msg = ta.value.trim();
+      if (!msg) return;
+      wrap.remove();
+
+      var userBubble = document.createElement('div');
+      userBubble.className = 'anky-chat-bubble user';
+      userBubble.textContent = msg;
+      reflectionContent.appendChild(userBubble);
+
+      var thinkBubble = document.createElement('div');
+      thinkBubble.className = 'anky-chat-bubble anky';
+      setInlineStatus(thinkBubble, 'processing-text', copy('thinking'));
+      reflectionContent.appendChild(thinkBubble);
+
+      fetch('/api/chat-quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, writing: fullText, history: chatHistory }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          chatHistory.push({ role: 'user', content: msg });
+          chatHistory.push({ role: 'assistant', content: data.response });
+          thinkBubble.innerHTML = renderMarkdown(data.response);
+          addShortSessionChat(data.response);
+        })
+        .catch(function() {
+          setInlineStatus(thinkBubble, 'error-text', copy('error'));
+        });
+    };
+    setTimeout(function() { ta.focus(); }, 300);
+  }
+
+  // ═══════════════════════════════════════════
   // INPUT HANDLING
   // ═══════════════════════════════════════════
   function appendCharacters(newChars, now) {
@@ -1927,6 +1964,13 @@
       if (charSize < 8) charSize = 8;
       if (charSize > 40) charSize = 40;
 
+      // Add to the unified writing stream (above the big char)
+      if (writingStream) {
+        var textNode = document.createTextNode(ch === ' ' ? ' ' : ch);
+        writingStream.appendChild(textNode);
+      }
+
+      // Also still add to flow ribbon (hidden, but keeps data structure)
       var span = document.createElement('span');
       span.className = 'flow-char';
       span.textContent = ch === ' ' ? '\u00A0' : ch;
@@ -1935,6 +1979,10 @@
       span.style.textShadow = '0 0 8px rgba(' + cRgb[0] + ',' + cRgb[1] + ',' + cRgb[2] + ',0.14)';
       flowRibbonInner.appendChild(span);
     }
+
+    // Auto-scroll the writing area so newest text is visible
+    var writingArea = document.getElementById('anky-writing');
+    if (writingArea) writingArea.scrollTop = writingArea.scrollHeight;
 
     while (flowRibbonInner.children.length > 500) {
       flowRibbonInner.removeChild(flowRibbonInner.firstChild);

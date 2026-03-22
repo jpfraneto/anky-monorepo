@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>anky - login</title>
+  <title>anky — your identity</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
@@ -11,201 +11,498 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Righteous', sans-serif;
-      background: #0a0a0a;
+      background: #07070d;
       color: #e0e0e0;
-      min-height: 100vh;
+      height: 100vh;
+      height: 100dvh;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
-    a { color: #c4a0ff; text-decoration: none; }
-    a:hover { color: #e0c8ff; }
-    .login-container {
+    #app {
+      max-width: 480px;
+      width: 100%;
+      padding: 20px 24px;
       text-align: center;
-      max-width: 400px;
-      padding: 40px 24px;
+      max-height: 100vh;
+      max-height: 100dvh;
+      overflow-y: auto;
     }
-    .login-logo {
-      font-size: 32px;
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .logo {
+      font-size: 28px;
       color: #c4a0ff;
-      margin-bottom: 24px;
+      margin-bottom: 4px;
     }
-    .login-status {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 24px;
-      min-height: 20px;
-    }
-    .login-status.error { color: #e05050; }
-    .login-status.success { color: #6ab07a; }
-    #privy-mount { min-height: 48px; }
-    .login-loading {
-      color: #666;
-      font-size: 14px;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.5; }
-      50% { opacity: 1; }
-    }
-    .login-back {
-      margin-top: 32px;
+    .subtitle {
       font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
     }
-    .login-btn {
+    .btn {
+      display: block;
+      width: 100%;
       background: #1a1a2e;
-      border: 1px solid #7b2ff7;
+      border: 1px solid #333;
       color: #c4a0ff;
       font-family: 'Righteous', sans-serif;
       font-size: 16px;
-      padding: 14px 32px;
+      padding: 14px 24px;
       cursor: pointer;
       transition: all 0.2s;
-      width: 100%;
       margin-bottom: 12px;
     }
-    .login-btn:hover { background: #2a2a4e; }
-    .login-btn.google { border-color: #4285f4; }
-    .login-btn.apple { border-color: #666; }
-    .login-divider {
-      color: #444;
+    .btn:hover { background: #2a2a4e; border-color: #555; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { border-color: #7b2ff7; }
+    .btn-dim { border-color: #222; color: #888; font-size: 14px; }
+    .divider {
+      color: #333;
       font-size: 12px;
-      margin: 16px 0;
+      margin: 20px 0;
     }
-    .login-disconnect {
-      background: transparent;
-      border: 1px solid #333;
-      color: #666;
-      font-family: 'Righteous', sans-serif;
+    .word-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin: 12px 0;
+    }
+    .word-cell {
+      background: #111;
+      border: 1px solid #222;
+      padding: 6px 4px;
+      font-family: monospace;
       font-size: 12px;
-      padding: 8px 16px;
+      color: #e0e0e0;
+      text-align: center;
+      position: relative;
+    }
+    .word-cell .word-num {
+      position: absolute;
+      top: 1px;
+      left: 4px;
+      font-size: 8px;
+      color: #444;
+    }
+    input[type="password"], input[type="text"], textarea {
+      display: block;
+      width: 100%;
+      background: #111;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 10px;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    input[type="password"]:focus, input[type="text"]:focus, textarea:focus {
+      border-color: #7b2ff7;
+    }
+    textarea {
+      height: 120px;
+      resize: none;
+    }
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 16px;
       cursor: pointer;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+      justify-content: center;
+    }
+    label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #7b2ff7;
+    }
+    .error {
+      color: #e05050;
+      font-size: 13px;
+      margin-bottom: 12px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+    }
+    .info {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 16px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+    .back-link {
+      margin-top: 32px;
+      font-size: 13px;
+    }
+    .back-link a {
+      color: #666;
+      text-decoration: none;
+    }
+    .back-link a:hover { color: #888; }
+    .loading-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+    }
+    .section-title {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 16px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+    }
+    .passphrase-section {
+      margin-top: 12px;
+      text-align: left;
+    }
+    .passphrase-section label {
+      justify-content: flex-start;
+    }
+    .passphrase-label {
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 6px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+    }
+    .sacred-warning {
+      color: #c4a0ff;
+      font-size: 12px;
+      font-family: system-ui, sans-serif;
+      font-weight: 400;
+      line-height: 1.6;
+      margin: 20px 0;
+      padding: 16px;
+      border: 1px solid #222;
+      background: #0f0f1a;
+      text-align: left;
     }
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-logo">anky</div>
-    <div class="login-status" id="login-status">loading...</div>
-    <div id="privy-mount">
-      <div class="login-loading">loading...</div>
+  <div id="app">
+
+    <!-- WELCOME -->
+    <div class="screen active" id="screen-welcome">
+      <div class="logo">anky</div>
+      <div class="subtitle">write for your children. they'll hear your soul.</div>
+      <div id="welcome-buttons">
+        <button class="btn btn-primary" onclick="showScreen('generate')">create identity</button>
+        <button class="btn btn-dim" onclick="showScreen('import')">i have a recovery phrase</button>
+      </div>
+      <div id="welcome-unlock" style="display:none;">
+        <p class="info">your identity is stored on this device.</p>
+        <input type="password" id="unlock-pass" placeholder="passphrase" onkeydown="if(event.key==='Enter')unlockVault()">
+        <div class="error" id="unlock-error"></div>
+        <button class="btn btn-primary" onclick="unlockVault()">unlock</button>
+        <div class="divider">or</div>
+        <button class="btn btn-dim" onclick="showScreen('import')">use a different recovery phrase</button>
+      </div>
+      <div class="back-link"><a href="/">back to writing</a></div>
     </div>
-    <div class="login-back"><a href="/">back to writing</a></div>
+
+    <!-- GENERATE -->
+    <div class="screen" id="screen-generate">
+      <div class="logo">anky</div>
+      <div class="subtitle">this is your soul. write it down and don't lose it.</div>
+      <div class="word-grid" id="gen-words"></div>
+      <label>
+        <input type="checkbox" id="gen-confirm"> i wrote these down
+      </label>
+      <div class="passphrase-section">
+        <div class="passphrase-label">choose a passphrase to encrypt your identity on this device</div>
+        <input type="password" id="gen-pass" placeholder="passphrase (min 6 characters)">
+        <input type="password" id="gen-pass-confirm" placeholder="confirm passphrase">
+      </div>
+      <div class="error" id="gen-error"></div>
+      <button class="btn btn-primary" id="gen-submit" onclick="submitGenerate()">save and authenticate</button>
+      <div class="back-link"><a href="javascript:showScreen('welcome')">back</a></div>
+    </div>
+
+    <!-- IMPORT -->
+    <div class="screen" id="screen-import">
+      <div class="logo">anky</div>
+      <div class="subtitle">enter your 12-word recovery phrase</div>
+      <textarea id="import-words" placeholder="enter all 12 words separated by spaces"></textarea>
+      <div class="passphrase-section">
+        <div class="passphrase-label">choose a passphrase to encrypt your identity on this device</div>
+        <input type="password" id="import-pass" placeholder="passphrase (min 6 characters)">
+        <input type="password" id="import-pass-confirm" placeholder="confirm passphrase">
+      </div>
+      <div class="error" id="import-error"></div>
+      <button class="btn btn-primary" onclick="submitImport()">restore and authenticate</button>
+      <div class="back-link"><a href="javascript:showScreen('welcome')">back</a></div>
+    </div>
+
+    <!-- LOADING -->
+    <div class="screen" id="screen-loading">
+      <div class="logo">anky</div>
+      <div class="info"><span class="loading-dots">authenticating</span></div>
+    </div>
+
   </div>
 
-  <script type="module">
-    import React from 'https://esm.sh/react@18.3.1';
-    import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
-    import { PrivyProvider, usePrivy, useLoginWithEmail, useLoginWithOAuth } from 'https://esm.sh/@privy-io/react-auth@2.25.0?deps=react@18.3.1,react-dom@18.3.1';
+  <script src="/static/ethers.umd.min.js"></script>
+  <script>
+  (function() {
+    'use strict';
 
-    const h = React.createElement;
-    const statusEl = document.getElementById('login-status');
+    var generatedMnemonic = null;
 
-    function setStatus(msg, type) {
-      statusEl.textContent = msg;
-      statusEl.className = 'login-status' + (type ? ' ' + type : '');
+    // --- Screen management ---
+    function showScreen(name) {
+      document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+      document.getElementById('screen-' + name).classList.add('active');
+    }
+    window.showScreen = showScreen;
+
+    // --- Check for existing vault on load ---
+    (function init() {
+      var vault = localStorage.getItem('anky_seed_vault');
+      if (vault) {
+        document.getElementById('welcome-buttons').style.display = 'none';
+        document.getElementById('welcome-unlock').style.display = 'block';
+      }
+    })();
+
+    // --- Crypto helpers ---
+    function getRandomBytes(n) {
+      var arr = new Uint8Array(n);
+      crypto.getRandomValues(arr);
+      return arr;
     }
 
-    async function verifyWithBackend(accessToken) {
-      setStatus('verifying...', '');
-      try {
-        const resp = await fetch('/auth/privy/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auth_token: accessToken }),
-        });
-        const data = await resp.json();
-        if (data.ok) {
-          if (data.username) localStorage.setItem('anky_username', data.username);
-          if (data.email) localStorage.setItem('anky_email', data.email);
-          if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
-          localStorage.setItem('anky_logged_in', 'true');
-          setStatus('logged in! redirecting...', 'success');
-          setTimeout(() => { window.location.href = '/'; }, 500);
-        } else {
-          setStatus('verification failed — try again', 'error');
-        }
-      } catch (e) {
-        console.error('Backend verify failed:', e);
-        setStatus('server error — try again', 'error');
-      }
+    function arrayToHex(arr) {
+      return Array.from(arr).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     }
 
-    function LoginUI() {
-      const { login, authenticated, ready, user, getAccessToken, logout } = usePrivy();
-
-      React.useEffect(() => {
-        if (!ready) return;
-
-        if (authenticated && user) {
-          setStatus('authenticated, verifying...', '');
-          getAccessToken().then(token => {
-            if (token) {
-              verifyWithBackend(token);
-            } else {
-              setStatus('failed to get access token', 'error');
-            }
-          }).catch(err => {
-            console.error('getAccessToken failed:', err);
-            setStatus('token error — try again', 'error');
-          });
-        } else {
-          setStatus('choose how to login', '');
-        }
-      }, [ready, authenticated, user]);
-
-      if (!ready) {
-        return h('div', { className: 'login-loading' }, 'initializing...');
+    function hexToArray(hex) {
+      var bytes = new Uint8Array(hex.length / 2);
+      for (var i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
       }
+      return bytes;
+    }
 
-      if (authenticated) {
-        return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' } },
-          h('div', { style: { color: '#6ab07a', fontSize: '14px' } }, 'connected'),
-          h('button', {
-            onClick: () => {
-              logout();
-              localStorage.removeItem('anky_logged_in');
-              localStorage.removeItem('anky_username');
-              localStorage.removeItem('anky_email');
-              localStorage.removeItem('wallet_address');
-              setStatus('logged out', '');
-            },
-            className: 'login-disconnect',
-          }, 'disconnect')
-        );
-      }
-
-      // Use Privy's built-in login modal which handles email, Google, Apple
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '0' } },
-        h('button', {
-          onClick: login,
-          className: 'login-btn',
-        }, 'login with email or apple')
+    async function deriveKey(passphrase, salt) {
+      var enc = new TextEncoder();
+      var keyMaterial = await crypto.subtle.importKey(
+        'raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
       );
     }
 
-    function App() {
-      return h(PrivyProvider, {
-        appId: 'cmivv85zt00ftla0cjpaw155h',
-        config: {
-          loginMethods: ['email', 'apple'],
-          appearance: {
-            theme: 'dark',
-            accentColor: '#7b2ff7',
-            logo: '',
-          },
-          embeddedWallets: {
-            createOnLogin: 'users-without-wallets',
-          },
-        },
-      }, h(LoginUI));
+    async function encryptPrivateKey(privateKeyHex, passphrase) {
+      var salt = getRandomBytes(16);
+      var iv = getRandomBytes(12);
+      var key = await deriveKey(passphrase, salt);
+      var enc = new TextEncoder();
+      var encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        enc.encode(privateKeyHex)
+      );
+      return {
+        ciphertext: arrayToHex(new Uint8Array(encrypted)),
+        iv: arrayToHex(iv),
+        salt: arrayToHex(salt)
+      };
     }
 
-    const mountEl = document.getElementById('privy-mount');
-    mountEl.innerHTML = '';
-    const root = createRoot(mountEl);
-    root.render(h(App));
+    async function decryptPrivateKey(vault, passphrase) {
+      var salt = hexToArray(vault.salt);
+      var iv = hexToArray(vault.iv);
+      var ciphertext = hexToArray(vault.ciphertext);
+      var key = await deriveKey(passphrase, salt);
+      var decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        ciphertext
+      );
+      return new TextDecoder().decode(decrypted);
+    }
+
+    // --- Auth flow ---
+    async function authenticate(wallet) {
+      showScreen('loading');
+
+      try {
+        // Step 1: Get challenge
+        var challengeResp = await fetch('/swift/v2/auth/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet_address: wallet.address })
+        });
+        var challengeData = await challengeResp.json();
+        if (!challengeData.ok) {
+          throw new Error(challengeData.error || 'challenge request failed');
+        }
+
+        // Step 2: Sign message
+        var signature = await wallet.signMessage(challengeData.message);
+
+        // Step 3: Verify with web endpoint (sets cookies)
+        var verifyResp = await fetch('/auth/seed/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: wallet.address,
+            challenge_id: challengeData.challenge_id,
+            signature: signature
+          })
+        });
+        var verifyData = await verifyResp.json();
+        if (!verifyData.ok) {
+          throw new Error(verifyData.error || 'verification failed');
+        }
+
+        // Success — set localStorage (including session token for API calls)
+        localStorage.setItem('anky_logged_in', 'true');
+        localStorage.setItem('wallet_address', wallet.address);
+        localStorage.setItem('anky_session_token', verifyData.session_token);
+        if (verifyData.username) localStorage.setItem('anky_username', verifyData.username);
+
+        window.location.href = '/';
+      } catch (e) {
+        showScreen('welcome');
+        alert('Authentication failed: ' + e.message);
+      }
+    }
+
+    // --- Generate flow ---
+    window.submitGenerate = async function() {
+      var confirmed = document.getElementById('gen-confirm').checked;
+      var pass = document.getElementById('gen-pass').value;
+      var passConfirm = document.getElementById('gen-pass-confirm').value;
+      var errorEl = document.getElementById('gen-error');
+      errorEl.textContent = '';
+
+      if (!confirmed) {
+        errorEl.textContent = 'please confirm you wrote down the words';
+        return;
+      }
+      if (pass.length < 6) {
+        errorEl.textContent = 'passphrase must be at least 6 characters';
+        return;
+      }
+      if (pass !== passConfirm) {
+        errorEl.textContent = 'passphrases do not match';
+        return;
+      }
+
+      try {
+        var wallet = ethers.Wallet.fromPhrase(generatedMnemonic);
+        var encrypted = await encryptPrivateKey(wallet.privateKey, pass);
+        encrypted.wallet_address = wallet.address.toLowerCase();
+        localStorage.setItem('anky_seed_vault', JSON.stringify(encrypted));
+        await authenticate(wallet);
+      } catch (e) {
+        errorEl.textContent = 'error: ' + e.message;
+      }
+    };
+
+    // --- Import flow ---
+    window.submitImport = async function() {
+      var words = document.getElementById('import-words').value.trim().toLowerCase();
+      var pass = document.getElementById('import-pass').value;
+      var passConfirm = document.getElementById('import-pass-confirm').value;
+      var errorEl = document.getElementById('import-error');
+      errorEl.textContent = '';
+
+      var wordList = words.split(/\s+/).filter(function(w) { return w.length > 0; });
+      if (wordList.length !== 12) {
+        errorEl.textContent = 'please enter exactly 12 words';
+        return;
+      }
+      if (pass.length < 6) {
+        errorEl.textContent = 'passphrase must be at least 6 characters';
+        return;
+      }
+      if (pass !== passConfirm) {
+        errorEl.textContent = 'passphrases do not match';
+        return;
+      }
+
+      try {
+        var mnemonic = wordList.join(' ');
+        var wallet = ethers.Wallet.fromPhrase(mnemonic);
+        var encrypted = await encryptPrivateKey(wallet.privateKey, pass);
+        encrypted.wallet_address = wallet.address.toLowerCase();
+        localStorage.setItem('anky_seed_vault', JSON.stringify(encrypted));
+        await authenticate(wallet);
+      } catch (e) {
+        errorEl.textContent = 'invalid recovery phrase or error: ' + e.message;
+      }
+    };
+
+    // --- Unlock flow ---
+    window.unlockVault = async function() {
+      var pass = document.getElementById('unlock-pass').value;
+      var errorEl = document.getElementById('unlock-error');
+      errorEl.textContent = '';
+
+      if (!pass) {
+        errorEl.textContent = 'enter your passphrase';
+        return;
+      }
+
+      try {
+        var vault = JSON.parse(localStorage.getItem('anky_seed_vault'));
+        var privateKeyHex = await decryptPrivateKey(vault, pass);
+        var wallet = new ethers.Wallet(privateKeyHex);
+
+        // Verify address matches
+        if (wallet.address.toLowerCase() !== vault.wallet_address) {
+          errorEl.textContent = 'decryption succeeded but address mismatch — vault may be corrupted';
+          return;
+        }
+
+        await authenticate(wallet);
+      } catch (e) {
+        errorEl.textContent = 'wrong passphrase or corrupted vault';
+      }
+    };
+
+    // --- Generate mnemonic when generate screen is shown ---
+    var origShowScreen = window.showScreen;
+    window.showScreen = function(name) {
+      origShowScreen(name);
+      if (name === 'generate' && !generatedMnemonic) {
+        var wallet = ethers.Wallet.createRandom();
+        generatedMnemonic = wallet.mnemonic.phrase;
+        var words = generatedMnemonic.split(' ');
+        var grid = document.getElementById('gen-words');
+        grid.innerHTML = '';
+        for (var i = 0; i < words.length; i++) {
+          var cell = document.createElement('div');
+          cell.className = 'word-cell';
+          cell.innerHTML = '<span class="word-num">' + (i + 1) + '</span>' + words[i];
+          grid.appendChild(cell);
+        }
+      }
+    };
+
+  })();
   </script>
 </body>
 </html>

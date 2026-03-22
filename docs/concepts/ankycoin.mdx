@@ -1,0 +1,40 @@
+---
+title: "Ankycoin"
+description: "USDC payments on Base — no subscriptions, no intermediaries"
+---
+
+# Ankycoin & Payments
+
+Anky uses x402 wallet payments with USDC on Base. No API keys. No subscriptions. No Stripe. No intermediaries.
+
+## How It Works
+
+1. The user's wallet holds USDC on Base
+2. For premium features, the user sends USDC to the treasury address
+3. The transaction hash is passed as the `payment-signature` header
+4. The backend verifies the transaction on-chain
+5. The feature unlocks
+
+## What's Premium vs. Free
+
+| Feature | Free (Ollama) | Premium (Claude) |
+|---------|---------------|-------------------|
+| Writing feedback | Local Ollama | Claude |
+| Anky image | Flux/ComfyUI local | Gemini + Flux fallback |
+| Cuentacuentos | Same pipeline | Same pipeline |
+| Facilitator recommendations | Not available | Claude-powered matching |
+
+The key insight: **free-tier users get everything**, just slower. Their jobs go into a queue and get processed by the local Ollama instance. Premium users get immediate Claude generation.
+
+The writing practice itself — the sacred 8 minutes — is always free. The excuses have a premium lane, but the core is untouched.
+
+## Treasury
+
+The treasury wallet address comes from server configuration (`TREASURY_ADDRESS` env var). All payments are verified on-chain — the backend never holds funds, it only reads the ledger.
+
+## Why USDC on Base?
+
+- **Stablecoins**: No price volatility. $1 is $1.
+- **Base**: Low gas fees, fast finality, EVM-compatible (same wallet derivation as the identity system)
+- **No intermediaries**: No payment processor can freeze the account, charge back, or take a cut
+- **Programmable**: Future features (like paying facilitators directly) can use the same rails

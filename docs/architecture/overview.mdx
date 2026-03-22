@@ -1,0 +1,102 @@
+---
+title: "Architecture Overview"
+description: "Single binary, bare metal, SQLite, local AI — how Anky is built"
+---
+
+# Architecture Overview
+
+Anky runs as a single Rust binary on a bare-metal machine called `poiesis`. No microservices. No containers in production. No cloud databases.
+
+## System Diagram
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  poiesis (bare metal)                                        │
+│                                                              │
+│  ┌─────────────┐  ┌──────────┐  ┌────────────────────────┐  │
+│  │ Anky (Rust)  │  │  Ollama  │  │  ComfyUI + Flux LoRA  │  │
+│  │  port 8889   │  │  :11434  │  │       :8188            │  │
+│  │              │  │          │  │                        │  │
+│  │ Axum router  │──│ qwen3.5  │  │  flux1-dev +           │  │
+│  │ SQLite DB    │  │  :35b    │  │  anky_flux_lora_v2     │  │
+│  │ Tera tmpl    │  │          │  │                        │  │
+│  └──────┬───────┘  └──────────┘  └────────────────────────┘  │
+│         │                                                     │
+│         │ systemd: anky.service                               │
+└─────────┼────────────────────────────────────────────────────┘
+          │
+          │ cloudflared tunnel
+          │
+    ┌─────▼─────┐
+    │ Cloudflare │
+    │  anky.app  │
+    └───────────┘
+```
+
+## Components
+
+### Rust/Axum Server
+- Single binary: `target/release/anky`
+- HTTP router with Axum
+- Server-rendered HTML via Tera templates
+- Mobile API under `/swift/v1/*` and `/swift/v2/*`
+- Background workers spawned as tokio tasks
+
+### SQLite
+- Single file: `data/anky.db`
+- Accessed via `rusqlite` through `AppState`
+- Schema managed by `src/db/migrations.rs` (not external SQL files)
+- No ORM — raw SQL queries in `src/db/queries.rs`
+
+### Ollama (Local Text AI)
+- Model: `qwen3.5:35b`
+- URL: `http://localhost:11434`
+- Used for: free-tier guidance, image prompts, writing feedback, translations
+- Data never leaves the machine
+
+### ComfyUI (Local Image AI)
+- Flux.1-dev with Anky LoRA (strength 0.85)
+- URL: `http://127.0.0.1:8188`
+- Square images: 1024x1024 (ankys)
+- Vertical images: 768x1344 (cuentacuentos phases)
+- Sampling: 20 Euler steps, CFG 3.5
+
+### Claude (Cloud Text AI)
+- Used for: premium guidance, chakra detection, cuentacuentos generation, facilitator matching
+- Accessed via API with payment verification
+- Never touches the write path directly
+
+### Cloudflare Tunnel
+- Service: `cloudflared-anky.service`
+- Routes `anky.app` → `localhost:8889`
+- No exposed ports, no load balancer, no reverse proxy config
+
+## Data Flow
+
+```
+User writes 8+ min
+       │
+       ▼
+POST /swift/v2/write
+       │
+       ├── Persist to SQLite (writing_sessions)
+       ├── Mirror to data/writings/{wallet}/{ts}.txt
+       │
+       ├── Spawn: Anky Image Pipeline
+       │   └── Ollama prompt → Gemini/Flux → WebP + thumb
+       │
+       │
+       └── Spawn: Cuentacuentos Pipeline (v2 only)
+           ├── Claude → chakra + story + phases
+           ├── Ollama → image prompts per phase
+           ├── Flux → vertical images per phase
+           └── Ollama → translations (es, zh, hi, ar)
+```
+
+## Why This Architecture?
+
+- **Single binary**: No deployment coordination. `cargo build --release && systemctl restart`.
+- **SQLite**: No database server. No connection pooling. No migrations infra. Just a file.
+- **Bare metal**: GPU access for Flux. No container overhead. No cloud GPU costs.
+- **Local AI**: Free-tier costs $0. No API rate limits. No data exfiltration.
+- **Cloudflare tunnel**: Zero-config HTTPS. No certificate management. No port forwarding.

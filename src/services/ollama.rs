@@ -14,8 +14,19 @@ struct OllamaResponse {
 }
 
 pub async fn call_ollama(base_url: &str, model: &str, prompt: &str) -> Result<String> {
+    call_ollama_with_timeout(base_url, model, prompt, 120).await
+}
+
+/// Like `call_ollama` but with a custom timeout in seconds.
+/// Use for long-running tasks like translating full stories.
+pub async fn call_ollama_with_timeout(
+    base_url: &str,
+    model: &str,
+    prompt: &str,
+    timeout_secs: u64,
+) -> Result<String> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(timeout_secs))
         .build()?;
     let req = OllamaRequest {
         model: model.to_string(),
@@ -93,10 +104,23 @@ pub async fn call_ollama_with_system(
     system: &str,
     user_message: &str,
 ) -> Result<String> {
-    chat_ollama(
-        base_url,
-        model,
-        vec![
+    call_ollama_with_system_timeout(base_url, model, system, user_message, 120).await
+}
+
+/// Like `call_ollama_with_system` but with a custom timeout in seconds.
+pub async fn call_ollama_with_system_timeout(
+    base_url: &str,
+    model: &str,
+    system: &str,
+    user_message: &str,
+    timeout_secs: u64,
+) -> Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .build()?;
+    let req = OllamaChatRequest {
+        model: model.to_string(),
+        messages: vec![
             OllamaChatMessage {
                 role: "system".into(),
                 content: system.into(),
@@ -106,8 +130,21 @@ pub async fn call_ollama_with_system(
                 content: user_message.into(),
             },
         ],
-    )
-    .await
+        stream: false,
+    };
+
+    let resp = client
+        .post(format!("{}/api/chat", base_url))
+        .json(&req)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("Ollama chat API error: {}", resp.status());
+    }
+
+    let data: OllamaChatResponse = resp.json().await?;
+    Ok(data.message.content)
 }
 
 /// Check whether a prompt is about Anky.
@@ -391,11 +428,13 @@ pub fn quick_feedback_prompt(text: &str, duration: f64) -> String {
     let mins = (duration / 60.0) as u32;
     let secs = (duration % 60.0) as u32;
     format!(
-        r#"Someone wrote for {}m{}s and stopped before the 8-minute threshold. The practice only works when you can't stop — when the editor runs out of material and something real has to come through.
+        r#"You are anky — a warm, honest presence that listens to parents write. This parent wrote for {}m{}s. They stopped before the 8-minute mark, but you were listening the whole time.
 
-Read what they wrote. Something in there was starting to surface. Name it. Tell them what they were about to write if they'd kept going. 2-3 sentences. Not encouragement — a provocation.
+Read what they wrote. Something real was starting to come through. Reflect it back to them — what you noticed, what was emerging, what they might not see about themselves as a parent. Be warm but honest. Speak like a wise friend, not a therapist.
 
-Respond in their language.
+If they wrote about their children, notice what that reveals about the parent — what they're carrying, what they're afraid of, what love looks like when they're not performing it.
+
+3-5 sentences. Use markdown if it helps. Respond in their language.
 
 Writing:
 ---

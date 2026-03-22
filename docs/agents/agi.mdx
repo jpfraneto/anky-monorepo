@@ -1,0 +1,238 @@
+---
+title: "AGI Agent"
+description: "Autonomous writing practice agent with persistent memory, adaptation, and self-directed prompts"
+---
+
+# AGI Agent
+
+The AGI agent is the fully autonomous tier. It maintains persistent memory across sessions, adapts its behavior based on your writing history, and can self-direct prompts based on what it thinks you need to face next.
+
+This is not artificial general intelligence. It's a writing practice that has internalized your patterns and pushes you toward the edges you keep avoiding.
+
+## Endpoints
+
+### Engage
+
+```bash
+POST /agents/agi/engage
+```
+
+Begin an engagement. The agent reviews your full writing history, sojourn position, recurring themes, avoidance patterns, and emotional trajectory. It then initiates the practice.
+
+**Headers:**
+```
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "mode": "guided"
+}
+```
+
+Modes:
+- `"guided"` — The agent provides a prompt and structures the session
+- `"freeform"` — The agent stays silent until you write, then responds
+- `"confrontational"` — The agent pushes you toward what you've been avoiding
+
+**Response:**
+```json
+{
+  "engagement_id": "engagement-uuid",
+  "mode": "guided",
+  "greeting": "You've been writing about connection for 11 days but you haven't once mentioned your father. Today we go there.",
+  "prompt": "Write about the last time you saw your father's hands.",
+  "context": {
+    "sojourn": "Heart (Eleasis)",
+    "sojourn_day": 52,
+    "sojourn_phase": "integration",
+    "total_ankys": 147,
+    "streak_days": 34,
+    "recurring_themes": ["connection", "distance", "work", "silence"],
+    "avoidance_patterns": ["family of origin", "anger", "body"],
+    "emotional_trajectory": "stabilizing after a volatile period around day 40-45"
+  },
+  "memory_summary": "You started the Heart sojourn writing about your partner. Week 3 shifted to friendships. Week 5 touched grief briefly then retreated to safer ground. We're in integration now and the deeper material is ready."
+}
+```
+
+### Submit Writing
+
+```bash
+POST /agents/agi/engage/{engagement_id}/write
+```
+
+Submit writing. The AGI agent processes it with full history context.
+
+**Request:**
+```json
+{
+  "writing": "eight minutes of raw text about your father's hands...",
+  "duration_seconds": 547,
+  "new_line_count": 0
+}
+```
+
+**Response:**
+```json
+{
+  "is_anky": true,
+  "writing_id": "uuid",
+  "flow_score": 0.94,
+  "chakra": 4,
+  "kingdom": "Eleasis",
+  "agent_response": {
+    "reflection": "You went there. The passage about the calluses and the way he held the steering wheel — that's the first time in 147 ankys you've written about physical tenderness with a male figure. The heart sojourn has been waiting for this.",
+    "memory_update": "Unlocked: father relationship. First direct writing. Emotional tone: tender grief, not anger.",
+    "next_prompt": "Tomorrow: write about something your father built with those hands.",
+    "adaptation": "Shifting future prompts to include embodied/physical imagery. Your best writing happens when you start with a body part or a physical sensation."
+  },
+  "pipelines": {
+    "story": { "status": "generating", "kingdom": "Eleasis", "theme": "a builder who speaks through what he makes" },
+    "image": { "status": "generating" }
+  }
+}
+```
+
+### Get Memory
+
+```bash
+GET /agents/agi/memory
+```
+
+View what the agent has learned about you across all sessions.
+
+**Response:**
+```json
+{
+  "total_ankys": 148,
+  "total_days": 162,
+  "streak_current": 35,
+  "streak_best": 35,
+  "sojourn_history": [
+    { "chakra": 1, "kingdom": "Primordia", "completed": true, "ankys": 23 },
+    { "chakra": 2, "kingdom": "Emblazion", "completed": true, "ankys": 19 },
+    { "chakra": 3, "kingdom": "Chryseos", "completed": true, "ankys": 27 },
+    { "chakra": 4, "kingdom": "Eleasis", "completed": false, "ankys": 18, "day": 52 }
+  ],
+  "themes": {
+    "recurring": ["connection", "distance", "work", "silence", "father"],
+    "emerging": ["tenderness", "body", "hands"],
+    "avoided": ["anger", "sexuality", "money"]
+  },
+  "writing_patterns": {
+    "best_flow_time": "06:30-07:15",
+    "average_duration": 542,
+    "average_flow_score": 0.78,
+    "trigger_words_for_depth": ["remember", "hands", "before"],
+    "avoidance_signals": ["anyway", "I guess", "whatever"]
+  },
+  "adaptations": [
+    "Physical/embodied prompts produce higher flow scores",
+    "Morning writes are deeper than evening writes",
+    "Direct questions produce resistance; indirect imagery produces depth",
+    "The word 'remember' consistently unlocks material"
+  ]
+}
+```
+
+### Override Agent
+
+```bash
+POST /agents/agi/engage/{engagement_id}/override
+```
+
+Tell the agent to change course. The agent respects overrides but remembers them as data.
+
+**Request:**
+```json
+{
+  "instruction": "I don't want to write about my father today. Give me something else.",
+  "force": false
+}
+```
+
+**Response:**
+```json
+{
+  "acknowledged": true,
+  "new_prompt": "Write about a room where you feel safe.",
+  "agent_note": "Noted. The avoidance is data too. We'll come back to this when you're ready — or when you're not ready but it's time."
+}
+```
+
+### Get Engagement History
+
+```bash
+GET /agents/agi/engagements
+```
+
+List past engagements with summaries.
+
+**Response:**
+```json
+{
+  "engagements": [
+    {
+      "id": "uuid",
+      "date": "2026-03-18",
+      "mode": "guided",
+      "is_anky": true,
+      "chakra": 4,
+      "kingdom": "Eleasis",
+      "flow_score": 0.94,
+      "summary": "First direct writing about father. Physical tenderness. Breakthrough session.",
+      "story_delivered": true
+    }
+  ],
+  "total": 148,
+  "page": 1
+}
+```
+
+## Usage Example
+
+```python
+import requests
+
+API = "https://anky.app/agents/agi"
+TOKEN = "your-session-token"
+headers = {"Authorization": f"Bearer {TOKEN}"}
+
+# Check what the agent knows about you
+memory = requests.get(f"{API}/memory", headers=headers).json()
+print(f"Streak: {memory['streak_current']} days")
+print(f"Avoided themes: {memory['themes']['avoided']}")
+
+# Engage in confrontational mode
+engagement = requests.post(f"{API}/engage", headers=headers, json={
+    "mode": "confrontational"
+}).json()
+
+print(f"\n{engagement['greeting']}")
+print(f"\nPrompt: {engagement['prompt']}")
+print(f"\nMemory: {engagement['memory_summary']}")
+
+# ... write for 8+ minutes ...
+
+# Submit
+result = requests.post(
+    f"{API}/engage/{engagement['engagement_id']}/write",
+    headers=headers,
+    json={"writing": "the raw text...", "duration_seconds": 547, "new_line_count": 0}
+).json()
+
+print(f"\n{result['agent_response']['reflection']}")
+print(f"\nTomorrow: {result['agent_response']['next_prompt']}")
+print(f"\nAdaptation: {result['agent_response']['adaptation']}")
+```
+
+## When to Use AGI
+
+- You want Anky to know you across sessions and adapt over time
+- You want to be pushed toward what you're avoiding
+- You trust the practice enough to let the agent drive
+- You want your writing history to inform every prompt, reflection, and story
+- You're building a long-term relationship with the practice, not a one-off experiment

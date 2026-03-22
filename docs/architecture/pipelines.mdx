@@ -1,0 +1,79 @@
+---
+title: "Pipelines"
+description: "Async generation pipelines — images, guidance, stories, translations"
+---
+
+# Pipelines
+
+Every pipeline in Anky is async. The write endpoint returns immediately. Generation happens in background tokio tasks. Results are retrieved via polling endpoints.
+
+## Anky Image Pipeline
+
+**Trigger**: Real anky write or failed-anky retry worker
+
+```
+Writing text
+    │
+    ▼
+Ollama → image prompt
+    │
+    ▼
+Gemini image generation
+    │
+    ├── Success → WebP + thumbnail → save to static/
+    │
+    └── Failure → Flux/ComfyUI fallback
+                       │
+                       ▼
+                  1024x1024, 20 steps, LoRA 0.85
+                       │
+                       ▼
+                  WebP + thumbnail → save to static/
+    │
+    ▼
+Backfill title + reflection if missing
+    │
+    ▼
+Format writing + extract memories
+```
+
+**Retry**: Failed ankys retry every 5 minutes with 5-second spacing between items.
+
+## Cuentacuentos Pipeline
+
+**Trigger**: Persisted v2 anky write only
+
+```
+Writing text
+    │
+    ▼
+Claude → chakra resonance (1-8)
+    │
+    ▼
+Claude → English story in matching kingdom/city
+    │
+    ▼
+Structure into guidance phases
+    │
+    ├── Spawn: Image generation (per phase)
+    │   ├── Ollama → image prompt with kingdom context
+    │   └── Flux/ComfyUI → 768x1344 vertical image
+    │
+    ├── Spawn: Spanish translation (Ollama)
+    ├── Spawn: Mandarin translation (Ollama)
+    ├── Spawn: Hindi translation (Ollama)
+    └── Spawn: Arabic translation (Ollama)
+```
+
+**Image retry**: Failed phase images retry every 5 minutes, up to 3 attempts.
+
+## Background Workers
+
+| Worker | Interval | Purpose |
+|--------|----------|---------|
+| Session reaper | 2s | Kill stale chunked sessions, finalize threshold crossings |
+| Failed anky retry | 5m | Retry failed image generation |
+| Cuentacuentos image retry | 5m | Retry failed phase images (max 3 attempts) |
+| Checkpoint recovery | 5m (60s initial delay) | Recover orphaned writing sessions |
+| Farcaster backfill | 120s (30s initial delay) | Backfill missed interactions |
+| X stream | Continuous | Reconnect with exponential backoff (5-300s) |

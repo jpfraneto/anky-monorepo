@@ -1,0 +1,65 @@
+---
+title: "The Writing Practice"
+description: "8 minutes of stream-of-consciousness writing — the only thing that can't be faked"
+---
+
+# The Writing Practice
+
+The writing session is the sacred core of Anky. Everything else — images, meditations, stories, blockchain, AI — exists in service of getting you to write.
+
+## The Rules
+
+1. **Write for 8 minutes without stopping.** No pausing. No editing. No backspace.
+2. **Stream of consciousness.** Write whatever comes. Don't plan. Don't filter.
+3. **If you stop, you stop.** The system knows. The timer tracks keystrokes and pauses.
+
+## What Happens When You Write
+
+### Under 8 Minutes (Not an Anky)
+
+Your writing is analyzed by Ollama (local AI, your data never leaves the server). You get feedback:
+
+```json
+{
+  "is_anky": false,
+  "persisted": false,
+  "feedback": "You wrote for 6 minutes and 23 seconds. There was a notable pause around minute 4 — that's often where the resistance lives. Tomorrow, push through that wall."
+}
+```
+
+For v2 seed-identity users, sub-threshold writings are not persisted to the database at all. They exist only in the response. This is by design — only real ankys deserve to be remembered.
+
+### Over 8 Minutes (A Real Anky)
+
+Your writing crosses the threshold and becomes a persisted anky. This triggers a fan-out of async work:
+
+1. **Anky Image Pipeline** — Ollama generates an image prompt, Gemini (or Flux/ComfyUI fallback) renders it
+2. **Cuentacuentos** (v2 only) — Claude determines the chakra, generates a story in the matching kingdom, spawns image generation and multilingual translation
+
+```json
+{
+  "is_anky": true,
+  "persisted": true,
+  "writing_id": "550e8400-e29b-41d4-a716-446655440000",
+  "anky_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+}
+```
+
+## Flow Score
+
+Each writing session gets a flow score based on:
+- **Duration** — longer is better, but only past the threshold
+- **Consistency** — steady typing vs. bursts and pauses
+- **New lines** — fewer is better (newlines often indicate the conscious editor stepping in)
+
+The flow score is stored with the writing and used by the guidance system to calibrate meditation and breathwork difficulty.
+
+## The Writing Archive
+
+For v2 seed-identity users, every persisted anky is also mirrored to the filesystem:
+
+```
+data/writings/{wallet_address}/{timestamp_unix}.txt
+```
+
+These files are served publicly at `/data/writings/*`. The only access control is knowing the wallet address — by design, since the wallet is the identity.

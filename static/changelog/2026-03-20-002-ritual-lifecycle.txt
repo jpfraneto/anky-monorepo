@@ -1,0 +1,11 @@
+Make three specific changes to implement the ritual lifecycle.
+
+1. ALLOW writing_sessions.content TO BE NULLIFIED — Add content_deleted_at column, add nullify_writing_content query that sets content = NULL and records deletion timestamp.
+
+2. THE REAPER — After story is saved to DB and training pair is exported (exported_at set), nullify the raw writing content. The writing is consumed: it becomes a training pair, then it is released.
+
+3. MAKE next_prompt THE FINAL STEP — Move generate_next_prompt from fire-and-forget tokio::spawn to execute sequentially AFTER nullification as the closing gesture of the lifecycle.
+
+4. ADD archived STATE — After next_prompt generated, transition ankys.status from "complete" to "archived". The ritual is closed.
+
+Final lifecycle: writing → story → training pair logged → raw writing nullified → next prompt generated → status = archived.

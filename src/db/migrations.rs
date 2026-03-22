@@ -319,6 +319,25 @@ pub fn run(conn: &Connection) -> Result<()> {
         conn.execute_batch("ALTER TABLE users ADD COLUMN wallet_address TEXT;")?;
     }
 
+    let wallet_duplicates: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM (
+                SELECT wallet_address
+                FROM users
+                WHERE wallet_address IS NOT NULL AND wallet_address != ''
+                GROUP BY wallet_address
+                HAVING COUNT(*) > 1
+            )",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if wallet_duplicates == 0 {
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address);",
+        )?;
+    }
+
     let has_generated_wallet_secret: bool = conn
         .prepare("SELECT generated_wallet_secret FROM users LIMIT 0")
         .is_ok();
@@ -612,40 +631,6 @@ pub fn run(conn: &Connection) -> Result<()> {
         );",
     )?;
 
-    // --- Meditation System ---
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS meditation_sessions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            duration_target INTEGER NOT NULL,
-            duration_actual INTEGER,
-            completed BOOLEAN NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS user_interactions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            meditation_session_id TEXT,
-            interaction_type TEXT NOT NULL,
-            question_text TEXT,
-            response_text TEXT,
-            metadata_json TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS user_progression (
-            user_id TEXT PRIMARY KEY,
-            total_meditations INTEGER NOT NULL DEFAULT 0,
-            total_completed INTEGER NOT NULL DEFAULT 0,
-            current_meditation_level INTEGER NOT NULL DEFAULT 0,
-            write_unlocked BOOLEAN NOT NULL DEFAULT 0,
-            current_streak INTEGER NOT NULL DEFAULT 0,
-            longest_streak INTEGER NOT NULL DEFAULT 0,
-            last_session_date TEXT
-        );",
-    )?;
-
     // --- conversation_json on ankys ---
     let has_conversation_json: bool = conn
         .prepare("SELECT conversation_json FROM ankys LIMIT 0")
@@ -691,137 +676,60 @@ pub fn run(conn: &Connection) -> Result<()> {
 
     // --- Swift / Mobile API ---
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS sadhana_commitments (
+        "CREATE TABLE IF NOT EXISTS child_profiles (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            frequency TEXT NOT NULL DEFAULT 'daily',
-            duration_minutes INTEGER NOT NULL DEFAULT 10,
-            target_days INTEGER NOT NULL DEFAULT 30,
-            start_date TEXT NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS sadhana_checkins (
-            id TEXT PRIMARY KEY,
-            commitment_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            completed BOOLEAN NOT NULL DEFAULT 1,
-            notes TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE (commitment_id, date),
-            FOREIGN KEY (commitment_id) REFERENCES sadhana_commitments(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS breathwork_sessions (
-            id TEXT PRIMARY KEY,
-            style TEXT NOT NULL,
-            duration_seconds INTEGER NOT NULL DEFAULT 480,
-            script_json TEXT NOT NULL,
-            generated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS breathwork_completions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            completed_at TEXT NOT NULL DEFAULT (datetime('now')),
-            notes TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (session_id) REFERENCES breathwork_sessions(id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_sadhana_commitments_user ON sadhana_commitments(user_id);
-        CREATE INDEX IF NOT EXISTS idx_sadhana_checkins_commitment ON sadhana_checkins(commitment_id);
-        CREATE INDEX IF NOT EXISTS idx_breathwork_completions_user ON breathwork_completions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_breathwork_sessions_style ON breathwork_sessions(style);
-
-        CREATE TABLE IF NOT EXISTS personalized_meditations (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            writing_session_id TEXT,
-            script_json TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            tier TEXT NOT NULL DEFAULT 'free',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS personalized_breathwork (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            writing_session_id TEXT,
-            style TEXT NOT NULL DEFAULT 'calming',
-            script_json TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            tier TEXT NOT NULL DEFAULT 'free',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_personalized_meditations_user ON personalized_meditations(user_id, status);
-        CREATE INDEX IF NOT EXISTS idx_personalized_breathwork_user ON personalized_breathwork(user_id, status);
-
-        CREATE TABLE IF NOT EXISTS facilitators (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            parent_wallet_address TEXT NOT NULL,
+            derived_wallet_address TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
-            bio TEXT NOT NULL,
-            specialties TEXT NOT NULL DEFAULT '[]',
-            approach TEXT,
-            session_rate_usd REAL NOT NULL,
-            booking_url TEXT,
-            contact_method TEXT,
-            profile_image_url TEXT,
-            location TEXT,
-            languages TEXT NOT NULL DEFAULT '[\"en\"]',
-            status TEXT NOT NULL DEFAULT 'pending',
-            avg_rating REAL DEFAULT 0,
-            total_reviews INTEGER DEFAULT 0,
-            total_sessions INTEGER DEFAULT 0,
-            fee_paid BOOLEAN NOT NULL DEFAULT 0,
-            fee_tx_hash TEXT,
-            approved_at TEXT,
+            birthdate TEXT NOT NULL,
+            emoji_pattern TEXT NOT NULL CHECK (json_valid(emoji_pattern)),
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            FOREIGN KEY (parent_wallet_address) REFERENCES users(wallet_address)
         );
 
-        CREATE TABLE IF NOT EXISTS facilitator_reviews (
+        CREATE INDEX IF NOT EXISTS idx_child_profiles_parent_wallet
+            ON child_profiles(parent_wallet_address);
+
+        CREATE TABLE IF NOT EXISTS cuentacuentos (
             id TEXT PRIMARY KEY,
-            facilitator_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            rating INTEGER NOT NULL,
-            review_text TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE (facilitator_id, user_id),
-            FOREIGN KEY (facilitator_id) REFERENCES facilitators(id),
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            writing_id TEXT NOT NULL,
+            parent_wallet_address TEXT NOT NULL,
+            child_wallet_address TEXT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            guidance_phases TEXT NOT NULL CHECK (json_valid(guidance_phases)),
+            played BOOLEAN NOT NULL DEFAULT 0,
+            generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (writing_id) REFERENCES writing_sessions(id)
         );
 
-        CREATE TABLE IF NOT EXISTS facilitator_bookings (
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_parent_ready
+            ON cuentacuentos(parent_wallet_address, played, generated_at);
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_parent_child_ready
+            ON cuentacuentos(parent_wallet_address, child_wallet_address, played, generated_at);
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_writing_id
+            ON cuentacuentos(writing_id);
+
+        CREATE TABLE IF NOT EXISTS cuentacuentos_images (
             id TEXT PRIMARY KEY,
-            facilitator_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
+            cuentacuentos_id TEXT NOT NULL,
+            phase_index INTEGER NOT NULL,
+            image_prompt TEXT NOT NULL,
+            image_url TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
-            payment_amount_usd REAL,
-            platform_fee_usd REAL,
-            payment_method TEXT,
-            payment_tx_hash TEXT,
-            stripe_payment_id TEXT,
-            user_context_shared BOOLEAN DEFAULT 0,
-            shared_context_json TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            generated_at TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (facilitator_id) REFERENCES facilitators(id),
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            UNIQUE (cuentacuentos_id, phase_index),
+            FOREIGN KEY (cuentacuentos_id) REFERENCES cuentacuentos(id)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_facilitators_status ON facilitators(status);
-        CREATE INDEX IF NOT EXISTS idx_facilitator_reviews_fac ON facilitator_reviews(facilitator_id);
-        CREATE INDEX IF NOT EXISTS idx_facilitator_bookings_user ON facilitator_bookings(user_id);",
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_images_pending
+            ON cuentacuentos_images(cuentacuentos_id, status, phase_index);
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_images_story
+            ON cuentacuentos_images(cuentacuentos_id, phase_index);
+
+",
     )?;
 
     // --- Anky LLM Training History ---
@@ -976,6 +884,222 @@ pub fn run(conn: &Connection) -> Result<()> {
     if !has_formatted {
         conn.execute_batch("ALTER TABLE ankys ADD COLUMN formatted_writing TEXT;")?;
     }
+
+    // --- Ankyverse placement on cuentacuentos ---
+    let has_chakra: bool = conn
+        .prepare("SELECT chakra FROM cuentacuentos LIMIT 0")
+        .is_ok();
+    if !has_chakra {
+        conn.execute_batch(
+            "ALTER TABLE cuentacuentos ADD COLUMN chakra INTEGER;
+             ALTER TABLE cuentacuentos ADD COLUMN kingdom TEXT;
+             ALTER TABLE cuentacuentos ADD COLUMN city TEXT;",
+        )?;
+    }
+
+    // --- Multi-language translations on cuentacuentos ---
+    let has_translations: bool = conn
+        .prepare("SELECT content_es FROM cuentacuentos LIMIT 0")
+        .is_ok();
+    if !has_translations {
+        conn.execute_batch(
+            "ALTER TABLE cuentacuentos ADD COLUMN content_es TEXT;
+             ALTER TABLE cuentacuentos ADD COLUMN content_zh TEXT;
+             ALTER TABLE cuentacuentos ADD COLUMN content_hi TEXT;
+             ALTER TABLE cuentacuentos ADD COLUMN content_ar TEXT;",
+        )?;
+    }
+
+    // --- System summaries: 30-minute activity digests ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS system_summaries (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            raw_stats TEXT NOT NULL,
+            summary TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_system_summaries_created ON system_summaries(created_at);",
+    )?;
+
+    // --- Next Prompts: personalized writing prompts generated after each session ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS next_prompts (
+            user_id TEXT PRIMARY KEY,
+            prompt_text TEXT NOT NULL,
+            generated_from_session TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );",
+    )?;
+
+    // --- Device Tokens: APNs tokens for push notifications ---
+    // Migrated schema: unique on (user_id, platform) instead of (token)
+    let device_tokens_has_updated_at: bool = conn
+        .prepare("SELECT updated_at FROM device_tokens LIMIT 0")
+        .is_ok();
+    if !device_tokens_has_updated_at {
+        // Old table exists with wrong unique constraint — recreate
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS device_tokens;
+            CREATE TABLE device_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                device_token TEXT NOT NULL,
+                platform TEXT NOT NULL DEFAULT 'ios',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (user_id, platform)
+            );
+            CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id);",
+        )?;
+    } else {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS device_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                device_token TEXT NOT NULL,
+                platform TEXT NOT NULL DEFAULT 'ios',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (user_id, platform)
+            );
+            CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id);",
+        )?;
+    }
+
+    // --- Story Training Pairs: (writing, story) pairs for LoRA fine-tuning ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS story_training_pairs (
+            id TEXT PRIMARY KEY,
+            cuentacuentos_id TEXT NOT NULL,
+            writing_id TEXT NOT NULL,
+            writing_input TEXT NOT NULL,
+            story_title TEXT NOT NULL,
+            story_content TEXT NOT NULL,
+            chakra INTEGER,
+            kingdom TEXT,
+            city TEXT,
+            played BOOLEAN NOT NULL DEFAULT 0,
+            parent_wrote_again_within_24h BOOLEAN,
+            language TEXT,
+            quality_score REAL,
+            exported_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (cuentacuentos_id) REFERENCES cuentacuentos(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_story_training_pairs_unexported
+            ON story_training_pairs(exported_at, created_at);",
+    )?;
+
+    // --- Pro flag on users (for GPU job priority) ---
+    let has_is_pro: bool = conn.prepare("SELECT is_pro FROM users LIMIT 0").is_ok();
+    if !has_is_pro {
+        conn.execute_batch("ALTER TABLE users ADD COLUMN is_pro BOOLEAN NOT NULL DEFAULT 0;")?;
+    }
+
+    // --- Ritual lifecycle: allow writing content nullification after story completion ---
+    // SQLite cannot ALTER COLUMN to remove NOT NULL, but the original CREATE TABLE IF NOT EXISTS
+    // only runs on first creation. For existing databases, the NOT NULL constraint on content
+    // is already in place. We work around this by creating writing_sessions rows with content=''
+    // and then NULLing via a trigger-safe UPDATE. SQLite allows NULL in NOT NULL columns via
+    // direct UPDATE when not using strict mode (which we don't).
+    // Add content_deleted_at to track when the raw writing was released.
+    let has_content_deleted_at: bool = conn
+        .prepare("SELECT content_deleted_at FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_content_deleted_at {
+        conn.execute_batch("ALTER TABLE writing_sessions ADD COLUMN content_deleted_at TEXT;")?;
+    }
+
+    // --- Anky Voices: story recordings + listen events ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS story_recordings (
+            id TEXT PRIMARY KEY,
+            story_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1 AND attempt_number <= 4),
+            language TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'processing', 'approved', 'rejected')),
+            duration_seconds REAL NOT NULL,
+            r2_key TEXT,
+            audio_url TEXT,
+            rejection_reason TEXT,
+            full_listen_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            approved_at TEXT,
+            UNIQUE (story_id, user_id, attempt_number),
+            FOREIGN KEY (story_id) REFERENCES cuentacuentos(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_story_recordings_story ON story_recordings(story_id);
+        CREATE INDEX IF NOT EXISTS idx_story_recordings_user ON story_recordings(user_id);
+        CREATE INDEX IF NOT EXISTS idx_story_recordings_approved
+            ON story_recordings(story_id, status, language);
+
+        CREATE TABLE IF NOT EXISTS story_listen_events (
+            id TEXT PRIMARY KEY,
+            story_id TEXT NOT NULL,
+            recording_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            listened_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (recording_id) REFERENCES story_recordings(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_story_listen_events_recording
+            ON story_listen_events(recording_id);",
+    )?;
+
+    // --- Cuentacuentos TTS audio ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS cuentacuentos_audio (
+            id TEXT PRIMARY KEY,
+            cuentacuentos_id TEXT NOT NULL,
+            language TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'generating', 'complete', 'failed')),
+            r2_key TEXT,
+            audio_url TEXT,
+            duration_seconds REAL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            generated_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (cuentacuentos_id, language),
+            FOREIGN KEY (cuentacuentos_id) REFERENCES cuentacuentos(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cuentacuentos_audio_pending
+            ON cuentacuentos_audio(cuentacuentos_id, status);",
+    )?;
+
+    // --- preferred_language on user_settings ---
+    let has_preferred_language: bool = conn
+        .prepare("SELECT preferred_language FROM user_settings LIMIT 0")
+        .is_ok();
+    if !has_preferred_language {
+        conn.execute_batch(
+            "ALTER TABLE user_settings ADD COLUMN preferred_language TEXT NOT NULL DEFAULT 'en';",
+        )?;
+    }
+
+    // --- social_peers: map social handles to Honcho peer IDs for cross-platform context ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS social_peers (
+            id TEXT PRIMARY KEY,
+            platform TEXT NOT NULL,
+            platform_user_id TEXT NOT NULL,
+            platform_username TEXT,
+            honcho_peer_id TEXT,
+            user_id TEXT,
+            interaction_count INTEGER NOT NULL DEFAULT 0,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_social_peers_platform_user
+            ON social_peers(platform, platform_user_id);
+        CREATE INDEX IF NOT EXISTS idx_social_peers_username
+            ON social_peers(platform, platform_username);",
+    )?;
 
     Ok(())
 }

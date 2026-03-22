@@ -1,0 +1,22 @@
+Build three new mobile endpoints for the Anky iOS app and wire them into the post-write pipeline. The codebase is at /home/kithkui/anky.
+
+## Context
+
+The app has 3 tabs:
+1. **Write** — user writes stream-of-consciousness. Before they write, they see a personalized prompt.
+2. **Stories** — cuentacuentos (already built)
+3. **You** — what anky thinks of the user based on all their writing history
+
+After each write, the server should:
+- Generate a personalized next-prompt for the user (async, fire-and-forget)
+- Update the user's profile via Honcho (already happening in memory_pipeline)
+- Send a silent push notification so the iOS app can pre-fetch the new prompt
+
+## What to build
+
+### 1. Migration: `next_prompts` table and `device_tokens` table
+### 2. DB queries in `src/db/queries.rs`
+### 3. Handlers in `src/routes/swift.rs` — GET /swift/v2/next-prompt, GET /swift/v2/you, POST /swift/v2/device-token
+### 4. Route registration in `src/routes/mod.rs`
+### 5. Post-write prompt generation in `src/pipeline/guidance_gen.rs`
+### 6. Wire the prompt generation into the post-write pipeline for both short sessions and ankys

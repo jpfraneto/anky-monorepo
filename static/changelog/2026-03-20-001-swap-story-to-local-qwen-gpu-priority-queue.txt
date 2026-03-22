@@ -1,0 +1,9 @@
+Read the codebase and make the following changes. Do not change anything else.
+
+1. SWAP STORY GENERATION TO LOCAL QWEN — Replace Claude Haiku API call in cuentacuentos generation with local Ollama qwen3.5:35b. 5 minute timeout, same system prompt, retry once on JSON parse failure.
+
+2. ADD PRO QUEUE PRIORITY — Add is_pro field to users table. Create two-channel GPU job queue (pro_channel, free_channel) where GPU worker drains pro first. Replace direct tokio::spawn for image generation in swift.rs, writing.rs, session.rs with queue submissions.
+
+3. ADD TEST ENDPOINT — POST /api/v1/story/test: accepts writing + model + provider (ollama/openrouter/anthropic), routes to appropriate backend, returns raw story JSON + metadata. Bearer auth required, no DB writes.
+
+4. ADD STORY TESTER UI — GET /admin/story-tester: embedded HTML page for side-by-side model comparison, served via include_str with cookie/bearer auth.

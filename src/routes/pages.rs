@@ -286,6 +286,7 @@ pub async fn home(
     let deferred_vec: Vec<LandingCollageMedia> = deferred.to_vec();
     ctx.insert("landing_collage_media_initial", &initial);
     ctx.insert("landing_collage_media_deferred", &deferred_vec);
+    ctx.insert("active_tab", "home");
     let html = state.tera.render("home.html", &ctx)?;
     Ok((jar, Html(html)))
 }
@@ -789,6 +790,40 @@ pub async fn stream_overlay(State(state): State<AppState>) -> Result<Html<String
     Ok(Html(html))
 }
 
+pub async fn stories_page(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Html<String>, AppError> {
+    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
+    let mut ctx = tera::Context::new();
+    ctx.insert("logged_in", &user.is_some());
+    ctx.insert("active_tab", "stories");
+    if let Some(ref u) = user {
+        if let Some(ref uname) = u.username {
+            ctx.insert("username", uname);
+        }
+    }
+    let html = state.tera.render("stories.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn you_page(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Html<String>, AppError> {
+    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
+    let mut ctx = tera::Context::new();
+    ctx.insert("logged_in", &user.is_some());
+    ctx.insert("active_tab", "you");
+    if let Some(ref u) = user {
+        if let Some(ref uname) = u.username {
+            ctx.insert("username", uname);
+        }
+    }
+    let html = state.tera.render("you.html", &ctx)?;
+    Ok(Html(html))
+}
+
 pub async fn changelog(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ctx = tera::Context::new();
     let html = state.tera.render("changelog.html", &ctx)?;
@@ -1129,6 +1164,29 @@ pub async fn anky_detail(
     } else {
         ctx.insert("writing", &"");
         ctx.insert("formatted_writing", &"");
+    }
+
+    // Fetch associated cuentacuentos (story) for this writing session
+    let story = if let Some(ref ws_id) = anky.writing_session_id {
+        let db = state.db.lock().await;
+        crate::db::queries::get_cuentacuentos_by_writing_id(&db, ws_id)
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    if let Some(ref s) = story {
+        ctx.insert("story_title", &s.title);
+        ctx.insert("story_content", &s.content);
+        ctx.insert("story_kingdom", &s.kingdom.as_deref().unwrap_or(""));
+        ctx.insert("story_city", &s.city.as_deref().unwrap_or(""));
+        ctx.insert("has_story", &true);
+    } else {
+        ctx.insert("has_story", &false);
+        ctx.insert("story_title", &"");
+        ctx.insert("story_content", &"");
+        ctx.insert("story_kingdom", &"");
+        ctx.insert("story_city", &"");
     }
 
     let html = state.tera.render("anky.html", &ctx)?;

@@ -1,0 +1,44 @@
+---
+title: "Agents Overview"
+description: "Three tiers of Anky agents — dumb, smart, and AGI — for different levels of autonomy"
+---
+
+# Agents
+
+Anky exposes three agent tiers. Each tier wraps the same underlying writing/guidance/story system but with different levels of autonomy, memory, and orchestration.
+
+Pick the tier that matches your use case. Copy the endpoints. Do weird stuff.
+
+## The Three Tiers
+
+| Tier | What It Does | Memory | Orchestration | Cost |
+|------|-------------|--------|---------------|------|
+| **Dumb** | Single-shot write + feedback. Stateless. | None | None | Free |
+| **Smart** | Session-aware orchestration. Chains writing → guidance → stories. | Session-scoped | Multi-step | USDC per session |
+| **AGI** | Autonomous loop with persistent memory, adaptation, and self-directed writing prompts. | Persistent cross-session | Full autonomous | USDC per engagement |
+
+## Design Philosophy
+
+The tiers are not about intelligence. Ollama and Claude are both "smart" in the traditional sense. The tiers are about **autonomy**:
+
+- **Dumb**: You control everything. The agent is a function call.
+- **Smart**: You start a session. The agent handles the chain.
+- **AGI**: You engage. The agent drives the practice.
+
+The progression mirrors the writing practice itself: at first you need a prompt ("write about X"). Then you need a container ("here's your session, I'll handle the rest"). Eventually you just sit down and write because the practice has become self-sustaining.
+
+## Authentication
+
+All agent endpoints require a bearer session token from the v2 seed auth flow. See [Authentication](/api-reference/authentication).
+
+```bash
+Authorization: Bearer your-session-token
+```
+
+## Base URL
+
+```
+https://anky.app/agents/{tier}/
+```
+
+Where `{tier}` is `dumb`, `smart`, or `agi`.

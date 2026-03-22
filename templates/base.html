@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>{% block title %}anky{% endblock %}</title>
   <script src="/static/htmx.min.js"></script>
   <script src="/static/htmx-sse.js"></script>
@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css?v=20260306b">
+  <link rel="stylesheet" href="/static/mobile.css?v=20260319">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -72,6 +73,20 @@
       <button class="share-card-btn share-card-btn-dim" id="share-card-copy">copy link</button>
     </div>
   </div>
+  <nav class="mobile-nav" id="mobile-nav">
+    <a href="/stories" class="mobile-nav-item {% if active_tab is defined and active_tab == 'stories' %}active{% endif %}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+      <span>historias</span>
+    </a>
+    <a href="/" class="mobile-nav-item {% if not active_tab is defined or active_tab == 'home' %}active{% endif %}">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      <span>anky</span>
+    </a>
+    <a href="/you" class="mobile-nav-item {% if active_tab is defined and active_tab == 'you' %}active{% endif %}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span>tu</span>
+    </a>
+  </nav>
   {% block content %}{% endblock %}
 
   <!-- Bottom Live Bar -->
@@ -123,6 +138,9 @@
       localStorage.removeItem('anky_username');
       localStorage.removeItem('anky_email');
       localStorage.removeItem('wallet_address');
+      // Clear seed vault (identity stays in recovery phrase, not on this device)
+      localStorage.removeItem('anky_seed_vault');
+      fetch('/auth/seed/logout', { method: 'POST' }).catch(function(){});
       fetch('/auth/privy/logout', { method: 'POST' }).catch(function(){});
       updateBtn();
     }

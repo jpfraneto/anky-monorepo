@@ -38,7 +38,7 @@ This is a threshold practice.
 
 The app creates a seed identity for the user on first open.
 
-- 24-word recovery phrase
+- 12-word recovery phrase
 - generated locally on-device
 - never sent to the backend
 - used to derive a Base/EVM wallet
@@ -86,7 +86,7 @@ The user should not experience this as “logging in.”
 
 #### Recovery
 
-- user enters the 24 words locally
+- user enters the 12 words locally
 - app re-derives the same EVM key
 - app signs a new challenge
 - backend restores the same identity because the wallet address matches
@@ -511,7 +511,7 @@ The only acceptable signing model is local signing with the seed-derived EVM key
 
 Do not:
 
-- send the 24 words to the backend
+- send the 12 words to the backend
 - send the raw seed to the backend
 - use Privy as the primary identity model for the new app
 - let short writing persist server-side

@@ -1,0 +1,44 @@
+---
+title: "API Reference"
+description: "Complete reference for the Anky HTTP API"
+---
+
+# API Reference
+
+The Anky API is served at `https://anky.app`. All mobile endpoints live under `/swift/v1/*` (Privy auth) and `/swift/v2/*` (seed auth). Agent endpoints live under `/agents/{tier}/*`.
+
+## Base URLs
+
+| Surface | Base URL | Auth |
+|---------|----------|------|
+| Legacy mobile (v1) | `https://anky.app/swift/v1` | Privy bearer token |
+| Seed mobile (v2) | `https://anky.app/swift/v2` | Seed challenge/verify bearer token |
+| Dumb agent | `https://anky.app/agents/dumb` | Seed bearer token |
+| Smart agent | `https://anky.app/agents/smart` | Seed bearer token |
+| AGI agent | `https://anky.app/agents/agi` | Seed bearer token |
+
+## Response Format
+
+All endpoints return JSON. Successful responses have HTTP 200. Errors return appropriate status codes with:
+
+```json
+{
+  "error": "Human-readable error message"
+}
+```
+
+## Rate Limits
+
+There are no artificial rate limits. The server is a single binary on bare metal. If you hammer it, you're competing with everyone else for the same SQLite write lock and GPU queue.
+
+Be reasonable. The writing practice is one session per day. The agents are designed for human-paced interaction.
+
+## Payments
+
+Premium features require x402 USDC payment on Base. Pass the transaction hash in the header:
+
+```
+payment-signature: 0xTransactionHash
+```
+
+The server verifies the transaction on-chain before unlocking premium generation.

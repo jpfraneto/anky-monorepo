@@ -1,3 +1,4 @@
+mod ankyverse;
 mod config;
 mod create_videos;
 mod db;
@@ -10,6 +11,7 @@ mod routes;
 mod services;
 mod sse;
 mod state;
+mod storage;
 mod training;
 
 use crate::config::Config;
@@ -17,6 +19,86 @@ use crate::state::{AppState, GpuStatus};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
+
+/// GPU job worker: drains pro channel before free channel, runs one job at a time.
+async fn gpu_job_worker(
+    state: AppState,
+    mut pro_rx: tokio::sync::mpsc::UnboundedReceiver<state::GpuJob>,
+    mut free_rx: tokio::sync::mpsc::UnboundedReceiver<state::GpuJob>,
+) {
+    loop {
+        // Try pro channel first, fall back to free channel
+        let job = tokio::select! {
+            biased; // always try pro first
+            Some(job) = pro_rx.recv() => job,
+            Some(job) = free_rx.recv() => job,
+            else => break, // both channels closed
+        };
+
+        match job {
+            state::GpuJob::AnkyImage {
+                anky_id,
+                session_id,
+                user_id,
+                writing,
+            } => {
+                if let Err(e) = pipeline::image_gen::generate_anky_from_writing(
+                    &state,
+                    &anky_id,
+                    &session_id,
+                    &user_id,
+                    &writing,
+                )
+                .await
+                {
+                    state.emit_log(
+                        "ERROR",
+                        "gpu_queue",
+                        &format!(
+                            "Anky gen failed for {}: {}",
+                            &anky_id[..8.min(anky_id.len())],
+                            e
+                        ),
+                    );
+                    let db = state.db.lock().await;
+                    let _ = db::queries::mark_anky_failed(&db, &anky_id);
+                }
+            }
+            state::GpuJob::CuentacuentosImages { cuentacuentos_id } => {
+                if let Err(e) =
+                    pipeline::image_gen::generate_cuentacuentos_images(&cuentacuentos_id, &state)
+                        .await
+                {
+                    state.emit_log(
+                        "ERROR",
+                        "gpu_queue",
+                        &format!(
+                            "Cuentacuentos image gen failed for {}: {}",
+                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                            e
+                        ),
+                    );
+                }
+            }
+            state::GpuJob::CuentacuentosAudio { cuentacuentos_id } => {
+                if let Err(e) =
+                    pipeline::guidance_gen::generate_cuentacuentos_audio(&state, &cuentacuentos_id)
+                        .await
+                {
+                    state.emit_log(
+                        "ERROR",
+                        "gpu_queue",
+                        &format!(
+                            "Cuentacuentos TTS failed for {}: {}",
+                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                            e
+                        ),
+                    );
+                }
+            }
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -59,6 +141,9 @@ async fn main() -> anyhow::Result<()> {
     // Frame buffer for Rust-rendered livestream frames
     let frame_buffer = services::stream::new_frame_buffer();
 
+    // GPU job priority queue (pro channel drained before free channel)
+    let (gpu_queue, gpu_pro_rx, gpu_free_rx) = state::GpuJobQueue::new();
+
     // Build state
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
@@ -77,7 +162,18 @@ async fn main() -> anyhow::Result<()> {
         memory_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         sessions: routes::session::new_session_map(),
         slot_tracker: routes::simulations::SlotTracker::new(),
+        log_history: Arc::new(Mutex::new(VecDeque::new())),
+        gpu_queue,
     };
+
+    // Start GPU job worker — drains pro channel first, then free channel
+    {
+        let worker_state = state.clone();
+        tokio::spawn(async move {
+            gpu_job_worker(worker_state, gpu_pro_rx, gpu_free_rx).await;
+        });
+        tracing::info!("GPU priority job worker spawned");
+    }
 
     // Start chunked session reaper (kills sessions after 8s silence, finalizes ankys)
     routes::session::spawn_session_reaper(state.sessions.clone(), state.clone());
@@ -93,6 +189,14 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start push notification scheduler
+    let push_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = services::push_scheduler::start_scheduler(push_state).await {
+            tracing::error!("Failed to start push notification scheduler: {}", e);
+        }
+    });
+
     // Livestream disabled — too slow, not worth it
     tracing::info!("Livestream disabled");
 
@@ -101,6 +205,25 @@ async fn main() -> anyhow::Result<()> {
         "server",
         &format!("Anky server starting on port {}", port),
     );
+
+    if let Err(e) = storage::files::backfill_writings_to_files(&state).await {
+        tracing::error!("Writing archive backfill failed: {}", e);
+        state.emit_log(
+            "ERROR",
+            "writing_archive",
+            &format!("Startup backfill failed: {}", e),
+        );
+    }
+
+    // Honcho historical backfill — send all existing writings so Honcho builds user models
+    if services::honcho::is_configured(&state.config) {
+        let honcho_state = state.clone();
+        tokio::spawn(async move {
+            // Wait 30s after boot so the server is ready before hammering the API
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            services::honcho::backfill_all_writings(&honcho_state).await;
+        });
+    }
 
     // Retry failed ankys every 5 minutes
     let retry_state = state.clone();
@@ -185,6 +308,56 @@ async fn main() -> anyhow::Result<()> {
                     });
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
+            }
+        }
+    });
+
+    // Retry failed cuentacuentos phase images every 5 minutes
+    let story_retry_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            let cuentacuentos_ids = {
+                let db = story_retry_state.db.lock().await;
+                db::queries::get_retryable_failed_cuentacuentos_ids(&db).unwrap_or_default()
+            };
+
+            if !cuentacuentos_ids.is_empty() {
+                story_retry_state.emit_log(
+                    "INFO",
+                    "retry",
+                    &format!(
+                        "Auto-retrying story images for {} cuentacuentos",
+                        cuentacuentos_ids.len()
+                    ),
+                );
+            }
+
+            for cuentacuentos_id in cuentacuentos_ids {
+                {
+                    let db = story_retry_state.db.lock().await;
+                    let _ =
+                        db::queries::requeue_retryable_cuentacuentos_images(&db, &cuentacuentos_id);
+                }
+
+                if let Err(e) = pipeline::image_gen::generate_cuentacuentos_images(
+                    &cuentacuentos_id,
+                    &story_retry_state,
+                )
+                .await
+                {
+                    story_retry_state.emit_log(
+                        "ERROR",
+                        "retry",
+                        &format!(
+                            "Story image retry failed for {}: {}",
+                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
+                            e
+                        ),
+                    );
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
     });
@@ -343,24 +516,17 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Guidance queue worker — processes free-tier meditation + breathwork jobs via Ollama
-    let queue_state = state.clone();
+    // System summary worker — generates a 30-minute activity digest
+    let summary_state = state.clone();
     tokio::spawn(async move {
+        // Wait 30 minutes before first summary
+        tokio::time::sleep(std::time::Duration::from_secs(1800)).await;
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            match pipeline::guidance_gen::process_free_queue(&queue_state).await {
-                Ok(true) => {
-                    // Processed one job — check again soon for backlog
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
-                Ok(false) => {} // nothing pending
-                Err(e) => {
-                    tracing::error!("Guidance queue error: {}", e);
-                }
-            }
+            routes::dashboard::generate_system_summary(&summary_state).await;
+            tokio::time::sleep(std::time::Duration::from_secs(1800)).await;
         }
     });
-    tracing::info!("Guidance queue worker spawned (checks every 60s)");
+    tracing::info!("System summary worker spawned (every 30m)");
 
     // Build router
     let app = routes::build_router(state);

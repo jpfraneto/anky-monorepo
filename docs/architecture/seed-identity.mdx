@@ -1,0 +1,75 @@
+---
+title: "Seed Identity"
+description: "EVM wallet derivation — the backend never sees your seedphrase"
+---
+
+# Seed Identity
+
+Anky v2 uses EVM seed-based identity. A seedphrase generates a wallet on the device. The backend only ever sees the derived wallet address and signed messages. Never the seed.
+
+## How It Works
+
+### On the Device (iOS App)
+1. User creates or imports a BIP-39 seedphrase
+2. The app derives an EVM wallet (secp256k1) from the seed
+3. The wallet address becomes the user's identity
+
+### Authentication Flow
+
+```
+Device                          Server
+  │                               │
+  │  POST /swift/v2/auth/challenge
+  │  { wallet_address: "0x..." }  │
+  │──────────────────────────────▶│
+  │                               │ Generate random challenge
+  │  { challenge: "Sign this..." }│ Store in auth_challenges
+  │◀──────────────────────────────│ with expiry
+  │                               │
+  │  Sign challenge with          │
+  │  private key (EIP-191)        │
+  │                               │
+  │  POST /swift/v2/auth/verify   │
+  │  { wallet, signature,         │
+  │    challenge }                 │
+  │──────────────────────────────▶│
+  │                               │ Verify EIP-191 signature
+  │                               │ Find/create user
+  │                               │ Consume challenge
+  │  { session_token: "..." }     │ Mint bearer session
+  │◀──────────────────────────────│
+  │                               │
+  │  All subsequent requests:     │
+  │  Authorization: Bearer <token>│
+  │──────────────────────────────▶│
+```
+
+### Child Wallet Derivation
+
+Child identities are derived from the parent's seed on-device:
+
+```
+Parent seed → Parent wallet (m/44'/60'/0'/0/0)
+           → Child 1 wallet (m/44'/60'/0'/0/1)
+           → Child 2 wallet (m/44'/60'/0'/0/2)
+           → ...
+```
+
+The server stores `child_profiles.derived_wallet_address` but never computes it. The device tells the server "this child wallet belongs to this parent wallet" and the server trusts the relationship because the parent authenticated.
+
+## Privacy Properties
+
+- **Seedphrase**: Never leaves the device. Never sent to the server.
+- **Private key**: Never leaves the device. Only used to sign challenges.
+- **Wallet address**: Public. Used as the identity key.
+- **Writings**: Keyed by wallet address in both SQLite and the file archive.
+- **Children**: Derived wallets are computed on-device, stored on-server as associations only.
+
+## Why Not OAuth/Privy?
+
+v1 uses Privy (OAuth-style). v2 moved to direct seed auth because:
+
+1. **No dependency on Privy's servers** — if Privy goes down, v2 auth still works
+2. **Deterministic identity** — the same seed always produces the same wallet. No account recovery, no email, no phone number.
+3. **Child derivation** — you can't derive child wallets from an OAuth token
+4. **Philosophical alignment** — the user owns their identity by holding their seed, not by having an account in someone else's database

@@ -1,3 +1,4 @@
+use crate::routes::social_context;
 use crate::services::{claude, comfyui, neynar, ollama};
 use crate::state::AppState;
 use axum::extract::State;
@@ -421,6 +422,15 @@ async fn process_farcaster_mention(
     } else {
         // ── Text reply path (Claude with conversation context) ──────────
 
+        // Fetch Honcho peer context + interaction history
+        let social_ctx = social_context::fetch_social_context(
+            &state,
+            "farcaster",
+            &author_fid.to_string(),
+            &author_username,
+        )
+        .await;
+
         // Fetch conversation chain for context
         let context_pairs = if let Some(ref ph) = parent_hash {
             neynar::fetch_conversation_chain(api_key, ph, 3)
@@ -464,7 +474,7 @@ async fn process_farcaster_mention(
             );
         }
 
-        // Generate reply with Claude — same identity as X bot
+        // Generate reply with Claude — same identity as X bot, now with context
         let username = if author_username.is_empty() {
             None
         } else {
@@ -482,6 +492,9 @@ async fn process_farcaster_mention(
             &context_pairs,
             prior_reply.as_deref(),
             image_ref,
+            social_ctx.peer_context.as_deref(),
+            &social_ctx.interaction_history,
+            "farcaster",
         )
         .await;
 

@@ -1,0 +1,3 @@
+fix them all. you already get the point
+
+(Context: fix 4 iOS API gaps identified during Swift app development — history endpoint missing image URLs, recording responses missing recorder identity, no mobile preferences endpoint, no server-side language preference)

@@ -1,0 +1,45 @@
+---
+title: "Requirements"
+description: "What you need to run Anky on your own machine"
+---
+
+# Requirements
+
+Anky is designed to run on a single bare-metal machine. No cloud. No containers. No orchestration.
+
+## Hardware
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 4 cores | 8+ cores |
+| RAM | 16 GB | 32+ GB |
+| GPU | None (no image gen) | NVIDIA with 12+ GB VRAM (for Flux) |
+| Storage | 20 GB | 100+ GB (writings, images, models) |
+
+## Software
+
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| Rust | 1.75+ | Build the server |
+| SQLite | 3.35+ | Database (bundled via rusqlite) |
+| Ollama | Latest | Local text AI |
+| ComfyUI | Latest | Local image AI (optional, needs GPU) |
+| cloudflared | Latest | Tunnel to public internet (optional) |
+
+## Models
+
+### Ollama
+```bash
+ollama pull qwen3.5:35b
+```
+
+### ComfyUI (optional)
+- `flux1-dev.safetensors`
+- `ae.safetensors`
+- `clip_l.safetensors`
+- `t5xxl_fp8_e4m3fn.safetensors`
+- `anky_flux_lora_v2.safetensors` (Anky LoRA)
+
+## Environment Variables
+
+See [Configuration](/self-hosting/configuration) for the full list.

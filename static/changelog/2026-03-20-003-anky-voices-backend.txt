@@ -1,0 +1,7 @@
+Build the Anky Voices backend. Story recording, quality check via Whisper, language-aware playback, and public deep link pages.
+
+Tables: story_recordings (max 4 attempts per user per story, quality check via word similarity), story_listen_events.
+Endpoints: GET/POST recordings, GET voice (language-matched), POST complete (listen tracking).
+Quality check: download from R2, transcribe via local Whisper, compare word similarity >= 0.65. Auto-approve if Whisper unavailable.
+Deep link: GET /story/{id} — public HTML page with audio player, iOS app download modal.
+R2 integration: presigned PUT URLs for client upload, aws-sdk-s3 with custom R2 endpoint.

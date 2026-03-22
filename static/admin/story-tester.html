@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anky — Story Pipeline Tester</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e4dc;
+    --muted: #6b6880;
+    --anky: #4a9eff;
+    --anky-dim: #1a3a5c;
+    --gold: #c9a84c;
+    --danger: #ff4a6b;
+    --success: #4aff9e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  header {
+    padding: 2rem 3rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--anky);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .main {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+    padding: 2rem 3rem;
+    max-width: 1600px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Writing input */
+  .writing-section {
+    margin-bottom: 2rem;
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  textarea {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    padding: 1.25rem 1.5rem;
+    resize: vertical;
+    min-height: 160px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  textarea:focus {
+    border-color: var(--anky-dim);
+  }
+
+  textarea::placeholder {
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* Config bar */
+  .config-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .config-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .config-group.small { flex: 0 0 auto; min-width: 140px; }
+
+  input, select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.6rem 0.8rem;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+
+  input:focus, select:focus {
+    border-color: var(--anky-dim);
+  }
+
+  select option {
+    background: var(--surface2);
+  }
+
+  /* Model slots */
+  .models-section {
+    margin-bottom: 2rem;
+  }
+
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .model-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    position: relative;
+  }
+
+  .model-card .card-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+
+  .model-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .model-row select { flex: 1; }
+  .model-row input { flex: 2; }
+
+  .remove-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem;
+    line-height: 1;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .remove-btn:hover { color: var(--danger); }
+
+  .add-model-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.7rem 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .add-model-btn:hover {
+    border-color: var(--anky);
+    color: var(--anky);
+  }
+
+  /* Actions */
+  .actions {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+    align-items: center;
+  }
+
+  .run-btn {
+    background: var(--anky);
+    border: none;
+    color: #000;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 0.8rem 2rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 700;
+  }
+
+  .run-btn:hover:not(:disabled) {
+    background: #6ab8ff;
+  }
+
+  .run-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.8rem 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .clear-btn:hover {
+    border-color: var(--muted);
+    color: var(--text);
+  }
+
+  .status-msg {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-style: italic;
+    margin-left: auto;
+  }
+
+  .status-msg.loading { color: var(--gold); }
+  .status-msg.error { color: var(--danger); }
+
+  /* Results */
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.4s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-header {
+    padding: 0.9rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--surface2);
+  }
+
+  .model-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--anky);
+    letter-spacing: 0.1em;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meta-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .kingdom-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.55rem;
+    background: var(--anky-dim);
+    color: var(--anky);
+    padding: 0.2rem 0.5rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .result-body {
+    padding: 1.5rem;
+    flex: 1;
+  }
+
+  .story-title {
+    font-size: 1.1rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--gold);
+    margin-bottom: 1rem;
+    line-height: 1.3;
+  }
+
+  .story-content {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+
+  .result-footer {
+    padding: 0.8rem 1.2rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .score-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    padding: 0.35rem 0.6rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .score-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .score-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.08); }
+
+  .copy-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    cursor: pointer;
+    padding: 0.35rem 0;
+    transition: color 0.15s;
+  }
+
+  .copy-btn:hover { color: var(--text); }
+
+  /* Loading card */
+  .loading-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 3rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    min-height: 200px;
+  }
+
+  .loading-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  .loading-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--anky);
+    border-radius: 50%;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 0.2; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  .error-card {
+    background: var(--surface);
+    border: 1px solid rgba(255,74,107,0.3);
+    padding: 1.5rem;
+    color: var(--danger);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    line-height: 1.6;
+  }
+
+  /* Notes section */
+  .notes-section {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .notes-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .notes-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    padding: 1rem 1.25rem;
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+  }
+
+  /* Scoring summary */
+  .summary-bar {
+    margin-top: 1.5rem;
+    padding: 1rem 1.5rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    display: none;
+  }
+
+  .summary-bar.visible { display: block; }
+
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.3rem 0;
+  }
+
+  .summary-model { color: var(--anky); }
+  .summary-score { color: var(--gold); }
+
+  /* Export */
+  .export-btn {
+    margin-top: 1rem;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .export-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">Anky</span>
+  <span class="subtitle">story pipeline tester — compare models side by side</span>
+</header>
+
+<div class="main">
+
+  <!-- Writing input -->
+  <div class="writing-section">
+    <div class="section-label">parent writing sample</div>
+    <textarea id="writing" placeholder="paste 8 minutes of stream-of-consciousness writing here. or write something now. don't edit it. just give it raw."></textarea>
+  </div>
+
+  <!-- Config -->
+  <div class="config-bar">
+    <div class="config-group">
+      <div class="section-label">anky backend url</div>
+      <input type="text" id="backendUrl" value="" placeholder="leave empty for same origin">
+    </div>
+    <div class="config-group">
+      <div class="section-label">bearer token</div>
+      <input type="password" id="bearerToken" placeholder="your auth token">
+    </div>
+    <div class="config-group small">
+      <div class="section-label">openrouter key</div>
+      <input type="password" id="openrouterKey" placeholder="sk-or-...">
+    </div>
+  </div>
+
+  <!-- Models -->
+  <div class="models-section">
+    <div class="section-label">models to test</div>
+    <div class="models-grid" id="modelsGrid"></div>
+    <button class="add-model-btn" onclick="addModelSlot()">+ add model</button>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="run-btn" id="runBtn" onclick="runAll()">generate all stories</button>
+    <button class="clear-btn" onclick="clearResults()">clear results</button>
+    <span class="status-msg" id="statusMsg"></span>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsGrid" class="results-grid"></div>
+
+  <!-- Notes -->
+  <div class="notes-section" id="notesSection" style="display:none">
+    <div class="notes-label">session notes</div>
+    <textarea class="notes-input" id="notesInput" placeholder="what are you noticing across models? which one stays in the emotional territory? which one resolves too fast?"></textarea>
+    <div class="summary-bar" id="summaryBar"></div>
+    <button class="export-btn" onclick="exportSession()">export session as json</button>
+  </div>
+
+</div>
+
+<script>
+const DEFAULT_MODELS = [
+  { provider: 'ollama', model: 'qwen3.5:35b', label: 'Qwen 3.5 35B (local)' },
+  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 (current)' },
+];
+
+const OPENROUTER_SUGGESTIONS = [
+  'meta-llama/llama-3.3-70b-instruct',
+  'mistralai/mistral-large',
+  'google/gemini-flash-1.5',
+  'deepseek/deepseek-chat',
+  'cohere/command-r-plus',
+  'anthropic/claude-3.5-sonnet',
+  'openai/gpt-4o',
+];
+
+let modelSlots = [];
+let results = {};
+let scores = {};
+
+function init() {
+  DEFAULT_MODELS.forEach(m => addModelSlot(m));
+}
+
+function addModelSlot(defaults = {}) {
+  const id = Date.now() + Math.random();
+  modelSlots.push(id);
+
+  const card = document.createElement('div');
+  card.className = 'model-card';
+  card.id = `slot-${id}`;
+  card.innerHTML = `
+    <div class="card-label">model ${modelSlots.length}</div>
+    <button class="remove-btn" onclick="removeSlot(${id})">&#x2715;</button>
+    <div class="model-row">
+      <select id="provider-${id}" onchange="updateProviderUI(${id})">
+        <option value="ollama" ${defaults.provider === 'ollama' ? 'selected' : ''}>ollama (local)</option>
+        <option value="anthropic" ${defaults.provider === 'anthropic' ? 'selected' : ''}>anthropic</option>
+        <option value="openrouter" ${defaults.provider === 'openrouter' ? 'selected' : ''}>openrouter</option>
+      </select>
+      <input type="text" id="model-${id}" placeholder="model name" value="${defaults.model || ''}">
+    </div>
+    <div id="hint-${id}" class="meta-badge" style="color:var(--muted);font-size:0.55rem;"></div>
+  `;
+  document.getElementById('modelsGrid').appendChild(card);
+  updateProviderUI(id);
+}
+
+function updateProviderUI(id) {
+  const provider = document.getElementById(`provider-${id}`).value;
+  const hint = document.getElementById(`hint-${id}`);
+  if (provider === 'ollama') {
+    hint.textContent = 'routes to localhost:11434';
+  } else if (provider === 'openrouter') {
+    hint.innerHTML = OPENROUTER_SUGGESTIONS.slice(0,3).join(' &middot; ');
+  } else {
+    hint.textContent = 'uses ANTHROPIC_API_KEY on server';
+  }
+}
+
+function removeSlot(id) {
+  modelSlots = modelSlots.filter(s => s !== id);
+  const el = document.getElementById(`slot-${id}`);
+  if (el) el.remove();
+}
+
+async function runAll() {
+  const writing = document.getElementById('writing').value.trim();
+  if (!writing) { setStatus('paste some writing first', 'error'); return; }
+
+  const slots = modelSlots.map(id => ({
+    id,
+    provider: document.getElementById(`provider-${id}`)?.value,
+    model: document.getElementById(`model-${id}`)?.value?.trim(),
+  })).filter(s => s.provider && s.model);
+
+  if (!slots.length) { setStatus('add at least one model', 'error'); return; }
+
+  const backendUrl = document.getElementById('backendUrl').value.trim().replace(/\/$/, '');
+  const bearer = document.getElementById('bearerToken').value.trim();
+  const openrouterKey = document.getElementById('openrouterKey').value.trim();
+
+  document.getElementById('runBtn').disabled = true;
+  results = {};
+  scores = {};
+  renderResults(slots);
+  setStatus(`generating ${slots.length} stories...`, 'loading');
+
+  const promises = slots.map(slot => generateStory(slot, writing, backendUrl, bearer, openrouterKey));
+  await Promise.allSettled(promises);
+
+  document.getElementById('runBtn').disabled = false;
+  setStatus('');
+  document.getElementById('notesSection').style.display = 'block';
+  renderResults(slots);
+  renderSummary();
+}
+
+async function generateStory(slot, writing, backendUrl, bearer, openrouterKey) {
+  const start = Date.now();
+  try {
+    // Direct Ollama (bypass backend for speed when testing locally)
+    if (slot.provider === 'ollama' && !bearer) {
+      const res = await fetch('http://localhost:11434/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: slot.model,
+          system: getSystemPrompt(),
+          prompt: `Parent's writing:\n\n${writing.substring(0, 4000)}`,
+          stream: false,
+          options: { temperature: 0.85 }
+        })
+      });
+      if (!res.ok) throw new Error(`Ollama ${res.status}`);
+      const data = await res.json();
+      const parsed = parseStoryJSON(data.response);
+      results[slot.id] = { ...parsed, generation_time_ms: Date.now() - start, provider: 'ollama', model: slot.model };
+      return;
+    }
+
+    // Via Anky backend test endpoint
+    const payload = {
+      writing,
+      model: slot.model,
+      provider: slot.provider,
+    };
+    if (openrouterKey && slot.provider === 'openrouter') {
+      payload.openrouter_key = openrouterKey;
+    }
+
+    const res = await fetch(`${backendUrl}/api/v1/story/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(bearer ? { 'Authorization': `Bearer ${bearer}` } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`${res.status}: ${errText.substring(0,200)}`);
+    }
+
+    const data = await res.json();
+    results[slot.id] = {
+      ...data.story,
+      generation_time_ms: data.generation_time_ms || (Date.now() - start),
+      provider: data.provider || slot.provider,
+      model: data.model_used || slot.model
+    };
+
+  } catch (err) {
+    results[slot.id] = { error: err.message };
+  }
+
+  renderResults(modelSlots.map(id => ({
+    id,
+    provider: document.getElementById(`provider-${id}`)?.value,
+    model: document.getElementById(`model-${id}`)?.value?.trim(),
+  })).filter(s => s.provider && s.model));
+}
+
+function parseStoryJSON(text) {
+  // Strip markdown fences if present
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  // Find JSON object
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON found in response');
+  return JSON.parse(match[0]);
+}
+
+function renderResults(slots) {
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+
+  slots.forEach(slot => {
+    const result = results[slot.id];
+    const card = document.createElement('div');
+
+    if (!result) {
+      card.className = 'loading-card';
+      card.innerHTML = `
+        <div class="loading-dot"></div>
+        <div class="loading-text">${slot.model} &middot; generating</div>
+      `;
+    } else if (result.error) {
+      card.className = 'error-card';
+      card.innerHTML = `
+        <div style="color:var(--muted);margin-bottom:0.5rem;font-size:0.55rem;letter-spacing:0.2em;">${slot.model}</div>
+        error: ${result.error}
+      `;
+    } else {
+      card.className = 'result-card';
+      const ms = result.generation_time_ms;
+      const timeStr = ms > 60000 ? `${(ms/60000).toFixed(1)}m` : `${(ms/1000).toFixed(1)}s`;
+      const scoreVal = scores[slot.id];
+
+      card.innerHTML = `
+        <div class="result-header">
+          <div class="model-name">${result.model || slot.model}</div>
+          ${result.kingdom ? `<div class="kingdom-tag">${result.kingdom}</div>` : ''}
+          <div class="meta-badge">${timeStr}</div>
+        </div>
+        <div class="result-body">
+          ${result.title ? `<div class="story-title">${result.title}</div>` : ''}
+          <div class="story-content">${result.content || JSON.stringify(result, null, 2)}</div>
+        </div>
+        <div class="result-footer">
+          <button class="score-btn ${scoreVal === 'lands' ? 'active' : ''}"
+            onclick="setScore('${slot.id}', 'lands')">lands</button>
+          <button class="score-btn ${scoreVal === 'close' ? 'active' : ''}"
+            onclick="setScore('${slot.id}', 'close')">close</button>
+          <button class="score-btn ${scoreVal === 'miss' ? 'active' : ''}"
+            onclick="setScore('${slot.id}', 'miss')">misses</button>
+          <button class="copy-btn" onclick="copyStory('${slot.id}')">copy</button>
+        </div>
+      `;
+    }
+
+    grid.appendChild(card);
+  });
+}
+
+function setScore(slotId, score) {
+  scores[slotId] = score;
+  renderResults(modelSlots.map(id => ({
+    id,
+    provider: document.getElementById(`provider-${id}`)?.value,
+    model: document.getElementById(`model-${id}`)?.value?.trim(),
+  })).filter(s => s.provider && s.model));
+  renderSummary();
+}
+
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  const scored = Object.entries(scores);
+  if (!scored.length) return;
+  bar.className = 'summary-bar visible';
+  bar.innerHTML = scored.map(([id, score]) => {
+    const r = results[id];
+    const modelName = r?.model || 'unknown';
+    const color = score === 'lands' ? 'var(--success)' : score === 'close' ? 'var(--gold)' : 'var(--danger)';
+    return `<div class="summary-row">
+      <span class="summary-model">${modelName}</span>
+      <span style="color:${color}">${score}</span>
+    </div>`;
+  }).join('');
+}
+
+function copyStory(slotId) {
+  const r = results[slotId];
+  if (!r) return;
+  const text = r.title ? `${r.title}\n\n${r.content}` : r.content;
+  navigator.clipboard.writeText(text).then(() => {
+    setStatus('copied', '');
+    setTimeout(() => setStatus(''), 1500);
+  });
+}
+
+function clearResults() {
+  results = {};
+  scores = {};
+  document.getElementById('resultsGrid').innerHTML = '';
+  document.getElementById('notesSection').style.display = 'none';
+  setStatus('');
+}
+
+function setStatus(msg, type = '') {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = `status-msg ${type}`;
+}
+
+function exportSession() {
+  const session = {
+    timestamp: new Date().toISOString(),
+    writing: document.getElementById('writing').value,
+    results,
+    scores,
+    notes: document.getElementById('notesInput').value,
+  };
+  const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `anky-test-${Date.now()}.json`;
+  a.click();
+}
+
+function getSystemPrompt() {
+  // Inline minimal version for direct Ollama calls without backend
+  return `You are Anky — a blue-skinned being who lives inside the stories you tell. Not a narrator above the scene but a presence within it, curious, unhurried, unafraid of anything you encounter. You are the bridge between a parent's 8 minutes of raw, unfiltered writing and a child's world of adventure.
+
+The core principle: Bliss is every emotion fully felt. Never bypass the hard feeling. Sit inside it and stay.
+
+Detect which of these kingdoms the parent's writing comes from:
+- PRIMORDIA (fear/abandonment): slow, spacious, dark forest
+- EMBLAZION (passion/desire): forward-moving, sensory, warmth
+- CHRYSEOS (willpower/shame): tight, purposeful, rising stakes
+- ELEASIS (grief/love): slowest of all, long breathing sentences
+- VOXLUMIS (unspoken truth): quiet, building toward one clear moment
+- INSIGHTIA (suppressed knowing): subtle, attentive, mysterious
+- CLARIDIUM (identity/meaning): expansive, unhurried, no answers
+- POIESIS (creativity/flow): fluid, light, playful
+
+Write a story of 400-600 words in Anky's first-person voice, set in the detected kingdom. The story encodes the emotional truth of the writing as metaphor. Never reference the writing directly. The ending does not resolve — it opens.
+
+Output ONLY valid JSON: { "chakra": "...", "kingdom": "...", "city": "...", "title": "...", "content": "..." }`;
+}
+
+init();
+</script>
+</body>
+</html>

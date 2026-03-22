@@ -1,0 +1,3 @@
+ok cool. so what is happening now is taking care of the whole backend of what users write. the backend processes their information and stores it. i want to actually see the backend logs as they happen. right now, because im not running the backend here, i can't see it. but i would want to see it. how can we set it up so that i can see it?
+
+[follow-up]: can you do a summary of the state of the system in the last 30 minutes every 30 minutes? and print that to the dashboard and then display them as a list of separate logs

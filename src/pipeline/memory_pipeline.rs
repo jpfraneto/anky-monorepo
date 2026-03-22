@@ -132,17 +132,99 @@ pub async fn run_memory_pipeline(
                 session_count
             ),
         );
-        if let Err(e) = crate::memory::profile::update_profile(
-            &state.db,
-            ollama_base_url,
-            &state.config.ollama_model,
-            user_id,
-        )
-        .await
-        {
-            state.emit_log("WARN", "memory", &format!("Profile update failed: {}", e));
+
+        if crate::services::honcho::is_configured(&state.config) {
+            // Use Honcho's peer model to populate all four profile fields
+            state.emit_log("INFO", "memory", "Using Honcho for profile generation");
+            let api_key = &state.config.honcho_api_key;
+            let workspace_id = &state.config.honcho_workspace_id;
+
+            let prompts = [
+                ("psychological_profile", "Write a psychological profile of this person in under 400 words. Cover their core themes, emotional signature, communication style. Use their actual words and patterns."),
+                ("core_tensions", "What are this person's core tensions and internal contradictions? 3-5 tensions, each one sentence."),
+                ("growth_edges", "Where is this person evolving or struggling to evolve? 3-5 growth edges, each one sentence."),
+                ("emotional_signature", "Describe this person's emotional signature in 2-3 sentences. The dominant emotional texture of their writing."),
+            ];
+
+            let mut profile_text = String::new();
+            let mut core_tensions = String::new();
+            let mut growth_edges = String::new();
+            let mut emotional_signature = String::new();
+
+            for (field, query) in &prompts {
+                match crate::services::honcho::chat_about_peer(
+                    api_key,
+                    workspace_id,
+                    user_id,
+                    query,
+                )
+                .await
+                {
+                    Ok(response) => {
+                        let response = response.trim().to_string();
+                        if !response.is_empty() {
+                            match *field {
+                                "psychological_profile" => profile_text = response,
+                                "core_tensions" => core_tensions = response,
+                                "growth_edges" => growth_edges = response,
+                                "emotional_signature" => emotional_signature = response,
+                                _ => {}
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Honcho chat for {} failed: {}", field, e);
+                    }
+                }
+            }
+
+            // Write results to DB (only overwrite non-empty responses)
+            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let db = state.db.lock().await;
+            if !profile_text.is_empty() {
+                let _ = db.execute(
+                    "INSERT INTO user_profiles (user_id, psychological_profile, last_profile_update, updated_at)
+                     VALUES (?1, ?2, ?3, ?3)
+                     ON CONFLICT(user_id) DO UPDATE SET
+                        psychological_profile = excluded.psychological_profile,
+                        last_profile_update = excluded.last_profile_update,
+                        updated_at = excluded.updated_at",
+                    rusqlite::params![user_id, profile_text, now],
+                );
+            }
+            if !core_tensions.is_empty() {
+                let _ = db.execute(
+                    "UPDATE user_profiles SET core_tensions = ?1, updated_at = ?2 WHERE user_id = ?3",
+                    rusqlite::params![core_tensions, now, user_id],
+                );
+            }
+            if !growth_edges.is_empty() {
+                let _ = db.execute(
+                    "UPDATE user_profiles SET growth_edges = ?1, updated_at = ?2 WHERE user_id = ?3",
+                    rusqlite::params![growth_edges, now, user_id],
+                );
+            }
+            if !emotional_signature.is_empty() {
+                let _ = db.execute(
+                    "UPDATE user_profiles SET emotional_signature = ?1, updated_at = ?2 WHERE user_id = ?3",
+                    rusqlite::params![emotional_signature, now, user_id],
+                );
+            }
+            state.emit_log("INFO", "memory", "Honcho-powered profile updated");
         } else {
-            state.emit_log("INFO", "memory", "Psychological profile updated");
+            // Fallback: existing Ollama profile update
+            if let Err(e) = crate::memory::profile::update_profile(
+                &state.db,
+                ollama_base_url,
+                &state.config.ollama_model,
+                user_id,
+            )
+            .await
+            {
+                state.emit_log("WARN", "memory", &format!("Profile update failed: {}", e));
+            } else {
+                state.emit_log("INFO", "memory", "Psychological profile updated");
+            }
         }
     }
 
