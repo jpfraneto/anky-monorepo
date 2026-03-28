@@ -1,0 +1,18 @@
+You need to replace all Ollama calls in the pipeline files and memory files with Claude Haiku calls. The new functions are in `src/services/claude.rs`:
+
+```rust
+pub async fn call_haiku(api_key: &str, prompt: &str) -> Result<String>
+pub async fn call_haiku_with_system(api_key: &str, system: &str, user_message: &str) -> Result<String>
+pub async fn call_haiku_with_system_max(api_key: &str, system: &str, user_message: &str, max_tokens: u32) -> Result<String>
+```
+
+The API key is available as `state.config.anthropic_api_key` in pipeline functions, or passed as a parameter.
+
+Here are the files and changes needed:
+
+1. src/pipeline/image_gen.rs - image prompt generation and writing formatting
+2. src/pipeline/guidance_gen.rs - cuentacuentos story generation, retry, image prompts, translation, next writing prompt
+3. src/memory/extraction.rs - extract_memories
+4. src/memory/profile.rs - update_profile
+5. src/main.rs - recovery watchdog Ollama fallback
+6. src/pipeline/memory_pipeline.rs - remove embedding call, swap Ollama calls

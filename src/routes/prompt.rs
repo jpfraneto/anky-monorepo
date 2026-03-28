@@ -9,6 +9,13 @@ use axum::Json;
 use axum_extra::extract::cookie::CookieJar;
 use serde_json::json;
 
+/// GET /prompt — simple prompt creation page (free, generates shareable link)
+pub async fn prompt_new_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("prompt_new.html", &ctx)?;
+    Ok(Html(html))
+}
+
 /// GET /prompt/create — form to write a prompt + pay
 pub async fn create_prompt_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let mut ctx = tera::Context::new();
@@ -126,6 +133,43 @@ pub async fn create_prompt_api(
         "payment_method": payment.method,
     }))
     .into_response())
+}
+
+/// POST /api/v1/prompt/quick — create a shareable prompt link (free, no image)
+/// Returns { prompt_id, url } — the prompt can be opened via /write?p={id}
+pub async fn create_prompt_quick(
+    State(state): State<AppState>,
+    Json(req): Json<CreatePromptRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let prompt_text = req.prompt_text.trim().to_string();
+    if prompt_text.is_empty() || prompt_text.len() > 500 {
+        return Err(AppError::BadRequest(
+            "prompt must be 1-500 characters".into(),
+        ));
+    }
+
+    let prompt_id = uuid::Uuid::new_v4().to_string();
+    let created_by = req.created_by.as_deref().unwrap_or("anon");
+
+    {
+        let db = state.db.lock().await;
+        queries::ensure_user(&db, "anon")?;
+        queries::insert_prompt(
+            &db,
+            &prompt_id,
+            "anon",
+            &prompt_text,
+            None,
+            Some(created_by),
+        )?;
+        queries::update_prompt_status(&db, &prompt_id, "complete")?;
+    }
+
+    Ok(Json(json!({
+        "prompt_id": prompt_id,
+        "url": format!("https://anky.app/write?p={}", prompt_id),
+        "prompt_text": prompt_text,
+    })))
 }
 
 /// GET /api/v1/prompt/{id} — poll prompt status/details

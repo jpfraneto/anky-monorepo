@@ -361,11 +361,12 @@ pub struct UserSettings {
     pub idle_timeout: i32,
     pub keyboard_layout: String,
     pub preferred_language: String,
+    pub preferred_model: String,
 }
 
 pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSettings> {
     let mut stmt = conn.prepare(
-        "SELECT font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language FROM user_settings WHERE user_id = ?1",
+        "SELECT font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language, preferred_model FROM user_settings WHERE user_id = ?1",
     )?;
     let mut rows = stmt.query_map(params![user_id], |row| {
         Ok(UserSettings {
@@ -377,6 +378,9 @@ pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSetting
                 .get::<_, String>(4)
                 .unwrap_or_else(|_| "qwerty".to_string()),
             preferred_language: row.get::<_, String>(5).unwrap_or_else(|_| "en".to_string()),
+            preferred_model: row
+                .get::<_, String>(6)
+                .unwrap_or_else(|_| "default".to_string()),
         })
     })?;
     match rows.next() {
@@ -388,6 +392,7 @@ pub fn get_user_settings(conn: &Connection, user_id: &str) -> Result<UserSetting
             idle_timeout: 8,
             keyboard_layout: "qwerty".to_string(),
             preferred_language: "en".to_string(),
+            preferred_model: "default".to_string(),
         }),
     }
 }
@@ -401,18 +406,20 @@ pub fn upsert_user_settings(
     idle_timeout: i32,
     keyboard_layout: &str,
     preferred_language: &str,
+    preferred_model: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO user_settings (user_id, font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO user_settings (user_id, font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language, preferred_model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(user_id) DO UPDATE SET
             font_family = excluded.font_family,
             font_size = excluded.font_size,
             theme = excluded.theme,
             idle_timeout = excluded.idle_timeout,
             keyboard_layout = excluded.keyboard_layout,
-            preferred_language = excluded.preferred_language",
-        params![user_id, font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language],
+            preferred_language = excluded.preferred_language,
+            preferred_model = excluded.preferred_model",
+        params![user_id, font_family, font_size, theme, idle_timeout, keyboard_layout, preferred_language, preferred_model],
     )?;
     Ok(())
 }
@@ -2060,6 +2067,37 @@ pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// Get ankys that are 'complete' but missing a reflection (title or reflection is NULL/empty).
+/// These slipped through the streaming pipeline and need recovery.
+pub fn get_ankys_missing_reflection(
+    conn: &Connection,
+) -> Result<Vec<(String, String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.writing_session_id, a.user_id, w.content
+         FROM ankys a
+         JOIN writing_sessions w ON w.id = a.writing_session_id
+         WHERE a.status = 'complete'
+         AND (a.reflection IS NULL OR a.reflection = '')
+         AND w.content IS NOT NULL AND w.content != ''
+         AND a.created_at > datetime('now', '-24 hours')
+         ORDER BY a.created_at DESC
+         LIMIT 5",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
         ))
     })?;
     let mut results = Vec::new();
@@ -4120,6 +4158,99 @@ pub fn get_cuentacuentos_audio(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+// ===== Minting =====
+
+/// Check if an anky is eligible for minting: complete, is_anky, not minted, not gas-funded, belongs to user.
+/// Returns (anky_id, writing_content, user_wallet_address) if eligible.
+pub fn check_mint_eligibility(
+    conn: &Connection,
+    session_id: &str,
+    user_id: &str,
+) -> Result<Option<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, ws.content, u.wallet_address
+         FROM ankys a
+         JOIN writing_sessions ws ON ws.id = a.writing_session_id
+         JOIN users u ON u.id = a.user_id
+         WHERE a.writing_session_id = ?1
+           AND a.user_id = ?2
+           AND a.status = 'complete'
+           AND ws.is_anky = 1
+           AND a.is_minted = 0
+           AND a.gas_funded_at IS NULL
+         ORDER BY a.rowid DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![session_id, user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Check if a wallet address has been gas-funded in the last hour.
+pub fn check_mint_rate_limit(conn: &Connection, wallet_address: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM ankys a
+         JOIN users u ON u.id = a.user_id
+         WHERE u.wallet_address = ?1
+           AND a.gas_funded_at IS NOT NULL
+           AND a.gas_funded_at > datetime('now', '-1 hour')",
+        params![wallet_address],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Mark an anky as gas-funded with session CID and metadata URI.
+pub fn set_anky_gas_funded(
+    conn: &Connection,
+    anky_id: &str,
+    session_cid: &str,
+    metadata_uri: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET gas_funded_at = datetime('now'), session_cid = ?2, metadata_uri = ?3
+         WHERE id = ?1",
+        params![anky_id, session_cid, metadata_uri],
+    )?;
+    Ok(())
+}
+
+/// Mark an anky as minted with tx hash and optional token ID.
+pub fn set_anky_minted(
+    conn: &Connection,
+    anky_id: &str,
+    tx_hash: &str,
+    token_id: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET is_minted = 1, mint_tx_hash = ?2, token_id = ?3 WHERE id = ?1",
+        params![anky_id, tx_hash, token_id],
+    )?;
+    Ok(())
+}
+
+/// Get anky for mint confirmation: gas-funded but not yet minted.
+pub fn get_anky_for_mint_confirm(
+    conn: &Connection,
+    session_id: &str,
+    user_id: &str,
+) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id FROM ankys a
+         WHERE a.writing_session_id = ?1
+           AND a.user_id = ?2
+           AND a.gas_funded_at IS NOT NULL
+           AND a.is_minted = 0
+         ORDER BY a.rowid DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![session_id, user_id], |row| row.get::<_, String>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 pub fn get_pending_cuentacuentos_audio(conn: &Connection) -> Result<Vec<(String, String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT id, cuentacuentos_id, language
@@ -4133,6 +4264,120 @@ pub fn get_pending_cuentacuentos_audio(conn: &Connection) -> Result<Vec<(String,
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// --- Mirrors ---
+
+/// Get the most recent mirror for a given FID (cache lookup).
+pub fn get_mirror_by_fid(
+    conn: &Connection,
+    fid: u64,
+) -> Result<
+    Option<(
+        String,
+        i64,
+        String,
+        String,
+        Option<String>,
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+    )>,
+> {
+    let mut stmt = conn.prepare(
+        "SELECT id, fid, username, display_name, avatar_url, follower_count, bio, public_mirror, flux_descriptors_json, image_path, created_at
+         FROM mirrors WHERE fid = ?1 ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![fid as i64], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, String>(8)?,
+            row.get::<_, Option<String>>(9)?,
+            row.get::<_, String>(10)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn insert_mirror(
+    conn: &Connection,
+    id: &str,
+    fid: u64,
+    username: &str,
+    display_name: &str,
+    avatar_url: Option<&str>,
+    follower_count: u64,
+    bio: &str,
+    public_mirror: &str,
+    flux_descriptors_json: &str,
+    image_path: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO mirrors (id, fid, username, display_name, avatar_url, follower_count, bio, public_mirror, flux_descriptors_json, image_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            id,
+            fid as i64,
+            username,
+            display_name,
+            avatar_url,
+            follower_count as i64,
+            bio,
+            public_mirror,
+            flux_descriptors_json,
+            image_path,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn list_mirrors(
+    conn: &Connection,
+    limit: u32,
+    offset: u32,
+) -> Result<
+    Vec<(
+        String,
+        i64,
+        String,
+        String,
+        Option<String>,
+        i64,
+        String,
+        String,
+        Option<String>,
+        String,
+    )>,
+> {
+    let mut stmt = conn.prepare(
+        "SELECT id, fid, username, display_name, avatar_url, follower_count, public_mirror, flux_descriptors_json, image_path, created_at
+         FROM mirrors ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
+    )?;
+    let rows = stmt.query_map(params![limit, offset], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, Option<String>>(8)?,
+            row.get::<_, String>(9)?,
         ))
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())

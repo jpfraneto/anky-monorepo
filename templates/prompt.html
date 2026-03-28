@@ -304,12 +304,12 @@ var lastStreamedReflection = '';
           setTimeout(function() { showQuickChatInput(); }, 500);
           return;
         }
-        if (data.is_anky && data.anky_id) {
-          currentAnkyId = data.anky_id;
-          saveAnkyId(data.anky_id);
+        if (data.isAnky && data.ankyId) {
+          currentAnkyId = data.ankyId;
+          saveAnkyId(data.ankyId);
           ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
           addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-          streamAnkyReflection(data.anky_id);
+          streamAnkyReflection(data.ankyId);
         } else {
           ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
           chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -449,6 +449,39 @@ var lastStreamedReflection = '';
     });
   }
 
+  function showSessionSummary(ankyId) {
+    var ankyBubble = document.getElementById('anky-bubble');
+    var elapsed = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0;
+    var mins = Math.floor(elapsed / 60);
+    var secs = elapsed % 60;
+    var words = currentWritingText ? currentWritingText.split(/\s+/).filter(function(w) { return w.length > 0; }).length : 0;
+    var chars = currentWritingText ? currentWritingText.length : 0;
+    var preview = currentWritingText ? currentWritingText.substring(0, 600) : '';
+    var hasMore = currentWritingText && currentWritingText.length > 600;
+
+    var html = '<div class="session-summary">' +
+      '<div class="session-summary-header">your writing landed safely</div>' +
+      '<div class="session-summary-stats">' +
+        '<span>' + mins + 'm ' + secs + 's</span>' +
+        '<span class="stat-dot">·</span>' +
+        '<span>' + words + ' words</span>' +
+        '<span class="stat-dot">·</span>' +
+        '<span>' + chars.toLocaleString() + ' characters</span>' +
+      '</div>' +
+      '<div class="session-summary-writing">' +
+        '<span class="writing-preview-text">' + escapeHtml(preview) + (hasMore ? '...' : '') + '</span>' +
+        (hasMore ? '<button class="writing-toggle" onclick="var p=this.parentNode;var s=p.querySelector(\'.writing-preview-text\');var f=p.querySelector(\'.writing-full-text\');if(f.style.display===\'none\'){f.style.display=\'inline\';s.style.display=\'none\';this.textContent=\'collapse\';}else{f.style.display=\'none\';s.style.display=\'inline\';this.textContent=\'read all\';}">read all</button>' +
+          '<span class="writing-full-text" style="display:none;">' + escapeHtml(currentWritingText) + '</span>' : '') +
+      '</div>' +
+      '<div class="session-summary-note">the reflection engine is recharging. your anky will be reflected on soon — the watchdog retries every 5 minutes.</div>' +
+      '<button class="session-summary-retry" onclick="this.disabled=true;this.textContent=\'retrying...\';streamAnkyReflection(\'' + ankyId + '\')">retry reflection now</button>' +
+    '</div>';
+    ankyBubble.innerHTML = html;
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    // Still poll for image — it uses Gemini, not Claude
+    pollAnkyImage(ankyId);
+  }
+
   function streamAnkyReflection(ankyId) {
     var ankyBubble = document.getElementById('anky-bubble');
     var fullText = '';
@@ -457,6 +490,11 @@ var lastStreamedReflection = '';
     var renderPending = false;
 
     function renderCurrentText() {
+      // Check for failure sentinel
+      if (fullText === '__reflection_failed__') {
+        showSessionSummary(ankyId);
+        return;
+      }
       if (!titleParsed && fullText.indexOf('\n') !== -1) {
         titleText = fullText.substring(0, fullText.indexOf('\n')).trim();
         titleParsed = true;
@@ -491,7 +529,9 @@ var lastStreamedReflection = '';
     source.addEventListener('done', function() {
       source.close();
       renderCurrentText();
-      pollAnkyImage(ankyId);
+      if (fullText !== '__reflection_failed__') {
+        pollAnkyImage(ankyId);
+      }
     });
 
     source.onerror = function() {
@@ -500,7 +540,9 @@ var lastStreamedReflection = '';
         pollAnkyReflection(ankyId);
       } else {
         renderCurrentText();
-        pollAnkyImage(ankyId);
+        if (fullText !== '__reflection_failed__') {
+          pollAnkyImage(ankyId);
+        }
       }
     };
   }
@@ -676,12 +718,12 @@ var lastStreamedReflection = '';
           }
 
           clearDraft();  // only clear after confirmed success
-          if (data.is_anky && data.anky_id) {
-            currentAnkyId = data.anky_id;
-            saveAnkyId(data.anky_id);
+          if (data.isAnky && data.ankyId) {
+            currentAnkyId = data.ankyId;
+            saveAnkyId(data.ankyId);
             ankyBubble.innerHTML = '<span class="processing">anky is reading your writing...</span>';
             addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
-            streamAnkyReflection(data.anky_id);
+            streamAnkyReflection(data.ankyId);
           } else {
             ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
             chatContainer.scrollTop = chatContainer.scrollHeight;

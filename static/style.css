@@ -847,6 +847,69 @@ body.chat-active .writing-main {
 
 .anky-share-link:hover { color: #c4a0ff; }
 
+/* Session summary (shown when reflection fails) */
+.session-summary {
+  text-align: left;
+}
+.session-summary-header {
+  font-size: 18px;
+  font-weight: 600;
+  color: #c4a0ff;
+  margin-bottom: 12px;
+}
+.session-summary-stats {
+  display: flex;
+  gap: 6px;
+  font-size: 14px;
+  color: #a0a0b0;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.session-summary-stats .stat-dot { color: #555; }
+.session-summary-writing {
+  background: rgba(124, 47, 247, 0.08);
+  border-left: 3px solid #7b2ff7;
+  padding: 14px 16px;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #d0d0e0;
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.session-summary-writing .writing-toggle {
+  display: block;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #7b2ff7;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+.session-summary-writing .writing-full-text { white-space: pre-wrap; }
+.session-summary-note {
+  font-size: 13px;
+  color: #888;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.session-summary-retry {
+  background: #7b2ff7;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.session-summary-retry:hover { background: #6520d0; }
+.session-summary-retry:disabled { background: #444; cursor: default; }
+
 .anky-share-link .copied { color: #4a9; }
 
 /* Inline share buttons (replaces overlay on home page) */
@@ -3887,6 +3950,28 @@ body.theme-light .prompt-complete-inner h2 { color: #222; }
   color: #c4a0ff;
   font-size: 14px;
   margin-left: 8px;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0 8px 0;
+  line-height: 1.5;
+}
+
+.you-settings-link {
+  font-size: 13px;
+  color: rgba(255,255,255,0.35);
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 4px 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+  transition: color 0.2s, border-color 0.2s;
+}
+.you-settings-link:hover {
+  color: rgba(255,255,255,0.6);
+  border-color: rgba(255,255,255,0.25);
 }
 
 .settings-toggle {

@@ -1,59 +1,400 @@
 {% extends "base.html" %}
-
 {% block title %}ANKY | {{ title }}{% endblock %}
 
 {% block head %}
 <style>
-  .anky-tabs {
+  .anky-thread {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px 120px 16px;
+  }
+
+  /* ── Section labels ─────────────────── */
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.15);
+    margin-bottom: 16px;
+  }
+  .anky-section {
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .anky-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+  }
+
+  /* ── Image ───────────────────────────── */
+  .anky-thread-image {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .anky-thread-image img {
+    width: 100%;
+    display: block;
+  }
+  .anky-thread-image .generating-placeholder {
+    aspect-ratio: 1;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.2);
+    font-size: 14px;
+  }
+
+  /* ── Title + meta ────────────────────── */
+  .anky-thread-title {
+    font-size: 22px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.9);
+    margin: 0 0 8px 0;
+    line-height: 1.3;
+  }
+  .anky-thread-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+    margin-bottom: 12px;
+  }
+  .anky-share-btn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.4);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .anky-share-btn:hover {
+    border-color: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* ── Writing (always visible) ────────── */
+  .anky-thread-writing {
+    font-size: 14px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.4);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-bottom: 20px;
+    padding: 12px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+  }
+
+  /* ── Reflection ──────────────────────── */
+  .anky-thread-reflection {
+    font-size: 15px;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 24px;
+  }
+  .anky-thread-reflection h3 {
+    font-size: 17px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.85);
+    margin: 20px 0 8px 0;
+  }
+  .anky-thread-reflection h4 {
+    font-size: 15px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.8);
+    margin: 16px 0 6px 0;
+  }
+  .anky-thread-reflection strong { color: rgba(255,255,255,0.9); }
+  .anky-thread-reflection em { color: rgba(255,255,255,0.65); font-style: italic; }
+  .anky-thread-reflection p { margin: 0 0 12px 0; }
+  .anky-thread-reflection blockquote {
+    border-left: 2px solid rgba(255,255,255,0.1);
+    margin: 12px 0;
+    padding: 4px 12px;
+    color: rgba(255,255,255,0.5);
+  }
+  .anky-thread-reflection ul { padding-left: 20px; margin: 8px 0; }
+  .anky-thread-reflection li { margin-bottom: 4px; }
+  .anky-thread-reflection hr {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 16px 0;
+  }
+
+  .reflection-streaming .stream-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: #7b2ff7;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Story tab ───────────────────────── */
+  .anky-thread-tabs {
     display: flex;
     gap: 0;
     margin-bottom: 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
   }
-  .anky-tab {
+  .anky-thread-tab {
     background: none;
     border: none;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.3);
     font-size: 13px;
-    font-family: inherit;
     padding: 8px 20px;
     cursor: pointer;
     border-bottom: 2px solid transparent;
     transition: color 0.2s, border-color 0.2s;
     letter-spacing: 0.04em;
   }
-  .anky-tab:hover { color: rgba(255,255,255,0.6); }
-  .anky-tab.active {
-    color: rgba(255,255,255,0.9);
-    border-bottom-color: rgba(255,255,255,0.5);
+  .anky-thread-tab:hover { color: rgba(255,255,255,0.5); }
+  .anky-thread-tab.active {
+    color: rgba(255,255,255,0.85);
+    border-bottom-color: rgba(255,255,255,0.4);
   }
-  .anky-tab-content { display: none; }
-  .anky-tab-content.active { display: block; }
+  .anky-thread-tab-content { display: none; }
+  .anky-thread-tab-content.active { display: block; }
+
   .anky-story-meta {
     font-size: 11px;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.3);
     margin-bottom: 6px;
-    letter-spacing: 0.03em;
-  }
-  .anky-story-kingdom {
-    text-transform: lowercase;
   }
   .anky-story-title {
     font-size: 18px;
     font-weight: 400;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255,255,255,0.8);
     margin: 0 0 14px 0;
     font-style: italic;
   }
   .anky-story-content {
     font-size: 15px;
     line-height: 1.7;
-    color: rgba(255,255,255,0.7);
+    color: rgba(255,255,255,0.65);
     white-space: pre-line;
   }
+
+  /* ── Conversation ────────────────────── */
+  .conv-bubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    margin-bottom: 8px;
+  }
+  .conv-bubble.user {
+    margin-left: auto;
+    background: #7b2ff7;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .conv-bubble.anky {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border-bottom-left-radius: 4px;
+  }
+  .conv-thinking {
+    color: rgba(255,255,255,0.3);
+    font-style: italic;
+  }
+
+  /* ── Reply area ──────────────────────── */
+  .reply-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    margin-top: 16px;
+  }
+  .reply-suggestion-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1.4;
+  }
+  .reply-suggestion-btn:hover {
+    border-color: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8);
+  }
+  .reply-custom-wrap {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  .reply-textarea {
+    flex: 1;
+    background: #111;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px 14px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    min-height: 20px;
+    max-height: 200px;
+    outline: none;
+  }
+  .reply-textarea:focus { border-color: rgba(255,255,255,0.2); }
+  .reply-textarea::placeholder { color: rgba(255,255,255,0.2); }
+  .reply-send-btn {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: rgba(255,255,255,0.5);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .reply-send-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+  .reply-send-btn:disabled { opacity: 0.3; cursor: default; }
+
+  .anky-mode-hint {
+    font-size: 11px;
+    color: rgba(255,255,255,0.12);
+    text-align: center;
+    margin-top: 8px;
+    transition: color 0.3s;
+  }
+  .anky-mode-hint.active {
+    color: rgba(123,47,247,0.5);
+  }
+
+  /* ── Login nudge ─────────────────────── */
+  .talk-login-nudge {
+    color: rgba(255,255,255,0.3);
+    font-size: 14px;
+    text-align: center;
+    padding: 24px 0;
+  }
+  .talk-login-nudge a {
+    color: rgba(255,255,255,0.5);
+    text-decoration: underline;
+  }
+
+  /* ── Fullscreen writing mode (ANKY MODE) ── */
+  .anky-mode-surface {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    background: #0a0a0a;
+    z-index: 9999;
+  }
+  .am-idle-bar-wrap {
+    flex-shrink: 0;
+    height: 3px;
+    width: 100%;
+    background: transparent;
+  }
+  .am-idle-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #ff4444;
+    transition: width 0.1s linear;
+    opacity: 0;
+  }
+  .am-idle-bar-fill.warning { opacity: 1; }
+  .am-prompt {
+    padding: 16px 16px 0 16px;
+    font-size: 17px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.15);
+    font-style: italic;
+    flex-shrink: 0;
+  }
+  .am-textarea {
+    flex: 1;
+    min-height: 0;
+    margin: 12px 16px 0 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 16px;
+    line-height: 1.7;
+    color: #d0d0d0;
+    font-family: system-ui, -apple-system, sans-serif;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    caret-color: #7b2ff7;
+    overflow-y: auto;
+  }
+  .am-textarea::-webkit-scrollbar { width: 0; }
+  .am-bottom {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .am-chakra-bar {
+    height: 3px;
+    width: 100%;
+    background: #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .am-chakra-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+  .am-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 36px;
+  }
+  .am-timer {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 18px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+  }
+  .am-timer.past-zero { color: #c4a0ff; }
+  .am-send-btn {
+    display: none;
+    background: #fff;
+    color: #0a0a0a;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .am-send-btn:hover { background: #e0e0e0; }
+  .am-send-btn.visible { display: block; }
 </style>
 <meta property="og:title" content="ANKY | {{ title }}">
-<meta property="og:description" content="{{ writing | truncate(length=300) }}">
+<meta property="og:description" content="{{ reflection | truncate(length=300) }}">
 {% if image_webp %}<meta property="og:image" content="https://anky.app/data/images/{{ image_webp }}">
 {% elif image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
 <meta property="og:image:width" content="1024">
@@ -61,290 +402,669 @@
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://anky.app/anky/{{ id }}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:site" content="@jpfraneto">
 <meta name="twitter:title" content="ANKY | {{ title }}">
-<meta name="twitter:description" content="{{ writing | truncate(length=300) }}">
-{% if image_webp %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_webp }}">
-<meta name="twitter:image:alt" content="ANKY | {{ title }}">
-{% elif image_path %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_path }}">
-<meta name="twitter:image:alt" content="ANKY | {{ title }}">
-{% endif %}
+<meta name="twitter:description" content="{{ reflection | truncate(length=300) }}">
+{% if image_webp %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_webp }}">{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="anky-detail">
-  {% if status == "complete" and image_path %}
-  <div class="anky-image">
-    <picture>
-      {% if image_webp %}<source srcset="/data/images/{{ image_webp }}" type="image/webp">{% endif %}
-      <img src="/data/images/{{ image_path }}" alt="{{ title }}" id="anky-detail-img">
-    </picture>
-  </div>
-  <div class="anky-detail-actions">
-    <button class="share-card-btn" id="anky-detail-share"
-      data-title="{{ title }}"
-      data-reflection="{{ reflection | default(value='') }}"
-      data-prompt="{{ image_prompt | default(value='') }}"
-      data-anky-id="{{ id }}">share</button>
-    {% if reflection or image_prompt %}
-    <button class="reflection-download-btn" id="anky-detail-download" type="button">download card</button>
-    {% endif %}
-  </div>
-  {% elif status == "generating" %}
-  <div class="anky-image">
-    <div class="anky-generating">
-      <div class="processing">generating...</div>
-    </div>
-  </div>
-  {% endif %}
+<div class="anky-thread" id="ankyThread">
 
-  <div class="anky-content">
-    {% if origin == "generated" %}
-    <span class="gallery-badge generated">generated</span>
-    {% if image_prompt %}
-    <div class="anky-section">
-      <h2>prompt</h2>
-      <div class="anky-image-prompt">{{ image_prompt }}</div>
+  <!-- SECTION 1: who the world sees -->
+  <section class="anky-section" id="sectionWorld">
+    <div class="section-label">who the world sees</div>
+
+    {% if status == "complete" and image_path %}
+    <div class="anky-thread-image">
+      <picture>
+        {% if image_webp %}<source srcset="/data/images/{{ image_webp }}" type="image/webp">{% endif %}
+        <img src="/data/images/{{ image_path }}" alt="{{ title }}">
+      </picture>
+    </div>
+    {% elif status == "generating" %}
+    <div class="anky-thread-image">
+      <div class="generating-placeholder">generating...</div>
     </div>
     {% endif %}
 
-    <div class="anky-created">{{ created_at }}</div>
-
-    {% if thinker_name %}
-    <div class="anky-meta">
-      <span class="anky-thinker">{{ thinker_name }}</span>
-      {% if thinker_moment %}<span class="anky-moment">{{ thinker_moment }}</span>{% endif %}
-    </div>
-    {% endif %}
-
+    {% if title and title != "untitled" %}
+    <h1 class="anky-thread-title" id="threadTitle">{{ title }}</h1>
     {% else %}
-    <h1 class="anky-title">{{ title }}</h1>
-
-    {% if thinker_name %}
-    <div class="anky-meta">
-      <span class="anky-thinker">{{ thinker_name }}</span>
-      {% if thinker_moment %}<span class="anky-moment">{{ thinker_moment }}</span>{% endif %}
-    </div>
+    <h1 class="anky-thread-title" id="threadTitle"></h1>
     {% endif %}
-
-    <div class="anky-created">{{ created_at }}</div>
-
-    {% if prompt_text %}
-    <div class="anky-section">
-      <h2>the prompt</h2>
-      <div class="anky-prompt-text"><a href="/prompt/{{ prompt_id }}">{{ prompt_text }}</a></div>
-    </div>
-    {% endif %}
-
-    {% if writing %}
-    <div class="anky-section" id="writing-section">
-      <h2>the writing</h2>
-      {% if formatted_writing %}
-      <div class="anky-writing-toggle" id="writing-toggle-area">
-        <div class="anky-writing anky-writing-formatted" id="writing-formatted">{{ formatted_writing }}</div>
-        <div class="anky-writing anky-writing-raw" id="writing-raw" style="display:none;">{{ writing }}</div>
-      </div>
-      {% else %}
-      <div class="anky-writing">{{ writing }}</div>
+    <div class="anky-thread-meta">
+      {{ created_at }}
+      {% if status == "complete" %}
+      <button class="anky-share-btn" id="shareBtn" style="margin-left:12px;">share</button>
       {% endif %}
     </div>
+  </section>
+
+  <!-- SECTION 2: your anky -->
+  <section class="anky-section" id="sectionYours">
+    <div class="section-label">your anky</div>
+
+    {% if writing %}
+    <div class="anky-thread-writing">{% if formatted_writing %}{{ formatted_writing }}{% else %}{{ writing }}{% endif %}</div>
     {% endif %}
 
     {% if reflection or has_story %}
-    <div class="anky-section anky-tabs-section">
-      {% if reflection and has_story %}
-      <div class="anky-tabs">
-        <button class="anky-tab" data-tab="heart" id="tab-heart">heart</button>
-        <button class="anky-tab active" data-tab="mind" id="tab-mind">mind</button>
-      </div>
-      {% endif %}
-
-      {% if has_story %}
-      <div class="anky-tab-content {% if reflection %}{% else %}active{% endif %}" id="content-heart" {% if reflection %}style=""{% endif %}>
-        <div class="anky-story">
-          <div class="anky-story-meta">
-            {% if story_kingdom %}<span class="anky-story-kingdom">{{ story_kingdom }}</span>{% endif %}
-            {% if story_city %} &middot; {{ story_city }}{% endif %}
-          </div>
-          <h3 class="anky-story-title">{{ story_title }}</h3>
-          <div class="anky-story-content" id="story-text-content">{{ story_content }}</div>
-        </div>
-      </div>
-      {% endif %}
-
-      {% if reflection %}
-      <div class="anky-tab-content" id="content-mind" {% if not has_story %}style=""{% endif %}>
-        <div class="anky-reflection" id="reflection-content">{{ reflection }}</div>
-      </div>
-      {% endif %}
+    {% if reflection and has_story %}
+    <div class="anky-thread-tabs">
+      <button class="anky-thread-tab active" data-tab="mind">reflection</button>
+      <button class="anky-thread-tab" data-tab="heart">story</button>
     </div>
     {% endif %}
+
+    {% if reflection %}
+    <div class="anky-thread-tab-content active" id="content-mind">
+      <div class="anky-thread-reflection" id="reflectionContent">{{ reflection }}</div>
+    </div>
     {% endif %}
-  </div>
+
+    {% if has_story %}
+    <div class="anky-thread-tab-content {% if not reflection %}active{% endif %}" id="content-heart">
+      <div class="anky-story-meta">
+        {% if story_kingdom %}<span>{{ story_kingdom }}</span>{% endif %}
+        {% if story_city %} · {{ story_city }}{% endif %}
+      </div>
+      <h3 class="anky-story-title">{{ story_title }}</h3>
+      <div class="anky-story-content">{{ story_content }}</div>
+    </div>
+    {% endif %}
+    {% elif status == "generating" %}
+    <div class="anky-thread-reflection reflection-streaming" id="reflectionContent"></div>
+    {% endif %}
+  </section>
+
+  <!-- SECTION 3: talk with this anky -->
+  <section class="anky-section" id="sectionTalk">
+    <div class="section-label">talk with this anky</div>
+
+    <div id="conversationThread"></div>
+
+    {% if is_logged_in | default(value=false) %}
+    <div class="reply-suggestions" id="replySuggestions"></div>
+    <div class="reply-custom-wrap">
+      <textarea class="reply-textarea" id="replyInput" placeholder="talk to anky about this..." rows="1"></textarea>
+      <button class="reply-send-btn" id="replySendBtn" disabled>send</button>
+    </div>
+    <div class="anky-mode-hint" id="ankyModeHint">keep typing and anky mode activates</div>
+    {% else %}
+    <div class="talk-login-nudge">
+      <a href="/login">log in</a> to talk with this anky
+    </div>
+    {% endif %}
+  </section>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function() {
-  var tabs = document.querySelectorAll('.anky-tab');
-  if (!tabs.length) {
-    // No tabs — show whichever content exists
-    var solo = document.querySelector('.anky-tab-content');
-    if (solo) solo.classList.add('active');
-    return;
-  }
-  // Default: show mind tab (fastest, gives actionable reflection immediately)
-  var heartContent = document.getElementById('content-heart');
-  var mindContent = document.getElementById('content-mind');
-  if (mindContent) mindContent.classList.add('active');
+  var ankyId = '{{ id }}';
+  var isLoggedIn = {% if is_logged_in | default(value=false) %}true{% else %}false{% endif %};
+  var status = '{{ status }}';
 
+  // ── Tabs ────────────────────────────────
+  var tabs = document.querySelectorAll('.anky-thread-tab');
   tabs.forEach(function(tab) {
     tab.addEventListener('click', function() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
       var target = tab.dataset.tab;
-      if (heartContent) heartContent.classList.toggle('active', target === 'heart');
-      if (mindContent) mindContent.classList.toggle('active', target === 'mind');
-    });
-  });
-})();
-</script>
-{% if formatted_writing %}
-<script>
-(function() {
-  var toggle = document.getElementById('writing-toggle-area');
-  if (!toggle) return;
-  var formatted = document.getElementById('writing-formatted');
-  var raw = document.getElementById('writing-raw');
-  var showingFormatted = true;
-
-  toggle.style.cursor = 'pointer';
-  toggle.addEventListener('click', function() {
-    showingFormatted = !showingFormatted;
-    if (showingFormatted) {
-      formatted.style.display = '';
-      raw.style.display = 'none';
-    } else {
-      formatted.style.display = 'none';
-      raw.style.display = '';
-    }
-  });
-})();
-</script>
-{% endif %}
-{% if status == "generating" %}
-<script>
-  setTimeout(function() { location.reload(); }, 15000);
-</script>
-{% endif %}
-{% if status == "complete" and image_path %}
-<script>
-(function() {
-  var shareBtn = document.getElementById('anky-detail-share');
-  if (!shareBtn) return;
-  var img = document.getElementById('anky-detail-img');
-  shareBtn.addEventListener('click', function() {
-    window.ankyShareCard.open({
-      imageUrl: img ? img.src : '',
-      title: shareBtn.dataset.title || '',
-      reflection: shareBtn.dataset.reflection || shareBtn.dataset.prompt || '',
-      ankyId: shareBtn.dataset.ankyId
+      var mind = document.getElementById('content-mind');
+      var heart = document.getElementById('content-heart');
+      if (mind) mind.classList.toggle('active', target === 'mind');
+      if (heart) heart.classList.toggle('active', target === 'heart');
     });
   });
 
-  var downloadBtn = document.getElementById('anky-detail-download');
-  if (!downloadBtn || !window.ankyReflectionCard) return;
+  // ── Markdown renderer ───────────────────
+  function renderMarkdown(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^---$/gm, '<hr>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+      .replace(/\n\n+/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
 
-  var defaultLabel = downloadBtn.textContent;
-  downloadBtn.addEventListener('click', async function() {
-    var imageUrl = img ? (img.currentSrc || img.src) : '';
-    var reflection = shareBtn.dataset.reflection || shareBtn.dataset.prompt || '';
-    if (!imageUrl || !reflection) return;
+  function applyMarkdown(el) {
+    if (!el) return;
+    var raw = el.textContent;
+    if (!raw.trim()) return;
+    var html = renderMarkdown(raw);
+    html = '<p>' + html + '</p>';
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    html = html.replace(/<p>(<h[34]>)/g, '$1');
+    html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
+    html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
+    html = html.replace(/<p>(<ul>)/g, '$1');
+    html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
+    html = html.replace(/<p>(<blockquote>)/g, '$1');
+    html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+    el.innerHTML = html;
+  }
 
-    downloadBtn.disabled = true;
-    downloadBtn.textContent = 'rendering...';
+  var reflEl = document.getElementById('reflectionContent');
+  if (reflEl && status !== 'generating') {
+    applyMarkdown(reflEl);
+  }
 
-    try {
-      await window.ankyReflectionCard.download({
-        downloadUrl: '/api/anky-card/' + encodeURIComponent(shareBtn.dataset.ankyId || ''),
-        title: shareBtn.dataset.title || 'untitled',
-        filenameBase: shareBtn.dataset.title || 'anky-reflection'
+  // ── SSE reflection streaming ──
+  if (status === 'generating' && reflEl) {
+    (function connectStream(attempt) {
+      var maxRetries = 3;
+      var rawText = '';
+      var streamDone = false;
+      var es = new EventSource('/api/stream-reflection/' + ankyId);
+      var safetyTimeout = setTimeout(function() {
+        if (!streamDone) { streamDone = true; es.close(); location.reload(); }
+      }, 90000);
+
+      es.onmessage = function(e) {
+        rawText += e.data + '\n';
+        var html = renderMarkdown(rawText);
+        html = '<p>' + html + '</p>';
+        html = html.replace(/<p>\s*<\/p>/g, '');
+        html = html.replace(/<p>(<h[34]>)/g, '$1');
+        html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
+        reflEl.innerHTML = html + '<span class="stream-cursor"></span>';
+        window.scrollTo(0, document.body.scrollHeight);
+      };
+      es.addEventListener('done', function() {
+        if (streamDone) return;
+        streamDone = true;
+        clearTimeout(safetyTimeout);
+        es.close();
+        reflEl.classList.remove('reflection-streaming');
+        var cursor = reflEl.querySelector('.stream-cursor');
+        if (cursor) cursor.remove();
+        setTimeout(function() { location.reload(); }, 2000);
       });
-      downloadBtn.textContent = 'downloaded';
-    } catch (e) {
-      downloadBtn.textContent = 'try again';
-      setTimeout(function() {
-        downloadBtn.textContent = defaultLabel;
-        downloadBtn.disabled = false;
-      }, 1200);
+      es.onerror = function() {
+        if (streamDone) return;
+        streamDone = true;
+        clearTimeout(safetyTimeout);
+        es.close();
+        if (!rawText && attempt < maxRetries) {
+          setTimeout(function() { connectStream(attempt + 1); }, attempt * 3000);
+          return;
+        }
+        setTimeout(function() { location.reload(); }, 5000);
+      };
+    })(1);
+  }
+
+  // ── Conversation ────────────────────────
+  var convEl = document.getElementById('conversationThread');
+  var suggestionsEl = document.getElementById('replySuggestions');
+  var replyInput = document.getElementById('replyInput');
+  var replySendBtn = document.getElementById('replySendBtn');
+  var chatHistory = [];
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // Load existing conversation
+  var existingConv = null;
+  {% if conversation_json %}
+  try { existingConv = JSON.parse('{{ conversation_json | safe }}'); } catch(e) {}
+  {% endif %}
+
+  if (existingConv && existingConv.messages && existingConv.messages.length > 0) {
+    existingConv.messages.forEach(function(m) {
+      addBubble(m.role === 'user' ? 'user' : 'anky', m.content);
+      chatHistory.push({ role: m.role, content: m.content });
+    });
+  }
+
+  function addBubble(type, text) {
+    if (!convEl) return;
+    var bubble = document.createElement('div');
+    bubble.className = 'conv-bubble ' + type;
+    if (type === 'anky') {
+      bubble.innerHTML = renderMarkdown(text);
+    } else {
+      bubble.innerHTML = escapeHtml(text);
+    }
+    convEl.appendChild(bubble);
+    return bubble;
+  }
+
+  // Fetch suggested replies
+  if (isLoggedIn && suggestionsEl && status === 'complete') {
+    fetchSuggestions();
+  }
+
+  function fetchSuggestions() {
+    if (!suggestionsEl) return;
+    suggestionsEl.innerHTML = '';
+    fetch('/api/suggest-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: ankyId, history: chatHistory }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      suggestionsEl.innerHTML = '';
+      if (data.reply1) {
+        var btn1 = document.createElement('button');
+        btn1.className = 'reply-suggestion-btn';
+        btn1.textContent = data.reply1;
+        btn1.onclick = function() { sendReply(data.reply1); };
+        suggestionsEl.appendChild(btn1);
+      }
+      if (data.reply2) {
+        var btn2 = document.createElement('button');
+        btn2.className = 'reply-suggestion-btn';
+        btn2.textContent = data.reply2;
+        btn2.onclick = function() { sendReply(data.reply2); };
+        suggestionsEl.appendChild(btn2);
+      }
+    })
+    .catch(function() {});
+  }
+
+  function sendReply(msg) {
+    if (!msg.trim()) return;
+    if (suggestionsEl) suggestionsEl.innerHTML = '';
+    addBubble('user', msg);
+
+    var thinking = document.createElement('div');
+    thinking.className = 'conv-bubble anky conv-thinking';
+    thinking.textContent = 'thinking...';
+    convEl.appendChild(thinking);
+    // Scroll to top of thinking bubble
+    thinking.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: ankyId, message: msg, history: chatHistory }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      chatHistory.push({ role: 'user', content: msg });
+      chatHistory.push({ role: 'assistant', content: data.response });
+      thinking.className = 'conv-bubble anky';
+      thinking.innerHTML = renderMarkdown(data.response);
+      // Scroll to top of anky's reply
+      thinking.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      fetchSuggestions();
+    })
+    .catch(function() {
+      thinking.textContent = 'something went wrong.';
+    });
+  }
+
+  // Custom reply input
+  if (replyInput && replySendBtn) {
+    replyInput.addEventListener('input', function() {
+      replyInput.style.height = 'auto';
+      replyInput.style.height = Math.min(replyInput.scrollHeight, 200) + 'px';
+      replySendBtn.disabled = !replyInput.value.trim();
+    });
+    replyInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (replyInput.value.trim() && !ankyModeTriggered) {
+          sendReply(replyInput.value.trim());
+          replyInput.value = '';
+          replyInput.style.height = 'auto';
+          replySendBtn.disabled = true;
+          resetTypingTracker();
+        }
+      }
+    });
+    replySendBtn.addEventListener('click', function() {
+      if (replyInput.value.trim() && !ankyModeTriggered) {
+        sendReply(replyInput.value.trim());
+        replyInput.value = '';
+        replyInput.style.height = 'auto';
+        replySendBtn.disabled = true;
+        resetTypingTracker();
+      }
+    });
+  }
+
+  // ── 30-second ANKY MODE ─────────────────
+  var ANKY_MODE_THRESHOLD = 30;
+  var TYPING_IDLE_RESET = 5;
+  var typingStartedAt = null;
+  var lastTypingInputAt = null;
+  var typingCheckInterval = null;
+  var ankyModeTriggered = false;
+  var ankyModeHint = document.getElementById('ankyModeHint');
+
+  function resetTypingTracker() {
+    typingStartedAt = null;
+    lastTypingInputAt = null;
+    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
+    if (ankyModeHint) { ankyModeHint.classList.remove('active'); ankyModeHint.textContent = 'keep typing and anky mode activates'; }
+  }
+
+  if (replyInput) {
+    replyInput.addEventListener('input', function() {
+      if (ankyModeTriggered) return;
+      var now = Date.now();
+      lastTypingInputAt = now;
+      if (!typingStartedAt) {
+        typingStartedAt = now;
+        typingCheckInterval = setInterval(checkAnkyMode, 500);
+      }
+    });
+  }
+
+  function checkAnkyMode() {
+    if (ankyModeTriggered) return;
+    var now = Date.now();
+    // Reset if idle for 5+ seconds
+    if (lastTypingInputAt && (now - lastTypingInputAt) / 1000 > TYPING_IDLE_RESET) {
+      resetTypingTracker();
       return;
     }
+    var elapsed = typingStartedAt ? (now - typingStartedAt) / 1000 : 0;
+    // Update hint
+    if (ankyModeHint && elapsed > 10) {
+      var remaining = Math.ceil(ANKY_MODE_THRESHOLD - elapsed);
+      if (remaining > 0) {
+        ankyModeHint.classList.add('active');
+        ankyModeHint.textContent = 'anky mode in ' + remaining + 's...';
+      }
+    }
+    if (elapsed >= ANKY_MODE_THRESHOLD) {
+      triggerAnkyMode();
+    }
+  }
 
-    setTimeout(function() {
-      downloadBtn.textContent = defaultLabel;
-      downloadBtn.disabled = false;
-    }, 1200);
-  });
+  function triggerAnkyMode() {
+    ankyModeTriggered = true;
+    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
+
+    var carryOverText = replyInput ? replyInput.value.replace(/\n/g, ' ') : '';
+    var elapsedAlready = typingStartedAt ? (Date.now() - typingStartedAt) / 1000 : 0;
+
+    // Hide page
+    document.getElementById('ankyThread').style.display = 'none';
+    var navbar = document.querySelector('.navbar');
+    if (navbar) navbar.style.display = 'none';
+    var mobileNav = document.getElementById('mobile-nav');
+    if (mobileNav) mobileNav.style.display = 'none';
+    document.body.style.overflow = 'hidden';
+
+    // Create writing surface
+    var surface = document.createElement('div');
+    surface.className = 'anky-mode-surface';
+    surface.id = 'ankyModeSurface';
+    surface.innerHTML =
+      '<div class="am-idle-bar-wrap"><div class="am-idle-bar-fill" id="amIdleBar"></div></div>' +
+      '<div class="am-prompt">anky mode activated. keep going.</div>' +
+      '<textarea class="am-textarea" id="amTextarea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+      '<div class="am-bottom">' +
+        '<div class="am-chakra-bar"><div class="am-chakra-fill" id="amChakra"></div></div>' +
+        '<div class="am-bottom-row">' +
+          '<span class="am-timer" id="amTimer">8:00</span>' +
+          '<button class="am-send-btn" id="amSendBtn">send</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(surface);
+
+    var textarea = document.getElementById('amTextarea');
+    textarea.value = carryOverText;
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = carryOverText.length;
+
+    initAnkyModeSession(textarea, elapsedAlready);
+  }
+
+  function initAnkyModeSession(textarea, elapsedAlready) {
+    var CHAKRA_COLORS = ['#ff0000','#ff6600','#ffcc00','#33cc33','#3399ff','#6633cc','#9933ff','#ffffff'];
+    var IDLE_TIMEOUT = 8.0;
+    var IDLE_VISIBLE_AFTER = 3.0;
+    var SESSION_DURATION = 480.0;
+
+    var amState = 'writing';
+    var sessionStarted = Date.now() - (elapsedAlready * 1000);
+    var lastInputAt = Date.now();
+    var activeTime = elapsedAlready;
+    var pausedAtActive = 0;
+    var keystrokeDeltas = [];
+    var lastKeystrokeAt = null;
+    var sessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+
+    var idleBar = document.getElementById('amIdleBar');
+    var chakraFill = document.getElementById('amChakra');
+    var timer = document.getElementById('amTimer');
+    var sendBtn = document.getElementById('amSendBtn');
+
+    var tickInterval = setInterval(tick, 100);
+
+    // Keydown handler
+    textarea.addEventListener('keydown', function(e) {
+      if (amState === 'sent') { e.preventDefault(); return; }
+
+      if (amState === 'paused') {
+        if (e.key === 'Enter') { e.preventDefault(); doSend(); return; }
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); return; }
+        if (e.key.length === 1) { resumeFromPause(); }
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+        e.preventDefault();
+        return;
+      }
+
+      if (amState === 'writing' && e.key.length === 1) {
+        var now = Date.now();
+        lastInputAt = now;
+        if (lastKeystrokeAt) keystrokeDeltas.push(now - lastKeystrokeAt);
+        lastKeystrokeAt = now;
+        idleBar.style.width = '0%';
+        idleBar.classList.remove('warning');
+      }
+    });
+
+    textarea.addEventListener('input', function() {
+      if (amState === 'paused') resumeFromPause();
+      if (textarea.value.includes('\n')) {
+        var pos = textarea.selectionStart;
+        textarea.value = textarea.value.replace(/\n/g, ' ');
+        textarea.selectionStart = textarea.selectionEnd = pos;
+      }
+      if (amState === 'writing') lastInputAt = Date.now();
+    });
+
+    textarea.addEventListener('paste', function(e) { e.preventDefault(); });
+
+    sendBtn.addEventListener('click', function() {
+      if (amState === 'paused') doSend();
+    });
+
+    function resumeFromPause() {
+      lastInputAt = Date.now();
+      sessionStarted = Date.now() - (pausedAtActive * 1000);
+      amState = 'writing';
+      sendBtn.classList.remove('visible');
+      idleBar.style.width = '0%';
+      idleBar.classList.remove('warning');
+      if (!tickInterval) tickInterval = setInterval(tick, 100);
+      textarea.focus();
+    }
+
+    function tick() {
+      if (amState !== 'writing') return;
+      var now = Date.now();
+      activeTime = (now - sessionStarted) / 1000;
+      var idleElapsed = (now - lastInputAt) / 1000;
+
+      if (idleElapsed > IDLE_VISIBLE_AFTER && textarea.value.length > 0) {
+        var idleProgress = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
+        idleBar.style.width = (idleProgress * 100) + '%';
+        idleBar.classList.add('warning');
+      } else {
+        idleBar.style.width = '0%';
+        idleBar.classList.remove('warning');
+      }
+
+      if (idleElapsed >= IDLE_TIMEOUT && textarea.value.length > 0) {
+        pauseSession();
+        return;
+      }
+
+      updateTimer();
+      updateChakra();
+    }
+
+    function pauseSession() {
+      amState = 'paused';
+      pausedAtActive = activeTime;
+      clearInterval(tickInterval);
+      tickInterval = null;
+      idleBar.style.width = '100%';
+      idleBar.classList.add('warning');
+      sendBtn.classList.add('visible');
+    }
+
+    function updateTimer() {
+      var remaining = SESSION_DURATION - activeTime;
+      if (remaining >= 0) {
+        var mins = Math.floor(remaining / 60);
+        var secs = Math.floor(remaining % 60);
+        timer.textContent = mins + ':' + String(secs).padStart(2, '0');
+        timer.classList.remove('past-zero');
+      } else {
+        var over = Math.abs(remaining);
+        var mins = Math.floor(over / 60);
+        var secs = Math.floor(over % 60);
+        timer.textContent = '+' + mins + ':' + String(secs).padStart(2, '0');
+        timer.classList.add('past-zero');
+      }
+    }
+
+    function updateChakra() {
+      var progress = Math.min(activeTime / SESSION_DURATION, 1);
+      var colorIdx = Math.min(Math.floor(progress * 8), 7);
+      var stops = [];
+      for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
+      chakraFill.style.background = stops.length === 1
+        ? stops[0]
+        : 'linear-gradient(to right, ' + stops.join(', ') + ')';
+      chakraFill.style.width = (progress * 100) + '%';
+    }
+
+    function calcFlowScore() {
+      if (keystrokeDeltas.length < 5) return 0;
+      var mean = keystrokeDeltas.reduce(function(a, b) { return a + b; }, 0) / keystrokeDeltas.length;
+      var variance = keystrokeDeltas.reduce(function(a, d) { return a + Math.pow(d - mean, 2); }, 0) / keystrokeDeltas.length;
+      var std = Math.sqrt(variance);
+      var cv = mean > 0 ? std / mean : 1;
+      var stability = Math.max(0, 1 - cv) * 0.45;
+      var totalPause = keystrokeDeltas.filter(function(d) { return d > 2000; }).reduce(function(a, d) { return a + d; }, 0) / 1000;
+      var continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
+      var density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
+      return Math.min(1, Math.max(0, stability + continuity + density));
+    }
+
+    function doSend() {
+      amState = 'sent';
+      var text = textarea.value;
+      var words = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+      var isAnky = activeTime >= 480 && words >= 300;
+      var flowScore = calcFlowScore();
+
+      // Submit writing
+      fetch('/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          duration: activeTime,
+          flow_score: flowScore,
+          session_id: sessionId,
+          keystroke_deltas: keystrokeDeltas,
+        }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        // Remove writing surface
+        var surface = document.getElementById('ankyModeSurface');
+        if (surface) surface.remove();
+        document.body.style.overflow = '';
+
+        if (data.anky_id || data.ankyId) {
+          // New anky created — go to it
+          window.location.href = '/anky/' + (data.anky_id || data.ankyId);
+        } else {
+          // Short write — restore page and add as chat message
+          exitAnkyMode();
+          if (data.response) {
+            addBubble('user', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+            var ankyBubble = addBubble('anky', data.response);
+            if (ankyBubble) ankyBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            chatHistory.push({ role: 'user', content: text });
+            chatHistory.push({ role: 'assistant', content: data.response });
+            fetchSuggestions();
+          } else {
+            exitAnkyMode();
+          }
+        }
+      })
+      .catch(function() {
+        var surface = document.getElementById('ankyModeSurface');
+        if (surface) surface.remove();
+        exitAnkyMode();
+      });
+    }
+  }
+
+  function exitAnkyMode() {
+    var surface = document.getElementById('ankyModeSurface');
+    if (surface) surface.remove();
+    document.getElementById('ankyThread').style.display = '';
+    var navbar = document.querySelector('.navbar');
+    if (navbar) navbar.style.display = '';
+    var mobileNav = document.getElementById('mobile-nav');
+    if (mobileNav) mobileNav.style.display = '';
+    document.body.style.overflow = '';
+    ankyModeTriggered = false;
+    resetTypingTracker();
+    if (replyInput) { replyInput.value = ''; replyInput.style.height = 'auto'; }
+  }
+
+  // ── Share ───────────────────────────────
+  var shareBtn = document.getElementById('shareBtn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', function() {
+      var url = window.location.href;
+      if (navigator.share) {
+        navigator.share({ title: document.title, url: url }).catch(function() {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(function() {
+          shareBtn.textContent = 'copied';
+          setTimeout(function() { shareBtn.textContent = 'share'; }, 1500);
+        });
+      }
+    });
+  }
 })();
 </script>
-{% endif %}
-{% if origin != "generated" %}
-<script>
-(function() {
-  var el = document.getElementById('reflection-content');
-  if (!el) return;
-  var raw = el.textContent;
-
-  // Simple markdown to HTML
-  var html = raw
-    // Escape any existing HTML
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    // Headers: ### h3, ## h2, # h1
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-    // Bold + italic: ***text*** or ___text___
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    // Bold: **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/_(.+?)_/g, '<em>$1</em>')
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr>')
-    // Unordered lists: - item
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    // Blockquotes: > text
-    .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-    // Paragraphs: double newlines
-    .replace(/\n\n+/g, '</p><p>')
-    // Single newlines within paragraphs
-    .replace(/\n/g, '<br>');
-
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/(<li>.*?<\/li>)(?:\s*<br>)*/g, '$1');
-  html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
-
-  // Merge consecutive blockquotes
-  html = html.replace(/<\/blockquote>\s*(?:<br>)?\s*<blockquote>/g, '<br>');
-
-  // Wrap in paragraph
-  html = '<p>' + html + '</p>';
-  // Clean up empty paragraphs
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  // Don't wrap block elements in <p>
-  html = html.replace(/<p>(<h[34]>)/g, '$1');
-  html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<ul>)/g, '$1');
-  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<blockquote>)/g, '$1');
-  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
-
-  el.innerHTML = html;
-})();
-</script>
-{% endif %}
 {% endblock %}

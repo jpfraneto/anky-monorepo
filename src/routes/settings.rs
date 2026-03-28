@@ -33,6 +33,7 @@ pub async fn settings_page(
     ctx.insert("theme", &settings.theme);
     ctx.insert("idle_timeout", &settings.idle_timeout);
     ctx.insert("keyboard_layout", &settings.keyboard_layout);
+    ctx.insert("preferred_model", &settings.preferred_model);
     ctx.insert("logged_in", &true);
     ctx.insert(
         "wallet_address",
@@ -52,6 +53,12 @@ pub struct SaveSettingsRequest {
     pub idle_timeout: i32,
     #[serde(default = "default_keyboard_layout")]
     pub keyboard_layout: String,
+    #[serde(default = "default_preferred_model")]
+    pub preferred_model: String,
+}
+
+fn default_preferred_model() -> String {
+    "default".to_string()
 }
 
 fn default_keyboard_layout() -> String {
@@ -117,6 +124,18 @@ pub async fn save_settings(
             }
         }
 
+        // Validate preferred_model
+        let preferred_model = match req.preferred_model.as_str() {
+            "default"
+            | "meta-llama/llama-4-scout:free"
+            | "meta-llama/llama-4-maverick:free"
+            | "google/gemma-3-1b-it:free"
+            | "qwen/qwen3-0.6b:free"
+            | "deepseek/deepseek-r1:free"
+            | "google/gemini-2.5-pro-exp-03-25:free" => req.preferred_model.clone(),
+            _ => "default".to_string(),
+        };
+
         // Preserve existing preferred_language when saving from web form
         let existing = queries::get_user_settings(&db, &user.user_id)?;
         queries::upsert_user_settings(
@@ -128,6 +147,7 @@ pub async fn save_settings(
             idle_timeout,
             &keyboard_layout,
             &existing.preferred_language,
+            &preferred_model,
         )?;
     }
 

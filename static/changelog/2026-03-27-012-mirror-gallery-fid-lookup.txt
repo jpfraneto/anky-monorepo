@@ -1,0 +1,1 @@
+Add FID input to mirror any user (not just yourself) and a gallery view showing all previously generated mirrors with username, PFP overlay on the anky image, and click-to-detail. Backend: persist mirrors to SQLite + save images to data/mirrors/, add GET /api/mirror/gallery endpoint. Frontend: FID lookup bar on landing, gallery grid with cards, detail overlay view.

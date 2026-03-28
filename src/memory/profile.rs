@@ -4,7 +4,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::memory::recall::MemoryPattern;
-use crate::services::ollama;
 
 const PROFILE_UPDATE_SYSTEM: &str = r#"You are building an evolving psychological portrait of a person based on their stream-of-consciousness writing sessions with Anky (a consciousness mirror app).
 
@@ -30,8 +29,7 @@ OUTPUT: Just the profile text in markdown. No JSON, no preamble."#;
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn update_profile(
     db: &Arc<Mutex<Connection>>,
-    ollama_base_url: &str,
-    ollama_model: &str,
+    api_key: &str,
     user_id: &str,
 ) -> Result<()> {
     // 1. Sync DB reads — lock, read, release
@@ -92,16 +90,12 @@ pub async fn update_profile(
         ));
     }
 
-    // 3. Async Qwen call (no conn held)
-    let profile_text = ollama::call_ollama_with_system(
-        ollama_base_url,
-        ollama_model,
-        PROFILE_UPDATE_SYSTEM,
-        &user_msg,
-    )
-    .await?
-    .trim()
-    .to_string();
+    // 3. Async Haiku call (no conn held)
+    let profile_text =
+        crate::services::claude::call_haiku_with_system(api_key, PROFILE_UPDATE_SYSTEM, &user_msg)
+            .await?
+            .trim()
+            .to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     // 4. Sync DB write — lock, write, release

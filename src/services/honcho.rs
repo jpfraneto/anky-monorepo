@@ -28,8 +28,8 @@ fn client() -> Result<reqwest::Client> {
         .build()?)
 }
 
-fn base_url() -> &'static str {
-    "https://api.honcho.dev/v3"
+fn base_url() -> String {
+    std::env::var("HONCHO_BASE_URL").unwrap_or_else(|_| "https://api.honcho.dev/v3".into())
 }
 
 /// Ensure a peer exists (idempotent create-or-get).

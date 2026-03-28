@@ -35,6 +35,14 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+async fn apple_app_site_association() -> ([(axum::http::HeaderName, &'static str); 1], &'static str)
+{
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        r#"{"applinks":{"details":[{"appIDs":["84V63LKV45.com.jpfraneto.Anky"],"components":[{"/":"/write*"}]}]}}"#,
+    )
+}
+
 async fn farcaster_manifest() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
     (
         [(axum::http::header::CONTENT_TYPE, "application/json")],
@@ -69,6 +77,26 @@ async fn prompt_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static s
     )
 }
 
+async fn manifesto_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8",
+        )],
+        include_str!("../../MANIFESTO.md"),
+    )
+}
+
+async fn soul_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8",
+        )],
+        include_str!("../../SOUL.md"),
+    )
+}
+
 async fn skills() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
     (
         [(
@@ -79,8 +107,40 @@ async fn skills() -> ([(axum::http::HeaderName, &'static str); 1], &'static str)
     )
 }
 
+async fn skill_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8",
+        )],
+        include_str!("../../agent-skills/anky/SKILL.md"),
+    )
+}
+
 async fn skills_redirect() -> axum::response::Redirect {
     axum::response::Redirect::permanent("/skills")
+}
+
+/// GET /prompts/{id} — serve markdown prompt files from prompts/ directory.
+/// id must be exactly 4 digits (e.g. 0001).
+async fn serve_prompt(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<([(axum::http::HeaderName, String); 1], String), axum::http::StatusCode> {
+    // Validate: exactly 4 digits
+    if id.len() != 4 || !id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(axum::http::StatusCode::NOT_FOUND);
+    }
+    let path = std::path::PathBuf::from("prompts").join(format!("{}.md", id));
+    match tokio::fs::read_to_string(&path).await {
+        Ok(content) => Ok((
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/markdown; charset=utf-8".to_string(),
+            )],
+            content,
+        )),
+        Err(_) => Err(axum::http::StatusCode::NOT_FOUND),
+    }
 }
 
 async fn anky_skill_bundle() -> ([(axum::http::HeaderName, &'static str); 1], &'static str) {
@@ -128,6 +188,8 @@ pub fn build_router(state: AppState) -> Router {
             "https://anky.app".parse::<HeaderValue>().unwrap(),
             "https://www.anky.app".parse::<HeaderValue>().unwrap(),
             "https://pitch.anky.app".parse::<HeaderValue>().unwrap(),
+            "https://ankycoin.com".parse::<HeaderValue>().unwrap(),
+            "https://www.ankycoin.com".parse::<HeaderValue>().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([
@@ -165,6 +227,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/prompt/create",
             axum::routing::post(prompt::create_prompt_api),
         )
+        .route(
+            "/api/v1/prompt/quick",
+            axum::routing::post(prompt::create_prompt_quick),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::api_auth::optional_api_key,
@@ -177,6 +243,22 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(api::upload_studio_video),
         )
         .layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024)); // 512MB
+
+    // Media factory routes (large body limit for base64 image uploads)
+    let media_factory_routes = Router::new()
+        .route(
+            "/api/v1/media-factory/video",
+            axum::routing::post(api::media_factory_video),
+        )
+        .route(
+            "/api/v1/media-factory/image",
+            axum::routing::post(api::media_factory_image),
+        )
+        .route(
+            "/api/v1/media-factory/flux",
+            axum::routing::post(api::media_factory_flux),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)); // 20MB
 
     // Extension API routes (optional API key — payment handled in handler)
     let extension_routes = Router::new()
@@ -266,13 +348,27 @@ pub fn build_router(state: AppState) -> Router {
             "/swift/v2/cuentacuentos/{id}/assign",
             axum::routing::post(swift::assign_cuentacuentos),
         )
+        // Prompt by ID (for deep links)
+        .route(
+            "/swift/v2/prompt/{id}",
+            axum::routing::get(swift::get_prompt_by_id),
+        )
         // Next Prompt
         .route(
             "/swift/v2/next-prompt",
             axum::routing::get(swift::get_next_prompt),
         )
+        // Chat Prompt (opening message for new session)
+        .route(
+            "/swift/v2/chat/prompt",
+            axum::routing::get(swift::get_chat_prompt),
+        )
         // You (profile)
         .route("/swift/v2/you", axum::routing::get(swift::get_you))
+        .route(
+            "/swift/v2/you/ankys",
+            axum::routing::get(swift::get_you_ankys),
+        )
         // Device Token (legacy path)
         .route(
             "/swift/v2/device-token",
@@ -288,6 +384,15 @@ pub fn build_router(state: AppState) -> Router {
             "/swift/v2/settings",
             axum::routing::get(swift::get_settings).patch(swift::patch_settings),
         )
+        // Minting
+        .route(
+            "/swift/v2/writing/{sessionId}/prepare-mint",
+            axum::routing::post(swift::prepare_mint),
+        )
+        .route(
+            "/swift/v2/writing/{sessionId}/confirm-mint",
+            axum::routing::post(swift::confirm_mint),
+        )
         // Admin
         .route(
             "/swift/v1/admin/premium",
@@ -298,8 +403,10 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         // Pages
         .route("/", axum::routing::get(pages::home))
+        .route("/write", axum::routing::get(pages::write_page))
         .route("/stories", axum::routing::get(pages::stories_page))
         .route("/you", axum::routing::get(pages::you_page))
+        .route("/test", axum::routing::get(pages::test_page))
         .route("/gallery", axum::routing::get(pages::gallery))
         .route(
             "/gallery/dataset-round-two",
@@ -374,6 +481,8 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(voices::story_deep_link_page),
         )
         // Prompt pages
+        .route("/api/og/write", axum::routing::get(api::og_write_svg))
+        .route("/prompt", axum::routing::get(prompt::prompt_new_page))
         .route(
             "/prompt/create",
             axum::routing::get(prompt::create_prompt_page),
@@ -430,6 +539,10 @@ pub fn build_router(state: AppState) -> Router {
         // Writing
         .route("/write", axum::routing::post(writing::process_writing))
         .route("/writings", axum::routing::get(writing::get_writings))
+        .route(
+            "/api/writing/{sessionId}/status",
+            axum::routing::get(writing::get_writing_status_web),
+        )
         // Collection
         .route(
             "/collection/create",
@@ -452,8 +565,19 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/generate", axum::routing::post(api::generate_anky))
         .route("/api/v1/anky/{id}", axum::routing::get(api::get_anky))
         .route(
+            "/api/v1/anky/{id}/metadata",
+            axum::routing::get(swift::anky_metadata),
+        )
+        .route(
             "/api/stream-reflection/{id}",
             axum::routing::get(api::stream_reflection),
+        )
+        .route("/api/warm-context", axum::routing::post(api::warm_context))
+        .route("/api/me", axum::routing::get(api::web_me))
+        .route("/api/my-ankys", axum::routing::get(api::web_my_ankys))
+        .route(
+            "/api/chat-history",
+            axum::routing::get(api::web_chat_history),
         )
         .route(
             "/api/anky-card/{id}",
@@ -482,6 +606,22 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/cost-estimate", axum::routing::get(api::cost_estimate))
         .route("/api/treasury", axum::routing::get(api::treasury_address))
+        .route("/api/mirror", axum::routing::get(api::mirror))
+        .route(
+            "/api/mirror/gallery",
+            axum::routing::get(api::mirror_gallery),
+        )
+        .route("/api/mirror/chat", axum::routing::post(api::mirror_chat))
+        .route(
+            "/api/mirror/mint-sig",
+            axum::routing::post(api::mirror_mint_sig),
+        )
+        .route(
+            "/api/mirror/metadata/{id}",
+            axum::routing::get(api::mirror_metadata),
+        )
+        .route("/image.png", axum::routing::get(api::mirror_latest_image))
+        .route("/splash.png", axum::routing::get(api::mirror_latest_image))
         .route("/api/feedback", axum::routing::post(api::submit_feedback))
         .route(
             "/api/v1/feedback",
@@ -544,6 +684,42 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/story-tester",
             axum::routing::get(api::admin_story_tester),
         )
+        // Flux Lab
+        .route("/flux-lab", axum::routing::get(api::flux_lab_page))
+        .route(
+            "/api/v1/flux-lab/experiments",
+            axum::routing::get(api::flux_lab_list_experiments),
+        )
+        .route(
+            "/api/v1/flux-lab/experiments/{name}",
+            axum::routing::get(api::flux_lab_get_experiment),
+        )
+        .route(
+            "/api/v1/flux-lab/generate",
+            axum::routing::post(api::flux_lab_generate),
+        )
+        // AnkyCoin image generator
+        .route(
+            "/api/v1/ankycoin/generate",
+            axum::routing::post(api::ankycoin_generate_image),
+        )
+        .route(
+            "/api/v1/ankycoin/latest",
+            axum::routing::get(api::ankycoin_latest_image),
+        )
+        // Media Factory
+        .route(
+            "/media-factory",
+            axum::routing::get(api::media_factory_page),
+        )
+        .route(
+            "/api/v1/media-factory/list",
+            axum::routing::get(api::media_factory_list),
+        )
+        .route(
+            "/api/v1/media-factory/video/{request_id}",
+            axum::routing::get(api::media_factory_video_poll),
+        )
         .route(
             "/api/v1/check-prompt",
             axum::routing::post(api::check_prompt),
@@ -596,10 +772,14 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(session::session_status),
         )
         // Skills (for agents)
+        .route("/manifesto.md", axum::routing::get(manifesto_md))
+        .route("/MANIFESTO.md", axum::routing::get(manifesto_md))
         .route("/PROMPT.md", axum::routing::get(prompt_md))
+        .route("/SOUL.md", axum::routing::get(soul_md))
+        .route("/prompts/{id}", axum::routing::get(serve_prompt))
         .route("/skills", axum::routing::get(skills))
+        .route("/skill.md", axum::routing::get(skill_md))
         .route("/skill", axum::routing::get(skills_redirect))
-        .route("/skill.md", axum::routing::get(skills_redirect))
         .route("/skills.md", axum::routing::get(skills_redirect))
         .route("/agent-skills/anky", axum::routing::get(anky_skill_bundle))
         .route("/agent-skills/anky/", axum::routing::get(anky_skill_bundle))
@@ -618,6 +798,10 @@ pub fn build_router(state: AppState) -> Router {
         // Live streaming — disabled (too slow, not worth it)
         // Routes kept in live.rs but not wired up
         .route("/api/ankys/today", axum::routing::get(live::todays_ankys))
+        .route(
+            "/api/live-status",
+            axum::routing::get(live::live_status_sse),
+        )
         // Interview
         .route("/interview", axum::routing::get(interview::interview_page))
         .route(
@@ -724,6 +908,11 @@ pub fn build_router(state: AppState) -> Router {
             "/dashboard/summaries",
             axum::routing::get(dashboard::dashboard_summaries),
         )
+        // Apple Universal Links (AASA)
+        .route(
+            "/.well-known/apple-app-site-association",
+            axum::routing::get(apple_app_site_association),
+        )
         // Farcaster MiniApp manifest
         .route(
             "/.well-known/farcaster.json",
@@ -760,6 +949,8 @@ pub fn build_router(state: AppState) -> Router {
         .merge(generate_routes)
         // Studio upload (large body limit)
         .merge(studio_routes)
+        // Media factory (large body limit for base64 images)
+        .merge(media_factory_routes)
         // Static files
         .nest_service("/agent-skills", ServeDir::new("agent-skills"))
         .nest_service("/static", ServeDir::new("static"))
@@ -781,6 +972,7 @@ pub fn build_router(state: AppState) -> Router {
                 ))
                 .service(ServeDir::new("data/anky-images")),
         )
+        .nest_service("/flux", ServeDir::new("flux"))
         .nest_service("/data/writings", ServeDir::new("data/writings"))
         .nest_service("/videos", ServeDir::new("videos"))
         .nest_service("/data/videos", ServeDir::new("data/videos"))
@@ -790,6 +982,7 @@ pub fn build_router(state: AppState) -> Router {
             ServeDir::new("data/training-images"),
         )
         .nest_service("/data/training-runs", ServeDir::new("data/training_runs"))
+        .nest_service("/data/mirrors", ServeDir::new("data/mirrors"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())
         .layer(cors)

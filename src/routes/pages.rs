@@ -218,8 +218,51 @@ pub struct GalleryQuery {
 
 pub async fn home(
     State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<(CookieJar, Html<String>), AppError> {
+    // Set anonymous cookie on first visit
+    let jar = if jar.get("anky_user_id").is_none() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let cookie = axum_extra::extract::cookie::Cookie::build(("anky_user_id", id))
+            .max_age(time::Duration::days(365))
+            .http_only(false)
+            .same_site(tower_cookies::cookie::SameSite::Lax)
+            .path("/")
+            .build();
+        jar.add(cookie)
+    } else {
+        jar
+    };
+
+    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
+    let mut ctx = tera::Context::new();
+    ctx.insert("privy_app_id", &state.config.privy_app_id);
+    ctx.insert("logged_in", &user.is_some());
+    if let Some(ref u) = user {
+        ctx.insert("user_id", &u.user_id);
+        ctx.insert("username", &u.username.as_deref().unwrap_or("anon"));
+        ctx.insert(
+            "profile_image_url",
+            &u.profile_image_url
+                .as_deref()
+                .unwrap_or("/static/icon-192.png"),
+        );
+    }
+    let html = state.tera.render("landing.html", &ctx)?;
+    Ok((jar, Html(html)))
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct WriteQuery {
+    pub prompt: Option<String>,
+    pub p: Option<String>,
+}
+
+pub async fn write_page(
+    State(state): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
+    Query(query): Query<WriteQuery>,
 ) -> Result<(CookieJar, Html<String>), AppError> {
     // If training, redirect to sleeping page
     {
@@ -252,21 +295,37 @@ pub async fn home(
 
     let cookie_user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
 
-    // Get or create inquiry for user
-    let lang = parse_accept_language(headers.get("accept-language").and_then(|v| v.to_str().ok()));
-    let (inquiry_id, inquiry_question) = if let Some(ref uid) = cookie_user_id {
+    // Resolve prompt: ?p={uuid} looks up DB, ?prompt={text} uses raw text
+    let resolved_prompt = if let Some(ref uuid) = query.p {
         let db = state.db.lock().await;
-        match crate::db::queries::get_current_inquiry(&db, uid) {
-            Ok(Some((id, question))) => (id, question),
-            _ => {
-                let question = default_inquiry_for_lang(&lang).to_string();
-                let id = crate::db::queries::create_inquiry(&db, uid, &question, &lang)
-                    .unwrap_or_default();
-                (id, question)
-            }
-        }
+        crate::db::queries::get_prompt_by_id(&db, uuid)
+            .ok()
+            .flatten()
+            .map(|p| p.prompt_text)
     } else {
-        (String::new(), default_inquiry_for_lang(&lang).to_string())
+        None
+    };
+    let prompt_text = resolved_prompt.or_else(|| query.prompt.clone());
+
+    let (inquiry_id, inquiry_question) = if let Some(ref prompt_text) = prompt_text {
+        (String::new(), prompt_text.clone())
+    } else {
+        let lang =
+            parse_accept_language(headers.get("accept-language").and_then(|v| v.to_str().ok()));
+        if let Some(ref uid) = cookie_user_id {
+            let db = state.db.lock().await;
+            match crate::db::queries::get_current_inquiry(&db, uid) {
+                Ok(Some((id, question))) => (id, question),
+                _ => {
+                    let question = default_inquiry_for_lang(&lang).to_string();
+                    let id = crate::db::queries::create_inquiry(&db, uid, &question, &lang)
+                        .unwrap_or_default();
+                    (id, question)
+                }
+            }
+        } else {
+            (String::new(), default_inquiry_for_lang(&lang).to_string())
+        }
     };
 
     let mut ctx = tera::Context::new();
@@ -279,13 +338,29 @@ pub async fn home(
     }
     ctx.insert("inquiry_id", &inquiry_id);
     ctx.insert("inquiry_question", &inquiry_question);
-    // Keep landing lightweight: image/gif-first and no MP4 tiles on initial route load.
-    let all_media = load_landing_collage_media(72, 0);
-    let initial_count = 14usize.min(all_media.len());
-    let (initial, deferred) = all_media.split_at(initial_count);
-    let deferred_vec: Vec<LandingCollageMedia> = deferred.to_vec();
-    ctx.insert("landing_collage_media_initial", &initial);
-    ctx.insert("landing_collage_media_deferred", &deferred_vec);
+
+    // Recent ankys for "your threads" on the write page
+    let recent_ankys = if let Some(ref uid) = cookie_user_id {
+        let db = state.db.lock().await;
+        db.prepare(
+            "SELECT a.id, a.title FROM ankys a
+             WHERE a.user_id = ?1 AND a.status IN ('complete', 'archived') AND a.title IS NOT NULL
+             ORDER BY a.created_at DESC LIMIT 5",
+        )
+        .and_then(|mut stmt| {
+            stmt.query_map(rusqlite::params![uid], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "title": row.get::<_, String>(1)?,
+                }))
+            })
+            .map(|rows| rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        })
+        .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    ctx.insert("recent_ankys", &recent_ankys);
     ctx.insert("active_tab", "home");
     let html = state.tera.render("home.html", &ctx)?;
     Ok((jar, Html(html)))
@@ -553,8 +628,15 @@ pub async fn ankycoin_page(State(state): State<AppState>) -> Result<Html<String>
 }
 
 pub async fn login_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let ctx = tera::Context::new();
+    let mut ctx = tera::Context::new();
+    ctx.insert("privy_app_id", &state.config.privy_app_id);
     let html = state.tera.render("login.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn test_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("test.html", &ctx)?;
     Ok(Html(html))
 }
 
@@ -815,10 +897,18 @@ pub async fn you_page(
     let mut ctx = tera::Context::new();
     ctx.insert("logged_in", &user.is_some());
     ctx.insert("active_tab", "you");
+    ctx.insert("privy_app_id", &state.config.privy_app_id);
     if let Some(ref u) = user {
-        if let Some(ref uname) = u.username {
-            ctx.insert("username", uname);
-        }
+        ctx.insert("user_id", &u.user_id);
+        ctx.insert("username", &u.username.as_deref().unwrap_or("anon"));
+        ctx.insert("display_name", &u.display_name.as_deref().unwrap_or("anon"));
+        ctx.insert(
+            "profile_image_url",
+            &u.profile_image_url
+                .as_deref()
+                .unwrap_or("/static/icon-192.png"),
+        );
+        ctx.insert("email", &u.email.as_deref().unwrap_or(""));
     }
     let html = state.tera.render("you.html", &ctx)?;
     Ok(Html(html))
@@ -1188,6 +1278,30 @@ pub async fn anky_detail(
         ctx.insert("story_kingdom", &"");
         ctx.insert("story_city", &"");
     }
+
+    // Ownership check — enables reply UI
+    let is_owner = if let Some(ref vid) = viewer_id {
+        let db = state.db.lock().await;
+        crate::db::queries::get_anky_owner(&db, &id)
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some(vid.as_str())
+    } else {
+        false
+    };
+    ctx.insert("is_owner", &is_owner);
+    ctx.insert("is_logged_in", &viewer_id.is_some());
+
+    // Conversation history
+    let conversation_json = {
+        let db = state.db.lock().await;
+        crate::db::queries::get_anky_conversation(&db, &id)
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    };
+    ctx.insert("conversation_json", &conversation_json);
 
     let html = state.tera.render("anky.html", &ctx)?;
     Ok(Html(html))

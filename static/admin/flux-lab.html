@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anky — Flux Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e4dc;
+    --muted: #6b6880;
+    --gold: #c9a84c;
+    --gold-dim: #2a2210;
+    --danger: #ff4a6b;
+    --success: #4aff9e;
+    --anky: #4a9eff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 1.5rem 2rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--gold);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Left sidebar — experiments list */
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-header {
+    padding: 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .experiment-list {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .experiment-item {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .experiment-item:hover { background: var(--surface2); }
+  .experiment-item.active { background: var(--gold-dim); border-left: 3px solid var(--gold); }
+
+  .experiment-item .name {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+
+  .experiment-item .count {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .no-experiments {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 0.9rem;
+  }
+
+  /* Main area */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Input panel */
+  .input-panel {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .input-panel label {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .input-panel textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    padding: 0.8rem 1rem;
+    outline: none;
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.6;
+    transition: border-color 0.2s;
+  }
+
+  .input-panel textarea:focus { border-color: var(--gold); }
+
+  .input-panel textarea::placeholder {
+    color: var(--muted);
+    font-style: italic;
+    font-family: 'Cormorant Garamond', serif;
+  }
+
+  .aspect-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+    align-items: center;
+  }
+
+  .aspect-row label {
+    margin-bottom: 0;
+    margin-right: 0.3rem;
+  }
+
+  .aspect-btn {
+    padding: 0.35rem 0.7rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .aspect-btn:hover { border-color: var(--gold); color: var(--text); }
+  .aspect-btn.active { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
+
+  .input-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.8rem;
+  }
+
+  .prompt-count {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--gold);
+  }
+
+  .btn {
+    padding: 0.6rem 1.5rem;
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--gold-dim);
+    color: var(--gold);
+  }
+
+  .btn:hover { background: var(--gold); color: var(--bg); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .status-msg {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  .status-msg.error { color: var(--danger); }
+  .status-msg.success { color: var(--success); }
+
+  /* Gallery */
+  .gallery-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem 2rem;
+  }
+
+  .gallery-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .gallery-prompts {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .gallery-prompts h3 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .gallery-prompts ol {
+    list-style: decimal;
+    padding-left: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--text);
+    line-height: 1.8;
+  }
+
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .gallery-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .gallery-card:hover { border-color: var(--gold); }
+
+  .gallery-card img {
+    width: 100%;
+    object-fit: cover;
+    display: block;
+    cursor: pointer;
+  }
+
+  .gallery-card .card-prompt {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-style: italic;
+    border-top: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .gallery-card .card-index {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--gold);
+    margin-right: 0.4rem;
+    font-style: normal;
+  }
+
+  .gallery-empty {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 1.1rem;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+    display: none;
+  }
+
+  .progress-bar.active { display: block; }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--gold);
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .lightbox.open { display: flex; }
+
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 8px;
+  }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">anky</div>
+  <div class="subtitle">flux lab</div>
+</header>
+
+<div class="layout">
+  <!-- Sidebar: experiments -->
+  <div class="sidebar">
+    <div class="sidebar-header">experiments</div>
+    <div class="experiment-list" id="experiment-list">
+      <div class="no-experiments">no experiments yet</div>
+    </div>
+  </div>
+
+  <!-- Main area -->
+  <div class="main">
+    <!-- Input panel -->
+    <div class="input-panel">
+      <label>prompts (one per line)</label>
+      <textarea id="prompts-input" placeholder="Enter one prompt per line...&#10;&#10;a psychedelic anky meditating under a fractal tree&#10;anky dissolving into golden particles of consciousness&#10;anky sitting in lotus position inside a cosmic mandala"></textarea>
+      <div class="aspect-row">
+        <label>ratio</label>
+        <button class="aspect-btn active" data-val="9:16" onclick="setAspect(this)">9:16</button>
+        <button class="aspect-btn" data-val="2:3" onclick="setAspect(this)">2:3</button>
+        <button class="aspect-btn" data-val="4:5" onclick="setAspect(this)">4:5</button>
+        <button class="aspect-btn" data-val="1:1" onclick="setAspect(this)">1:1</button>
+        <button class="aspect-btn" data-val="3:2" onclick="setAspect(this)">3:2</button>
+        <button class="aspect-btn" data-val="16:9" onclick="setAspect(this)">16:9</button>
+      </div>
+      <div class="input-actions">
+        <span class="prompt-count" id="prompt-count">0 prompts</span>
+        <button class="btn" id="btn-generate" onclick="startGeneration()">generate all</button>
+        <span class="status-msg" id="status-msg"></span>
+      </div>
+      <div class="progress-bar" id="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Gallery area -->
+    <div class="gallery-area" id="gallery-area">
+      <div class="gallery-empty">Select an experiment from the sidebar or generate new images.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="">
+</div>
+
+<script>
+let currentExperiment = null;
+let generating = false;
+let selectedAspect = '9:16';
+
+function setAspect(btn) {
+  document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedAspect = btn.dataset.val;
+}
+
+function aspectToCss(ratio) {
+  if (!ratio) return '9/16';
+  return ratio.replace(':', '/');
+}
+
+// Prompt counter
+const promptsInput = document.getElementById('prompts-input');
+const promptCount = document.getElementById('prompt-count');
+
+promptsInput.addEventListener('input', updatePromptCount);
+
+function getPrompts() {
+  return promptsInput.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+}
+
+function updatePromptCount() {
+  const n = getPrompts().length;
+  promptCount.textContent = n + ' prompt' + (n !== 1 ? 's' : '');
+}
+
+// Load experiments
+async function loadExperiments() {
+  try {
+    const resp = await fetch('/api/v1/flux-lab/experiments');
+    const data = await resp.json();
+    const list = document.getElementById('experiment-list');
+
+    if (!data.experiments || data.experiments.length === 0) {
+      list.innerHTML = '<div class="no-experiments">no experiments yet</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    for (const exp of data.experiments) {
+      const item = document.createElement('div');
+      item.className = 'experiment-item' + (currentExperiment === exp.name ? ' active' : '');
+      item.innerHTML = `
+        <span class="name">${exp.name}</span>
+        <span class="count">${exp.image_count} img</span>
+      `;
+      item.onclick = () => selectExperiment(exp.name);
+      list.appendChild(item);
+    }
+  } catch (e) {
+    console.error('Failed to load experiments:', e);
+  }
+}
+
+// Select an experiment
+async function selectExperiment(name) {
+  currentExperiment = name;
+  // Update sidebar active state
+  document.querySelectorAll('.experiment-item').forEach(el => {
+    el.classList.toggle('active', el.querySelector('.name').textContent === name);
+  });
+
+  const gallery = document.getElementById('gallery-area');
+  gallery.innerHTML = '<div class="gallery-empty"><span class="spinner"></span>Loading...</div>';
+
+  try {
+    const resp = await fetch('/api/v1/flux-lab/experiments/' + encodeURIComponent(name));
+    const data = await resp.json();
+
+    const ar = data.config && data.config.aspect_ratio ? data.config.aspect_ratio : '1:1';
+    const cssAr = aspectToCss(ar);
+
+    let html = `<div class="gallery-title">${escapeHtml(name)} — ${data.images.length} images — ${ar}</div>`;
+
+    if (data.prompts && data.prompts.length > 0) {
+      html += '<div class="gallery-prompts"><h3>prompts</h3><ol>';
+      for (const p of data.prompts) {
+        html += `<li>${escapeHtml(p)}</li>`;
+      }
+      html += '</ol></div>';
+    }
+
+    html += '<div class="gallery-grid">';
+    for (let i = 0; i < data.images.length; i++) {
+      const img = data.images[i];
+      const prompt = data.prompts && data.prompts[i] ? data.prompts[i] : '';
+      html += `
+        <div class="gallery-card">
+          <img src="${img.url}" style="aspect-ratio:${cssAr}" onclick="openLightbox('${img.url}')" loading="lazy">
+          <div class="card-prompt"><span class="card-index">#${i + 1}</span>${escapeHtml(prompt)}</div>
+        </div>
+      `;
+    }
+    html += '</div>';
+
+    gallery.innerHTML = html;
+  } catch (e) {
+    gallery.innerHTML = `<div class="gallery-empty" style="color:var(--danger)">${e.message}</div>`;
+  }
+}
+
+// Generate
+async function startGeneration() {
+  const prompts = getPrompts();
+  if (prompts.length === 0) return alert('Enter at least one prompt');
+  if (generating) return;
+
+  generating = true;
+  const btn = document.getElementById('btn-generate');
+  const statusMsg = document.getElementById('status-msg');
+  const progressBar = document.getElementById('progress-bar');
+  const progressFill = document.getElementById('progress-fill');
+
+  btn.disabled = true;
+  statusMsg.className = 'status-msg';
+  statusMsg.innerHTML = '<span class="spinner"></span>Starting...';
+  progressBar.classList.add('active');
+  progressFill.style.width = '0%';
+
+  try {
+    const resp = await fetch('/api/v1/flux-lab/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts, aspect_ratio: selectedAspect }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed to start generation');
+
+    const experimentName = data.experiment;
+    const total = prompts.length;
+
+    statusMsg.innerHTML = `<span class="spinner"></span>Generating 0/${total}...`;
+
+    // Show live gallery immediately
+    currentExperiment = experimentName;
+    const gallery = document.getElementById('gallery-area');
+    gallery.innerHTML = `
+      <div class="gallery-title" id="live-title">${escapeHtml(experimentName)} — 0/${total} images</div>
+      <div class="gallery-grid" id="live-grid"></div>
+    `;
+
+    // Render placeholder cards for all prompts
+    const liveGrid = document.getElementById('live-grid');
+    const liveCssAr = aspectToCss(selectedAspect);
+    for (let i = 0; i < total; i++) {
+      const card = document.createElement('div');
+      card.className = 'gallery-card';
+      card.id = 'live-card-' + i;
+      card.innerHTML = `
+        <div class="card-placeholder" style="width:100%;aspect-ratio:${liveCssAr};background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:'Space Mono',monospace;font-size:0.7rem;">
+          ${i < 1 ? '<span class="spinner"></span>' : ''}#${i + 1} waiting
+        </div>
+        <div class="card-prompt"><span class="card-index">#${i + 1}</span>${escapeHtml(prompts[i])}</div>
+      `;
+      liveGrid.appendChild(card);
+    }
+
+    // Poll for progress and update live gallery
+    let lastCount = 0;
+    for (let attempt = 0; attempt < total * 60; attempt++) {
+      await new Promise(r => setTimeout(r, 3000));
+
+      try {
+        const pollResp = await fetch('/api/v1/flux-lab/experiments/' + encodeURIComponent(experimentName));
+        const pollData = await pollResp.json();
+        const done = pollData.images.length;
+
+        if (done !== lastCount) {
+          // Update newly completed images
+          for (let i = lastCount; i < done; i++) {
+            const card = document.getElementById('live-card-' + i);
+            if (card && pollData.images[i]) {
+              const img = pollData.images[i];
+              const placeholder = card.querySelector('.card-placeholder');
+              if (placeholder) {
+                const imgEl = document.createElement('img');
+                imgEl.src = img.url;
+                imgEl.loading = 'lazy';
+                imgEl.style.cssText = `width:100%;aspect-ratio:${liveCssAr};object-fit:cover;display:block;cursor:pointer;animation:fadeIn 0.3s ease`;
+                imgEl.onclick = () => openLightbox(img.url);
+                placeholder.replaceWith(imgEl);
+              }
+            }
+          }
+
+          // Mark the next one as actively generating
+          if (done < total) {
+            const nextCard = document.getElementById('live-card-' + done);
+            if (nextCard) {
+              const ph = nextCard.querySelector('.card-placeholder');
+              if (ph) ph.innerHTML = `<span class="spinner"></span>#${done + 1} generating...`;
+            }
+          }
+
+          lastCount = done;
+          progressFill.style.width = (done / total * 100) + '%';
+          statusMsg.innerHTML = `<span class="spinner"></span>Generating ${done}/${total}...`;
+          document.getElementById('live-title').textContent = `${experimentName} — ${done}/${total} images`;
+        }
+
+        if (done >= total) {
+          progressFill.style.width = '100%';
+          statusMsg.className = 'status-msg success';
+          statusMsg.textContent = `Done! ${total} images generated.`;
+          document.getElementById('live-title').textContent = `${experimentName} — ${total} images`;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    // Refresh sidebar
+    await loadExperiments();
+  } catch (e) {
+    statusMsg.className = 'status-msg error';
+    statusMsg.textContent = e.message;
+  } finally {
+    generating = false;
+    btn.disabled = false;
+    setTimeout(() => { progressBar.classList.remove('active'); }, 2000);
+  }
+}
+
+// Lightbox
+function openLightbox(url) {
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+// Init
+loadExperiments();
+updatePromptCount();
+</script>
+</body>
+</html>

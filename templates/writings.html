@@ -1,337 +1,170 @@
 {% extends "base.html" %}
 
-{% block title %}anky - your writings{% endblock %}
+{% block title %}anky - your threads{% endblock %}
 
-{% block content %}
-<div class="writings-layout" id="writings-layout">
-  <div class="writings-sidebar" id="writings-sidebar">
-    <div class="writings-sidebar-header">
-      <h2>writings</h2>
-      <span class="writings-count">{{ writings | length }}</span>
-    </div>
-    {% for w in writings %}
-    <div class="writing-sidebar-item{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}" tabindex="0">
-      <div class="writing-sidebar-top">
-        {% if w.anky_image_path %}
-        <img class="writing-sidebar-thumb" src="/data/images/{{ w.anky_image_path }}" alt="">
-        {% endif %}
-        <div class="writing-sidebar-text">
-          <div class="writing-sidebar-firstline">{{ w.first_line }}{% if w.first_line | length >= 60 %}...{% endif %}</div>
-          <div class="writing-sidebar-meta">
-            {{ w.relative_time }} &middot; {{ w.duration_display }} &middot; {{ w.word_count }}w
-            {% if w.is_anky %}<span class="anky-badge">anky</span>{% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endfor %}
-
-    {% if writings | length == 0 %}
-    <div class="empty-state">
-      <p>no writings yet.</p>
-      <a href="/" class="new-session-btn">start writing</a>
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="writings-detail" id="writings-detail">
-    {% if writings | length > 0 %}
-    <div class="writings-detail-inner" id="writings-detail-inner">
-      <div class="writings-detail-header">
-        <button class="writings-back-btn" id="writings-back-btn">&larr; back</button>
-        {% if writings.0.anky_title %}
-        <h2 class="writings-detail-title">{{ writings.0.anky_title }}</h2>
-        {% endif %}
-        <div class="writings-detail-meta">
-          {{ writings.0.created_at }} &middot; {{ writings.0.duration_display }} &middot; {{ writings.0.word_count }} words
-          {% if writings.0.is_anky %} &middot; <span class="anky-badge">anky</span>{% endif %}
-          {% if writings.0.anky_id %} &middot; <a href="/anky/{{ writings.0.anky_id }}">view anky</a>{% endif %}
-        </div>
-      </div>
-      <div class="writings-detail-content" id="writings-detail-content">{{ writings.0.content }}</div>
-      {% if writings.0.response %}
-      <div class="writings-detail-response" id="writings-detail-response">{{ writings.0.response }}</div>
-      {% endif %}
-      <div class="writings-conversation" id="writings-conversation"></div>
-      <div class="writings-reply-options" id="writings-reply-options"></div>
-    </div>
-    {% else %}
-    <div class="writings-detail-empty">
-      <p>select a writing to view</p>
-    </div>
-    {% endif %}
-  </div>
-</div>
+{% block head %}
+<style>
+  .threads-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px 100px 16px;
+  }
+  .threads-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .threads-header h2 {
+    font-size: 18px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.7);
+    margin: 0;
+  }
+  .threads-count {
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+  }
+  .thread-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    text-decoration: none;
+    color: inherit;
+    transition: opacity 0.2s;
+  }
+  .thread-item:hover { opacity: 0.8; }
+  .thread-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #111;
+  }
+  .thread-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .thread-title {
+    font-size: 15px;
+    color: rgba(255,255,255,0.8);
+    margin: 0 0 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .thread-preview {
+    font-size: 13px;
+    color: rgba(255,255,255,0.35);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .thread-meta {
+    font-size: 11px;
+    color: rgba(255,255,255,0.2);
+    margin-top: 4px;
+  }
+  .thread-badge {
+    display: inline-block;
+    font-size: 10px;
+    color: #c4a0ff;
+    border: 1px solid rgba(196,160,255,0.2);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 6px;
+  }
+  .threads-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: rgba(255,255,255,0.3);
+  }
+  .threads-empty a {
+    display: inline-block;
+    margin-top: 16px;
+    color: rgba(255,255,255,0.5);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 10px 24px;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .threads-empty a:hover {
+    border-color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+  }
+  .non-anky-section {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .non-anky-section h3 {
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.25);
+    margin: 0 0 12px 0;
+    letter-spacing: 0.05em;
+  }
+</style>
 {% endblock %}
 
-{% block scripts %}
-<script>
-(function() {
-  var items = Array.from(document.querySelectorAll('.writing-sidebar-item'));
-  var detailInner = document.getElementById('writings-detail-inner');
-  var detailContent = document.getElementById('writings-detail-content');
-  var detailResponse = document.getElementById('writings-detail-response');
-  var layout = document.getElementById('writings-layout');
-  var backBtn = document.getElementById('writings-back-btn');
-  var current = 0;
+{% block content %}
+<div class="threads-page">
+  <div class="threads-header">
+    <h2>your threads</h2>
+    <span class="threads-count">{{ writings | length }}</span>
+  </div>
 
-  // Data embedded from server
-  var writings = {{ writings | json_encode() | safe }};
+  {% set has_ankys = false %}
+  {% set has_others = false %}
 
-  var conversationEl = document.getElementById('writings-conversation');
-  var replyOptionsEl = document.getElementById('writings-reply-options');
-  var activeAnkyId = null;
-  var activeChatHistory = [];
+  {% for w in writings %}
+    {% if w.is_anky and w.anky_id %}
+      {% set_global has_ankys = true %}
+      <a class="thread-item" href="/anky/{{ w.anky_id }}">
+        {% if w.anky_image_path %}
+        <img class="thread-thumb" src="/data/images/{{ w.anky_image_path }}" alt="">
+        {% else %}
+        <div class="thread-thumb"></div>
+        {% endif %}
+        <div class="thread-info">
+          <div class="thread-title">{{ w.anky_title | default(value="untitled") }}</div>
+          <div class="thread-preview">{{ w.first_line }}</div>
+          <div class="thread-meta">
+            {{ w.relative_time }} · {{ w.duration_display }} · {{ w.word_count }}w
+            {% if w.conversation_json %}<span class="thread-badge">conversation</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    {% endif %}
+  {% endfor %}
 
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
-  }
+  {% for w in writings %}
+    {% if not w.is_anky or not w.anky_id %}
+      {% if not has_others %}
+        {% set_global has_others = true %}
+        <div class="non-anky-section">
+          <h3>shorter sessions</h3>
+      {% endif %}
+      <a class="thread-item" href="/">
+        <div class="thread-thumb"></div>
+        <div class="thread-info">
+          <div class="thread-preview">{{ w.first_line }}</div>
+          <div class="thread-meta">{{ w.relative_time }} · {{ w.duration_display }} · {{ w.word_count }}w</div>
+        </div>
+      </a>
+    {% endif %}
+  {% endfor %}
+  {% if has_others %}</div>{% endif %}
 
-  function renderMarkdown(text) {
-    return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br>');
-  }
-
-  function renderConversation(conv, ankyId) {
-    conversationEl.innerHTML = '';
-    replyOptionsEl.innerHTML = '';
-    activeAnkyId = ankyId;
-    activeChatHistory = [];
-
-    if (!conv || !conv.messages || conv.messages.length === 0) {
-      // No conversation yet — show reply options if it's an anky
-      if (ankyId) {
-        fetchAndShowReplies(ankyId);
-      }
-      return;
-    }
-
-    // Render all messages
-    conv.messages.forEach(function(m) {
-      var bubble = document.createElement('div');
-      bubble.className = 'chat-bubble ' + (m.role === 'user' ? 'user' : 'anky');
-      if (m.role === 'user') {
-        bubble.innerHTML = escapeHtml(m.content);
-      } else {
-        bubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(m.content) + '</span>';
-      }
-      conversationEl.appendChild(bubble);
-      activeChatHistory.push({ role: m.role, content: m.content });
-    });
-
-    // Show pending replies or fetch new ones
-    if (conv.pending_replies && conv.pending_replies.length >= 2) {
-      showReplyButtons(conv.pending_replies[0], conv.pending_replies[1]);
-    } else if (ankyId) {
-      fetchAndShowReplies(ankyId);
-    }
-  }
-
-  function fetchAndShowReplies(ankyId) {
-    replyOptionsEl.innerHTML = '<div class="reply-options-loading"><span class="processing">...</span></div>';
-    fetch('/api/suggest-replies', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anky_id: ankyId, history: activeChatHistory }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        showReplyButtons(data.reply1, data.reply2);
-      })
-      .catch(function() {
-        replyOptionsEl.innerHTML = '';
-        showCustomReplyOnly();
-      });
-  }
-
-  function showReplyButtons(r1, r2) {
-    replyOptionsEl.innerHTML = '';
-    replyOptionsEl.className = 'writings-reply-options reply-options';
-
-    var btn1 = document.createElement('button');
-    btn1.className = 'reply-option-btn';
-    btn1.textContent = r1;
-    btn1.onclick = function() { sendWritingsReply(r1); };
-    replyOptionsEl.appendChild(btn1);
-
-    var btn2 = document.createElement('button');
-    btn2.className = 'reply-option-btn';
-    btn2.textContent = r2;
-    btn2.onclick = function() { sendWritingsReply(r2); };
-    replyOptionsEl.appendChild(btn2);
-
-    var customBtn = document.createElement('button');
-    customBtn.className = 'reply-option-custom';
-    customBtn.textContent = 'type a reply to anky...';
-    customBtn.onclick = function() {
-      replyOptionsEl.innerHTML = '';
-      var inputWrap = document.createElement('div');
-      inputWrap.className = 'reply-custom-input';
-      inputWrap.innerHTML =
-        '<textarea class="chat-input" placeholder="write your reply..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
-        '<button class="chat-send-btn" disabled>send</button>';
-      replyOptionsEl.appendChild(inputWrap);
-      var ta = inputWrap.querySelector('textarea');
-      var sendBtn = inputWrap.querySelector('button');
-      ta.addEventListener('input', function() {
-        ta.style.height = 'auto';
-        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
-        sendBtn.disabled = !ta.value.trim();
-      });
-      ta.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          if (ta.value.trim()) sendBtn.click();
-        }
-      });
-      sendBtn.onclick = function() {
-        var msg = ta.value.trim();
-        if (msg) sendWritingsReply(msg);
-      };
-      ta.focus();
-    };
-    replyOptionsEl.appendChild(customBtn);
-  }
-
-  function showCustomReplyOnly() {
-    var customBtn = document.createElement('button');
-    customBtn.className = 'reply-option-custom';
-    customBtn.textContent = 'type a reply to anky...';
-    customBtn.onclick = function() {
-      replyOptionsEl.innerHTML = '';
-      var inputWrap = document.createElement('div');
-      inputWrap.className = 'reply-custom-input';
-      inputWrap.innerHTML =
-        '<textarea class="chat-input" placeholder="write your reply..." rows="1"></textarea>' +
-        '<button class="chat-send-btn" disabled>send</button>';
-      replyOptionsEl.appendChild(inputWrap);
-      var ta = inputWrap.querySelector('textarea');
-      var sendBtn = inputWrap.querySelector('button');
-      ta.addEventListener('input', function() { sendBtn.disabled = !ta.value.trim(); });
-      ta.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) sendBtn.click(); }
-      });
-      sendBtn.onclick = function() { var msg = ta.value.trim(); if (msg) sendWritingsReply(msg); };
-      ta.focus();
-    };
-    replyOptionsEl.appendChild(customBtn);
-  }
-
-  function sendWritingsReply(msg) {
-    if (!msg || !activeAnkyId) return;
-    replyOptionsEl.innerHTML = '';
-
-    var userBubble = document.createElement('div');
-    userBubble.className = 'chat-bubble user';
-    userBubble.innerHTML = escapeHtml(msg);
-    conversationEl.appendChild(userBubble);
-
-    var thinking = document.createElement('div');
-    thinking.className = 'chat-bubble anky';
-    thinking.innerHTML = '<span class="processing">thinking...</span>';
-    conversationEl.appendChild(thinking);
-
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anky_id: activeAnkyId, message: msg, history: activeChatHistory }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        activeChatHistory.push({ role: 'user', content: msg });
-        activeChatHistory.push({ role: 'assistant', content: data.response });
-        thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-        fetchAndShowReplies(activeAnkyId);
-      })
-      .catch(function() {
-        thinking.innerHTML = '<span class="error">something went wrong.</span>';
-      });
-  }
-
-  function selectItem(idx) {
-    if (idx < 0 || idx >= items.length) return;
-    items[current].classList.remove('active');
-    current = idx;
-    items[current].classList.add('active');
-    items[current].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-    var w = writings[idx];
-    if (!detailInner) return;
-
-    // Update header
-    var header = detailInner.querySelector('.writings-detail-header');
-    var titleHtml = w.anky_title ? '<h2 class="writings-detail-title">' + w.anky_title + '</h2>' : '';
-    var ankyLink = w.anky_id ? ' &middot; <a href="/anky/' + w.anky_id + '">view anky</a>' : '';
-    var badge = w.is_anky ? ' &middot; <span class="anky-badge">anky</span>' : '';
-    header.innerHTML = '<button class="writings-back-btn" id="writings-back-btn">&larr; back</button>' +
-      titleHtml +
-      '<div class="writings-detail-meta">' + w.created_at + ' &middot; ' + w.duration_display + ' &middot; ' + w.word_count + ' words' + badge + ankyLink + '</div>';
-
-    // Re-attach back button
-    var newBack = document.getElementById('writings-back-btn');
-    if (newBack) newBack.onclick = function() { layout.classList.remove('detail-open'); };
-
-    detailContent.textContent = w.content;
-
-    if (detailResponse) {
-      if (w.response) {
-        detailResponse.textContent = w.response;
-        detailResponse.style.display = '';
-      } else {
-        detailResponse.style.display = 'none';
-      }
-    }
-
-    // Render conversation
-    var conv = null;
-    if (w.conversation_json) {
-      try { conv = JSON.parse(w.conversation_json); } catch(e) {}
-    }
-    renderConversation(conv, w.anky_id);
-
-    // Mobile: show detail panel
-    layout.classList.add('detail-open');
-  }
-
-  items.forEach(function(item, i) {
-    item.addEventListener('click', function() { selectItem(i); });
-  });
-
-  if (backBtn) {
-    backBtn.addEventListener('click', function() { layout.classList.remove('detail-open'); });
-  }
-
-  document.addEventListener('keydown', function(e) {
-    if (items.length === 0) return;
-    var tag = e.target.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
-    if (e.key === 'ArrowDown' || e.key === 'j') {
-      e.preventDefault();
-      selectItem(Math.min(current + 1, items.length - 1));
-    } else if (e.key === 'ArrowUp' || e.key === 'k') {
-      e.preventDefault();
-      selectItem(Math.max(current - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      layout.classList.add('detail-open');
-    } else if (e.key === 'Escape') {
-      if (layout.classList.contains('detail-open')) {
-        layout.classList.remove('detail-open');
-      } else {
-        window.location.href = '/';
-      }
-    }
-  });
-})();
-</script>
+  {% if writings | length == 0 %}
+  <div class="threads-empty">
+    <p>no threads yet.</p>
+    <a href="/">start writing</a>
+  </div>
+  {% endif %}
+</div>
 {% endblock %}

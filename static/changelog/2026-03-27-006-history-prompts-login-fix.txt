@@ -1,0 +1,3 @@
+ok cool. we are getting there. but something important. i want to come into the website and get a prompt from anky. if i haven't ever written i want to see a random prompt out of a pool of 8. and if i have written, i want to see my conversation history with anky. with a separation on the place where each session ended.
+
+AND the login page still shows the seed phrase stuff. fix it. i want to be able to login with email and have my identity remembered.

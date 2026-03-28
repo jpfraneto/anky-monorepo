@@ -1,0 +1,1 @@
+the supply of the coin is 100M. take the community button of the navbar out and change it for the forge. make the forge the first thing the user sees when opening the website, and the image that is displayed the last one that was generated. below it put the prompt used to generate that image. and optimize for mobile please

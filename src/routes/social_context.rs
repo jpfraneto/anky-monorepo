@@ -1,6 +1,6 @@
 /// Shared social reply context — Honcho peer lookup + interaction history.
 /// Used by both webhook_x.rs and webhook_farcaster.rs to give Anky memory.
-use crate::services::honcho;
+use crate::services::{honcho, neynar};
 use crate::state::AppState;
 
 /// Everything Anky needs to know about someone before replying.
@@ -9,6 +9,8 @@ pub struct SocialContext {
     pub peer_context: Option<String>,
     /// Past interactions: (their_text, anky_reply) most recent first
     pub interaction_history: Vec<(String, String)>,
+    /// Resolved Honcho peer ID (may be cross-platform, e.g. X peer reused for FC user)
+    pub honcho_peer_id: Option<String>,
 }
 
 /// Look up or create a social peer, fetch their Honcho context and interaction history.
@@ -65,6 +67,7 @@ pub async fn fetch_social_context(
     SocialContext {
         peer_context,
         interaction_history,
+        honcho_peer_id,
     }
 }
 
@@ -95,21 +98,76 @@ async fn upsert_social_peer(
         return (peer_id, user_id);
     }
 
-    // Create new peer — social platforms are not connected to the app,
-    // so peer ID is always derived from platform + user_id
+    // Create new peer — check for cross-platform identity before assigning peer ID.
+    // For Farcaster users, look up their verified X account via Neynar.
+    // If they have a linked X username that matches an existing X peer, reuse that Honcho peer ID.
     let id = uuid::Uuid::new_v4().to_string();
-    let honcho_peer_id = format!("{}_{}", platform, platform_user_id);
+    let mut honcho_peer_id = format!("{}_{}", platform, platform_user_id);
 
-    let _ = db.execute(
-        "INSERT OR IGNORE INTO social_peers (id, platform, platform_user_id, platform_username, honcho_peer_id) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![
-            &id,
-            platform,
-            platform_user_id,
-            if platform_username.is_empty() { None } else { Some(platform_username) },
-            &honcho_peer_id,
-        ],
-    );
+    if platform == "farcaster" {
+        // Drop the db lock before making the network call
+        drop(db);
+
+        if let Ok(fid) = platform_user_id.parse::<u64>() {
+            match neynar::fetch_x_username_for_fid(&state.config.neynar_api_key, fid).await {
+                Ok(Some(x_username)) => {
+                    tracing::info!(
+                        "FC user {} (@{}) has verified X account: @{}",
+                        fid,
+                        platform_username,
+                        x_username
+                    );
+                    // Check if we have an existing X peer with this username
+                    let db = state.db.lock().await;
+                    let x_peer: Option<(String, Option<String>)> = db
+                        .query_row(
+                            "SELECT honcho_peer_id, user_id FROM social_peers WHERE platform = 'x' AND platform_username = ?1",
+                            rusqlite::params![&x_username],
+                            |row| Ok((row.get::<_, String>(0)?, row.get(1).ok())),
+                        )
+                        .ok();
+                    if let Some((existing_peer_id, _)) = x_peer {
+                        tracing::info!(
+                            "Cross-platform match: FC fid={} -> X @{} -> Honcho peer {}",
+                            fid,
+                            x_username,
+                            existing_peer_id
+                        );
+                        honcho_peer_id = existing_peer_id;
+                    }
+                    drop(db);
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::debug!("Neynar X lookup for fid={} failed: {}", fid, e);
+                }
+            }
+        }
+
+        // Re-acquire db lock for the insert
+        let db = state.db.lock().await;
+        let _ = db.execute(
+            "INSERT OR IGNORE INTO social_peers (id, platform, platform_user_id, platform_username, honcho_peer_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                &id,
+                platform,
+                platform_user_id,
+                if platform_username.is_empty() { None } else { Some(platform_username) },
+                &honcho_peer_id,
+            ],
+        );
+    } else {
+        let _ = db.execute(
+            "INSERT OR IGNORE INTO social_peers (id, platform, platform_user_id, platform_username, honcho_peer_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                &id,
+                platform,
+                platform_user_id,
+                if platform_username.is_empty() { None } else { Some(platform_username) },
+                &honcho_peer_id,
+            ],
+        );
+    }
 
     (Some(honcho_peer_id), None)
 }

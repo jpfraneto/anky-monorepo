@@ -1082,6 +1082,18 @@ pub fn run(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // --- anky_response fields on writing_sessions ---
+    let has_anky_response: bool = conn
+        .prepare("SELECT anky_response FROM writing_sessions LIMIT 0")
+        .is_ok();
+    if !has_anky_response {
+        conn.execute_batch(
+            "ALTER TABLE writing_sessions ADD COLUMN anky_response TEXT;
+             ALTER TABLE writing_sessions ADD COLUMN anky_next_prompt TEXT;
+             ALTER TABLE writing_sessions ADD COLUMN anky_mood TEXT;",
+        )?;
+    }
+
     // --- social_peers: map social handles to Honcho peer IDs for cross-platform context ---
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS social_peers (
@@ -1099,6 +1111,48 @@ pub fn run(conn: &Connection) -> Result<()> {
             ON social_peers(platform, platform_user_id);
         CREATE INDEX IF NOT EXISTS idx_social_peers_username
             ON social_peers(platform, platform_username);",
+    )?;
+
+    // --- Minting columns on ankys ---
+    let has_gas_funded_at: bool = conn
+        .prepare("SELECT gas_funded_at FROM ankys LIMIT 0")
+        .is_ok();
+    if !has_gas_funded_at {
+        conn.execute_batch(
+            "ALTER TABLE ankys ADD COLUMN gas_funded_at TEXT;
+             ALTER TABLE ankys ADD COLUMN session_cid TEXT;
+             ALTER TABLE ankys ADD COLUMN metadata_uri TEXT;
+             ALTER TABLE ankys ADD COLUMN token_id TEXT;",
+        )?;
+    }
+
+    // --- preferred_model on user_settings ---
+    let has_preferred_model: bool = conn
+        .prepare("SELECT preferred_model FROM user_settings LIMIT 0")
+        .is_ok();
+    if !has_preferred_model {
+        conn.execute_batch(
+            "ALTER TABLE user_settings ADD COLUMN preferred_model TEXT NOT NULL DEFAULT 'default';",
+        )?;
+    }
+
+    // --- mirrors table (ankycoin public mirror results) ---
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS mirrors (
+            id TEXT PRIMARY KEY,
+            fid INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            avatar_url TEXT,
+            follower_count INTEGER NOT NULL DEFAULT 0,
+            bio TEXT NOT NULL DEFAULT '',
+            public_mirror TEXT NOT NULL,
+            flux_descriptors_json TEXT NOT NULL,
+            image_path TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_mirrors_fid ON mirrors(fid);
+        CREATE INDEX IF NOT EXISTS idx_mirrors_created ON mirrors(created_at DESC);",
     )?;
 
     Ok(())

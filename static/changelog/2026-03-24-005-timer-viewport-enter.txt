@@ -1,0 +1,1 @@
+the timer should be a countdown from 8 minutes down. if the user gets to 0 the session continues and it starts moving "up". and also the writing container is exceeding the space of the viewport plus the keyboard. fix that. the experience needs to be seamless. ah, and also: i dont want to be able to hit "enter" and move to a new line. its all just a massive string

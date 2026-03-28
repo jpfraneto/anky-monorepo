@@ -41,6 +41,15 @@
     <input type="text" id="thinker-moment" class="gen-input" placeholder="backstage at the super bowl, alone with his thoughts" />
   </div>
 
+  <div class="gen-section" id="aspect-section">
+    <label class="gen-label">aspect ratio</label>
+    <div class="gen-modes" id="aspect-modes">
+      <button class="mode-btn active" data-aspect="1:1" onclick="setAspect('1:1')">1:1</button>
+      <button class="mode-btn" data-aspect="16:9" onclick="setAspect('16:9')">16:9</button>
+      <button class="mode-btn" data-aspect="9:16" onclick="setAspect('9:16')">9:16</button>
+    </div>
+  </div>
+
   <div class="gen-section">
     <label class="gen-label">how many</label>
     <div class="gen-counts">
@@ -80,6 +89,7 @@
 (function() {
   var mode = 'prompt';
   var model = 'flux'; // 'flux' (free) or 'gemini' (paid)
+  var aspectRatio = '1:1';
   var count = 1;
   var costPerAnky = 0.25;
   var userBalance = null;
@@ -157,6 +167,13 @@
     });
     document.getElementById('prompt-section').style.display = m === 'prompt' ? '' : 'none';
     document.getElementById('thinker-section').style.display = m === 'thinker' ? '' : 'none';
+  };
+
+  window.setAspect = function(ar) {
+    aspectRatio = ar;
+    document.querySelectorAll('#aspect-modes .mode-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.aspect === ar);
+    });
   };
 
   window.setCount = function(n) {
@@ -268,14 +285,14 @@
       if (!name) { status.innerHTML = '<span class="error">enter a thinker name</span>'; return; }
       if (model === 'flux') {
         // For Flux: build an Anky-framed prompt so Ollama validation passes
-        payload = { model: model, writing: 'anky as ' + name + ' — ' + moment };
+        payload = { model: model, writing: 'anky as ' + name + ' — ' + moment, aspect_ratio: aspectRatio };
       } else {
-        payload = { model: model, thinker_name: name, moment: moment };
+        payload = { model: model, thinker_name: name, moment: moment, aspect_ratio: aspectRatio };
       }
     } else {
       var prompt = document.getElementById('gen-prompt').value.trim();
       if (!prompt) { status.innerHTML = '<span class="error">enter a prompt</span>'; return; }
-      payload = { model: model, writing: prompt };
+      payload = { model: model, writing: prompt, aspect_ratio: aspectRatio };
     }
 
     btn.disabled = true;

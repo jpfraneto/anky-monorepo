@@ -221,12 +221,11 @@ pub async fn queue_post_writing_cuentacuentos(
     let writing_input = writing.chars().take(4000).collect::<String>();
     let user_message = cuentacuentos_prompt(&writing, peer_context.as_deref());
 
-    let raw_text = crate::services::ollama::call_ollama_with_system_timeout(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
+    let raw_text = crate::services::claude::call_haiku_with_system_max(
+        &state.config.anthropic_api_key,
         cuentacuentos_system_prompt(),
         &user_message,
-        300, // 5 minute timeout for local GPU
+        4000,
     )
     .await?;
 
@@ -235,12 +234,11 @@ pub async fn queue_post_writing_cuentacuentos(
         Ok(p) => p,
         Err(first_err) => {
             tracing::warn!("cuentacuentos JSON parse failed, retrying: {}", first_err);
-            let retry_text = crate::services::ollama::call_ollama_with_system_timeout(
-                &state.config.ollama_base_url,
-                &state.config.ollama_model,
+            let retry_text = crate::services::claude::call_haiku_with_system_max(
+                &state.config.anthropic_api_key,
                 cuentacuentos_system_prompt(),
                 &user_message,
-                300,
+                4000,
             )
             .await?;
             parse_cuentacuentos_response(&retry_text)
@@ -263,9 +261,9 @@ pub async fn queue_post_writing_cuentacuentos(
             "Children's story scene{} from the tale \"{}\": {}",
             kingdom_context, parsed.title, paragraph
         );
-        let image_prompt = match crate::services::ollama::generate_image_prompt(
-            &state.config.ollama_base_url,
-            &state.config.ollama_model,
+        let image_prompt = match crate::services::claude::call_haiku_with_system(
+            &state.config.anthropic_api_key,
+            crate::services::ollama::IMAGE_PROMPT_SYSTEM,
             &prompt_seed,
         )
         .await
@@ -353,6 +351,7 @@ pub async fn queue_post_writing_cuentacuentos(
     // Uses the in-memory writing text since the DB content was nullified in step 4.
     if let Some(ref uid) = user_id {
         generate_next_prompt_from_text(state, uid, writing_id, &writing).await;
+        generate_anky_response(state, uid, writing_id, &writing).await;
     }
 
     // ── LIFECYCLE STEP 6: Archive the anky ──────────────────────────────────
@@ -451,11 +450,11 @@ Return the translation preserving [N] markers. Do not add any explanation."#,
             name, title, numbered_text
         );
 
-        match crate::services::ollama::call_ollama_with_timeout(
-            &state.config.ollama_base_url,
-            &state.config.ollama_model,
+        match crate::services::claude::call_haiku_with_system_max(
+            &state.config.anthropic_api_key,
+            "You are a professional translator. Translate exactly as instructed, preserving all formatting markers.",
             &prompt,
-            420, // 7 minutes for full-story translation with large model (Hindi/Arabic need extra time)
+            4000,
         )
         .await
         {
@@ -635,6 +634,78 @@ pub async fn generate_next_prompt(state: &AppState, user_id: &str, writing_sessi
     };
 
     generate_next_prompt_from_text(state, user_id, writing_session_id, &writing).await;
+    generate_anky_response(state, user_id, writing_session_id, &writing).await;
+}
+
+/// Generate Anky's personalized response to a writing session.
+/// Stored in writing_sessions.anky_response — proves it read the writing.
+/// Part of the post-writing pipeline, not on-demand.
+pub async fn generate_anky_response(
+    state: &AppState,
+    user_id: &str,
+    writing_session_id: &str,
+    writing: &str,
+) {
+    // Get session metadata
+    let (duration, word_count, is_anky) = {
+        let db = state.db.lock().await;
+        db.query_row(
+            "SELECT duration_seconds, word_count, is_anky FROM writing_sessions WHERE id = ?1",
+            rusqlite::params![writing_session_id],
+            |row| {
+                Ok((
+                    row.get::<_, f64>(0).unwrap_or(0.0),
+                    row.get::<_, i32>(1).unwrap_or(0),
+                    row.get::<_, bool>(2).unwrap_or(false),
+                ))
+            },
+        )
+        .unwrap_or((0.0, 0, false))
+    };
+
+    let peer_ctx = if crate::services::honcho::is_configured(&state.config) {
+        crate::services::honcho::get_peer_context(
+            &state.config.honcho_api_key,
+            &state.config.honcho_workspace_id,
+            user_id,
+        )
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
+
+    match crate::services::claude::generate_writing_response(
+        &state.config.anthropic_api_key,
+        writing,
+        duration,
+        word_count,
+        is_anky,
+        peer_ctx.as_deref(),
+    )
+    .await
+    {
+        Ok(wr) => {
+            let db = state.db.lock().await;
+            let _ = db.execute(
+                "UPDATE writing_sessions SET anky_response = ?1, anky_next_prompt = ?2, anky_mood = ?3 WHERE id = ?4",
+                rusqlite::params![&wr.anky_response, &wr.next_prompt, &wr.mood, writing_session_id],
+            );
+            tracing::info!(
+                "Anky response generated for session {}: {}",
+                &writing_session_id[..8.min(writing_session_id.len())],
+                &wr.anky_response[..wr.anky_response.len().min(60)]
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Anky response generation failed for {}: {}",
+                &writing_session_id[..8.min(writing_session_id.len())],
+                e
+            );
+        }
+    }
 }
 
 /// Like `generate_next_prompt` but accepts the writing text directly.
@@ -688,12 +759,8 @@ Respond with ONLY the prompt text. One sentence. Nothing else."#,
         context_section = context_section,
     );
 
-    let result = crate::services::ollama::call_ollama(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
-        &prompt,
-    )
-    .await;
+    let result =
+        crate::services::claude::call_haiku(&state.config.anthropic_api_key, &prompt).await;
 
     match result {
         Ok(generated_prompt) => {

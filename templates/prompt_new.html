@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anky — Write a Prompt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <meta name="theme-color" content="#080706">
+  <style>
+    :root {
+      --void: #080706;
+      --deep: #0f0e0c;
+      --ember: #c8924a;
+      --ember-dim: #7a5430;
+      --ash: #3a3530;
+      --smoke: #9e9590;
+      --parchment: #e8dfd0;
+      --light: #f5f0e8;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      background: var(--void);
+      color: var(--parchment);
+      font-family: 'Lora', Georgia, serif;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.028;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 24px 80px;
+    }
+
+    .inner {
+      max-width: 520px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .mark {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 11px;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--ember-dim);
+      margin-bottom: 48px;
+      text-decoration: none;
+    }
+
+    .heading {
+      font-family: 'IM Fell English', serif;
+      font-size: clamp(24px, 5vw, 36px);
+      font-weight: 400;
+      text-align: center;
+      color: var(--light);
+      margin-bottom: 12px;
+    }
+
+    .subheading {
+      font-size: 14px;
+      color: var(--smoke);
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 48px;
+      font-style: italic;
+    }
+
+    .prompt-textarea {
+      width: 100%;
+      min-height: 120px;
+      background: var(--deep);
+      border: 1px solid var(--ash);
+      color: var(--parchment);
+      font-family: 'Lora', Georgia, serif;
+      font-size: 16px;
+      line-height: 1.7;
+      padding: 20px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .prompt-textarea::placeholder { color: var(--ash); font-style: italic; }
+    .prompt-textarea:focus { border-color: var(--ember-dim); }
+
+    .char-count {
+      align-self: flex-end;
+      font-size: 11px;
+      color: var(--ash);
+      margin-top: 8px;
+      margin-bottom: 32px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .generate-btn {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 13px;
+      letter-spacing: 0.3em;
+      color: var(--void);
+      background: var(--ember);
+      padding: 16px 44px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.4s ease;
+      position: relative;
+    }
+    .generate-btn::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border: 1px solid var(--ember-dim);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    .generate-btn:hover { background: var(--parchment); color: var(--void); letter-spacing: 0.4em; }
+    .generate-btn:hover::after { opacity: 1; }
+    .generate-btn:disabled { opacity: 0.4; cursor: default; }
+
+    .result {
+      display: none;
+      width: 100%;
+      margin-top: 48px;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      animation: rise 0.8s ease forwards;
+    }
+    .result.visible { display: flex; }
+
+    .result-label {
+      font-family: 'IM Fell English SC', serif;
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      color: var(--ember-dim);
+      text-transform: uppercase;
+    }
+
+    .result-link {
+      width: 100%;
+      background: var(--deep);
+      border: 1px solid var(--ash);
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--smoke);
+      word-break: break-all;
+      line-height: 1.5;
+      cursor: pointer;
+      transition: border-color 0.3s;
+    }
+    .result-link:hover { border-color: var(--ember-dim); }
+
+    .result-actions {
+      display: flex;
+      gap: 16px;
+    }
+    .result-btn {
+      font-family: 'IM Fell English', serif;
+      font-size: 13px;
+      font-style: italic;
+      color: var(--smoke);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 0;
+      transition: color 0.3s;
+      position: relative;
+    }
+    .result-btn::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0;
+      height: 1px;
+      background: var(--ember-dim);
+      transition: width 0.3s;
+    }
+    .result-btn:hover { color: var(--ember); }
+    .result-btn:hover::after { width: 100%; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 480px) {
+      .page { padding: 40px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+<main class="page">
+  <div class="inner">
+    <a class="mark" href="/">anky</a>
+    <h1 class="heading">Write a prompt</h1>
+    <p class="subheading">
+      The question you write here will be the first thing someone sees<br/>
+      before they begin their eight minutes.
+    </p>
+
+    <textarea class="prompt-textarea" id="promptText" placeholder="What question would open someone up?" maxlength="500"></textarea>
+    <div class="char-count"><span id="charCount">0</span>/500</div>
+
+    <button class="generate-btn" id="generateBtn" disabled>create link</button>
+
+    <div class="result" id="result">
+      <span class="result-label">share this link</span>
+      <div class="result-link" id="resultLink" title="Click to copy"></div>
+      <div class="result-actions">
+        <button class="result-btn" id="copyBtn">copy link</button>
+        <button class="result-btn" id="openBtn">open it</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function() {
+  var textarea = document.getElementById('promptText');
+  var charCount = document.getElementById('charCount');
+  var generateBtn = document.getElementById('generateBtn');
+  var result = document.getElementById('result');
+  var resultLink = document.getElementById('resultLink');
+  var copyBtn = document.getElementById('copyBtn');
+  var openBtn = document.getElementById('openBtn');
+  var generatedUrl = '';
+
+  textarea.addEventListener('input', function() {
+    var len = textarea.value.length;
+    charCount.textContent = len;
+    generateBtn.disabled = len === 0 || len > 500;
+  });
+
+  generateBtn.addEventListener('click', function() {
+    var text = textarea.value.trim();
+    if (!text) return;
+    generateBtn.disabled = true;
+    generateBtn.textContent = '...';
+    fetch('/api/v1/prompt/quick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt_text: text })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      generatedUrl = data.url || ('https://anky.app/write?p=' + data.prompt_id);
+      resultLink.textContent = generatedUrl;
+      result.classList.add('visible');
+      generateBtn.textContent = 'create link';
+      generateBtn.disabled = false;
+    })
+    .catch(function() {
+      generateBtn.textContent = 'create link';
+      generateBtn.disabled = false;
+    });
+  });
+
+  resultLink.addEventListener('click', function() { copyToClipboard(); });
+  copyBtn.addEventListener('click', function() { copyToClipboard(); });
+  openBtn.addEventListener('click', function() {
+    if (generatedUrl) window.open(generatedUrl, '_blank');
+  });
+
+  function copyToClipboard() {
+    if (!generatedUrl) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(generatedUrl).then(function() {
+        copyBtn.textContent = 'copied';
+        setTimeout(function() { copyBtn.textContent = 'copy link'; }, 1500);
+      });
+    }
+  }
+})();
+</script>
+
+</body>
+</html>

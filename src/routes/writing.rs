@@ -65,6 +65,13 @@ pub async fn process_writing(
                      and use POST /api/v1/session/start to begin."
                         .into(),
                 ),
+                anky_response: None,
+                next_prompt: None,
+                mood: None,
+                model: None,
+                provider: None,
+                generation_ms: None,
+                tokens_used: None,
             }),
         ));
     }
@@ -97,19 +104,41 @@ pub async fn process_writing(
 
     let word_count = req.text.split_whitespace().count() as i32;
 
-    // Reject submissions with fewer than 10 words — no DB save, no Ollama call
+    // Look up user's preferred model
+    let user_preferred_model = {
+        let db = state.db.lock().await;
+        crate::db::queries::get_user_settings(&db, &user_id)
+            .ok()
+            .map(|s| s.preferred_model)
+    };
+
+    // Very short writings (<10 words) — still give a live response via the light model
     if word_count < 10 {
+        let nudge = crate::services::ollama::quick_nudge(
+            &state.config,
+            &req.text,
+            user_preferred_model.as_deref(),
+        )
+        .await
+        .unwrap_or_else(|_| "something stirred in you. come back and let it out.".into());
         return Ok((
             jar,
             Json(WriteResponse {
-                response: String::new(),
+                response: nudge,
                 duration: req.duration,
                 is_anky: false,
                 anky_id: None,
                 wallet_address: None,
                 estimated_wait_seconds: None,
                 flow_score: None,
-                error: Some("write more. stream-of-consciousness means letting words flow — at least a few sentences.".into()),
+                error: None,
+                anky_response: None,
+                next_prompt: None,
+                mood: None,
+                model: Some("live-nudge".into()),
+                provider: Some("ollama".into()),
+                generation_ms: None,
+                tokens_used: None,
             }),
         ));
     }
@@ -210,54 +239,37 @@ pub async fn process_writing(
         wallet_address
     };
 
-    // Call Ollama for feedback (writing is already saved above)
-    // For anky sessions, skip the blocking Ollama call — return immediately so the
-    // frontend can start streaming the Claude reflection ASAP.
-    let response = if is_anky {
-        let state_bg = state.clone();
-        let sid_bg = session_id.clone();
-        let text_bg = req.text.clone();
-        let model_bg = state.config.ollama_model.clone();
-        tokio::spawn(async move {
-            let prompt = crate::services::ollama::deep_reflection_prompt(&text_bg);
-            match crate::services::ollama::call_ollama(
-                &state_bg.config.ollama_base_url,
-                &model_bg,
-                &prompt,
-            )
-            .await
-            {
-                Ok(r) => {
-                    let db = state_bg.db.lock().await;
-                    let _ = db.execute(
-                        "UPDATE writing_sessions SET response = ?1 WHERE id = ?2",
-                        rusqlite::params![&r, &sid_bg],
-                    );
-                }
-                Err(e) => {
-                    tracing::error!("Ollama error (background): {}", e);
-                    state_bg.emit_log("ERROR", "ollama", &format!("Ollama bg error: {}", e));
-                }
-            }
-        });
-        "your anky is being born. the reflection is streaming...".into()
-    } else {
-        let model = &state.config.ollama_model;
-        let prompt = crate::services::ollama::quick_feedback_prompt(&req.text, req.duration);
-        let r = match crate::services::ollama::call_ollama(
-            &state.config.ollama_base_url,
-            model.as_str(),
-            &prompt,
+    // For anky sessions, return immediately — the frontend will open an SSE
+    // connection to /api/stream-reflection/{anky_id} which handles the Claude
+    // streaming call. No background call here to avoid duplicate API usage.
+    let (response, resp_model, resp_provider, resp_gen_ms) = if is_anky {
+        (
+            "your anky is being born. the reflection is streaming...".to_string(),
+            Some("claude-sonnet-4-20250514".to_string()),
+            Some("claude".to_string()),
+            None,
         )
-        .await
+    } else {
+        let prompt = crate::services::ollama::quick_feedback_prompt(&req.text, req.duration);
+        let gen_start = std::time::Instant::now();
+        let r = match crate::services::claude::call_haiku(&state.config.anthropic_api_key, &prompt)
+            .await
         {
             Ok(r) => r,
             Err(e) => {
-                tracing::error!("Ollama error: {}", e);
-                state.emit_log("ERROR", "ollama", &format!("Ollama error: {}", e));
-                "the consciousness stream encountered turbulence. try again?".into()
+                tracing::error!("Haiku error: {}", e);
+                state.emit_log("ERROR", "haiku", &format!("Haiku error: {}", e));
+                // Fall back to light model instead of a hardcoded string
+                crate::services::ollama::quick_nudge(
+                    &state.config,
+                    &req.text,
+                    user_preferred_model.as_deref(),
+                )
+                .await
+                .unwrap_or_else(|_| "something stirred in you. come back and let it out.".into())
             }
         };
+        let gen_elapsed = gen_start.elapsed().as_millis() as u64;
         // Update the writing session with Ollama's response
         {
             let db = state.db.lock().await;
@@ -266,7 +278,12 @@ pub async fn process_writing(
                 rusqlite::params![&r, &session_id],
             );
         }
-        r
+        (
+            r,
+            Some("claude-haiku".to_string()),
+            Some("claude".to_string()),
+            Some(gen_elapsed),
+        )
     };
 
     // Handle inquiry: mark answered and generate next question
@@ -330,6 +347,28 @@ pub async fn process_writing(
         );
     }
 
+    // anky_response is generated by the post-writing pipeline (event-driven),
+    // not on-demand. The client polls /writing/{sessionId}/status to get it.
+
+    // For web writes that aren't ankys, spawn the pipeline response generation
+    if !is_anky {
+        let resp_state = state.clone();
+        let resp_uid = user_id.clone();
+        let resp_sid = session_id.clone();
+        let resp_text = req.text.clone();
+        tokio::spawn(async move {
+            crate::pipeline::guidance_gen::generate_anky_response(
+                &resp_state,
+                &resp_uid,
+                &resp_sid,
+                &resp_text,
+            )
+            .await;
+        });
+    }
+    // For ankys, the full ritual lifecycle (which includes generate_anky_response)
+    // is already triggered by the image pipeline completion.
+
     Ok((
         jar,
         Json(WriteResponse {
@@ -341,8 +380,46 @@ pub async fn process_writing(
             estimated_wait_seconds: if is_anky { Some(45) } else { None },
             flow_score,
             error: None,
+            anky_response: None, // generated async — client polls or waits
+            next_prompt: None,
+            mood: None,
+            model: resp_model,
+            provider: resp_provider,
+            generation_ms: resp_gen_ms,
+            tokens_used: None,
         }),
     ))
+}
+
+/// GET /api/writing/{sessionId}/status — web-accessible writing status (cookie auth)
+pub async fn get_writing_status_web(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let (user_id, _) = get_or_create_user_id(&jar, None);
+    let db = state.db.lock().await;
+
+    let (anky_response, next_prompt, mood) = db
+        .query_row(
+            "SELECT anky_response, anky_next_prompt, anky_mood FROM writing_sessions WHERE id = ?1 AND user_id = ?2",
+            rusqlite::params![&session_id, &user_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0).unwrap_or(None),
+                    row.get::<_, Option<String>>(1).unwrap_or(None),
+                    row.get::<_, Option<String>>(2).unwrap_or(None),
+                ))
+            },
+        )
+        .unwrap_or((None, None, None));
+
+    Ok(Json(serde_json::json!({
+        "sessionId": session_id,
+        "ankyResponse": anky_response,
+        "nextPrompt": next_prompt,
+        "mood": mood,
+    })))
 }
 
 pub async fn get_writings(
@@ -490,9 +567,8 @@ async fn generate_next_inquiry(state: &AppState, user_id: &str) -> anyhow::Resul
         msg
     };
 
-    let question = crate::services::ollama::call_ollama_with_system(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
+    let question = crate::services::claude::call_haiku_with_system(
+        &state.config.anthropic_api_key,
         &system,
         &user_msg,
     )

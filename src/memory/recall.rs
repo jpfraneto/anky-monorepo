@@ -3,7 +3,6 @@ use rusqlite::{params, Connection};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::memory::embeddings;
 
 /// A recalled memory for context injection.
 #[derive(Debug)]
@@ -101,11 +100,11 @@ impl MemoryContext {
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn build_memory_context(
     db: &Arc<Mutex<Connection>>,
-    ollama_base_url: &str,
+    _ollama_base_url: &str,
     user_id: &str,
-    new_writing: &str,
+    _new_writing: &str,
 ) -> Result<MemoryContext> {
-    // 1. Sync DB reads — lock, read, release
+    // DB reads only — no more Ollama embeddings. Honcho handles semantic context.
     let (session_count, profile, patterns) = {
         let conn = db.lock().await;
 
@@ -128,32 +127,12 @@ pub async fn build_memory_context(
         let patterns = get_significant_patterns(&conn, user_id, 12)?;
 
         (session_count, profile, patterns)
-    }; // conn dropped here
-
-    // 2. Async embedding call (no conn held)
-    let similar_moments = {
-        match embeddings::embed_text(ollama_base_url, new_writing).await {
-            Ok(query_embedding) => {
-                // 3. Lock again for vector search
-                let conn = db.lock().await;
-                let results = embeddings::search_similar(&conn, user_id, &query_embedding, 5, 0.3)?;
-                results
-                    .into_iter()
-                    .map(|(_, _, source, content, score)| RecalledMemory {
-                        content,
-                        source,
-                        score,
-                    })
-                    .collect()
-            }
-            Err(_) => Vec::new(),
-        }
     };
 
     Ok(MemoryContext {
         profile,
         patterns,
-        similar_moments,
+        similar_moments: Vec::new(), // Honcho provides semantic context instead
         session_count,
     })
 }

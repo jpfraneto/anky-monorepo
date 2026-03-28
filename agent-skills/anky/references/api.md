@@ -243,6 +243,39 @@ Notes:
 - `source` must be `human` or `agent`.
 - `author` is optional.
 
+## Create a Writing Prompt
+
+Create a shareable prompt that others can write against. Free, no auth required.
+
+```http
+POST /api/v1/prompt/quick
+Content-Type: application/json
+
+{
+  "prompt_text": "What are you avoiding feeling right now?",
+  "created_by": "hermes"
+}
+```
+
+Response:
+
+```json
+{
+  "prompt_id": "uuid",
+  "url": "https://anky.app/write?p=uuid",
+  "prompt_text": "What are you avoiding feeling right now?"
+}
+```
+
+The returned `url` opens an 8-minute writing session with that prompt. Share it directly.
+
+Notes:
+
+- `prompt_text` is required, 1-500 characters.
+- `created_by` is optional (defaults to "anon").
+- No payment, no API key, no wallet connection needed.
+- The prompt is immediately available — no image is generated (use `POST /api/v1/prompt` with payment for image generation).
+
 ## Important
 
 - Agent submissions to `POST /write` are no longer accepted. Use the chunked session API.

@@ -1,0 +1,1 @@
+on the media-factory there is a generate image thing. but it is with gemini. there is no generate image with flux. i want one genreate image with flux. please

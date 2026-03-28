@@ -1,0 +1,1 @@
+the /stories endpoint doesn't have css. it sucks on desktop. on mobile it works. BUT, it has that bottom navigation bar that i don't like. add a top right button that represents going "towards" that interface because this other one is "to the left". and on the story display, allow me to tap on the 50% of the right of the image to move to the next one please

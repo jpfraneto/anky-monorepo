@@ -1,0 +1,19 @@
+again. i just finished writing my anky and it is stuck here: your anky is being born. the reflection is streaming...
+
+.these are all the logs i see on the console: lockdown-install.js:1 SES Removing unpermitted intrinsics
+fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Lora:ital,wght@0,400;0,500;1,400&display=swap:1  Failed to load resource: net::ERR_FAILED
+v8c78df7c7c0f484497ecbca7046644da1771523124516:1  Failed to load resource: net::ERR_FAILED
+contentscript.js:1 State loaded from storage couldn't be migrated since no migrate function was provided
+(anonymous) @ contentscript.js:1
+content.js:6 🔌 Content script loaded
+evmAsk.js:15 Uncaught TypeError: Cannot redefine property: ethereum
+    at Object.defineProperty (<anonymous>)
+    at r.inject (evmAsk.js:15:5093)
+    at window.addEventListener.once (evmAsk.js:15:9013)
+sw.js:74 Connecting to 'https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Lora:ital,wght@0,400;0,500;1,400&display=swap' violates the following Content Security Policy directive: "connect-src 'self' https://auth.privy.io https://esm.sh https://*.privy.io wss://*.privy.io". The action has been blocked.
+(anonymous) @ sw.js:74
+sw.js:74 Fetch API cannot load https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Lora:ital,wght@0,400;0,500;1,400&display=swap. Refused to connect because it violates the document's Content Security Policy.
+(anonymous) @ sw.js:74
+The FetchEvent for "https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" resulted in a network error response: the promise was rejected.
+sw.js:1 Uncaught (in promise) TypeError: Failed to convert value to 'Response'.
+sw.js:1 Uncaught (in promise) TypeError: Failed to convert value to 'Response'.. the text of the reflection of anky should start being shown right away. it should be the first thing that we do. we should prepare the context of the user using honcho when they are writing and on minute 6. and then, once we have that context ready for this specific sessin, we should attach the context along with the big prompt to get the reflection for the user. please fix. it is critical that the user sees this working properly. if not they will not want to come and write an anky agai

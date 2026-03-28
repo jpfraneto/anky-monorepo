@@ -33,3 +33,4 @@ interview-engine/memory.db
 # Docs site build artifacts
 docs/node_modules/
 docs/dist/
+cursor_2.6.21_amd64.deb

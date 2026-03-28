@@ -8,6 +8,7 @@ pub mod honcho;
 pub mod neynar;
 pub mod notification;
 pub mod ollama;
+pub mod openrouter;
 pub mod payment;
 pub mod push_scheduler;
 pub mod r2;

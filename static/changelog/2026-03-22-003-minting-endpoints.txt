@@ -1,0 +1,13 @@
+Add minting endpoints to the Anky Rust backend. The Anky contract is deployed on Base at 0x19a36545CC4707870ad53CaADd23B7A70642F304.
+
+The iOS app will call two endpoints under the existing /swift/v2 prefix. Here is the exact flow and what each endpoint must do.
+
+Contract Details: ERC1155 with EIP-712 signatures. birthSoul(string sessionCID, string metadataURI, uint256 deadline, bytes signature).
+
+1. POST /swift/v2/writing/{sessionId}/prepare-mint — verify eligibility, rate limit (1/hour/wallet), compute session CID, sign EIP-712, estimate gas, fund user wallet with 2x gas cost, return all params.
+
+2. POST /swift/v2/writing/{sessionId}/confirm-mint — verify tx receipt, parse SoulBorn event for token_id, mark minted.
+
+3. GET /api/v1/anky/{id}/metadata — public ERC1155-compliant metadata JSON.
+
+DB migration: gas_funded_at, session_cid, metadata_uri, token_id columns on ankys. Config: ANKY_WALLET_PRIVATE_KEY.

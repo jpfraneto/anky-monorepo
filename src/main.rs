@@ -395,6 +395,121 @@ async fn main() -> anyhow::Result<()> {
                     ),
                 );
             }
+
+            // Recover ankys that are complete but missing reflection (one per cycle to avoid
+            // saturating Ollama/Claude and competing with live user requests)
+            let missing = {
+                let db = recovery_state.db.lock().await;
+                db::queries::get_ankys_missing_reflection(&db).unwrap_or_default()
+            };
+            for (anky_id, _session_id, user_id, writing) in missing.into_iter().take(1) {
+                tracing::info!("Recovering missing reflection for anky {}", &anky_id[..8]);
+                recovery_state.emit_log(
+                    "INFO",
+                    "recovery",
+                    &format!("Recovering missing reflection for {}", &anky_id[..8]),
+                );
+
+                // Try Claude first, fall back to Ollama
+                let api_key = recovery_state.config.anthropic_api_key.clone();
+                let reflection_result = if !api_key.is_empty() {
+                    // Build memory context (best-effort)
+                    let memory_ctx = tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        crate::memory::recall::build_memory_context(
+                            &recovery_state.db,
+                            &recovery_state.config.ollama_base_url,
+                            &user_id,
+                            &writing,
+                        ),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .map(|ctx| ctx.format_for_prompt())
+                    .unwrap_or_default();
+
+                    services::claude::generate_title_and_reflection_with_memory(
+                        &api_key,
+                        &writing,
+                        &memory_ctx,
+                    )
+                    .await
+                    .map(|r| r.text)
+                } else {
+                    Err(anyhow::anyhow!("no API key"))
+                };
+
+                let full_text = match reflection_result {
+                    Ok(text) => text,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Claude recovery failed for {}, trying Haiku fallback: {}",
+                            &anky_id[..8],
+                            e
+                        );
+                        let prompt = services::ollama::deep_reflection_prompt(&writing);
+                        match services::claude::call_haiku(
+                            &recovery_state.config.anthropic_api_key,
+                            &prompt,
+                        )
+                        .await
+                        {
+                            Ok(text) => text,
+                            Err(e2) => {
+                                tracing::warn!(
+                                    "Claude+Haiku recovery failed for {}, trying OpenRouter: {}",
+                                    &anky_id[..8],
+                                    e2
+                                );
+                                let or_key = &recovery_state.config.openrouter_api_key;
+                                if !or_key.is_empty() {
+                                    match services::openrouter::call_openrouter(
+                                        or_key,
+                                        "anthropic/claude-3.5-haiku",
+                                        "You are a contemplative writing mirror.",
+                                        &prompt,
+                                        2048,
+                                        45,
+                                    )
+                                    .await
+                                    {
+                                        Ok(text) => text,
+                                        Err(e3) => {
+                                            tracing::error!(
+                                                "All providers recovery failed for {}: {}",
+                                                &anky_id[..8],
+                                                e3
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    tracing::error!(
+                                        "All providers recovery failed for {} (no OpenRouter key)",
+                                        &anky_id[..8]
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                };
+
+                let (title, reflection) = services::claude::parse_title_reflection(&full_text);
+                let db = recovery_state.db.lock().await;
+                if let Err(e) =
+                    db::queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
+                {
+                    tracing::error!("Recovery DB save failed for {}: {}", &anky_id[..8], e);
+                } else {
+                    recovery_state.emit_log(
+                        "INFO",
+                        "recovery",
+                        &format!("Reflection recovered for {}: \"{}\"", &anky_id[..8], title),
+                    );
+                }
+            }
         }
     });
     tracing::info!("Checkpoint recovery watchdog spawned (every 5 minutes)");

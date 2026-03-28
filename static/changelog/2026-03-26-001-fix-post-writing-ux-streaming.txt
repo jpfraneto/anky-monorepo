@@ -1,0 +1,7 @@
+again i just finished writing my anky and thsi is all i see and this is the worst ux ever look: your anky is being born. the reflection is streaming... you
+hay algo que me da pena de mi relacion con mila...
+anky
+
+your anky is being born. the reflection is streaming...
+
+write again. please fix this. and add more console logs. i should see motion. i should feel that anky is witnessing. i should feel that something is happening. and i should get the reflection for what i wrote. im not getting that at all. and if i send a message that is less than an anky i see another animation. like the text is hanging. but also it gets stuck there forever. nope. this is wrong. please help me it is critical to fix it. this is the console logs: sw.js:74 Connecting to 'https://fonts.googleapis.com/css2?family=Righteous&display=swap' violates the following Content Security Policy directive... maybe add more console logs so that we can know what is happening always

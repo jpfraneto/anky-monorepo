@@ -1,11 +1,14 @@
 # Anky Backend — Current State
-Last updated: 2026-03-22 (session 10)
+Last updated: 2026-03-26 (session 14)
 
 ## What's working
 - `cargo check` passes on the current tree, and the mobile seed-signature unit test passes via `cargo test verifies_seed_auth_signatures`.
+- **All text inference is now cloud-only (Claude Haiku)**: Every Ollama/qwen3.5 call has been replaced with Claude Haiku. Quick feedback, reflections, suggested replies, image prompts, writing formatting, classifications, cuentacuentos stories+translations, memory extraction, psychological profiles, chat, system summaries — all Haiku. Local embeddings removed; Honcho handles semantic context. Local GPUs are now exclusively for Flux image generation.
+- **On-chain minting (ERC1155 birthSoul on Base)**: `prepare-mint` verifies eligibility (complete anky, not minted, not gas-funded), rate-limits to 1 per wallet per hour, computes session CID (sha256 of writing), signs EIP-712 BirthPayload with `ANKY_WALLET_PRIVATE_KEY`, estimates gas, funds the user's wallet with 2x gas cost via EIP-1559 ETH transfer, and returns all params the iOS app needs to build + submit the birthSoul tx. `confirm-mint` verifies the on-chain receipt (status=1, to=contract), parses the SoulBorn event for token_id, and marks the anky as minted. Public metadata endpoint at `/api/v1/anky/{id}/metadata` serves ERC1155-compliant JSON (name, description, image, attributes). Contract: `0x19a36545CC4707870ad53CaADd23B7A70642F304`. DB columns added: `gas_funded_at`, `session_cid`, `metadata_uri`, `token_id` on ankys.
 - **Social reply pipeline now has Honcho context + interaction history**: when someone tags Anky on X or Farcaster, the reply pipeline fetches their Honcho peer context (accumulated from their writing sessions) and their past interaction history before generating a reply. This gives Anky memory of who it's talking to.
 - **Unified social voice with lowercase enforcement**: `ANKY_CORE_IDENTITY` and the reply system prompt are rewritten to enforce lowercase always. All Claude-generated replies are `.to_lowercase()`'d as a safety net. All hardcoded reply strings are lowercase.
-- **Platform-aware reply generation**: `generate_anky_reply` now accepts a `platform` parameter ("x" or "farcaster") and adjusts char limits and audience context accordingly (260 for X, 320 for Farcaster).
+- **Thread-aware reply generation**: `generate_anky_reply` now instructs Claude to split long replies into "slides" separated by `---`. The `AnkyReply` enum has a new `Thread(Vec<String>)` variant. `enforce_thread_limits()` hard-splits any slide exceeding platform limits (280 chars for X, 1024 for Farcaster) at sentence/word boundaries. `x_bot::reply_thread()` and `neynar::reply_thread()` post each slide as a chained reply. Both webhook handlers (X + Farcaster) handle the `Thread` variant and also auto-split single `Text` replies that exceed limits.
+- `/you` profile page redesigned: shows user PFP, display name, username, bio (from psychological profile), stats row, and a 3-per-row Instagram-style grid of the user's completed ankys. A toggle switches to list view (1-per-row with title + reflection). New API endpoint `GET /swift/v2/you/ankys` returns the user's completed ankys with image URLs.
 - **social_peers table**: maps `(platform, platform_user_id)` to `honcho_peer_id` and optionally to a linked `user_id`. Auto-created on first interaction, tracks interaction count and timestamps. Enables cross-platform identity when the same person uses both X and Farcaster.
 - Story generation now uses the full anky.soul.md as its system prompt (`prompts/cuentacuentos_system.md`, included via `include_str!`). The prompt contains: territory detection heuristics with word-level signals, kingdom-specific story tone/pacing/metaphor-language specs, full narrator voice definition (first-person, present-tense, embodied, curious), structural constraints (no false comfort, no interpretation, no resolution of unresolved things, no spiritual jargon), and cross-territory handling.
 - Training data pipeline: every generated cuentacuentos now logs a `(writing_input, story_output, metadata)` pair to the `story_training_pairs` table, ready for future LoRA fine-tuning export. Table tracks chakra, kingdom, city, played status, and has an `exported_at` column for the 4:44 AM cron.
@@ -26,6 +29,8 @@ Last updated: 2026-03-22 (session 10)
 - **Mobile settings**: `GET/PATCH /swift/v2/settings` for cross-device preferences sync including `preferred_language`. `/me` also returns `preferredLanguage`.
 - **History images fix**: `/swift/v2/cuentacuentos/history` now includes image URLs (was missing, caused "no images" bug in iOS app).
 - **Recording identity**: `list_recordings` and `get_voice` now return recorder `userId` and `username`.
+- **Reflection delivery is now triple-redundant**: (1) If Claude streaming fails during SSE, Ollama generates a fallback reflection in the same response. (2) A watchdog runs every 5 minutes and recovers any `complete` ankys with missing reflections (tries Claude first, Ollama fallback). (3) Frontend retries the SSE connection up to 3 times with backoff before giving up.
+- **Post-writing UX fixed**: SSE "done" event was delayed because a cloned mpsc sender kept the channel alive after Claude finished. Fixed by dropping the fallback sender immediately on success. Added animated progress labels ("anky is sitting with what you wrote...", "anky is finding the right words...") while waiting for first chunk. Added console.log throughout the entire post-writing JS flow for debugging. SSE keep-alive pings are now filtered out so they don't pollute reflection text.
 - The mobile seed-auth cryptography has direct unit coverage: `verify_seed_auth_signature()` is tested against a generated secp256k1 keypair.
 
 ## What was removed (2026-03-19)
@@ -100,6 +105,9 @@ All sadhana, meditation, breathwork, and facilitator code has been deleted from 
 - `GET /swift/v2/next-prompt` | auth: bearer | Precomputed personalized writing prompt (defaults to generic if none yet).
 - `GET /swift/v2/you` | auth: bearer | Full user profile with Honcho peer context for the You tab.
 - `POST /swift/v2/device-token` | auth: bearer | Register APNs device token for silent push.
+- `POST /swift/v2/writing/{sessionId}/prepare-mint` | auth: bearer | EIP-712 sign + gas fund for birthSoul mint.
+- `POST /swift/v2/writing/{sessionId}/confirm-mint` | auth: bearer | Verify mint tx receipt, parse token ID.
+- `GET /api/v1/anky/{id}/metadata` | public | ERC1155-compliant metadata JSON.
 - `POST /swift/v1/admin/premium` | auth: bearer (not admin-scoped) | Toggle premium.
 
 ## Retry and background workers

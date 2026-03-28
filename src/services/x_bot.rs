@@ -130,6 +130,36 @@ pub async fn reply_to_tweet(
     Ok(data.data.id)
 }
 
+/// Post a thread of tweets, each replying to the previous one.
+/// Returns the IDs of all posted tweets.
+pub async fn reply_thread(
+    api_key: &str,
+    api_secret: &str,
+    access_token: &str,
+    access_secret: &str,
+    initial_tweet_id: &str,
+    slides: &[String],
+) -> Result<Vec<String>> {
+    let mut ids = Vec::new();
+    let mut parent_id = initial_tweet_id.to_string();
+
+    for slide in slides {
+        let id = reply_to_tweet(
+            api_key,
+            api_secret,
+            access_token,
+            access_secret,
+            &parent_id,
+            slide,
+        )
+        .await?;
+        parent_id = id.clone();
+        ids.push(id);
+    }
+
+    Ok(ids)
+}
+
 /// Like a tweet via the v2 API (used to acknowledge a mention is being processed).
 pub async fn like_tweet(
     api_key: &str,

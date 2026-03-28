@@ -17,6 +17,7 @@ pub struct WriteRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteResponse {
     pub response: String,
     pub duration: f64,
@@ -31,6 +32,27 @@ pub struct WriteResponse {
     pub flow_score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Anky's personalized response to the writing (proves it read it)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anky_response: Option<String>,
+    /// Suggested prompt for next session
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_prompt: Option<String>,
+    /// Mood of the response: reflective, celebratory, gentle, curious, deep
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mood: Option<String>,
+    /// Model used to generate the response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Provider: "ollama", "claude", etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Time in milliseconds the LLM call took
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_ms: Option<u64>,
+    /// Total tokens used (input + output) if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_used: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

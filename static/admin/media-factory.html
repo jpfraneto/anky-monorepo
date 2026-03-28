@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anky — Media Factory</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e4dc;
+    --muted: #6b6880;
+    --anky: #4a9eff;
+    --anky-dim: #1a3a5c;
+    --gold: #c9a84c;
+    --danger: #ff4a6b;
+    --success: #4aff9e;
+    --purple: #9b59b6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  header {
+    padding: 2rem 3rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--anky);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .main {
+    display: flex;
+    gap: 2rem;
+    flex: 1;
+    padding: 2rem 3rem;
+    max-width: 1800px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Left panel — controls */
+  .controls {
+    width: 420px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+  }
+
+  .panel h2 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .panel h2.video-label { color: var(--anky); }
+  .panel h2.image-label { color: var(--purple); }
+  .panel h2.flux-label { color: var(--gold); }
+
+  label {
+    display: block;
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+    letter-spacing: 0.05em;
+  }
+
+  textarea, input[type="text"], input[type="url"], input[type="number"], select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1rem;
+    padding: 0.6rem 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 0.8rem;
+  }
+
+  textarea:focus, input:focus, select:focus {
+    border-color: var(--anky);
+  }
+
+  textarea { resize: vertical; min-height: 80px; }
+
+  .duration-row {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .duration-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--anky);
+  }
+
+  .duration-row .dur-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--gold);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  .aspect-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .aspect-btn {
+    flex: 1;
+    padding: 0.4rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .aspect-btn.active {
+    border-color: var(--anky);
+    color: var(--anky);
+    background: var(--anky-dim);
+  }
+
+  .aspect-btn:hover { border-color: var(--anky); }
+
+  .image-upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    margin-bottom: 0.8rem;
+    position: relative;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .image-upload-area:hover { border-color: var(--anky); }
+  .image-upload-area.has-image { border-style: solid; border-color: var(--gold); }
+
+  .image-upload-area img {
+    max-width: 100%;
+    max-height: 150px;
+    border-radius: 4px;
+  }
+
+  .image-upload-area .hint {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .image-upload-area .clear-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    line-height: 20px;
+    text-align: center;
+  }
+
+  input[type="file"] { display: none; }
+
+  .btn {
+    width: 100%;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-video {
+    background: var(--anky-dim);
+    color: var(--anky);
+    border-color: var(--anky);
+  }
+
+  .btn-video:hover { background: var(--anky); color: var(--bg); }
+
+  .btn-image {
+    background: rgba(155, 89, 182, 0.15);
+    color: var(--purple);
+    border-color: var(--purple);
+  }
+
+  .btn-image:hover { background: var(--purple); color: var(--bg); }
+
+  .btn-flux {
+    background: rgba(201, 168, 76, 0.15);
+    color: var(--gold);
+    border-color: var(--gold);
+  }
+
+  .btn-flux:hover { background: var(--gold); color: var(--bg); }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Right panel — results feed */
+  .results {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-header {
+    padding: 0.8rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-type {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+  }
+
+  .result-type.video { background: var(--anky-dim); color: var(--anky); }
+  .result-type.image { background: rgba(155, 89, 182, 0.2); color: var(--purple); }
+
+  .result-status {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .result-status.pending { color: var(--gold); }
+  .result-status.complete { color: var(--success); }
+  .result-status.error { color: var(--danger); }
+
+  .result-body {
+    padding: 1rem;
+  }
+
+  .result-prompt {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 0.8rem;
+    font-style: italic;
+    white-space: pre-wrap;
+  }
+
+  .result-media {
+    width: 100%;
+    border-radius: 4px;
+    object-fit: contain;
+    background: var(--bg);
+  }
+
+  .result-media-loading {
+    width: 100%;
+    height: 200px;
+    background: var(--surface2);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--anky);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 0.5rem;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-meta {
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    display: flex;
+    gap: 1rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 1.1rem;
+  }
+
+  .or-divider {
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 0.8rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">anky</div>
+  <div class="subtitle">media factory</div>
+</header>
+
+<div class="main">
+  <!-- Controls -->
+  <div class="controls">
+
+    <!-- Video Generation -->
+    <div class="panel">
+      <h2 class="video-label">generate video (grok)</h2>
+
+      <label>prompt</label>
+      <textarea id="vid-prompt" placeholder="Describe the motion, camera movement, and action..."></textarea>
+
+      <label>source image (optional)</label>
+      <div class="image-upload-area" id="vid-upload-area" onclick="document.getElementById('vid-file').click()">
+        <span class="hint">click or drag image here</span>
+      </div>
+      <input type="file" id="vid-file" accept="image/*">
+
+      <div class="or-divider">— or paste image URL —</div>
+      <input type="url" id="vid-image-url" placeholder="https://...">
+
+      <label>duration</label>
+      <div class="duration-row">
+        <input type="range" id="vid-duration" min="1" max="15" value="5">
+        <span class="dur-val" id="vid-dur-label">5s</span>
+      </div>
+
+      <label>aspect ratio</label>
+      <div class="aspect-row" id="vid-aspect">
+        <button class="aspect-btn" data-val="9:16">9:16</button>
+        <button class="aspect-btn active" data-val="16:9">16:9</button>
+        <button class="aspect-btn" data-val="1:1">1:1</button>
+      </div>
+
+      <button class="btn btn-video" id="btn-gen-video" onclick="generateVideo()">generate video</button>
+    </div>
+
+    <!-- Image Generation -->
+    <div class="panel">
+      <h2 class="image-label">generate image (gemini)</h2>
+
+      <label>prompt</label>
+      <textarea id="img-prompt" placeholder="Describe the image you want to generate..."></textarea>
+
+      <label>reference image (optional)</label>
+      <div class="image-upload-area" id="img-upload-area" onclick="document.getElementById('img-file').click()">
+        <span class="hint">click or drag reference image here</span>
+      </div>
+      <input type="file" id="img-file" accept="image/*">
+
+      <label>aspect ratio</label>
+      <div class="aspect-row" id="img-aspect">
+        <button class="aspect-btn active" data-val="1:1">1:1</button>
+        <button class="aspect-btn" data-val="16:9">16:9</button>
+        <button class="aspect-btn" data-val="9:16">9:16</button>
+      </div>
+
+      <button class="btn btn-image" id="btn-gen-image" onclick="generateImage()">generate image</button>
+    </div>
+
+    <!-- Flux Image Generation -->
+    <div class="panel">
+      <h2 class="flux-label">generate image (flux — local gpu)</h2>
+
+      <label>prompt</label>
+      <textarea id="flux-prompt" placeholder="Describe the image... uses Flux + Anky LoRA on local GPU"></textarea>
+
+      <button class="btn btn-flux" id="btn-gen-flux" onclick="generateFlux()">generate with flux</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+    <div class="empty-state">Your generated media will appear here, stacked as you create them.</div>
+  </div>
+</div>
+
+<script>
+// State
+let vidUploadB64 = null;
+let imgUploadB64 = null;
+let vidAspect = '16:9';
+let imgAspect = '1:1';
+let resultCount = 0;
+
+// Duration slider
+const durSlider = document.getElementById('vid-duration');
+const durLabel = document.getElementById('vid-dur-label');
+durSlider.addEventListener('input', () => { durLabel.textContent = durSlider.value + 's'; });
+
+// Aspect ratio buttons
+document.querySelectorAll('#vid-aspect .aspect-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#vid-aspect .aspect-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    vidAspect = btn.dataset.val;
+  });
+});
+document.querySelectorAll('#img-aspect .aspect-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#img-aspect .aspect-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    imgAspect = btn.dataset.val;
+  });
+});
+
+// File upload handlers
+function setupUpload(fileInputId, areaId, setB64) {
+  const fileInput = document.getElementById(fileInputId);
+  const area = document.getElementById(areaId);
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    readFileAsB64(file, area, setB64);
+  });
+
+  area.addEventListener('dragover', (e) => { e.preventDefault(); area.style.borderColor = 'var(--anky)'; });
+  area.addEventListener('dragleave', () => { area.style.borderColor = ''; });
+  area.addEventListener('drop', (e) => {
+    e.preventDefault();
+    area.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) readFileAsB64(file, area, setB64);
+  });
+}
+
+function readFileAsB64(file, area, setB64) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const b64 = reader.result.split(',')[1];
+    setB64(b64);
+    area.classList.add('has-image');
+    area.innerHTML = `<img src="${reader.result}"><button class="clear-btn" onclick="event.stopPropagation(); clearUpload('${area.id}')">×</button>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearUpload(areaId) {
+  const area = document.getElementById(areaId);
+  area.classList.remove('has-image');
+  area.innerHTML = '<span class="hint">click or drag image here</span>';
+  if (areaId === 'vid-upload-area') { vidUploadB64 = null; document.getElementById('vid-file').value = ''; }
+  else { imgUploadB64 = null; document.getElementById('img-file').value = ''; }
+}
+
+setupUpload('vid-file', 'vid-upload-area', (b64) => { vidUploadB64 = b64; });
+setupUpload('img-file', 'img-upload-area', (b64) => { imgUploadB64 = b64; });
+
+// Load existing media on page load
+async function loadExistingMedia() {
+  try {
+    const resp = await fetch('/api/v1/media-factory/list');
+    const data = await resp.json();
+    if (!data.items || data.items.length === 0) return;
+    clearEmpty();
+    const results = document.getElementById('results');
+    for (const item of data.items) {
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      const mediaHtml = item.type === 'video'
+        ? `<video class="result-media" controls loop muted><source src="${item.url}" type="video/mp4"></video>`
+        : `<img class="result-media" src="${item.url}">`;
+      const ts = item.created ? new Date(item.created * 1000).toLocaleString() : '';
+      card.innerHTML = `
+        <div class="result-header">
+          <span class="result-type ${item.type}">${item.type}</span>
+          <span class="result-status complete">complete</span>
+        </div>
+        <div class="result-body">
+          ${mediaHtml}
+        </div>
+        <div class="result-meta">
+          <span>${item.type === 'video' ? 'grok' : 'gemini'}</span>
+          <span>${ts}</span>
+          <span>${item.id}</span>
+        </div>
+      `;
+      results.appendChild(card);
+    }
+  } catch (e) {
+    console.error('Failed to load existing media:', e);
+  }
+}
+loadExistingMedia();
+
+// Clear empty state
+function clearEmpty() {
+  const el = document.querySelector('.empty-state');
+  if (el) el.remove();
+}
+
+// Add result card
+function addResultCard(type, prompt) {
+  clearEmpty();
+  resultCount++;
+  const id = 'result-' + resultCount;
+  const results = document.getElementById('results');
+  const card = document.createElement('div');
+  card.className = 'result-card';
+  card.id = id;
+  card.innerHTML = `
+    <div class="result-header">
+      <span class="result-type ${type}">${type}</span>
+      <span class="result-status pending" id="${id}-status"><span class="spinner"></span>generating...</span>
+    </div>
+    <div class="result-body">
+      <div class="result-prompt">${escapeHtml(prompt)}</div>
+      <div class="result-media-loading" id="${id}-media"><span class="spinner"></span>Waiting for ${type === 'video' ? 'Grok' : 'Gemini'}...</div>
+    </div>
+  `;
+  results.insertBefore(card, results.firstChild);
+  return id;
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function setCardComplete(cardId, mediaHtml, meta) {
+  const status = document.getElementById(cardId + '-status');
+  status.className = 'result-status complete';
+  status.textContent = 'complete';
+  const media = document.getElementById(cardId + '-media');
+  media.outerHTML = mediaHtml;
+  if (meta) {
+    const card = document.getElementById(cardId);
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'result-meta';
+    metaDiv.innerHTML = meta;
+    card.appendChild(metaDiv);
+  }
+}
+
+function setCardError(cardId, error) {
+  const status = document.getElementById(cardId + '-status');
+  status.className = 'result-status error';
+  status.textContent = 'error';
+  const media = document.getElementById(cardId + '-media');
+  media.innerHTML = error;
+  media.style.color = 'var(--danger)';
+}
+
+// Generate Video
+async function generateVideo() {
+  const prompt = document.getElementById('vid-prompt').value.trim();
+  if (!prompt) return alert('Enter a video prompt');
+
+  const btn = document.getElementById('btn-gen-video');
+  btn.disabled = true;
+
+  const cardId = addResultCard('video', prompt);
+  const duration = parseInt(durSlider.value);
+  const imageUrl = document.getElementById('vid-image-url').value.trim() || null;
+
+  try {
+    const body = {
+      prompt,
+      duration,
+      aspect_ratio: vidAspect,
+    };
+    if (vidUploadB64) body.image_base64 = vidUploadB64;
+    else if (imageUrl) body.image_url = imageUrl;
+
+    const resp = await fetch('/api/v1/media-factory/video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Video generation failed');
+
+    const requestId = data.request_id;
+    document.getElementById(cardId + '-status').innerHTML = '<span class="spinner"></span>polling ' + requestId.slice(0, 8) + '...';
+
+    // Poll for completion
+    await pollVideo(cardId, requestId, duration);
+  } catch (e) {
+    setCardError(cardId, e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function pollVideo(cardId, requestId, duration) {
+  const maxAttempts = 120; // 10 minutes max
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    try {
+      const resp = await fetch(`/api/v1/media-factory/video/${requestId}`);
+      const data = await resp.json();
+
+      if (data.status === 'complete' && data.video_url) {
+        setCardComplete(cardId,
+          `<video class="result-media" controls autoplay loop muted><source src="${data.video_url}" type="video/mp4"></video>`,
+          `<span>${duration}s</span><span>grok</span>`
+        );
+        return;
+      } else if (data.status === 'expired' || data.status === 'failed') {
+        throw new Error('Video generation ' + data.status);
+      }
+
+      document.getElementById(cardId + '-status').innerHTML =
+        `<span class="spinner"></span>${data.status} (${i + 1})...`;
+    } catch (e) {
+      if (e.message.includes('expired') || e.message.includes('failed')) {
+        setCardError(cardId, e.message);
+        return;
+      }
+    }
+  }
+  setCardError(cardId, 'Timed out waiting for video');
+}
+
+// Generate Image
+async function generateImage() {
+  const prompt = document.getElementById('img-prompt').value.trim();
+  if (!prompt) return alert('Enter an image prompt');
+
+  const btn = document.getElementById('btn-gen-image');
+  btn.disabled = true;
+
+  const cardId = addResultCard('image', prompt);
+
+  try {
+    const body = {
+      prompt,
+      aspect_ratio: imgAspect,
+    };
+    if (imgUploadB64) body.reference_base64 = imgUploadB64;
+
+    const resp = await fetch('/api/v1/media-factory/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Image generation failed');
+
+    setCardComplete(cardId,
+      `<img class="result-media" src="${data.image_url}">`,
+      `<span>${imgAspect}</span><span>gemini</span><span>${data.image_id}</span>`
+    );
+  } catch (e) {
+    setCardError(cardId, e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Generate Flux Image
+async function generateFlux() {
+  const prompt = document.getElementById('flux-prompt').value.trim();
+  if (!prompt) return alert('Enter a prompt for Flux');
+
+  const btn = document.getElementById('btn-gen-flux');
+  btn.disabled = true;
+
+  const cardId = addResultCard('image', prompt);
+  document.getElementById(cardId + '-media').innerHTML = '<span class="spinner"></span>Waiting for Flux (local GPU)...';
+
+  try {
+    const resp = await fetch('/api/v1/media-factory/flux', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Flux generation failed');
+
+    setCardComplete(cardId,
+      `<img class="result-media" src="${data.image_url}">`,
+      `<span>1:1</span><span>flux (local)</span><span>${data.image_id}</span>`
+    );
+  } catch (e) {
+    setCardError(cardId, e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

@@ -2,6 +2,52 @@
 {% block title %}anky — historias{% endblock %}
 {% block head %}
 <style>
+  /* Hide bottom nav on stories */
+  .mobile-nav { display: none !important; }
+
+  /* Back to chat button */
+  .stories-back {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 50;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .stories-back:hover {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.8);
+  }
+
+  /* Tap zones on story player */
+  .story-tap-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 10000;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .story-tap-left {
+    left: 0;
+    width: 50%;
+  }
+  .story-tap-right {
+    right: 0;
+    width: 50%;
+  }
+
   .story-player-image {
     transition: opacity 0.4s ease;
   }
@@ -81,6 +127,7 @@
 </style>
 {% endblock %}
 {% block content %}
+<a class="stories-back" href="/" title="back to chat">&#8594;</a>
 <div class="stories-page">
   <header class="stories-header">
     <h1>historias</h1>
@@ -93,8 +140,9 @@
   <!-- Story player overlay -->
   <div class="story-player" id="story-player" style="display:none;">
     <div class="story-player-image" id="story-player-image">
-      <!-- Preloaded next image for smooth transitions -->
       <div class="story-player-image" id="story-player-image-next" style="position:absolute;top:0;left:0;right:0;bottom:0;opacity:0;transition:opacity 0.4s ease;background-size:cover;background-position:center;"></div>
+      <div class="story-tap-zone story-tap-left" id="storyTapLeft"></div>
+      <div class="story-tap-zone story-tap-right" id="storyTapRight"></div>
     </div>
     <div class="story-player-dots" id="story-player-dots"></div>
     <div class="story-player-gradient"></div>
@@ -460,6 +508,14 @@
     document.getElementById('story-player').style.display = 'none';
     document.body.style.overflow = '';
   };
+
+  // Tap zones: right half advances, left half goes back
+  document.getElementById('storyTapRight').addEventListener('click', function() {
+    document.getElementById('story-player-next').click();
+  });
+  document.getElementById('storyTapLeft').addEventListener('click', function() {
+    document.getElementById('story-player-prev').click();
+  });
 
   // Swipe support
   (function() {

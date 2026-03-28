@@ -903,15 +903,11 @@ async fn finalize_non_anky(state: &AppState, session_id: &str) -> Option<String>
     )
     .await;
 
-    // Get quick feedback from Ollama
+    // Get quick feedback from Haiku
     let prompt = crate::services::ollama::quick_feedback_prompt(&full_text, elapsed);
-    let feedback = crate::services::ollama::call_ollama(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
-        &prompt,
-    )
-    .await
-    .ok();
+    let feedback = crate::services::claude::call_haiku(&state.config.anthropic_api_key, &prompt)
+        .await
+        .ok();
 
     // Save feedback
     if let Some(ref fb) = feedback {
@@ -999,19 +995,14 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
         )?;
     }
 
-    // Background: deep Ollama reflection
+    // Background: deep Haiku reflection
     let state_bg = state.clone();
     let sid = session.session_id.clone();
     let text_bg = full_text.clone();
+    let api_key_bg = state.config.anthropic_api_key.clone();
     tokio::spawn(async move {
         let prompt = crate::services::ollama::deep_reflection_prompt(&text_bg);
-        match crate::services::ollama::call_ollama(
-            &state_bg.config.ollama_base_url,
-            &state_bg.config.ollama_model,
-            &prompt,
-        )
-        .await
-        {
+        match crate::services::claude::call_haiku(&api_key_bg, &prompt).await {
             Ok(r) => {
                 let db = state_bg.db.lock().await;
                 let _ = db.execute(
@@ -1019,7 +1010,7 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
                     rusqlite::params![&r, &sid],
                 );
             }
-            Err(e) => tracing::error!("Ollama bg reflection error: {}", e),
+            Err(e) => tracing::error!("Haiku bg reflection error: {}", e),
         }
     });
 

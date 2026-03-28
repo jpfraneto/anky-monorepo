@@ -96,25 +96,25 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 1: Generate image prompt (local Qwen) — non-fatal, fall back to raw text
-    state.emit_log("INFO", "qwen", "Generating image prompt...");
-    let image_prompt = match crate::services::ollama::generate_image_prompt(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
+    // Step 1: Generate image prompt (Haiku) — non-fatal, fall back to raw text
+    state.emit_log("INFO", "haiku", "Generating image prompt...");
+    let image_prompt = match crate::services::claude::call_haiku_with_system(
+        api_key,
+        crate::services::ollama::IMAGE_PROMPT_SYSTEM,
         writing_text,
     )
     .await
     {
         Ok(p) => {
-            state.emit_log("INFO", "qwen", "Image prompt ready");
+            state.emit_log("INFO", "haiku", "Image prompt ready");
             p
         }
         Err(e) => {
             state.emit_log(
                 "WARN",
-                "qwen",
+                "haiku",
                 &format!(
-                    "Ollama unavailable ({}), using raw writing text as prompt",
+                    "Haiku unavailable ({}), using raw writing text as prompt",
                     e
                 ),
             );
@@ -277,18 +277,15 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 5: Format writing text (Ollama — local, non-blocking)
+    // Step 5: Format writing text (Haiku — non-blocking)
     {
         let fmt_state = state.clone();
-        let fmt_ollama_url = state.config.ollama_base_url.clone();
-        let fmt_ollama_model = state.config.ollama_model.clone();
+        let fmt_api_key = state.config.anthropic_api_key.clone();
         let fmt_anky_id = anky_id.to_string();
         let fmt_text = writing_text.to_string();
         tokio::spawn(async move {
             let prompt = crate::services::ollama::format_writing_prompt(&fmt_text);
-            match crate::services::ollama::call_ollama(&fmt_ollama_url, &fmt_ollama_model, &prompt)
-                .await
-            {
+            match crate::services::claude::call_haiku(&fmt_api_key, &prompt).await {
                 Ok(formatted) => {
                     let db = fmt_state.db.lock().await;
                     let _ = db.execute(
@@ -346,6 +343,16 @@ pub async fn generate_image_only(
     text: &str,
     pre_prompt: Option<&str>,
 ) -> Result<()> {
+    generate_image_only_with_aspect(state, anky_id, text, pre_prompt, "1:1").await
+}
+
+pub async fn generate_image_only_with_aspect(
+    state: &AppState,
+    anky_id: &str,
+    text: &str,
+    pre_prompt: Option<&str>,
+    aspect_ratio: &str,
+) -> Result<()> {
     let api_key = &state.config.anthropic_api_key;
     let gemini_key = &state.config.gemini_api_key;
 
@@ -369,14 +376,14 @@ pub async fn generate_image_only(
         state.emit_log("INFO", "qwen", "Using pre-enhanced image prompt");
         prompt.to_string()
     } else {
-        state.emit_log("INFO", "qwen", "Generating image prompt from text...");
-        let p = crate::services::ollama::generate_image_prompt(
-            &state.config.ollama_base_url,
-            &state.config.ollama_model,
+        state.emit_log("INFO", "haiku", "Generating image prompt from text...");
+        let p = crate::services::claude::call_haiku_with_system(
+            api_key,
+            crate::services::ollama::IMAGE_PROMPT_SYSTEM,
             text,
         )
         .await?;
-        state.emit_log("INFO", "qwen", "Image prompt generated");
+        state.emit_log("INFO", "haiku", "Image prompt generated");
         p
     };
 
@@ -385,9 +392,16 @@ pub async fn generate_image_only(
     let references = gemini::load_references(std::path::Path::new("src/public"));
     let image_result = if pre_prompt.is_some() {
         // Paid direct prompts should be forwarded to Gemini exactly as provided.
-        gemini::generate_image_exact(gemini_key, &image_prompt, &references).await?
+        gemini::generate_image_exact_with_aspect(
+            gemini_key,
+            &image_prompt,
+            &references,
+            aspect_ratio,
+        )
+        .await?
     } else {
-        gemini::generate_image(gemini_key, &image_prompt, &references).await?
+        gemini::generate_image_with_aspect(gemini_key, &image_prompt, &references, aspect_ratio)
+            .await?
     };
 
     let image_path = gemini::save_image(&image_result.base64, anky_id)?;
@@ -511,7 +525,12 @@ pub async fn generate_cuentacuentos_images(cuentacuentos_id: &str, state: &AppSt
 /// 1. Claude: text → image prompt
 /// 2. ComfyUI: prompt → Flux image
 /// 3. Save image
-pub async fn generate_image_only_flux(state: &AppState, anky_id: &str, text: &str) -> Result<()> {
+pub async fn generate_image_only_flux(
+    state: &AppState,
+    anky_id: &str,
+    text: &str,
+    aspect_ratio: &str,
+) -> Result<()> {
     state.emit_log(
         "INFO",
         "flux",
@@ -522,12 +541,20 @@ pub async fn generate_image_only_flux(state: &AppState, anky_id: &str, text: &st
     let image_prompt = text.to_string();
 
     // Step 1: Generate image via ComfyUI (Flux.1-dev + anky LoRA)
+    let (w, h) = match aspect_ratio {
+        "16:9" => (1344, 768),
+        "9:16" => (768, 1344),
+        _ => (1024, 1024), // 1:1 default
+    };
     state.emit_log(
         "INFO",
         "flux",
-        "Sending to ComfyUI (Flux.1-dev + anky LoRA)...",
+        &format!(
+            "Sending to ComfyUI (Flux.1-dev + anky LoRA) at {}x{}...",
+            w, h
+        ),
     );
-    let image_bytes = comfyui::generate_image(&image_prompt).await?;
+    let image_bytes = comfyui::generate_image_sized(&image_prompt, w, h).await?;
     let image_path = comfyui::save_image(&image_bytes, anky_id)?;
     state.emit_log("INFO", "flux", &format!("Flux image saved: {}", image_path));
 

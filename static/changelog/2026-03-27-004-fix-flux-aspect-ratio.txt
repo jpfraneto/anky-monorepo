@@ -1,0 +1,1 @@
+something important! the /generate endpoint is not taking into account the aspect ratios that im choosing for the images. at leaast on the flux oines. please fix. i want to see the ones that are here

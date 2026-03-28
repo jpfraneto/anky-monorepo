@@ -253,9 +253,8 @@ Recent log entries ({} total):
         log_digest
     );
 
-    let summary = match crate::services::ollama::call_ollama(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
+    let summary = match crate::services::claude::call_haiku(
+        &state.config.anthropic_api_key,
         &prompt,
     )
     .await

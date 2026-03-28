@@ -7,6 +7,334 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-28-openrouter-fallback-session-summary">
+    <div class="changelog-date">2026-03-28</div>
+    <h2 class="changelog-title">OpenRouter fallback + session summary on reflection failure</h2>
+    <p class="changelog-desc">When Anthropic API credits are depleted, reflections now fall back to OpenRouter (Haiku via third-party). If all providers fail, users see a beautiful session summary with their writing stats, full text, and a retry button — instead of a dead-end error message. Also fixed pre-existing compilation errors (dead code, missing config field, stale import).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-28-002-openrouter-fallback-session-summary.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-28-openrouter-fallback-session-summary">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-28-mirror-mint-nft">
+    <div class="changelog-date">2026-03-28</div>
+    <h2 class="changelog-title">Mirror mint NFT + contract + UI redesign</h2>
+    <p class="changelog-desc">AnkyMirrors.sol ERC-721: 4444 supply, 1 USDC, 1 per FID, EIP-712 backend signature. Miniapp landing restyled with gold Cinzel buttons matching ankycoin.com website. Mint gate before share. Backend signing endpoint + ERC-721 metadata API.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-28-001-mirror-mint-nft-contract.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-28-mirror-mint-nft">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-28-anky-page-redesign">
+    <div class="changelog-date">2026-03-28</div>
+    <h2 class="changelog-title">anky page redesign: three sections + ANKY MODE</h2>
+    <p class="changelog-desc">Anky detail page now flows as three sections: "who the world sees" (image), "your anky" (reflection), and "talk with this anky" (inline conversation). Chat open to all logged-in users, not just owners. Anky's replies nudge toward writing. If you type continuously for 30 seconds in the chat, ANKY MODE activates — fullscreen writing with idle bar, timer, and chakra. Text carries over.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-28-001-anky-page-redesign-anky-mode.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-28-anky-page-redesign">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-miniapp-profile-page">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">miniapp profile: farcaster identity + app download</h2>
+    <p class="changelog-desc">When visiting /you inside a Farcaster miniapp, users now see their Farcaster PFP, display name, and username instead of the login prompt. Plus a download button for the iOS app and a back-to-writing link.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-014-miniapp-profile-page.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-miniapp-profile-page">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-two-line-farcaster-replies">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">two-line farcaster replies + write invitations</h2>
+    <p class="changelog-desc">Anky now replies with exactly two lines: an observation and a question. No more verbose threads. Occasionally invites users to write with a personalized prompt link.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-013-two-line-farcaster-replies.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-two-line-farcaster-replies">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-forge-first-mobile">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">ankycoin.com: forge first, latest image, mobile optimization</h2>
+    <p class="changelog-desc">The Forge is now the first section after the hero. Latest generated Anky image loads on page open with its prompt displayed below. Supply corrected to 100M. Community nav replaced with The Forge. Full mobile optimization: responsive nav, stacked CTAs, touch-friendly controls, smaller coin ring.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-011-forge-first-mobile-optimize.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-forge-first-mobile">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-ankycoin-image-generator">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">ankycoin.com: image generator, OG metadata, contract address</h2>
+    <p class="changelog-desc">Added "Summon Your Anky" section to ankycoin.com — users type a prompt, pick an aspect ratio (1:1, 9:16, 16:9), and generate an Anky image via the Flux pipeline. New /api/v1/ankycoin/generate endpoint. OG and Twitter Card metadata now use a real Anky image. $ANKY Solana CA displayed with click-to-copy.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-010-ankycoin-image-generator.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-ankycoin-image-generator">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-ankycoin-website-landing">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">ankycoin.com: full website for non-miniapp visitors</h2>
+    <p class="changelog-desc">ankycoin.com now detects whether you're inside a Farcaster miniapp or a regular browser. Non-miniapp visitors see a full scrollable landing page with star field, lore, pillars, coin section, and manifesto — using the existing Anky images (desktop + mobile) instead of the old SVG character. Miniapp visitors still get the mirror flow.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-009-ankycoin-website-landing.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-ankycoin-website-landing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-evolved-mirror-frame-image">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Evolved mirror pipeline + dynamic frame image</h2>
+    <p class="changelog-desc">Claude now generates 4 new visual descriptors per user (held_object, background_scene, clothing_detail, symbolic_marking) so each Anky image is genuinely unique to the person. /image.png on ankycoin.com dynamically serves the latest mirror with PFP overlay composited server-side. Farcaster frame auto-updates.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-014-evolved-mirror-frame-image.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-evolved-mirror-frame-image">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-mirror-cache-chat">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Mirror cache + chat with your anky</h2>
+    <p class="changelog-desc">Repeat mirror lookups now return cached results instantly (21ms vs 35s). New chat endpoint lets you talk to any mirror's anky — it speaks from the mirror context with multi-turn memory. Regenerate button to force a fresh mirror. Chat available on both result and gallery detail views.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-013-mirror-cache-chat.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-mirror-cache-chat">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-mirror-gallery-fid-lookup">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Mirror gallery + FID lookup</h2>
+    <p class="changelog-desc">FID input on landing to mirror any Farcaster user. Gallery view showing all generated mirrors with PFP overlays, click-through to detail. Mirrors now persist to SQLite + disk images.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-012-mirror-gallery-fid-lookup.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-mirror-gallery-fid-lookup">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-mirror-endpoint-ankycoin-miniapp">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Mirror endpoint + ankycoin miniapp evolution</h2>
+    <p class="changelog-desc">New GET /api/mirror?fid= endpoint: fetches Farcaster profile + casts from Neynar, analyzes PFP with Claude vision, generates a "public mirror" portrait via Claude Sonnet, and produces a unique Anky image via ComfyUI. The ankycoin.com miniapp now resolves FID from Farcaster SDK context, shows animated loading states, displays a two-panel result (mirror text + anky image), and includes a share button. Dev mode via ?dev=true.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-008-mirror-endpoint-ankycoin-miniapp.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-mirror-endpoint-ankycoin-miniapp">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-ankycoin-landing">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">ankycoin.com landing page</h2>
+    <p class="changelog-desc">Serve ankycoin.com from the same Rust server via host-based routing. Full-bleed background image (desktop/mobile variants), 60% black overlay, centered tagline, and CTA button. Cloudflare tunnel ingress updated for the new domain.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-007-ankycoin-landing-page.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-ankycoin-landing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-history-prompts-login">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Chat history, writing prompts, and email login page</h2>
+    <p class="changelog-desc">Landing page now loads conversation history from /api/chat-history — returning users see their full timeline with session dividers, writing previews, reflections, and follow-up messages. First-time users see a random prompt from a pool of 8. The writing prompt in the textarea matches what Anky shows. Login page (/login) completely replaced: seed phrase removed, now shows clean email + Apple login via Privy.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-006-history-prompts-login-fix.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-history-prompts-login">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-chat-first-landing">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Chat-first landing, Privy email login on profile</h2>
+    <p class="changelog-desc">Removed the old landing page copy entirely. anky.app now loads directly into a chat interface where Anky introduces itself and a "write now" button enters 8-minute writing mode. Navbar hides during writing, reappears after send. Profile page (/you) replaced seed phrase login with Privy email/Apple login. New web endpoints /api/me and /api/my-ankys use cookie auth instead of Bearer tokens — no more swift endpoints on the website.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-004-chat-first-privy-login-profile.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-chat-first-landing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-fix-flux-aspect-ratio">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Fix Flux ignoring aspect ratio selection</h2>
+    <p class="changelog-desc">The /generate endpoint was ignoring the aspect ratio picker for Flux generations, always producing 1024x1024. Now 1:1, 16:9, and 9:16 are passed through to ComfyUI with correct dimensions (1024x1024, 1344x768, 768x1344).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-004-fix-flux-aspect-ratio.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-fix-flux-aspect-ratio">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-chat-navbar-privy-login">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">WhatsApp-style chat navbar with Privy login</h2>
+    <p class="changelog-desc">Added a top navbar to the chat interface: hamburger menu links to /stories, tapping Anky's PFP opens an about modal with the landing page copy, and tapping the user PFP either navigates to /you (if logged in) or triggers Privy email/Apple login (if not). Privy SDK loads on demand from CDN. Backend passes auth state and Privy app ID to the template.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-003-chat-navbar-privy-login.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-chat-navbar-privy-login">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-chat-interface-post-writing">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Chat interface replaces static post-writing UX</h2>
+    <p class="changelog-desc">Replaced the old "user bubble + anky bubble + write again button" post-writing flow with a proper chat interface. After anky responds (quick feedback or streamed reflection), a chat input appears so the user can continue the conversation. User's writing is shown collapsed. Chat uses /api/chat (for ankys) or /api/chat-quick (for short writes) to keep talking.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-002-chat-interface-post-writing.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-chat-interface-post-writing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-27-warm-context-instant-reflection">
+    <div class="changelog-date">2026-03-27</div>
+    <h2 class="changelog-title">Pre-warm context at minute 6 + instant SSE connection</h2>
+    <p class="changelog-desc">Fixed reflection streaming getting stuck after writing. Root cause: the SSE handler blocked on DB lock (held by image pipeline) before sending any HTTP headers, so the browser's EventSource never established. Fix: SSE headers are now sent immediately (DB lookup + Claude call happen inside the stream's spawned task). Also added /api/warm-context endpoint called at minute 6 of writing to pre-build Honcho context, so reflection generation starts with zero context-fetch delay.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-27-001-fix-reflection-streaming-warm-context.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-27-warm-context-instant-reflection">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-fix-reflection-streaming">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Fix instant reflection streaming after writing</h2>
+    <p class="changelog-desc">Removed duplicate Claude API call that fired on every anky submission (one background blocking call + one SSE streaming call competing). Now only the SSE streaming call runs, so reflections start streaming instantly. Also made memory context building concurrent (local + Honcho in parallel) with a tighter 3s timeout instead of two sequential 5s timeouts.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-004-fix-reflection-streaming.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-fix-reflection-streaming">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-ollama-to-cloud">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Kill Ollama, go full cloud — Claude Haiku everywhere</h2>
+    <p class="changelog-desc">Replaced every Ollama/qwen3.5 call with Claude Haiku (cloud). All ~20 call sites: quick feedback, deep reflections, suggested replies, image prompt gen, writing formatting, mention classification, prompt classification, cuentacuentos stories + translations, memory extraction, psychological profiles, chat conversations, system summaries, recovery watchdog. Dropped local embeddings entirely — Honcho handles semantic context. Local GPUs now dedicated exclusively to Flux image generation. Net result: faster responses (~200ms vs 30-120s), no more GPU contention, simpler architecture.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-004-ollama-to-cloud.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-ollama-to-cloud">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-flux-lab-batch">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Flux Lab — batch image generation from prompts</h2>
+    <p class="changelog-desc">New /flux-lab interface for batch-generating images via local ComfyUI Flux + Anky LoRA. Paste an array of prompts (one per line), hit generate, and images are produced sequentially and stored in flux/experiment-N folders. Left sidebar lets you browse all past experiments and view their image grids with a click-to-zoom lightbox.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-003-flux-lab-batch-image-gen.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-flux-lab-batch">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-flux-media-factory">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Flux image generation in media factory</h2>
+    <p class="changelog-desc">Added a "generate image (flux — local gpu)" panel to the media factory. Uses the local ComfyUI Flux + Anky LoRA pipeline on poiesis GPUs — free, unlimited, no API key needed.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-003-flux-media-factory.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-flux-media-factory">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-landing-inline-writing">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Landing page melts into writing mode</h2>
+    <p class="changelog-desc">Added subtle "start writing. do it for 8 minutes." below the ANKY mark on the landing page. Typing or tapping anywhere on the page dissolves the landing content with a melt animation and reveals the full writing interface inline — same session logic as /write, no redirect needed. First-time visitors can go straight to writing.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-002-landing-inline-writing.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-landing-inline-writing">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-26-fix-post-writing-streaming">
+    <div class="changelog-date">2026-03-26</div>
+    <h2 class="changelog-title">Fix post-writing reflection streaming + add console logs</h2>
+    <p class="changelog-desc">Fixed critical bug where the SSE "done" event was delayed because a cloned sender kept the channel alive after Claude finished streaming. Added animated progress labels ("anky is sitting with what you wrote...", "anky is finding the right words...") so the user feels movement while waiting. Added extensive console.log throughout the post-writing flow for debugging. SSE keep-alive pings no longer pollute the reflection text.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-26-001-fix-post-writing-ux-streaming.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-26-fix-post-writing-streaming">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-25-never-lose-reflection">
+    <div class="changelog-date">2026-03-25</div>
+    <h2 class="changelog-title">Never lose a reflection again</h2>
+    <p class="changelog-desc">Five-layer fix so that writing reflections always reach the user: (1) If Claude streaming fails or times out (60s), Ollama generates a fallback reflection in the same SSE response. (2) A watchdog runs every 5 minutes and recovers complete ankys missing reflections (one at a time to avoid saturating Ollama). (3) Frontend retries the SSE connection up to 3 times with backoff. (4) Ollama embedding calls now have a 10s HTTP timeout so they can't hang indefinitely. (5) Added tracing throughout the reflection pipeline for diagnosing future failures.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-25-003-never-lose-reflection.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-25-never-lose-reflection">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-25-universal-links-prompt-endpoint">
+    <div class="changelog-date">2026-03-25</div>
+    <h2 class="changelog-title">Apple Universal Links + deep link prompt endpoint</h2>
+    <p class="changelog-desc">Added /.well-known/apple-app-site-association so iOS intercepts anky.app/write?p=UUID links and opens the app directly. New GET /swift/v2/prompt/{id} endpoint returns prompt text for the deep link flow — no auth required so the app can fetch the prompt immediately on launch.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-25-002-universal-links-prompt-endpoint.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-25-universal-links-prompt-endpoint">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-25-chat-bubble-post-writing-ux">
+    <div class="changelog-date">2026-03-25</div>
+    <h2 class="changelog-title">chat bubble UX after writing session</h2>
+    <p class="changelog-desc">Transformed the post-writing experience from a raw text dump into a conversation. User's writing now appears as a scrollable chat bubble, and anky's response shows as a separate bubble with animated thinking dots ("anky is reading your writing...") while the server processes. Streaming reflection fills into anky's bubble naturally. Trust-building moment after 8 sacred minutes.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-25-001-chat-bubble-post-writing-ux.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-25-chat-bubble-post-writing-ux">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-remove-miniapp-uuid-prompts">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">remove farcaster miniapp, UUID-based prompt links</h2>
+    <p class="changelog-desc">Removed fc:miniapp metadata from base.html — anky is not a miniapp anymore. Prompt sharing now uses UUID-based links (/write?p={uuid}) instead of URL-encoded text. New POST /api/v1/prompt/quick endpoint creates a free shareable prompt stored in the DB. The /prompt page now hits this API and generates clean UUID links.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-009-remove-miniapp-uuid-prompts.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-remove-miniapp-uuid-prompts">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-thread-splitting-profile-grid">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">thread splitting for social replies + profile page grid</h2>
+    <p class="changelog-desc">Anky now splits long replies into threaded slides on X (280 char limit) and Farcaster (1024 char limit) — each slide is a sharp, self-contained thought. The /you profile page is now visual: default anky PFP, username, bio, and a 3-per-row Instagram-style grid of the user's ankys. Toggle to list view shows each anky with its title and reflection.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-008-thread-splitting-profile-grid.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-thread-splitting-profile-grid">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-model-selector-settings">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">choose anky's voice — model selector in settings</h2>
+    <p class="changelog-desc">Users can now pick which AI model speaks as anky from the settings page (/settings). Six free OpenRouter models available: llama 4 scout (default), llama 4 maverick, gemma 3, qwen 3, deepseek r1, and gemini 2.5 pro. Added preferred_model to user_settings DB, wired through the writing response pipeline. Settings link now visible on the /you profile page.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-008-model-selector-settings.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-model-selector-settings">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-enter-send-live-nudges">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">enter to send, live AI nudges for short writes</h2>
+    <p class="changelog-desc">Enter key now sends the writing when paused (instead of being blocked). Removed all hardcoded responses — even very short writings (&lt;10 words) now go through qwen3.5 with anky's voice, so every response is alive and contextual. Added ollama_light_model config for future small-model support. Fixed .env model name mismatch (was qwen3.5:27b, actually running qwen3.5:35b).</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-007-enter-send-live-nudges.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-enter-send-live-nudges">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-idle-bar-pause-resume">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">8-second idle bar at top, pause/resume, send button</h2>
+    <p class="changelog-desc">Moved the 8-minute countdown timer and chakra bar to the bottom of the viewport. Added a prominent 8-second idle bar at the top that becomes visible after 3 seconds of not typing. When idle hits 8 seconds the timer freezes and a "send" button appears — but the user can keep typing to resume the session from where they left off. No more auto-end, no more overlay.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-006-idle-bar-pause-resume.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-idle-bar-pause-resume">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-timer-viewport-enter">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">countdown timer, viewport fix, no enter key</h2>
+    <p class="changelog-desc">Timer now counts down from 8:00 to 0:00, then counts up with a + prefix when the user keeps going past 8 minutes. Textarea fits within the visible viewport above the mobile keyboard using visualViewport API. Enter key is blocked — writing is one continuous stream with no line breaks.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-005-timer-viewport-enter.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-timer-viewport-enter">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-simplify-writing-ux">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">simplify writing UX — native keyboard, no overlay, full text always visible</h2>
+    <p class="changelog-desc">Removed the custom on-screen keyboard and ended-session overlay from the writing interface. Writing now uses a native textarea (phone keyboard). When a session ends, the full writing stays visible and anky's reply streams in below it — no trimming, no hiding, no extra clicks. The anky detail page also always shows the full writing instead of collapsing it behind a toggle.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-004-simplify-writing-ux.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-simplify-writing-ux">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-manifesto-route">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">serve the anky manifesto at /manifesto.md</h2>
+    <p class="changelog-desc">Added the full Anky Manifesto as a markdown route at anky.app/manifesto.md — ten sections on what writing is, why Anky exists, and the core invitation.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-003-manifesto-route.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-manifesto-route">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-landing-page-write-route-prompts">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">new landing page, /write route, and /prompt creator</h2>
+    <p class="changelog-desc">Replaced the home page with a cinematic landing page (IM Fell English typography, grain overlay, candlelight glow, custom cursor, "the way" modal with 10 commandments). Writing surface moved to /write with prompt query param support — anyone can send someone a prompt via /write?prompt=... The /prompt page lets users write a prompt and generate a shareable link instantly, no payment needed.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-002-landing-page-write-route-prompts.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-landing-page-write-route-prompts">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-24-thread-based-ux-redesign">
+    <div class="changelog-date">2026-03-24</div>
+    <h2 class="changelog-title">thread-based UX redesign — write, reflect, converse</h2>
+    <p class="changelog-desc">Completely redesigned the web experience. Home page stripped to pure writing surface (prompt + write button + recent threads). After writing, user redirects to /anky/{id} which streams the reflection via SSE and shows the conversation thread below. Each anky is now a thread: reflection at top, chat history, suggested replies, custom reply input. Conversation UI moved from /writings (now a simple thread list) into the anky detail page where it belongs.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-24-001-thread-based-ux-redesign.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-24-thread-based-ux-redesign">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-23-fix-csp-writing-ux">
+    <div class="changelog-date">2026-03-23</div>
+    <h2 class="changelog-title">fix CSP errors, /api/live-status 404, and full writing UX overhaul</h2>
+    <p class="changelog-desc">Fixed Content-Security-Policy blocking Google Fonts and Cloudflare insights (added to connect-src). Wired /api/live-status SSE route that was causing 404 spam. Rewrote the writing experience: full-screen overlay when writing starts, visible 8-second idle countdown bar, session no longer auto-sends — shows ended screen with stats and send/discard choice. Anky's reflection now appears before any mint button.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-23-001-fix-csp-writing-ux.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-23-fix-csp-writing-ux">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-22-minting-endpoints">
+    <div class="changelog-date">2026-03-22</div>
+    <h2 class="changelog-title">on-chain minting — birthSoul ERC1155 on Base</h2>
+    <p class="changelog-desc">Added minting endpoints for the Anky ERC1155 contract on Base. prepare-mint verifies eligibility, signs EIP-712 BirthPayload, estimates gas, funds the user's wallet with ETH, and returns everything the iOS app needs to submit the birthSoul tx. confirm-mint verifies the receipt and parses the SoulBorn event for the token ID. Public metadata endpoint serves ERC1155-compliant JSON. Rate limited to 1 mint per wallet per hour, 5-minute signature deadline.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-22-003-minting-endpoints.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-22-minting-endpoints">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-22-anky-talks-back">
+    <div class="changelog-date">2026-03-22</div>
+    <h2 class="changelog-title">anky talks back — writing response + chat prompt endpoints</h2>
+    <p class="changelog-desc">POST /write now spawns a Claude response that proves it read the writing using Honcho peer context. Returns ankyResponse, nextPrompt, mood (async — poll status). New GET /swift/v2/chat/prompt endpoint returns personalized opening message on app launch. First user gets "tell me who you are." Returning users get a Honcho-powered question that picks up where they left off.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-22-002-anky-talks-back.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-22-anky-talks-back">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-22-social-reply-pipeline-context">
     <div class="changelog-date">2026-03-22</div>
     <h2 class="changelog-title">social reply pipeline — honcho context + lowercase + unified voice</h2>

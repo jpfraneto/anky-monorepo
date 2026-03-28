@@ -1,0 +1,9 @@
+i just wrote an anky that starts "anky is like this incessant and constant self aware layer of experimentation with you r own mind. i constatntly tell myself: but who will write here. who will want to come up with something new to say..." the new ui is so bad i can't copy it. please can you find it and send it to me?
+
+yeah please fix the app. i found all these errors on the console. https://fonts.googleapis.com/css2?family=Righteous&display=swap' violates the following Content Security Policy directive: "connect-src 'self' https://auth.privy.io https://esm.sh https://*.privy.io wss://*.privy.io". The action has been blocked.
+(anonymous) @ sw.js:74
+sw.js:74 Fetch API cannot load https://fonts.googleapis.com/css2?family=Righteous&display=swap. Refused to connect because it violates the document's Content Security Policy.
+/api/live-status:1 Failed to load resource: the server responded with a status of 404 ()
+(many more 404s for /api/live-status)
+
+then i got to 8 minutes and it abruptly ended. my message sent without asking me anything. that's wrong. the message sends when 8 seconds between keystrokes happen. there is no bar that tells me that. the fact that im writing my anky in the same chat interface is weird. i want that, as soon as i start writing, the writing interface is open and i write there. and then when it ends i see the chat interface again. and the mint anky button is the last last step. i don't want to see that button before seeing the reflcetion from anky and the story that was generated

@@ -1,1587 +1,584 @@
 {% extends "base.html" %}
 
-{% block title %}anky{% endblock %}
+{% block title %}anky — write{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="anky">
-<meta property="og:description" content="8 minutes of truth. your words become stories for your children.">
-<meta property="og:image" content="https://anky.app/static/og-black.svg">
+<meta property="og:title" content="anky — {{ inquiry_question }}">
+<meta property="og:description" content="8 minutes. no stopping. no performing.">
+<meta property="og:image" content="https://anky.app/api/og/write?prompt={{ inquiry_question | urlencode }}">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://anky.app/">
+<meta property="og:url" content="https://anky.app/write">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="anky">
-<meta name="twitter:description" content="8 minutes of truth. your words become stories for your children.">
-<meta name="twitter:image" content="https://anky.app/static/og-black.svg">
+<meta name="twitter:title" content="anky — {{ inquiry_question }}">
+<meta name="twitter:description" content="8 minutes. no stopping. no performing.">
+<meta name="twitter:image" content="https://anky.app/api/og/write?prompt={{ inquiry_question | urlencode }}">
 <style>
-  /* ═══════════════════════════════════════════
-     STATES: landing → writing → paused → ended → reflection
-     ═══════════════════════════════════════════ */
-  body.home-landing .anky-writing,
-  body.home-landing .anky-paused,
-  body.home-landing .anky-ended,
-  body.home-landing .anky-reflection,
-  body.home-landing .anky-bottom-bar { display: none; }
+  .navbar, .drawer, .drawer-overlay, .bottom-live-bar,
+  .mobile-bottom-nav { display: none !important; }
+  html, body { margin: 0; padding: 0; background: #0a0a0a; height: 100%; overflow: hidden; }
 
-  body.home-writing .anky-landing,
-  body.home-writing .anky-paused,
-  body.home-writing .anky-ended,
-  body.home-writing .anky-reflection { display: none; }
-
-  body.home-paused .anky-landing,
-  body.home-paused .anky-writing,
-  body.home-paused .anky-ended,
-  body.home-paused .anky-reflection { display: none; }
-
-  body.home-ended .anky-landing,
-  body.home-ended .anky-writing,
-  body.home-ended .anky-paused,
-  body.home-ended .anky-reflection,
-  body.home-ended .anky-bottom-bar { display: none; }
-
-  body.home-reflection .anky-landing,
-  body.home-reflection .anky-writing,
-  body.home-reflection .anky-paused,
-  body.home-reflection .anky-ended,
-  body.home-reflection .anky-bottom-bar { display: none; }
-
-  /* ═══════════════════════════════════════════
-     BASE
-     ═══════════════════════════════════════════ */
-  .anky-shell {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: var(--vh, 100vh);
-    background: #000;
+  .writing-surface {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    z-index: 100;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-
-  /* ═══════════════════════════════════════════
-     LANDING — "WRITE NOW 8 minutes"
-     ═══════════════════════════════════════════ */
-  .anky-landing {
-    cursor: pointer;
-    text-align: center;
-    padding: 20px;
-  }
-  .anky-landing-title {
-    font-family: 'Righteous', sans-serif;
-    font-size: clamp(48px, 14vw, 120px);
-    color: #fff;
-    letter-spacing: 0.06em;
-    line-height: 0.95;
-    text-transform: uppercase;
-    margin: 0;
-  }
-  .anky-landing-sub {
-    font-family: 'Righteous', sans-serif;
-    font-size: clamp(18px, 5vw, 36px);
-    color: rgba(255,255,255,0.4);
-    font-style: italic;
-    margin: 12px 0 0;
-    letter-spacing: 0.03em;
-  }
-  .anky-landing-sub em {
-    color: rgba(255,255,255,0.7);
-    font-style: italic;
-  }
-  @keyframes whipIn {
-    0% { transform: scale(0.3) rotate(-8deg); opacity: 0; }
-    60% { transform: scale(1.08) rotate(1deg); opacity: 1; }
-    80% { transform: scale(0.97) rotate(-0.5deg); }
-    100% { transform: scale(1) rotate(0deg); opacity: 1; }
-  }
-  .anky-landing-title {
-    animation: whipIn 0.6s cubic-bezier(0.22, 1.2, 0.36, 1) both;
-  }
-  .anky-landing-sub {
-    animation: whipIn 0.6s cubic-bezier(0.22, 1.2, 0.36, 1) 0.15s both;
-  }
-
-  /* ═══════════════════════════════════════════
-     WRITING — simple flowing text
-     ═══════════════════════════════════════════ */
-  .anky-writing {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    padding: 20px 28px 0;
-    -webkit-overflow-scrolling: touch;
-  }
-  #writing-stream {
-    flex: 1;
+    height: 100dvh;
     width: 100%;
     max-width: 640px;
     margin: 0 auto;
     font-family: system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    background: #0a0a0a;
+    overflow: hidden;
+  }
+  .writing-surface.scrollable {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  body.scrollable { overflow: auto; height: auto; }
+
+  /* ── TOP: idle bar ── */
+  .idle-bar-wrap {
+    flex-shrink: 0;
+    height: 3px;
+    width: 100%;
+    background: transparent;
+  }
+  .idle-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #ff4444;
+    transition: width 0.1s linear;
+    opacity: 0;
+  }
+  .idle-bar-fill.warning { opacity: 1; }
+
+  /* ── PROMPT ── */
+  .writing-prompt {
+    padding: 16px 16px 0 16px;
+    font-size: 17px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.35);
+    font-style: italic;
+    flex-shrink: 0;
+    transition: opacity 0.6s;
+  }
+  .writing-prompt.faded { opacity: 0.15; }
+
+  /* ── TEXTAREA ── */
+  .writing-textarea {
+    flex: 1;
+    min-height: 0;
+    margin: 12px 16px 0 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
     font-size: 16px;
-    font-weight: 300;
-    color: rgba(255,255,255,0.85);
+    line-height: 1.7;
+    color: #d0d0d0;
+    font-family: system-ui, -apple-system, sans-serif;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    caret-color: #7b2ff7;
+    overflow-y: auto;
+  }
+  .writing-textarea::placeholder { color: rgba(255,255,255,0.15); }
+  .writing-textarea::-webkit-scrollbar { width: 0; }
+
+  /* ── BOTTOM BAR: timer + chakra + send ── */
+  .writing-bottom {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chakra-bar {
+    height: 3px;
+    width: 100%;
+    background: #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .chakra-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+  .bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 36px;
+  }
+  .writing-timer {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 18px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+  }
+  .writing-timer.past-zero { color: #c4a0ff; }
+  .send-btn {
+    display: none;
+    background: #fff;
+    color: #0a0a0a;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .send-btn:hover { background: #e0e0e0; }
+  .send-btn.visible { display: block; }
+
+  /* ── AFTER SESSION: chat conversation ── */
+  .session-result {
+    display: none;
+    padding: 16px 16px 40px 16px;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .session-result.visible { display: flex; }
+
+  /* ── Chat bubbles ── */
+  .chat-bubble {
+    max-width: 85%;
+    border-radius: 18px;
+    padding: 14px 18px;
+    font-size: 15px;
     line-height: 1.7;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    text-align: left;
+    animation: bubbleIn 0.3s ease-out;
+  }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* User bubble: right-aligned */
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: #1a1a2e;
+    border: 1px solid rgba(123, 47, 247, 0.15);
+    border-bottom-right-radius: 4px;
+    color: #c0c0c0;
+    max-height: 200px;
+    overflow-y: auto;
     white-space: pre-wrap;
   }
-  /* Blinking cursor at end of text */
-  #writing-stream::after {
-    content: '';
+  .chat-bubble.user::-webkit-scrollbar { width: 3px; }
+  .chat-bubble.user::-webkit-scrollbar-thumb { background: rgba(123, 47, 247, 0.3); border-radius: 2px; }
+
+  /* Anky bubble: left-aligned */
+  .chat-bubble.anky {
+    align-self: flex-start;
+    background: #141414;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-bottom-left-radius: 4px;
+    color: rgba(255,255,255,0.8);
+  }
+
+  .chat-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.25);
+    margin-bottom: 4px;
+    text-transform: lowercase;
+    letter-spacing: 0.5px;
+  }
+  .chat-label.right { text-align: right; }
+
+  /* ── Thinking dots ── */
+  .thinking-dots {
+    display: flex;
+    gap: 5px;
+    padding: 4px 0;
+    align-items: center;
+  }
+  .thinking-dots span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(123, 47, 247, 0.6);
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotPulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+  .thinking-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+    margin-left: 8px;
+  }
+
+  /* ── Reply content (inside anky bubble) ── */
+  .result-reply {
+    font-size: 15px;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.75);
+  }
+  .result-reply p { margin: 0 0 12px 0; }
+  .result-reply h3 { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.85); margin: 20px 0 8px 0; }
+  .result-reply h4 { font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.8); margin: 16px 0 6px 0; }
+  .result-reply strong { color: rgba(255,255,255,0.9); }
+  .result-reply em { color: rgba(255,255,255,0.65); font-style: italic; }
+  .result-reply blockquote { border-left: 2px solid rgba(255,255,255,0.1); margin: 12px 0; padding: 4px 12px; color: rgba(255,255,255,0.5); }
+  .result-reply ul { padding-left: 20px; margin: 8px 0; }
+  .result-reply li { margin-bottom: 4px; }
+  .result-reply hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0; }
+
+  .stream-cursor {
     display: inline-block;
     width: 2px;
-    height: 18px;
-    background: rgba(255,255,255,0.7);
-    margin-left: 1px;
+    height: 1em;
+    background: #7b2ff7;
+    margin-left: 2px;
     vertical-align: text-bottom;
-    animation: cursorBlink 1s step-end infinite;
+    animation: blink 1s step-end infinite;
   }
-  @keyframes cursorBlink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-  }
-  /* Hide the old big char + fracture elements */
-  .last-char-shell { display: none; }
-  #last-char { display: none; }
-  .last-char-fracture { display: none; }
+  @keyframes blink { 50% { opacity: 0; } }
 
-  /* Hidden textarea */
-  #anky-input {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 50px;
-    opacity: 0;
-    font-size: 16px;
-    z-index: 120;
-    pointer-events: none;
-    caret-color: transparent;
-  }
-  body.home-writing #anky-input,
-  body.home-paused #anky-input {
-    pointer-events: auto;
-  }
-
-  /* ═══════════════════════════════════════════
-     BOTTOM BAR — flow ribbon + stats + hearts + progress
-     ═══════════════════════════════════════════ */
-  .anky-bottom-bar {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 110;
-  }
-
-  /* Flow ribbon — hidden, replaced by unified stream */
-  .flow-ribbon {
-    display: none;
-  }
-  .flow-ribbon-inner { display: none; }
-  .flow-char { display: none; }
-
-  /* Stats row: hearts left, words + time right */
-  .stats-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 14px 8px;
-    min-height: 40px;
-  }
-  .anky-hearts {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .pixel-heart {
-    position: relative;
-    width: 36px;
-    height: 32px;
-    image-rendering: pixelated;
-  }
-  .pixel-heart canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-  }
-  /* Each heart has two canvases: bg (dark outline) + fg (red fill, clipped for drain) */
-  .pixel-heart .heart-bg {
-    opacity: 0.15;
-  }
-  .pixel-heart.dead .heart-fg {
-    opacity: 0;
-  }
-  @keyframes heartBreak {
-    0% { transform: scale(1); }
-    30% { transform: scale(1.3); }
-    100% { transform: scale(0.8); opacity: 0; }
-  }
-  .pixel-heart.breaking .heart-fg {
-    animation: heartBreak 0.5s ease-out forwards;
-  }
-
-  .session-stats {
-    font-family: 'Righteous', sans-serif;
-    font-size: 13px;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 0.04em;
-    display: flex;
-    gap: 14px;
-    align-items: center;
-  }
-  .stat-time-done {
-    color: #a06fff;
-  }
-
-  /* Progress bar — at very bottom edge */
-  .anky-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    background: rgba(255,255,255,0.4);
-    transition: width 0.3s linear;
-    z-index: 111;
-  }
-  .anky-progress.complete {
-    background: #a06fff;
-    box-shadow: 0 0 12px rgba(160, 111, 255, 0.6);
-  }
-
-  /* ═══════════════════════════════════════════
-     PAUSED — frozen writing + CONTINUE
-     ═══════════════════════════════════════════ */
-  .anky-paused {
-    text-align: center;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 30vh;
-  }
-  .anky-lives-label {
-    font-family: 'Righteous', sans-serif;
-    font-size: 32px;
-    color: rgba(255,255,255,0.7);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .anky-resume-hint {
-    font-family: 'Righteous', sans-serif;
-    font-size: 13px;
-    color: rgba(255,255,255,0.25);
-    margin-top: 16px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  /* ═══════════════════════════════════════════
-     ENDED — game over or anky
-     ═══════════════════════════════════════════ */
-  .anky-ended {
-    text-align: center;
-    padding: 20px;
-    max-width: 700px;
-    width: 100%;
-    max-height: calc(var(--vh, 100vh) - 80px);
-    overflow-y: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-  }
-  .anky-ended-btn {
-    font-family: 'Righteous', sans-serif;
-    font-size: clamp(16px, 3vw, 18px);
-    color: rgba(255,255,255,0.74);
-    background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 999px;
-    padding: 10px 22px;
-    cursor: pointer;
-    letter-spacing: 0.03em;
-    transition: border-color 0.2s, color 0.2s, background 0.2s;
-  }
-  .anky-ended-btn:hover {
-    color: rgba(255,255,255,0.9);
-    border-color: rgba(255,255,255,0.24);
-    background: rgba(255,255,255,0.04);
-  }
-  .anky-ended-meta {
-    margin-top: 10px;
-    font-family: 'Righteous', sans-serif;
-    font-size: 12px;
-    color: rgba(255,255,255,0.26);
-    letter-spacing: 0.04em;
-  }
-
-  /* ═══════════════════════════════════════════
-     REFLECTION
-     ═══════════════════════════════════════════ */
-  .anky-reflection {
-    padding: 20px;
-    max-width: 700px;
-    width: 100%;
-    max-height: calc(var(--vh, 100vh) - 80px);
-    overflow-y: auto;
-  }
-  .anky-reflection-title {
-    font-family: 'Righteous', sans-serif;
-    font-size: clamp(22px, 6vw, 40px);
-    color: #c4a0ff;
-    margin: 0 0 18px;
-    line-height: 1.1;
-  }
-  .anky-reflection-text {
-    font-size: 16px;
-    color: rgba(255,255,255,0.75);
-    line-height: 1.7;
-  }
-  .anky-reflection-text p { margin: 0 0 14px; }
-  .anky-reflection-text strong { color: #e8d6ff; }
-  .anky-reflection-text em { color: #c4a0ff; }
-  .anky-reflection-image {
-    margin: 24px 0;
-    width: 100%;
-    max-width: 400px;
-    border-radius: 16px;
-  }
-  .anky-reflection-actions {
+  .result-actions {
+    margin-top: 8px;
     display: flex;
     gap: 12px;
-    margin-top: 20px;
-    flex-wrap: wrap;
+    align-self: flex-start;
   }
-  .anky-reflection-actions button {
-    font-family: 'Righteous', sans-serif;
-    font-size: 14px;
-    color: #c4a0ff;
-    background: none;
-    border: 1px solid rgba(196,160,255,0.3);
-    border-radius: 8px;
-    padding: 8px 20px;
-    cursor: pointer;
-    letter-spacing: 0.03em;
-  }
-  .anky-reflection-actions button:hover {
-    border-color: #c4a0ff;
-    background: rgba(196,160,255,0.08);
-  }
-  .anky-chat-bubble {
-    margin: 12px 0;
-    padding: 12px 16px;
-    border-radius: 12px;
-    font-size: 15px;
-    line-height: 1.6;
-    max-width: 90%;
-  }
-  .anky-chat-bubble.user {
-    background: rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.7);
-    margin-left: auto;
-    text-align: right;
-    border-bottom-right-radius: 4px;
-  }
-  .anky-chat-bubble.anky {
-    background: rgba(160,111,255,0.08);
-    color: rgba(255,255,255,0.75);
-    border: 1px solid rgba(160,111,255,0.12);
-    border-bottom-left-radius: 4px;
-  }
-  .reply-options-wrap {
-    margin-top: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .reply-option-btn {
-    font-family: 'Righteous', sans-serif;
-    font-size: 14px;
-    color: rgba(255,255,255,0.6);
-    background: rgba(255,255,255,0.04);
+  .result-actions a, .result-actions button {
+    background: transparent;
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 10px;
-    padding: 10px 16px;
-    cursor: pointer;
-    text-align: left;
-    transition: all 0.15s;
-  }
-  .reply-option-btn:hover {
-    color: #fff;
-    border-color: rgba(255,255,255,0.25);
-    background: rgba(255,255,255,0.06);
-  }
-  .reply-custom-input {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .reply-custom-input textarea {
-    flex: 1;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.4);
     border-radius: 8px;
-    color: #fff;
-    font-size: 14px;
-    padding: 10px;
-    resize: none;
-    font-family: inherit;
-  }
-  .reply-custom-input button {
-    font-family: 'Righteous', sans-serif;
+    padding: 8px 16px;
     font-size: 13px;
-    background: rgba(160,111,255,0.2);
-    color: #c4a0ff;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 16px;
     cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
   }
-  .reply-custom-input button:disabled { opacity: 0.3; cursor: default; }
-  .processing-text { color: rgba(255,255,255,0.3); }
-  .error-text { color: #ff4060; }
-  .image-skeleton {
-    width: 100%;
-    max-width: 400px;
-    aspect-ratio: 1;
-    border-radius: 16px;
-    background: rgba(160,111,255,0.06);
-    margin: 24px 0;
-    overflow: hidden;
-    position: relative;
-  }
-  .image-skeleton::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(160,111,255,0.08), transparent);
-    animation: shimmer 1.5s ease-in-out infinite;
-  }
-  @keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-  .anky-watermark {
-    position: absolute;
-    bottom: 10px;
-    right: 16px;
-    font-family: 'Righteous', sans-serif;
-    font-size: 11px;
-    color: rgba(255,255,255,0.08);
-    letter-spacing: 0.04em;
-    z-index: 109;
-    pointer-events: none;
+  .result-actions a:hover, .result-actions button:hover {
+    border-color: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.6);
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="anky-shell" id="anky-shell">
-  <textarea
-    id="anky-input"
-    autocomplete="off"
-    autocorrect="off"
-    autocapitalize="off"
-    spellcheck="false"
-    data-gramm="false"
-    data-gramm_editor="false"
-    data-enable-grammarly="false"
-  ></textarea>
+<div class="writing-surface" id="writingSurface">
+  <!-- TOP: idle countdown bar -->
+  <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
 
-  <!-- ═══ LANDING ═══ -->
-  <div class="anky-landing" id="anky-landing">
-    <h1 class="anky-landing-title" id="anky-landing-title">WRITE<br>NOW</h1>
-    <p class="anky-landing-sub" id="anky-landing-sub"><em>8 minutes</em></p>
-  </div>
+  <div class="writing-prompt" id="writingPrompt">{{ inquiry_question }}</div>
+  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start writing..."></textarea>
 
-  <!-- ═══ WRITING — unified text stream ═══ -->
-  <div class="anky-writing" id="anky-writing">
-    <div id="writing-stream"></div>
-    <div class="last-char-shell" id="last-char-shell">
-      <div class="last-char-fracture last-char-fracture-left" id="last-char-left" aria-hidden="true"></div>
-      <div class="last-char-fracture last-char-fracture-right" id="last-char-right" aria-hidden="true"></div>
-      <div id="last-char"></div>
+  <!-- BOTTOM: chakra bar + timer + send button -->
+  <div class="writing-bottom" id="writingBottom">
+    <div class="chakra-bar"><div class="chakra-fill" id="chakraFill"></div></div>
+    <div class="bottom-row">
+      <span class="writing-timer" id="writingTimer">8:00</span>
+      <button class="send-btn" id="sendBtn">send</button>
     </div>
   </div>
 
-  <!-- ═══ BOTTOM BAR — ribbon + stats + hearts ═══ -->
-  <div class="anky-bottom-bar" id="anky-bottom-bar">
-    <div class="flow-ribbon" id="flow-ribbon">
-      <div class="flow-ribbon-inner" id="flow-ribbon-inner"></div>
-    </div>
-    <div class="stats-row">
-      <div class="anky-hearts" id="anky-hearts"></div>
-      <div class="session-stats">
-        <span id="stat-words">0 words</span>
-        <span id="stat-time" class="stat-dim">0:00</span>
+  <!-- After send: chat conversation -->
+  <div class="session-result" id="sessionResult">
+    <!-- User's writing as a chat bubble -->
+    <div class="chat-label right">you</div>
+    <div class="chat-bubble user" id="resultWriting"></div>
+
+    <!-- Anky's response bubble -->
+    <div class="chat-label" id="ankyLabel">anky</div>
+    <div class="chat-bubble anky" id="ankyBubble">
+      <div class="thinking-dots" id="thinkingDots">
+        <span></span><span></span><span></span>
+        <span class="thinking-label">anky is reading your writing...</span>
       </div>
+      <div class="result-reply" id="resultReply"></div>
     </div>
-    <div class="anky-progress" id="anky-progress"></div>
-  </div>
 
-  <!-- ═══ PAUSED ═══ -->
-  <div class="anky-paused" id="anky-paused">
-    <div class="anky-lives-label" id="lives-label"></div>
-    <div class="anky-resume-hint" id="resume-hint"></div>
+    <div class="result-actions" id="resultActions" style="display:none">
+      <a href="/write">write again</a>
+    </div>
   </div>
-
-  <!-- ═══ ENDED ═══ -->
-  <div class="anky-ended" id="anky-ended">
-    <button class="anky-ended-btn" id="ended-restart-btn">try again</button>
-    <div class="anky-ended-meta" id="ended-meta">(8 minutes)</div>
-  </div>
-
-  <!-- ═══ REFLECTION ═══ -->
-  <div class="anky-reflection" id="anky-reflection">
-    <div id="reflection-content"></div>
-  </div>
-
-  <div class="anky-watermark">anky.app</div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
-(function() {
-  // ═══════════════════════════════════════════
-  // STATE
-  // ═══════════════════════════════════════════
-  var STATE = 'landing';
-  var lives = 2;
-  var fullText = '';
-  var sessionActive = false;
-  var sessionStartTime = null;
-  var lastKeystrokeTime = null;
-  var animFrame = null;
-  var pausedElapsedSeconds = 0;
-  var sessionId = null;
-  var sessionToken = null;
-  var currentAnkyId = null;
-  var chatHistory = [];
-  var lastStreamedTitle = '';
-  var lastStreamedReflection = '';
-  var currentAnkyImageUrl = '';
-  var charIndex = 0;
-  var skipNextDelta = false;
+const CHAKRA_COLORS = ["#ff0000","#ff6600","#ffcc00","#33cc33","#3399ff","#6633cc","#9933ff","#ffffff"];
+const IDLE_TIMEOUT = 8.0;
+const IDLE_VISIBLE_AFTER = 3.0;
+const SESSION_DURATION = 480.0;
 
-  // Keystroke timing for flow score
-  var keystrokeTimes = [];     // timestamp of each char
-  var keystrokeDeltas = [];    // ms between consecutive chars
+const ankySession = (() => {
+  let state = 'ready'; // ready | writing | paused | sent
+  let sessionStarted = null;
+  let lastInputAt = null;
+  let activeTime = 0;       // only ticks while writing, freezes on pause
+  let pausedAtActive = 0;   // activeTime when we paused
+  let tickInterval = null;
+  let keystrokeDeltas = [];
+  let lastKeystrokeAt = null;
+  let checkpointTimer = null;
+  let sessionId = null;
+  let sessionToken = null;
+  const CHECKPOINT_INTERVAL = 30000;
 
-  // Chakra colors
-  var chakraColors = [
-    [220, 50, 50],    // root — red
-    [230, 120, 40],   // sacral — orange
-    [230, 210, 50],   // solar plexus — yellow
-    [60, 200, 80],    // heart — green
-    [60, 140, 230],   // throat — blue
-    [100, 60, 200],   // third eye — indigo
-    [220, 200, 255]   // crown — violet white
-  ];
+  const writingArea = document.getElementById('writingArea');
+  const writingPrompt = document.getElementById('writingPrompt');
+  const writingTimer = document.getElementById('writingTimer');
+  const chakraFill = document.getElementById('chakraFill');
+  const idleBarFill = document.getElementById('idleBarFill');
+  const sendBtn = document.getElementById('sendBtn');
+  const writingBottom = document.getElementById('writingBottom');
+  const sessionResult = document.getElementById('sessionResult');
+  const resultWriting = document.getElementById('resultWriting');
+  const resultReply = document.getElementById('resultReply');
+  const resultActions = document.getElementById('resultActions');
 
-  var TOTAL_SECONDS = 480;
-  var IDLE_TIMEOUT = 8000;
-  var draftSaveTimer = null;
-
-  // DOM
-  var input = document.getElementById('anky-input');
-  var landing = document.getElementById('anky-landing');
-  var landingTitle = document.getElementById('anky-landing-title');
-  var landingSub = document.getElementById('anky-landing-sub');
-  var lastCharShell = document.getElementById('last-char-shell');
-  var lastCharEl = document.getElementById('last-char');
-  var lastCharLeft = document.getElementById('last-char-left');
-  var lastCharRight = document.getElementById('last-char-right');
-  var heartsContainer = document.getElementById('anky-hearts');
-  var progressBar = document.getElementById('anky-progress');
-  var statWords = document.getElementById('stat-words');
-  var statTime = document.getElementById('stat-time');
-  var flowRibbonInner = document.getElementById('flow-ribbon-inner');
-  var writingStream = document.getElementById('writing-stream');
-  var livesLabel = document.getElementById('lives-label');
-  var resumeHint = document.getElementById('resume-hint');
-  var endedRestartBtn = document.getElementById('ended-restart-btn');
-  var endedMeta = document.getElementById('ended-meta');
-  var reflectionContent = document.getElementById('reflection-content');
-  {% raw %}
-  var UI_COPY = {
-    en: {
-      landing_title_html: "WRITE<br>FOR THEM",
-      landing_sub: "8 minutes — your words become their bedtime story",
-      try_again: "try again",
-      continue: "CONTINUE",
-      resume_hint: "just keep writing",
-      word_one: "{{count}} word",
-      word_other: "{{count}} words",
-      life_one: "you have {{count}} life left",
-      life_other: "you have {{count}} lives left",
-      session_over: "SESSION OVER",
-      anky_processing: "anky is reading your writing",
-      retrying: "retrying ({{current}}/{{max}})",
-      saved_locally: "could not reach server — writing saved locally",
-      share: "share",
-      copy_link: "copy link",
-      copied: "copied!",
-      type_reply: "type a reply to anky...",
-      write_reply: "write your reply...",
-      send: "send",
-      thinking: "thinking...",
-      error: "something went wrong."
-    },
-    es: {
-      landing_title_html: "ESCRIBE<br>PARA ELLOS",
-      landing_sub: "8 minutos — tus palabras se convierten en su cuento",
-      try_again: "intenta otra vez",
-      continue: "CONTINUAR",
-      resume_hint: "sigue escribiendo",
-      word_one: "{{count}} palabra",
-      word_other: "{{count}} palabras",
-      life_one: "{{count}} vida restante",
-      life_other: "{{count}} vidas restantes",
-      session_over: "SESIÓN TERMINADA",
-      anky_processing: "anky está leyendo tu escritura",
-      retrying: "reintentando ({{current}}/{{max}})",
-      saved_locally: "no se pudo conectar con el servidor — la escritura quedó guardada localmente",
-      share: "compartir",
-      copy_link: "copiar enlace",
-      copied: "¡copiado!",
-      type_reply: "escribe una respuesta para anky...",
-      write_reply: "escribe tu respuesta...",
-      send: "enviar",
-      thinking: "pensando...",
-      error: "algo salió mal."
-    },
-    pt: {
-      landing_title_html: "ESCREVA<br>PARA ELES",
-      landing_sub: "8 minutos — suas palavras viram a história de ninar deles",
-      try_again: "tente de novo",
-      continue: "CONTINUAR",
-      resume_hint: "continue escrevendo",
-      word_one: "{{count}} palavra",
-      word_other: "{{count}} palavras",
-      life_one: "{{count}} vida restante",
-      life_other: "{{count}} vidas restantes",
-      session_over: "SESSÃO ENCERRADA",
-      anky_processing: "anky está lendo sua escrita",
-      retrying: "tentando novamente ({{current}}/{{max}})",
-      saved_locally: "não foi possível falar com o servidor — a escrita foi salva localmente",
-      share: "compartilhar",
-      copy_link: "copiar link",
-      copied: "copiado!",
-      type_reply: "digite uma resposta para anky...",
-      write_reply: "escreva sua resposta...",
-      send: "enviar",
-      thinking: "pensando...",
-      error: "algo deu errado."
-    },
-    fr: {
-      landing_title_html: "ÉCRIS<br>POUR EUX",
-      landing_sub: "8 minutes — tes mots deviennent leur histoire du soir",
-      try_again: "essaie encore",
-      continue: "CONTINUER",
-      resume_hint: "continue d'écrire",
-      word_one: "{{count}} mot",
-      word_other: "{{count}} mots",
-      life_one: "{{count}} vie restante",
-      life_other: "{{count}} vies restantes",
-      session_over: "SESSION TERMINÉE",
-      anky_processing: "anky lit ton texte",
-      retrying: "nouvelle tentative ({{current}}/{{max}})",
-      saved_locally: "impossible de joindre le serveur — le texte a été sauvegardé localement",
-      share: "partager",
-      copy_link: "copier le lien",
-      copied: "copié !",
-      type_reply: "écris une réponse à anky...",
-      write_reply: "écris ta réponse...",
-      send: "envoyer",
-      thinking: "je réfléchis...",
-      error: "quelque chose s'est mal passé."
-    },
-    de: {
-      landing_title_html: "SCHREIB<br>FÜR SIE",
-      landing_sub: "8 Minuten",
-      try_again: "noch einmal",
-      continue: "WEITER",
-      resume_hint: "schreib einfach weiter",
-      word_one: "{{count}} Wort",
-      word_other: "{{count}} Wörter",
-      life_one: "{{count}} Leben übrig",
-      life_other: "{{count}} Leben übrig",
-      session_over: "SESSION VORBEI",
-      anky_processing: "anky liest gerade deinen Text",
-      retrying: "erneuter Versuch ({{current}}/{{max}})",
-      saved_locally: "Server nicht erreichbar — dein Text wurde lokal gespeichert",
-      share: "teilen",
-      copy_link: "Link kopieren",
-      copied: "kopiert!",
-      type_reply: "schreib eine Antwort an anky...",
-      write_reply: "schreib deine Antwort...",
-      send: "senden",
-      thinking: "denke nach...",
-      error: "etwas ist schiefgelaufen."
-    },
-    it: {
-      landing_title_html: "SCRIVI<br>PER LORO",
-      landing_sub: "8 minuti",
-      try_again: "riprova",
-      continue: "CONTINUA",
-      resume_hint: "continua a scrivere",
-      word_one: "{{count}} parola",
-      word_other: "{{count}} parole",
-      life_one: "{{count}} vita rimasta",
-      life_other: "{{count}} vite rimaste",
-      session_over: "SESSIONE FINITA",
-      anky_processing: "anky sta leggendo quello che hai scritto",
-      retrying: "nuovo tentativo ({{current}}/{{max}})",
-      saved_locally: "impossibile raggiungere il server — il testo è stato salvato in locale",
-      share: "condividi",
-      copy_link: "copia link",
-      copied: "copiato!",
-      type_reply: "scrivi una risposta ad anky...",
-      write_reply: "scrivi la tua risposta...",
-      send: "invia",
-      thinking: "sto pensando...",
-      error: "qualcosa è andato storto."
-    },
-    nl: {
-      landing_title_html: "SCHRIJF<br>VOOR HEN",
-      landing_sub: "8 minuten",
-      try_again: "probeer opnieuw",
-      continue: "DOORGAAN",
-      resume_hint: "blijf schrijven",
-      word_one: "{{count}} woord",
-      word_other: "{{count}} woorden",
-      life_one: "{{count}} leven over",
-      life_other: "{{count}} levens over",
-      session_over: "SESSIE VOORBIJ",
-      anky_processing: "anky leest je tekst",
-      retrying: "opnieuw proberen ({{current}}/{{max}})",
-      saved_locally: "kon de server niet bereiken — je tekst is lokaal opgeslagen",
-      share: "delen",
-      copy_link: "link kopiëren",
-      copied: "gekopieerd!",
-      type_reply: "typ een antwoord aan anky...",
-      write_reply: "schrijf je antwoord...",
-      send: "verzenden",
-      thinking: "nadenken...",
-      error: "er ging iets mis."
-    },
-    pl: {
-      landing_title_html: "PISZ<br>DLA NICH",
-      landing_sub: "8 minut",
-      try_again: "spróbuj ponownie",
-      continue: "KONTYNUUJ",
-      resume_hint: "po prostu pisz dalej",
-      word_one: "{{count}} słowo",
-      word_other: "{{count}} słowa",
-      life_one: "{{count}} życie zostało",
-      life_other: "{{count}} życia zostały",
-      session_over: "SESJA ZAKOŃCZONA",
-      anky_processing: "anky czyta teraz twój tekst",
-      retrying: "ponawianie ({{current}}/{{max}})",
-      saved_locally: "nie udało się połączyć z serwerem — tekst zapisano lokalnie",
-      share: "udostępnij",
-      copy_link: "kopiuj link",
-      copied: "skopiowano!",
-      type_reply: "napisz odpowiedź do anky...",
-      write_reply: "napisz swoją odpowiedź...",
-      send: "wyślij",
-      thinking: "myślę...",
-      error: "coś poszło nie tak."
-    },
-    tr: {
-      landing_title_html: "ONLAR<br>İÇİN YAZ",
-      landing_sub: "8 dakika",
-      try_again: "tekrar dene",
-      continue: "DEVAM ET",
-      resume_hint: "yazmaya devam et",
-      word_one: "{{count}} kelime",
-      word_other: "{{count}} kelime",
-      life_one: "{{count}} can kaldı",
-      life_other: "{{count}} can kaldı",
-      session_over: "OTURUM BİTTİ",
-      anky_processing: "anky yazını okuyor",
-      retrying: "yeniden deneniyor ({{current}}/{{max}})",
-      saved_locally: "sunucuya ulaşılamadı — yazı yerel olarak kaydedildi",
-      share: "paylaş",
-      copy_link: "bağlantıyı kopyala",
-      copied: "kopyalandı!",
-      type_reply: "anky'ye bir cevap yaz...",
-      write_reply: "cevabını yaz...",
-      send: "gönder",
-      thinking: "düşünüyor...",
-      error: "bir şeyler yanlış gitti."
-    },
-    ru: {
-      landing_title_html: "ПИШИ<br>ДЛЯ НИХ",
-      landing_sub: "8 минут",
-      try_again: "попробуй снова",
-      continue: "ПРОДОЛЖИТЬ",
-      resume_hint: "просто продолжай писать",
-      word_one: "{{count}} слово",
-      word_other: "{{count}} слова",
-      life_one: "{{count}} жизнь осталась",
-      life_other: "{{count}} жизни осталось",
-      session_over: "СЕССИЯ ОКОНЧЕНА",
-      anky_processing: "anky читает твой текст",
-      retrying: "повторная попытка ({{current}}/{{max}})",
-      saved_locally: "не удалось связаться с сервером — текст сохранён локально",
-      share: "поделиться",
-      copy_link: "копировать ссылку",
-      copied: "скопировано!",
-      type_reply: "напиши ответ anky...",
-      write_reply: "напиши свой ответ...",
-      send: "отправить",
-      thinking: "думаю...",
-      error: "что-то пошло не так."
-    },
-    ja: {
-      landing_title_html: "彼らの<br>ために書け",
-      landing_sub: "8分",
-      try_again: "もう一度",
-      continue: "続ける",
-      resume_hint: "書き続けて",
-      word_one: "{{count}}語",
-      word_other: "{{count}}語",
-      life_one: "残り{{count}}ライフ",
-      life_other: "残り{{count}}ライフ",
-      session_over: "セッション終了",
-      anky_processing: "anky があなたの文章を読んでいます",
-      retrying: "再試行中 ({{current}}/{{max}})",
-      saved_locally: "サーバーに接続できませんでした — 文章はローカルに保存されました",
-      share: "共有",
-      copy_link: "リンクをコピー",
-      copied: "コピーしました",
-      type_reply: "anky に返信を書く...",
-      write_reply: "返信を書く...",
-      send: "送信",
-      thinking: "考え中...",
-      error: "問題が発生しました。"
-    },
-    ko: {
-      landing_title_html: "아이를<br>위해 써",
-      landing_sub: "8분",
-      try_again: "다시 해보기",
-      continue: "계속",
-      resume_hint: "계속 써",
-      word_one: "{{count}}단어",
-      word_other: "{{count}}단어",
-      life_one: "목숨 {{count}}개 남음",
-      life_other: "목숨 {{count}}개 남음",
-      session_over: "세션 종료",
-      anky_processing: "anky가 당신의 글을 읽고 있습니다",
-      retrying: "다시 시도하는 중 ({{current}}/{{max}})",
-      saved_locally: "서버에 연결할 수 없었습니다 — 글은 로컬에 저장되었습니다",
-      share: "공유",
-      copy_link: "링크 복사",
-      copied: "복사됨!",
-      type_reply: "anky에게 답장 쓰기...",
-      write_reply: "답장을 써보세요...",
-      send: "보내기",
-      thinking: "생각 중...",
-      error: "문제가 발생했습니다."
-    },
-    zh: {
-      landing_title_html: "为他们<br>而写",
-      landing_sub: "8 分钟",
-      try_again: "再试一次",
-      continue: "继续",
-      resume_hint: "继续写",
-      word_one: "{{count}} 个词",
-      word_other: "{{count}} 个词",
-      life_one: "剩余 {{count}} 条命",
-      life_other: "剩余 {{count}} 条命",
-      session_over: "会话结束",
-      anky_processing: "anky 正在阅读你的文字",
-      retrying: "重试中 ({{current}}/{{max}})",
-      saved_locally: "无法连接服务器，内容已保存在本地",
-      share: "分享",
-      copy_link: "复制链接",
-      copied: "已复制！",
-      type_reply: "给 anky 回复...",
-      write_reply: "写下你的回复...",
-      send: "发送",
-      thinking: "思考中...",
-      error: "出错了。"
-    },
-    ar: {
-      landing_title_html: "اكتب<br>لأجلهم",
-      landing_sub: "8 دقائق",
-      try_again: "حاول مرة أخرى",
-      continue: "متابعة",
-      resume_hint: "واصل الكتابة",
-      word_one: "{{count}} كلمة",
-      word_other: "{{count}} كلمة",
-      life_one: "{{count}} حياة متبقية",
-      life_other: "{{count}} حياة متبقية",
-      session_over: "انتهت الجلسة",
-      anky_processing: "anky يقرأ كتابتك الآن",
-      retrying: "إعادة المحاولة ({{current}}/{{max}})",
-      saved_locally: "تعذر الوصول إلى الخادم — تم حفظ الكتابة محليًا",
-      share: "مشاركة",
-      copy_link: "نسخ الرابط",
-      copied: "تم النسخ!",
-      type_reply: "اكتب ردًا إلى anky...",
-      write_reply: "اكتب ردك...",
-      send: "إرسال",
-      thinking: "أفكر...",
-      error: "حدث خطأ ما."
-    },
-    hi: {
-      landing_title_html: "उनके लिए<br>लिखो",
-      landing_sub: "8 मिनट",
-      try_again: "फिर से कोशिश करें",
-      continue: "जारी रखें",
-      resume_hint: "लिखते रहो",
-      word_one: "{{count}} शब्द",
-      word_other: "{{count}} शब्द",
-      life_one: "{{count}} जान बाकी",
-      life_other: "{{count}} जान बाकी",
-      session_over: "सत्र समाप्त",
-      anky_processing: "anky आपकी लिखाई पढ़ रहा है",
-      retrying: "फिर से कोशिश ({{current}}/{{max}})",
-      saved_locally: "सर्वर से जुड़ा नहीं जा सका — लिखाई लोकल में सहेजी गई",
-      share: "शेयर",
-      copy_link: "लिंक कॉपी करें",
-      copied: "कॉपी हो गया!",
-      type_reply: "anky को जवाब लिखें...",
-      write_reply: "अपना जवाब लिखें...",
-      send: "भेजें",
-      thinking: "सोच रहा है...",
-      error: "कुछ गलत हो गया।"
-    },
-    id: {
-      landing_title_html: "TULIS<br>UNTUK MEREKA",
-      landing_sub: "8 menit",
-      try_again: "coba lagi",
-      continue: "LANJUTKAN",
-      resume_hint: "terus menulis",
-      word_one: "{{count}} kata",
-      word_other: "{{count}} kata",
-      life_one: "{{count}} nyawa tersisa",
-      life_other: "{{count}} nyawa tersisa",
-      session_over: "SESI BERAKHIR",
-      anky_processing: "anky sedang membaca tulisanmu",
-      retrying: "mencoba lagi ({{current}}/{{max}})",
-      saved_locally: "tidak bisa terhubung ke server — tulisan disimpan secara lokal",
-      share: "bagikan",
-      copy_link: "salin tautan",
-      copied: "disalin!",
-      type_reply: "ketik balasan untuk anky...",
-      write_reply: "tulis balasanmu...",
-      send: "kirim",
-      thinking: "sedang berpikir...",
-      error: "terjadi kesalahan."
-    }
-  };
-  {% endraw %}
-  var uiLang = 'en';
-
-  function normalizeLanguageCode(lang) {
-    if (!lang) return 'en';
-    return lang.toLowerCase().split('-')[0];
-  }
-
-  function detectUiLanguage() {
-    var candidates = [];
-    if (navigator.languages && navigator.languages.length) {
-      candidates = candidates.concat(navigator.languages);
-    }
-    if (navigator.language) candidates.push(navigator.language);
-    if (document.documentElement.lang) candidates.push(document.documentElement.lang);
-    for (var i = 0; i < candidates.length; i++) {
-      var normalized = normalizeLanguageCode(candidates[i]);
-      if (UI_COPY[normalized]) return normalized;
-    }
-    return 'en';
-  }
-
-  function copy(key, params) {
-    var pack = UI_COPY[uiLang] || UI_COPY.en;
-    var template = pack[key] || UI_COPY.en[key] || '';
-    if (!params) return template;
-    return template.replace(/\{\{(\w+)\}\}/g, function(_, token) {
-      return params[token] != null ? String(params[token]) : '';
+  function generateSessionId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     });
   }
 
-  function pluralCopy(baseKey, count) {
-    return copy(baseKey + (count === 1 ? '_one' : '_other'), { count: count });
+  function saveCheckpoint() {
+    if (!writingArea.value || writingArea.value.length === 0 || !sessionId) return;
+    fetch('/api/checkpoint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        text: writingArea.value,
+        elapsed: activeTime,
+        session_token: sessionToken,
+      }),
+    }).then(r => r.json()).then(data => {
+      if (data.session_token) sessionToken = data.session_token;
+    }).catch(() => {});
   }
 
-  function applyLocalizedCopy() {
-    uiLang = detectUiLanguage();
-    document.documentElement.lang = uiLang;
-    landingTitle.innerHTML = copy('landing_title_html');
-    landingSub.innerHTML = '<em>' + copy('landing_sub') + '</em>';
-    endedRestartBtn.textContent = copy('try_again');
-    endedMeta.textContent = '(' + copy('landing_sub') + ')';
-    resumeHint.textContent = copy('resume_hint');
-    statWords.textContent = pluralCopy('word', 0);
+  let contextWarmed = false;
+
+  function beginSession() {
+    sessionStarted = Date.now();
+    lastInputAt = Date.now();
+    activeTime = 0;
+    pausedAtActive = 0;
+    keystrokeDeltas = [];
+    lastKeystrokeAt = null;
+    sessionId = generateSessionId();
+    sessionToken = null;
+    contextWarmed = false;
+    state = 'writing';
+    tickInterval = setInterval(tick, 100);
+    checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
   }
 
-  applyLocalizedCopy();
-
-  function focusInput() {
-    function placeCursor() {
-      input.value = fullText;
-      try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
-      input.selectionStart = input.selectionEnd = input.value.length;
-    }
-    placeCursor();
-    requestAnimationFrame(placeCursor);
+  function resumeFromPause() {
+    // Continue where we left off
+    lastInputAt = Date.now();
+    sessionStarted = Date.now() - (pausedAtActive * 1000);
+    state = 'writing';
+    sendBtn.classList.remove('visible');
+    idleBarFill.style.width = '0%';
+    idleBarFill.classList.remove('warning');
+    if (!tickInterval) tickInterval = setInterval(tick, 100);
+    if (!checkpointTimer) checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
+    writingArea.focus();
   }
 
-  function isTextEntryKey(e) {
-    return !!e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
-  }
+  // Keydown: start session, block backspace/delete/enter, track deltas
+  writingArea.addEventListener('keydown', function(e) {
+    if (state === 'sent') { e.preventDefault(); return; }
 
-  function updateLivesLabel() {
-    livesLabel.textContent = pluralCopy('life', lives);
-  }
-
-  function mixColorWithWhite(rgb, whiteAmount) {
-    return [
-      Math.round(rgb[0] + (255 - rgb[0]) * whiteAmount),
-      Math.round(rgb[1] + (255 - rgb[1]) * whiteAmount),
-      Math.round(rgb[2] + (255 - rgb[2]) * whiteAmount)
-    ];
-  }
-
-  function setLastCharGlyph(glyph, rgb) {
-    var color = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.94)';
-    lastCharEl.textContent = glyph;
-    lastCharLeft.textContent = glyph;
-    lastCharRight.textContent = glyph;
-    lastCharEl.style.color = color;
-    lastCharLeft.style.color = color;
-    lastCharRight.style.color = color;
-  }
-
-  function updateLastCharFade(sinceLastKey) {
-    if (!fullText) {
-      lastCharEl.style.opacity = '0';
-      lastCharLeft.style.opacity = '0';
-      lastCharRight.style.opacity = '0';
-      lastCharLeft.style.transform = 'translateX(0px) rotate(0deg)';
-      lastCharRight.style.transform = 'translateX(0px) rotate(0deg)';
-      lastCharLeft.style.filter = 'blur(0px)';
-      lastCharRight.style.filter = 'blur(0px)';
-      lastCharShell.style.transform = 'scale(1)';
-      return;
-    }
-    var crackRatio = Math.max(0, Math.min(1, sinceLastKey / IDLE_TIMEOUT));
-    var opacity = 1;
-    if (sinceLastKey > 3000) {
-      opacity = 1 - ((sinceLastKey - 3000) / (IDLE_TIMEOUT - 3000));
-      opacity = Math.max(0, Math.min(1, opacity));
-    }
-    var crackShift = Math.round(crackRatio * 28);
-    var crackTilt = crackRatio * 8;
-    var fractureOpacity = Math.min(0.9, crackRatio * 0.72);
-    var fractureBlur = (crackRatio * 1.8).toFixed(2);
-    lastCharEl.style.opacity = opacity.toFixed(3);
-    lastCharEl.style.textShadow = '0 0 ' + Math.round(16 + opacity * 28) + 'px currentColor';
-    lastCharLeft.style.opacity = fractureOpacity.toFixed(3);
-    lastCharRight.style.opacity = fractureOpacity.toFixed(3);
-    lastCharLeft.style.transform = 'translateX(' + (-crackShift) + 'px) rotate(' + (-crackTilt).toFixed(2) + 'deg)';
-    lastCharRight.style.transform = 'translateX(' + crackShift + 'px) rotate(' + crackTilt.toFixed(2) + 'deg)';
-    lastCharLeft.style.filter = 'blur(' + fractureBlur + 'px)';
-    lastCharRight.style.filter = 'blur(' + fractureBlur + 'px)';
-    lastCharLeft.style.textShadow = '0 0 ' + Math.round(10 + crackRatio * 24) + 'px currentColor';
-    lastCharRight.style.textShadow = '0 0 ' + Math.round(10 + crackRatio * 24) + 'px currentColor';
-    lastCharShell.style.transform = 'scale(' + (1 + crackRatio * 0.03).toFixed(3) + ')';
-  }
-
-  function stopSessionTimers() {
-    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
-  }
-
-  // ═══════════════════════════════════════════
-  // FLOW SCORE
-  // ═══════════════════════════════════════════
-  // Running stats for standard deviation of keystroke deltas
-  var deltaSum = 0;
-  var deltaSumSq = 0;
-  var deltaCount = 0;
-  var deltaMean = 150;  // bootstrap with a reasonable default
-  var deltaStd = 80;
-
-  function updateDeltaStats(delta) {
-    // Clamp extreme outliers (pauses > 3s are not flow)
-    if (delta > 3000) delta = 3000;
-    deltaCount++;
-    deltaSum += delta;
-    deltaSumSq += delta * delta;
-    deltaMean = deltaSum / deltaCount;
-    if (deltaCount > 2) {
-      var variance = (deltaSumSq / deltaCount) - (deltaMean * deltaMean);
-      deltaStd = Math.sqrt(Math.max(variance, 1));
-    }
-  }
-
-  // Flow multiplier: how "in flow" this keystroke is
-  // Lower delta (faster typing) = higher flow = bigger char
-  // Returns 0.5 to 2.5 multiplier
-  function flowMultiplier(delta) {
-    if (deltaCount < 5) return 1; // not enough data yet
-    // z-score: negative means faster than average
-    var z = (delta - deltaMean) / Math.max(deltaStd, 1);
-    // Map z to multiplier: z=-2 → 2.5, z=0 → 1.2, z=+2 → 0.5
-    var m = 1.2 - z * 0.55;
-    return Math.max(0.5, Math.min(2.5, m));
-  }
-
-  // ═══════════════════════════════════════════
-  // PIXEL ART HEARTS — dual canvas (bg outline + fg fill with clip)
-  // ═══════════════════════════════════════════
-  var heartGrid = [
-    [0,1,1,0,0,0,1,1,0],
-    [1,1,1,1,0,1,1,1,1],
-    [1,1,1,1,1,1,1,1,1],
-    [1,1,1,1,1,1,1,1,1],
-    [0,1,1,1,1,1,1,1,0],
-    [0,0,1,1,1,1,1,0,0],
-    [0,0,0,1,1,1,0,0,0],
-    [0,0,0,0,1,0,0,0,0]
-  ];
-  var HEART_PX = 4;
-  var HEART_W = 9 * HEART_PX;
-  var HEART_H = 8 * HEART_PX;
-
-  function drawHeartPixels(ctx, color) {
-    for (var r = 0; r < heartGrid.length; r++) {
-      for (var c = 0; c < heartGrid[r].length; c++) {
-        if (heartGrid[r][c]) {
-          ctx.fillStyle = color;
-          ctx.fillRect(c * HEART_PX, r * HEART_PX, HEART_PX, HEART_PX);
-        }
+    if (state === 'ready') {
+      // Only start session on printable characters — not Tab, arrows, meta keys
+      if (e.key.length === 1) {
+        beginSession();
+        writingPrompt.classList.add('faded');
+      }
+    } else if (state === 'paused') {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSend();
+        return;
+      }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        return;
+      }
+      // Resume on any printable key
+      if (e.key.length === 1) {
+        resumeFromPause();
       }
     }
-  }
 
-  var heartCanvases = []; // [{bg, fg}, ...]
-  function renderHearts() {
-    heartsContainer.innerHTML = '';
-    heartCanvases = [];
-    for (var i = 0; i < 2; i++) {
-      var div = document.createElement('div');
-      div.className = 'pixel-heart' + (i >= lives ? ' dead' : '');
-
-      var bg = document.createElement('canvas');
-      bg.width = HEART_W; bg.height = HEART_H;
-      bg.className = 'heart-bg';
-      drawHeartPixels(bg.getContext('2d'), '#ff2040');
-
-      var fg = document.createElement('canvas');
-      fg.width = HEART_W; fg.height = HEART_H;
-      fg.className = 'heart-fg';
-      drawHeartPixels(fg.getContext('2d'), '#ff2040');
-
-      div.appendChild(bg);
-      div.appendChild(fg);
-      heartsContainer.appendChild(div);
-      heartCanvases.push({ el: div, fg: fg });
-    }
-  }
-
-  // Drain the active heart: clipY is 0 (full) to HEART_H (empty)
-  function drainHeart(index, fraction) {
-    // fraction: 0 = full red, 1 = fully drained
-    if (index < 0 || index >= heartCanvases.length) return;
-    var fg = heartCanvases[index].fg;
-    var ctx = fg.getContext('2d');
-    ctx.clearRect(0, 0, HEART_W, HEART_H);
-    if (fraction >= 1) return; // fully drained
-    // Clip: only draw the bottom portion (drain from top)
-    var clipY = Math.floor(HEART_H * fraction);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, clipY, HEART_W, HEART_H - clipY);
-    ctx.clip();
-    drawHeartPixels(ctx, '#ff2040');
-    ctx.restore();
-  }
-
-  function refillHeart(index) {
-    if (index < 0 || index >= heartCanvases.length) return;
-    var fg = heartCanvases[index].fg;
-    var ctx = fg.getContext('2d');
-    ctx.clearRect(0, 0, HEART_W, HEART_H);
-    drawHeartPixels(ctx, '#ff2040');
-  }
-
-  function loseLife() {
-    lives--;
-    if (lives >= 0 && lives < heartCanvases.length) {
-      heartCanvases[lives].el.className = 'pixel-heart breaking';
-      var idx = lives;
-      setTimeout(function() {
-        heartCanvases[idx].el.className = 'pixel-heart dead';
-      }, 500);
-    }
-  }
-
-  // ═══════════════════════════════════════════
-  // STATE MACHINE
-  // ═══════════════════════════════════════════
-  function setState(newState) {
-    STATE = newState;
-    document.body.className = document.body.className
-      .replace(/home-\S+/g, '')
-      .trim() + ' home-' + newState;
-  }
-
-  document.body.classList.add('home-landing');
-  renderHearts();
-
-  // ═══════════════════════════════════════════
-  // localStorage
-  // ═══════════════════════════════════════════
-  (function() {
-    function getCookie(name) {
-      var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-      return match ? decodeURIComponent(match[1]) : null;
-    }
-    var cookieUserId = getCookie('anky_user_id');
-    var storedToken = localStorage.getItem('anky_user_token');
-    if (cookieUserId) {
-      localStorage.setItem('anky_user_token', cookieUserId);
-    } else if (storedToken) {
-      document.cookie = 'anky_user_id=' + storedToken + '; path=/; max-age=31536000; SameSite=Lax';
-    }
-    {% if user_token %}
-    if (!localStorage.getItem('anky_user_token')) {
-      localStorage.setItem('anky_user_token', '{{ user_token }}');
-    }
-    {% endif %}
-  })();
-
-  function saveDraftToStorage() {
-    if (!fullText) return;
-    var elapsed = sessionActive ? (Date.now() - sessionStartTime) / 1000 : pausedElapsedSeconds;
-    localStorage.setItem('anky_draft', JSON.stringify({
-      text: fullText, elapsed: elapsed, timestamp: Date.now(),
-      session_id: sessionId, session_token: sessionToken, lives: lives
-    }));
-  }
-  function clearDraft() { localStorage.removeItem('anky_draft'); }
-
-  function saveAnkyId(ankyId) {
-    var myAnkys = JSON.parse(localStorage.getItem('anky_my_ankys') || '[]');
-    myAnkys.unshift({ id: ankyId, timestamp: Date.now() });
-    localStorage.setItem('anky_my_ankys', JSON.stringify(myAnkys.slice(0, 50)));
-  }
-
-  function storeLocalWriting(duration) {
-    if (!fullText) return;
-    var writings = JSON.parse(localStorage.getItem('anky_local_writings') || '[]');
-    writings.unshift({
-      id: sessionId || ('local_' + Date.now().toString(36)),
-      text: fullText,
-      duration: duration,
-      word_count: fullText.split(/\s+/).filter(function(w) { return w.length > 0; }).length,
-      saved_at: new Date().toISOString()
-    });
-    localStorage.setItem('anky_local_writings', JSON.stringify(writings.slice(0, 24)));
-  }
-
-  function resetFlowStats() {
-    deltaSum = 0;
-    deltaSumSq = 0;
-    deltaCount = 0;
-    deltaMean = 150;
-    deltaStd = 80;
-  }
-
-  function resetWritingState() {
-    stopSessionTimers();
-    if (draftSaveTimer) { clearTimeout(draftSaveTimer); draftSaveTimer = null; }
-    sessionActive = false;
-    sessionStartTime = null;
-    lastKeystrokeTime = null;
-    pausedElapsedSeconds = 0;
-    sessionId = null;
-    sessionToken = null;
-    currentAnkyId = null;
-    chatHistory = [];
-    lastStreamedTitle = '';
-    lastStreamedReflection = '';
-    currentAnkyImageUrl = '';
-    fullText = '';
-    lives = 2;
-    charIndex = 0;
-    skipNextDelta = false;
-    keystrokeTimes = [];
-    keystrokeDeltas = [];
-    resetFlowStats();
-    input.value = '';
-    reflectionContent.innerHTML = '';
-    flowRibbonInner.innerHTML = '';
-    if (writingStream) writingStream.textContent = '';
-    progressBar.style.width = '0%';
-    progressBar.classList.remove('complete');
-    lastCharEl.textContent = '';
-    lastCharLeft.textContent = '';
-    lastCharRight.textContent = '';
-    updateLastCharFade(0);
-    renderHearts();
-    statWords.textContent = pluralCopy('word', 0);
-    statTime.textContent = '0:00';
-    statTime.className = 'stat-dim';
-  }
-
-  function showEndedRestart() {
-    try { input.blur(); } catch (_) {}
-    setState('ended');
-  }
-
-  // ═══════════════════════════════════════════
-  // LANDING
-  // ═══════════════════════════════════════════
-  function enterWriting(seedChars) {
-    if (STATE !== 'landing') return;
-    setState('writing');
-    renderHearts();
-    startSession();
-    focusInput();
-    updateLastCharFade(0);
-    if (typeof seedChars === 'string' && seedChars) appendCharacters(seedChars, Date.now());
-  }
-
-  function restartWriting(seedChars) {
-    resetWritingState();
-    clearDraft();
-    setState('writing');
-    startSession();
-    focusInput();
-    updateLastCharFade(0);
-    if (typeof seedChars === 'string' && seedChars) appendCharacters(seedChars, Date.now());
-  }
-
-  landing.addEventListener('click', function() { enterWriting(); });
-  landing.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    enterWriting();
-  }, { passive: false });
-
-  document.addEventListener('keydown', function(e) {
-    if (STATE === 'landing' && isTextEntryKey(e)) {
+    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
       e.preventDefault();
-      enterWriting(e.key);
       return;
     }
-    if (STATE === 'paused' && isTextEntryKey(e)) {
-      e.preventDefault();
-      resumePausedSession(e.key);
-      return;
-    }
-    if (STATE === 'paused' && e.key === 'Enter') {
-      e.preventDefault();
-      resumePausedSession();
-      return;
-    }
-    if (STATE === 'ended' && isTextEntryKey(e)) {
-      e.preventDefault();
-      restartWriting(e.key);
-      return;
-    }
-    if (STATE === 'ended' && e.key === 'Enter') {
-      e.preventDefault();
-      restartWriting();
+
+    if (state === 'writing' && e.key.length === 1) {
+      const now = Date.now();
+      lastInputAt = now;
+      if (lastKeystrokeAt) {
+        keystrokeDeltas.push(now - lastKeystrokeAt);
+      }
+      lastKeystrokeAt = now;
+      idleBarFill.style.width = '0%';
+      idleBarFill.classList.remove('warning');
     }
   });
 
-  // ═══════════════════════════════════════════
-  // SESSION
-  // ═══════════════════════════════════════════
-  function startSession(resumeElapsed) {
-    var isResume = typeof resumeElapsed === 'number';
-    var elapsed = isResume ? resumeElapsed : 0;
-    sessionActive = true;
-    sessionStartTime = Date.now() - elapsed * 1000;
-    lastKeystrokeTime = Date.now();
-    if (!isResume) {
-      sessionId = 'ses_' + Date.now().toString(36);
-      sessionToken = null;
+  // Strip newlines (mobile autocomplete edge case)
+  writingArea.addEventListener('input', function() {
+    if (state === 'paused') {
+      // Input event from mobile without keydown — resume
+      resumeFromPause();
     }
-    animate();
-  }
+    if (writingArea.value.includes('\n')) {
+      const pos = writingArea.selectionStart;
+      writingArea.value = writingArea.value.replace(/\n/g, ' ');
+      writingArea.selectionStart = writingArea.selectionEnd = pos;
+    }
+    // Update lastInputAt for mobile (keydown doesn't always fire for soft keyboards)
+    if (state === 'writing') {
+      lastInputAt = Date.now();
+    }
+  });
 
-  function resumePausedSession(seedChars) {
-    if (STATE !== 'paused') return;
-    setState('writing');
-    renderHearts();
-    skipNextDelta = keystrokeTimes.length > 0;
-    startSession(pausedElapsedSeconds);
-    focusInput();
-    updateLastCharFade(0);
-    if (typeof seedChars === 'string' && seedChars) appendCharacters(seedChars, Date.now());
-  }
+  writingArea.addEventListener('paste', function(e) { e.preventDefault(); });
 
-  // ═══════════════════════════════════════════
-  // ANIMATION LOOP
-  // ═══════════════════════════════════════════
-  function animate() {
-    if (!sessionActive) return;
-    var elapsed = (Date.now() - sessionStartTime) / 1000;
+  // Send button
+  sendBtn.addEventListener('click', function() {
+    if (state !== 'paused') return;
+    doSend();
+  });
 
-    // Update stats display
-    var words = fullText.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-    statWords.textContent = pluralCopy('word', words);
-    var mins = Math.floor(elapsed / 60);
-    var secs = Math.floor(elapsed % 60);
-    statTime.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
-    statTime.className = elapsed >= TOTAL_SECONDS ? 'stat-time-done' : 'stat-dim';
+  function tick() {
+    if (state !== 'writing') return;
+    const now = Date.now();
+    activeTime = (now - sessionStarted) / 1000;
+    const idleElapsed = (now - lastInputAt) / 1000;
 
-    // Progress bar
-    var pct = Math.min((elapsed / TOTAL_SECONDS) * 100, 100);
-    progressBar.style.width = pct + '%';
-    if (pct >= 100) progressBar.classList.add('complete');
-    else progressBar.classList.remove('complete');
-
-    // Heart drain — the active heart (rightmost alive) drains from top
-    var sinceLastKey = Date.now() - lastKeystrokeTime;
-    var activeHeartIdx = lives - 1; // 0-indexed, rightmost alive
-    if (sinceLastKey < 3000) {
-      // Grace period — heart is full
-      refillHeart(activeHeartIdx);
+    // Idle bar: visible after 3s, fills from 3s to 8s
+    if (idleElapsed > IDLE_VISIBLE_AFTER && writingArea.value.length > 0) {
+      const idleProgress = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
+      idleBarFill.style.width = (idleProgress * 100) + '%';
+      idleBarFill.classList.add('warning');
     } else {
-      // Draining: 3s to 8s maps to 0% to 100% drained
-      var drainFraction = (sinceLastKey - 3000) / (IDLE_TIMEOUT - 3000);
-      drainFraction = Math.max(0, Math.min(1, drainFraction));
-      drainHeart(activeHeartIdx, drainFraction);
+      idleBarFill.style.width = '0%';
+      idleBarFill.classList.remove('warning');
     }
-    updateLastCharFade(sinceLastKey);
 
-    // Idle timeout — lose a life
-    if (sinceLastKey >= IDLE_TIMEOUT) {
-      onIdleTimeout(elapsed);
+    // Pre-warm Honcho context at minute 6 so reflection starts instantly
+    if (activeTime >= 360 && !contextWarmed) {
+      contextWarmed = true;
+      fetch('/api/warm-context', { method: 'POST' }).catch(function() {});
+    }
+
+    // Pause at 8s idle
+    if (idleElapsed >= IDLE_TIMEOUT && writingArea.value.length > 0) {
+      pauseSession();
       return;
     }
 
-    animFrame = requestAnimationFrame(animate);
+    updateTimerDisplay();
+    updateChakra();
   }
 
-  function onIdleTimeout(elapsed) {
-    sessionActive = false;
-    stopSessionTimers();
+  function pauseSession() {
+    state = 'paused';
+    pausedAtActive = activeTime;
+    clearInterval(tickInterval);
+    tickInterval = null;
+    if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
+    saveCheckpoint();
 
-    loseLife();
+    // Show send button, keep idle bar full
+    idleBarFill.style.width = '100%';
+    idleBarFill.classList.add('warning');
+    sendBtn.classList.add('visible');
+  }
 
-    if (lives > 0) {
-      pausedElapsedSeconds = elapsed;
-      updateLivesLabel();
-      saveDraftToStorage();
-      setState('paused');
+  function updateTimerDisplay() {
+    const remaining = SESSION_DURATION - activeTime;
+    if (remaining >= 0) {
+      const mins = Math.floor(remaining / 60);
+      const secs = Math.floor(remaining % 60);
+      writingTimer.textContent = mins + ':' + String(secs).padStart(2, '0');
+      writingTimer.classList.remove('past-zero');
     } else {
-      endSession(elapsed);
+      const over = Math.abs(remaining);
+      const mins = Math.floor(over / 60);
+      const secs = Math.floor(over % 60);
+      writingTimer.textContent = '+' + mins + ':' + String(secs).padStart(2, '0');
+      writingTimer.classList.add('past-zero');
     }
   }
 
-  // ═══════════════════════════════════════════
-  // CONTINUE
-  // ═══════════════════════════════════════════
-  document.getElementById('anky-paused').addEventListener('click', function() {
-    resumePausedSession();
-  });
-  endedRestartBtn.addEventListener('click', function() {
-    restartWriting();
-  });
-
-  // ═══════════════════════════════════════════
-  // END SESSION
-  // ═══════════════════════════════════════════
-  function endSession(elapsed) {
-    sessionActive = false;
-    stopSessionTimers();
-
-    var duration = elapsed || (Date.now() - sessionStartTime) / 1000;
-    var wordCount = fullText.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-    var isAnky = duration >= TOTAL_SECONDS && wordCount >= 300;
-
-    // Always submit and show reflection — anky always listens
-    reflectionContent.innerHTML = '';
-    setState('reflection');
-    submitWriting(duration, isAnky);
-  }
-
-  function submitWriting(duration, isAnky) {
-    var writePayload = { text: fullText, duration: duration, session_id: sessionId };
-    if (sessionToken) writePayload.session_token = sessionToken;
-    {% if inquiry_id %}
-    writePayload.inquiry_id = '{{ inquiry_id }}';
-    {% endif %}
-    var writeHeaders = { 'Content-Type': 'application/json' };
-    var userToken = localStorage.getItem('anky_user_token');
-    if (userToken) writeHeaders['X-Anky-User-Token'] = userToken;
-    saveDraftToStorage();
-
-    var submitRetries = 0;
-    function attemptSubmit() {
-      fetch('/write', { method: 'POST', headers: writeHeaders, body: JSON.stringify(writePayload) })
-        .then(function(r) {
-          if (!r.ok) return r.json().catch(function() { return { error: 'server error' }; });
-          return r.json();
-        })
-        .then(function(data) {
-          if (data.error) {
-            storeLocalWriting(duration);
-            showEndedRestart();
-            return;
-          }
-          clearDraft();
-          if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
-
-          if (data.is_anky && data.anky_id) {
-            // Full anky — stream Claude reflection
-            localStorage.setItem('anky_full_ui_unlocked', 'true');
-            currentAnkyId = data.anky_id;
-            saveAnkyId(data.anky_id);
-            streamAnkyReflection(data.anky_id);
-          } else if (data.response) {
-            // Short session — show Ollama feedback directly
-            setState('reflection');
-            reflectionContent.innerHTML =
-              '<div class="anky-reflection-text"><p>' + renderMarkdown(data.response) + '</p></div>';
-            // Enable conversation continuation
-            addShortSessionChat(data.response);
-          } else {
-            showEndedRestart();
-          }
-        })
-        .catch(function() {
-          submitRetries++;
-          if (submitRetries < 3) {
-            setTimeout(attemptSubmit, 2000 * submitRetries);
-          } else {
-            storeLocalWriting(duration);
-            showEndedRestart();
-          }
-        });
+  function updateChakra() {
+    const progress = Math.min(activeTime / SESSION_DURATION, 1);
+    const colorIdx = Math.min(Math.floor(progress * 8), 7);
+    const stops = [];
+    for (let i = 0; i <= colorIdx; i++) {
+      stops.push(CHAKRA_COLORS[i]);
     }
-    attemptSubmit();
+    chakraFill.style.background = stops.length === 1
+      ? stops[0]
+      : 'linear-gradient(to right, ' + stops.join(', ') + ')';
+    chakraFill.style.width = (progress * 100) + '%';
   }
 
-  // ═══════════════════════════════════════════
-  // REFLECTION
-  // ═══════════════════════════════════════════
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
+  function doSend() {
+    state = 'sent';
+    const text = writingArea.value;
+    const words = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+    const isAnky = activeTime >= 480 && words >= 300;
+    console.log('[anky] doSend: duration=' + activeTime.toFixed(0) + 's, words=' + words + ', isAnky=' + isAnky);
+
+    // Hide writing UI, show chat conversation
+    writingArea.style.display = 'none';
+    writingPrompt.style.display = 'none';
+    writingBottom.style.display = 'none';
+    document.querySelector('.idle-bar-wrap').style.display = 'none';
+
+    // Show writing as chat bubble (truncated preview, scrollable)
+    resultWriting.textContent = text;
+    sessionResult.classList.add('visible');
+
+    // Show thinking dots in anky bubble
+    document.getElementById('thinkingDots').style.display = 'flex';
+
+    document.getElementById('writingSurface').classList.add('scrollable');
+    document.body.classList.add('scrollable');
+
+    // Scroll to show anky's thinking bubble
+    setTimeout(function() {
+      document.getElementById('ankyBubble').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+
+    sendToAnky(text);
+  }
+
+  function calcFlowScore() {
+    if (keystrokeDeltas.length < 5) return 0;
+    const mean = keystrokeDeltas.reduce((a, b) => a + b, 0) / keystrokeDeltas.length;
+    const variance = keystrokeDeltas.reduce((a, d) => a + (d - mean) ** 2, 0) / keystrokeDeltas.length;
+    const std = Math.sqrt(variance);
+    const cv = mean > 0 ? std / mean : 1;
+    const stability = Math.max(0, 1 - cv) * 0.45;
+    const totalPause = keystrokeDeltas.filter(d => d > 2000).reduce((a, d) => a + d, 0) / 1000;
+    const continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
+    const density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
+    return Math.min(1, Math.max(0, stability + continuity + density));
   }
 
   function renderMarkdown(text) {
@@ -1589,469 +586,282 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
       .replace(/^### (.+)$/gm, '<h4>$1</h4>')
       .replace(/^## (.+)$/gm, '<h3>$1</h3>')
       .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^---$/gm, '<hr>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
       .replace(/\n\n+/g, '</p><p>')
       .replace(/\n/g, '<br>');
   }
 
-  function streamAnkyReflection(ankyId) {
-    var streamedText = '';
-    var titleParsed = false;
-    var titleText = '';
-    var renderPending = false;
-
-    setState('reflection');
-
-    function renderCurrent() {
-      if (!titleParsed && streamedText.indexOf('\n') !== -1) {
-        titleText = streamedText.substring(0, streamedText.indexOf('\n')).trim();
-        titleParsed = true;
-        lastStreamedTitle = titleText;
-      }
-      var html = '';
-      if (titleParsed) {
-        var rest = streamedText.substring(streamedText.indexOf('\n') + 1).trim();
-        lastStreamedReflection = rest;
-        html = '<div class="anky-reflection-title">' + escapeHtml(titleText) + '</div>' +
-               '<div class="anky-reflection-text"><p>' + renderMarkdown(rest) + '</p></div>';
-      } else {
-        html = '<div class="anky-reflection-text"><p>' + escapeHtml(streamedText) + '</p></div>';
-      }
-      reflectionContent.innerHTML = html;
-    }
-
-    var source = new EventSource('/api/stream-reflection/' + ankyId);
-    source.onmessage = function(e) {
-      streamedText += e.data;
-      if (!renderPending) {
-        renderPending = true;
-        requestAnimationFrame(function() { renderCurrent(); renderPending = false; });
-      }
-    };
-    source.addEventListener('done', function() {
-      source.close();
-      renderCurrent();
-      addImageSkeleton();
-      pollAnkyImage(ankyId);
-      addReflectionActions(ankyId);
-      setTimeout(function() { showReplyOptions(ankyId); }, 700);
-    });
-    source.onerror = function() {
-      source.close();
-      if (!streamedText) pollAnkyReflection(ankyId);
-      else {
-        renderCurrent();
-        addImageSkeleton();
-        pollAnkyImage(ankyId);
-        addReflectionActions(ankyId);
-        setTimeout(function() { showReplyOptions(ankyId); }, 700);
-      }
-    };
+  function setThinkingLabel(msg) {
+    var label = document.querySelector('.thinking-label');
+    if (label) label.textContent = msg;
+    console.log('[anky] status:', msg);
   }
 
-  function addImageSkeleton() {
-    var el = document.createElement('div');
-    el.className = 'image-skeleton';
-    el.id = 'anky-image-slot';
-    reflectionContent.appendChild(el);
-  }
+  async function sendToAnky(text) {
+    const flowScore = calcFlowScore();
+    const userToken = '{{ user_token | default(value="") }}';
+    console.log('[anky] sending writing...', { duration: activeTime, words: text.split(/\s+/).length, flowScore: flowScore });
 
-  function setInlineStatus(target, className, text) {
-    target.innerHTML = '';
-    var span = document.createElement('span');
-    span.className = className;
-    span.textContent = text;
-    target.appendChild(span);
-  }
-
-  function copyUrlWithFeedback(button, url, resetKey) {
-    if (!navigator.clipboard || !navigator.clipboard.writeText) return;
-    navigator.clipboard.writeText(url).then(function() {
-      button.textContent = copy('copied');
-      setTimeout(function() {
-        button.textContent = copy(resetKey);
-      }, 2000);
-    }).catch(function() {});
-  }
-
-  function addReflectionActions(ankyId) {
-    var url = window.location.origin + '/anky/' + ankyId;
-    var actionsDiv = document.createElement('div');
-    actionsDiv.className = 'anky-reflection-actions';
-    var shareBtn = document.createElement('button');
-    shareBtn.textContent = copy('share');
-    shareBtn.addEventListener('click', function() {
-      if (navigator.share) {
-        navigator.share({ title: 'my anky', url: url }).catch(function() {});
-      } else {
-        copyUrlWithFeedback(shareBtn, url, 'share');
-      }
-    });
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = copy('copy_link');
-    copyBtn.addEventListener('click', function() {
-      copyUrlWithFeedback(copyBtn, url, 'copy_link');
-    });
-    actionsDiv.appendChild(shareBtn);
-    actionsDiv.appendChild(copyBtn);
-    reflectionContent.appendChild(actionsDiv);
-  }
-
-  function pollAnkyImage(ankyId) {
-    var count = 0;
-    var interval = setInterval(function() {
-      count++;
-      fetch('/api/v1/anky/' + ankyId)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          var slot = document.getElementById('anky-image-slot');
-          if (data.status === 'complete' && data.image_url) {
-            clearInterval(interval);
-            currentAnkyImageUrl = data.image_url;
-            if (slot) slot.outerHTML = '<img class="anky-reflection-image" src="' + data.image_url + '" alt="anky">';
-          } else if (data.status === 'failed') {
-            clearInterval(interval);
-            if (slot) slot.remove();
-          }
-          if (count > 100) clearInterval(interval);
-        }).catch(function() {});
-    }, 3000);
-  }
-
-  function pollAnkyReflection(ankyId) {
-    setState('reflection');
-    var count = 0;
-    var reflectionShown = false;
-    var interval = setInterval(function() {
-      count++;
-      fetch('/api/v1/anky/' + ankyId)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.reflection && !reflectionShown) {
-            reflectionShown = true;
-            lastStreamedTitle = data.title || '';
-            lastStreamedReflection = data.reflection || '';
-            var html = '';
-            if (data.title) html += '<div class="anky-reflection-title">' + escapeHtml(data.title) + '</div>';
-            html += '<div class="anky-reflection-text"><p>' + renderMarkdown(data.reflection) + '</p></div>';
-            reflectionContent.innerHTML = html;
-            addReflectionActions(ankyId);
-            setTimeout(function() { showReplyOptions(ankyId); }, 500);
-          }
-          if (data.status === 'complete' && data.image_url) {
-            clearInterval(interval);
-            currentAnkyImageUrl = data.image_url;
-            var slot = document.getElementById('anky-image-slot');
-            if (slot) slot.outerHTML = '<img class="anky-reflection-image" src="' + data.image_url + '" alt="anky">';
-            else {
-              var img = document.createElement('img');
-              img.className = 'anky-reflection-image';
-              img.src = data.image_url;
-              reflectionContent.appendChild(img);
-            }
-          } else if (data.status === 'failed') { clearInterval(interval); }
-          if (count > 100) clearInterval(interval);
-        }).catch(function() {});
-    }, 3000);
-  }
-
-  // ═══════════════════════════════════════════
-  // CHAT / REPLY
-  // ═══════════════════════════════════════════
-  function showReplyOptions(ankyId) {
-    var existing = document.getElementById('reply-wrap');
-    if (existing) existing.remove();
-    var wrap = document.createElement('div');
-    wrap.id = 'reply-wrap';
-    wrap.className = 'reply-options-wrap';
-    setInlineStatus(wrap, 'processing-text', '...');
-    reflectionContent.appendChild(wrap);
-
-    fetch('/api/suggest-replies', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anky_id: ankyId, history: chatHistory }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        wrap.innerHTML = '';
-        [data.reply1, data.reply2].forEach(function(reply) {
-          var btn = document.createElement('button');
-          btn.className = 'reply-option-btn';
-          btn.textContent = reply;
-          btn.onclick = function() { sendReply(ankyId, reply); };
-          wrap.appendChild(btn);
-        });
-        addCustomReplyButton(wrap, ankyId);
-      })
-      .catch(function() {
-        wrap.innerHTML = '';
-        addCustomReplyButton(wrap, ankyId);
-      });
-  }
-
-  function addCustomReplyButton(wrap, ankyId) {
-    var btn = document.createElement('button');
-    btn.className = 'reply-option-btn';
-    btn.textContent = copy('type_reply');
-    btn.onclick = function() {
-      wrap.innerHTML = '';
-      var inputWrap = document.createElement('div');
-      inputWrap.className = 'reply-custom-input';
-      var ta = document.createElement('textarea');
-      ta.placeholder = copy('write_reply');
-      ta.rows = 1;
-      var sendBtn = document.createElement('button');
-      sendBtn.disabled = true;
-      sendBtn.textContent = copy('send');
-      inputWrap.appendChild(ta);
-      inputWrap.appendChild(sendBtn);
-      wrap.appendChild(inputWrap);
-      ta.addEventListener('input', function() {
-        ta.style.height = 'auto';
-        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
-        sendBtn.disabled = !ta.value.trim();
-      });
-      ta.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) sendBtn.click(); }
-      });
-      sendBtn.onclick = function() { var msg = ta.value.trim(); if (msg) sendReply(ankyId, msg); };
-      ta.focus();
-    };
-    wrap.appendChild(btn);
-  }
-
-  function sendReply(ankyId, msg) {
-    var wrap = document.getElementById('reply-wrap');
-    if (wrap) wrap.remove();
-    var userBubble = document.createElement('div');
-    userBubble.className = 'anky-chat-bubble user';
-    userBubble.textContent = msg;
-    reflectionContent.appendChild(userBubble);
-    var thinkBubble = document.createElement('div');
-    thinkBubble.className = 'anky-chat-bubble anky';
-    setInlineStatus(thinkBubble, 'processing-text', copy('thinking'));
-    reflectionContent.appendChild(thinkBubble);
-
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anky_id: ankyId, message: msg, history: chatHistory }),
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        chatHistory.push({ role: 'user', content: msg });
-        chatHistory.push({ role: 'assistant', content: data.response });
-        thinkBubble.innerHTML = renderMarkdown(data.response);
-        showReplyOptions(ankyId);
-      })
-      .catch(function() {
-        setInlineStatus(thinkBubble, 'error-text', copy('error'));
-      });
-  }
-
-  // ═══════════════════════════════════════════
-  // SHORT SESSION CHAT — anky always listens
-  // ═══════════════════════════════════════════
-  function addShortSessionChat(initialResponse) {
-    chatHistory = [{ role: 'assistant', content: initialResponse }];
-
-    var wrap = document.createElement('div');
-    wrap.id = 'reply-wrap';
-    wrap.className = 'reply-options-wrap';
-    var inputWrap = document.createElement('div');
-    inputWrap.className = 'reply-custom-input';
-    var ta = document.createElement('textarea');
-    ta.placeholder = copy('write_reply');
-    ta.rows = 1;
-    var sendBtn = document.createElement('button');
-    sendBtn.disabled = true;
-    sendBtn.textContent = copy('send');
-    inputWrap.appendChild(ta);
-    inputWrap.appendChild(sendBtn);
-    wrap.appendChild(inputWrap);
-    reflectionContent.appendChild(wrap);
-
-    ta.addEventListener('input', function() {
-      ta.style.height = 'auto';
-      ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
-      sendBtn.disabled = !ta.value.trim();
-    });
-    ta.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) sendBtn.click(); }
-    });
-    sendBtn.onclick = function() {
-      var msg = ta.value.trim();
-      if (!msg) return;
-      wrap.remove();
-
-      var userBubble = document.createElement('div');
-      userBubble.className = 'anky-chat-bubble user';
-      userBubble.textContent = msg;
-      reflectionContent.appendChild(userBubble);
-
-      var thinkBubble = document.createElement('div');
-      thinkBubble.className = 'anky-chat-bubble anky';
-      setInlineStatus(thinkBubble, 'processing-text', copy('thinking'));
-      reflectionContent.appendChild(thinkBubble);
-
-      fetch('/api/chat-quick', {
+    try {
+      setThinkingLabel('sending your writing...');
+      const resp = await fetch('/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, writing: fullText, history: chatHistory }),
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinkBubble.innerHTML = renderMarkdown(data.response);
-          addShortSessionChat(data.response);
-        })
-        .catch(function() {
-          setInlineStatus(thinkBubble, 'error-text', copy('error'));
-        });
-    };
-    setTimeout(function() { ta.focus(); }, 300);
-  }
-
-  // ═══════════════════════════════════════════
-  // INPUT HANDLING
-  // ═══════════════════════════════════════════
-  function appendCharacters(newChars, now) {
-    if (!newChars) return;
-    var timestamp = now || Date.now();
-
-    for (var ci = 0; ci < newChars.length; ci++) {
-      if (keystrokeTimes.length > 0) {
-        if (skipNextDelta) {
-          skipNextDelta = false;
-        } else {
-          var delta = timestamp - keystrokeTimes[keystrokeTimes.length - 1];
-          keystrokeDeltas.push(delta);
-          updateDeltaStats(delta);
-        }
-      }
-      keystrokeTimes.push(timestamp);
-    }
-
-    fullText += newChars;
-    input.value = fullText;
-    charIndex += newChars.length;
-
-    var lastChar = newChars.charAt(newChars.length - 1);
-    if (lastChar === ' ') lastChar = '\u00A0';
-    var cIdx = charIndex % chakraColors.length;
-    var rgb = chakraColors[cIdx];
-    setLastCharGlyph(lastChar, rgb);
-    lastCharEl.classList.remove('flash', 'faded');
-    void lastCharEl.offsetWidth;
-    lastCharEl.classList.add('flash');
-    updateLastCharFade(0);
-
-    for (var fi = 0; fi < newChars.length; fi++) {
-      var ch = newChars.charAt(fi);
-      var globalIdx = charIndex - newChars.length + fi + 1;
-      var colorIdx = globalIdx % chakraColors.length;
-      var cRgb = chakraColors[colorIdx];
-      var tintedRgb = mixColorWithWhite(cRgb, 0.84);
-      var dIdx = keystrokeDeltas.length - newChars.length + fi;
-      var thisDelta = dIdx >= 0 ? keystrokeDeltas[dIdx] : 150;
-      var mult = flowMultiplier(thisDelta);
-      var charSize = Math.round(16 * mult);
-      if (charSize < 8) charSize = 8;
-      if (charSize > 40) charSize = 40;
-
-      // Add to the unified writing stream (above the big char)
-      if (writingStream) {
-        var textNode = document.createTextNode(ch === ' ' ? ' ' : ch);
-        writingStream.appendChild(textNode);
-      }
-
-      // Also still add to flow ribbon (hidden, but keeps data structure)
-      var span = document.createElement('span');
-      span.className = 'flow-char';
-      span.textContent = ch === ' ' ? '\u00A0' : ch;
-      span.style.fontSize = charSize + 'px';
-      span.style.color = 'rgba(' + tintedRgb[0] + ',' + tintedRgb[1] + ',' + tintedRgb[2] + ',0.95)';
-      span.style.textShadow = '0 0 8px rgba(' + cRgb[0] + ',' + cRgb[1] + ',' + cRgb[2] + ',0.14)';
-      flowRibbonInner.appendChild(span);
-    }
-
-    // Auto-scroll the writing area so newest text is visible
-    var writingArea = document.getElementById('anky-writing');
-    if (writingArea) writingArea.scrollTop = writingArea.scrollHeight;
-
-    while (flowRibbonInner.children.length > 500) {
-      flowRibbonInner.removeChild(flowRibbonInner.firstChild);
-    }
-
-    input.selectionStart = input.selectionEnd = input.value.length;
-
-    if (STATE === 'writing') {
-      lastKeystrokeTime = timestamp;
-      refillHeart(lives - 1);
-    }
-
-    if (draftSaveTimer) clearTimeout(draftSaveTimer);
-    draftSaveTimer = setTimeout(saveDraftToStorage, 2000);
-  }
-
-  input.addEventListener('input', function() {
-    var val = input.value;
-    if (val.length > fullText.length) {
-      appendCharacters(val.substring(fullText.length), Date.now());
-    } else {
-      input.value = fullText;
-    }
-
-    input.selectionStart = input.selectionEnd = input.value.length;
-  });
-
-  input.addEventListener('keydown', function(e) {
-    var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
-      'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-    if (blocked.indexOf(e.key) !== -1) { e.preventDefault(); return; }
-    if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) { e.preventDefault(); }
-  });
-
-  input.addEventListener('paste', function(e) { e.preventDefault(); });
-  input.addEventListener('cut', function(e) { e.preventDefault(); });
-  input.addEventListener('drop', function(e) { e.preventDefault(); });
-
-  document.addEventListener('click', function() { if (STATE === 'writing') focusInput(); });
-  document.addEventListener('touchstart', function() { if (STATE === 'writing') focusInput(); });
-
-  // ═══════════════════════════════════════════
-  // MOBILE VIEWPORT
-  // ═══════════════════════════════════════════
-  (function() {
-    function updateVH() {
-      var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      document.documentElement.style.setProperty('--vh', vh + 'px');
-    }
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', function() {
-        updateVH();
-        window.scrollTo(0, 0);
+        body: JSON.stringify({
+          text: text,
+          duration: activeTime,
+          user_token: userToken,
+          flow_score: flowScore,
+          session_id: sessionId,
+          session_token: sessionToken,
+          keystroke_deltas: keystrokeDeltas,
+        }),
       });
-    }
-    window.addEventListener('resize', updateVH);
-    updateVH();
-  })();
+      console.log('[anky] /write response status:', resp.status);
+      const data = await resp.json();
+      console.log('[anky] /write response:', { isAnky: data.isAnky, ankyId: data.ankyId, has_response: !!data.response, error: data.error });
+      if (data.model || data.provider || data.generation_ms) {
+        console.log('[anky] telemetry:', {
+          provider: data.provider,
+          model: data.model,
+          generation_ms: data.generation_ms,
+          tokens_used: data.tokens_used,
+          generation_time: data.generation_ms ? (data.generation_ms / 1000).toFixed(1) + 's' : 'n/a',
+        });
+      }
 
-  document.addEventListener('touchmove', function(e) {
-    var el = e.target;
-    while (el && el !== document.body) {
-      if (el.id === 'anky-reflection' || el.id === 'anky-paused' || el.id === 'anky-ended') return;
-      el = el.parentElement;
-    }
-    e.preventDefault();
-  }, { passive: false });
+      if (data.error) {
+        console.error('[anky] server error:', data.error);
+        document.getElementById('thinkingDots').style.display = 'none';
+        resultReply.innerHTML = '<p>' + data.error + '</p>';
+        resultActions.style.display = 'flex';
+        return;
+      }
 
-  window.ankyLive = { toggle: function(){}, sendText: function(){}, isLive: function(){ return false; }, disconnect: function(){}, setSessionActive: function(){}, startCountdown: function(){} };
+      // Poll for ankyResponse + nextPrompt in background
+      pollForAnkyPrompt(sessionId);
+
+      if (data.ankyId) {
+        setThinkingLabel('anky is reflecting on your words...');
+        streamReflection(data.ankyId);
+      } else {
+        // Non-anky: show response directly
+        console.log('[anky] non-anky response received, length:', (data.response || '').length);
+        document.getElementById('thinkingDots').style.display = 'none';
+        if (data.response) {
+          var html = renderMarkdown(data.response);
+          resultReply.innerHTML = '<p>' + html + '</p>';
+        } else {
+          resultReply.innerHTML = '<p>your writing is saved. anky is still thinking...</p>';
+        }
+        resultActions.style.display = 'flex';
+      }
+    } catch (e) {
+      console.error('[anky] sendToAnky error:', e);
+      document.getElementById('thinkingDots').style.display = 'none';
+      resultReply.innerHTML = '<p>something went wrong. your writing is saved.</p>';
+      resultActions.style.display = 'flex';
+    }
+  }
+
+  // Poll status endpoint until we get ankyResponse + nextPrompt, then save to localStorage
+  function pollForAnkyPrompt(sid) {
+    let attempts = 0;
+    const maxAttempts = 30; // ~60 seconds
+    const poll = setInterval(async function() {
+      attempts++;
+      if (attempts > maxAttempts) { clearInterval(poll); return; }
+      try {
+        const r = await fetch('/api/writing/' + sid + '/status');
+        if (!r.ok) return;
+        const s = await r.json();
+        if (s.ankyResponse) {
+          localStorage.setItem('anky_last_response', s.ankyResponse);
+        }
+        if (s.nextPrompt) {
+          localStorage.setItem('anky_last_prompt', s.nextPrompt);
+          clearInterval(poll);
+        }
+        if (s.mood) {
+          localStorage.setItem('anky_last_mood', s.mood);
+        }
+      } catch(e) {}
+    }, 2000);
+  }
+
+  function streamReflection(ankyId, attempt) {
+    attempt = attempt || 1;
+    var maxRetries = 3;
+    let rawText = '';
+    let streamDone = false;
+    let chunkCount = 0;
+    let firstChunkAt = null;
+    const startedAt = Date.now();
+
+    console.log('[anky] streamReflection: opening SSE to /api/stream-reflection/' + ankyId + ' (attempt ' + attempt + ')');
+
+    // Progress messages while waiting for first chunk
+    const progressMessages = [
+      { at: 3000, msg: 'anky is reading your words...' },
+      { at: 8000, msg: 'anky is sitting with what you wrote...' },
+      { at: 15000, msg: 'anky is finding the right words...' },
+      { at: 25000, msg: 'anky is still reflecting... almost there...' },
+      { at: 40000, msg: 'this one goes deep... anky is taking its time...' },
+      { at: 60000, msg: 'still working on your reflection... hang tight...' },
+    ];
+    const progressTimers = progressMessages.map(function(p) {
+      return setTimeout(function() {
+        if (!firstChunkAt && !streamDone) {
+          setThinkingLabel(p.msg);
+        }
+      }, p.at);
+    });
+
+    const es = new EventSource('/api/stream-reflection/' + ankyId);
+
+    es.onopen = function() {
+      console.log('[anky] SSE connection opened');
+    };
+
+    // Safety net: if nothing happens in 90s, stop waiting and show the link
+    const safetyTimeout = setTimeout(function() {
+      if (!streamDone) {
+        console.warn('[anky] safety timeout hit (90s) — no data received');
+        streamDone = true;
+        progressTimers.forEach(clearTimeout);
+        es.close();
+        document.getElementById('thinkingDots').style.display = 'none';
+        resultReply.innerHTML = '<p>anky is still processing your writing. it will be ready when you come back.</p>';
+        resultActions.style.display = 'flex';
+        var link = document.createElement('a');
+        link.href = '/anky/' + ankyId;
+        link.textContent = 'view anky';
+        resultActions.appendChild(link);
+      }
+    }, 90000);
+
+    es.onmessage = function(e) {
+      // Skip keep-alive pings
+      if (e.data === 'keep-alive') {
+        console.log('[anky] SSE keep-alive ping received');
+        return;
+      }
+
+      chunkCount++;
+      if (!firstChunkAt) {
+        firstChunkAt = Date.now();
+        progressTimers.forEach(clearTimeout);
+        console.log('[anky] first chunk received after ' + ((firstChunkAt - startedAt) / 1000).toFixed(1) + 's');
+      }
+      if (chunkCount <= 3 || chunkCount % 10 === 0) {
+        console.log('[anky] chunk #' + chunkCount + ', data length: ' + e.data.length + ', total: ' + rawText.length);
+      }
+
+      // Hide thinking dots on first chunk
+      var dots = document.getElementById('thinkingDots');
+      if (dots.style.display !== 'none') dots.style.display = 'none';
+
+      rawText += e.data + '\n';
+      var html = renderMarkdown(rawText);
+      html = '<p>' + html + '</p>';
+      html = html.replace(/<p>\s*<\/p>/g, '');
+      resultReply.innerHTML = html + '<span class="stream-cursor"></span>';
+      window.scrollTo(0, document.body.scrollHeight);
+    };
+
+    es.addEventListener('telemetry', function(e) {
+      try {
+        var t = JSON.parse(e.data);
+        console.log('[anky] stream telemetry:', {
+          provider: t.provider,
+          model: t.model,
+          generation_time: (t.generation_ms / 1000).toFixed(1) + 's',
+          input_tokens: t.input_tokens,
+          output_tokens: t.output_tokens,
+          total_tokens: t.total_tokens,
+        });
+      } catch(err) {
+        console.log('[anky] telemetry (raw):', e.data);
+      }
+    });
+
+    es.addEventListener('done', function() {
+      if (streamDone) return;
+      streamDone = true;
+      progressTimers.forEach(clearTimeout);
+      clearTimeout(safetyTimeout);
+      es.close();
+      var elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+      console.log('[anky] stream done. chunks: ' + chunkCount + ', total chars: ' + rawText.length + ', elapsed: ' + elapsed + 's');
+      var cursor = resultReply.querySelector('.stream-cursor');
+      if (cursor) cursor.remove();
+      resultActions.style.display = 'flex';
+      var link = document.createElement('a');
+      link.href = '/anky/' + ankyId;
+      link.textContent = 'view anky';
+      resultActions.appendChild(link);
+    });
+
+    es.onerror = function(evt) {
+      if (streamDone) return;
+      streamDone = true;
+      progressTimers.forEach(clearTimeout);
+      clearTimeout(safetyTimeout);
+      var elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+      console.error('[anky] SSE error after ' + elapsed + 's, readyState: ' + es.readyState + ', chunks received: ' + chunkCount);
+      es.close();
+
+      // Retry up to maxRetries times with increasing delay
+      if (!rawText && attempt < maxRetries) {
+        var delay = attempt * 3000;
+        console.log('[anky] retrying in ' + (delay / 1000) + 's (attempt ' + (attempt + 1) + ')');
+        setThinkingLabel('reconnecting to anky... (attempt ' + (attempt + 1) + ')');
+        setTimeout(function() { streamReflection(ankyId, attempt + 1); }, delay);
+        return;
+      }
+      document.getElementById('thinkingDots').style.display = 'none';
+      if (rawText) {
+        console.log('[anky] SSE errored but we have partial text (' + rawText.length + ' chars), showing it');
+        var cursor = resultReply.querySelector('.stream-cursor');
+        if (cursor) cursor.remove();
+      } else {
+        console.error('[anky] SSE failed with no data after ' + maxRetries + ' attempts');
+        resultReply.innerHTML = '<p>anky couldn\'t connect right now. your writing is saved — the reflection will be ready when you come back.</p>';
+      }
+      resultActions.style.display = 'flex';
+      var link = document.createElement('a');
+      link.href = '/anky/' + ankyId;
+      link.textContent = 'view anky';
+      resultActions.appendChild(link);
+    };
+  }
+
+  // Mobile keyboard: resize writing surface to visible viewport
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function() {
+      if (state !== 'sent') {
+        document.getElementById('writingSurface').style.height = window.visualViewport.height + 'px';
+      }
+    });
+  }
+
+  // If Anky left a prompt from a previous session, show it instead of the server default
+  const savedPrompt = localStorage.getItem('anky_last_prompt');
+  if (savedPrompt) {
+    writingPrompt.textContent = savedPrompt;
+  }
+
+  writingArea.focus();
+
+  return { doSend };
 })();
 </script>
 {% endblock %}

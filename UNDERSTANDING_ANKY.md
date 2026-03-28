@@ -576,7 +576,7 @@ pub async fn call_claude_public(
 
 ### Ollama (Local) — The Workhorse
 
-Ollama runs AI models on your own machine. No cloud, no API costs, no internet needed. Currently running Qwen 3.5 (35B parameter model).
+Ollama runs AI models on your own machine. No cloud, no API costs, no internet needed. Currently running Qwen 3.5 (27B parameter model).
 
 Used for:
 - Quick writing feedback (under 8 minutes)

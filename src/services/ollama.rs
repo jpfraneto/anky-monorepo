@@ -165,10 +165,10 @@ RULES:
 - Match the language of the writing
 - Output raw JSON only: {"reply1":"...","reply2":"..."}"#;
 
-/// Generate two suggested replies using local Qwen.
+/// Generate two suggested replies using Claude Haiku.
 pub async fn generate_suggested_replies(
-    base_url: &str,
-    model: &str,
+    api_key: &str,
+    _model: &str,
     writing: &str,
     reflection: &str,
     history: &[(String, String)],
@@ -185,7 +185,9 @@ pub async fn generate_suggested_replies(
         }
     }
 
-    let text = call_ollama_with_system(base_url, model, SUGGEST_REPLIES_SYSTEM, &context).await?;
+    let text =
+        crate::services::claude::call_haiku_with_system(api_key, SUGGEST_REPLIES_SYSTEM, &context)
+            .await?;
     let trimmed = text.trim();
     // Strip markdown fences if present
     let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
@@ -210,7 +212,7 @@ pub async fn generate_suggested_replies(
     ))
 }
 
-const IMAGE_PROMPT_SYSTEM: &str = r#"CONTEXT: You are generating an image prompt for Anky based on a user's 8-minute stream of consciousness writing session. Anky is a blue-skinned creature with purple swirling hair, golden/amber eyes, golden decorative accents and jewelry, large expressive ears, and an ancient-yet-childlike quality. Anky exists in mystical, richly colored environments (deep blues, purples, oranges, golds). The aesthetic is spiritual but not sterile — warm, alive, slightly psychedelic.
+pub const IMAGE_PROMPT_SYSTEM: &str = r#"CONTEXT: You are generating an image prompt for Anky based on a user's 8-minute stream of consciousness writing session. Anky is a blue-skinned creature with purple swirling hair, golden/amber eyes, golden decorative accents and jewelry, large expressive ears, and an ancient-yet-childlike quality. Anky exists in mystical, richly colored environments (deep blues, purples, oranges, golds). The aesthetic is spiritual but not sterile — warm, alive, slightly psychedelic.
 
 YOUR TASK: Read the user's writing and create a scene where Anky embodies the EMOTIONAL TRUTH of what they wrote — not a literal illustration, but a symbolic mirror. Anky should be DOING something or BE somewhere that reflects the user's inner state.
 
@@ -222,13 +224,13 @@ ALWAYS INCLUDE:
 
 OUTPUT: A single detailed image generation prompt, 2-3 sentences, painterly/fantasy style. Nothing else."#;
 
-/// Generate an image prompt from writing using local Qwen.
+/// Generate an image prompt from writing using Claude Haiku.
 pub async fn generate_image_prompt(
-    base_url: &str,
-    model: &str,
+    api_key: &str,
+    _model: &str,
     writing: &str,
 ) -> anyhow::Result<String> {
-    call_ollama_with_system(base_url, model, IMAGE_PROMPT_SYSTEM, writing).await
+    crate::services::claude::call_haiku_with_system(api_key, IMAGE_PROMPT_SYSTEM, writing).await
 }
 
 const X_IMAGE_MENTION_SYSTEM: &str = r#"You are Anky handling direct mentions on X.
@@ -261,11 +263,13 @@ pub struct XImageMentionResponse {
 
 /// Classify an X mention as either an image request with a fresh prompt or a short text reply.
 pub async fn classify_x_image_mention(
-    base_url: &str,
-    model: &str,
+    api_key: &str,
+    _model: &str,
     text: &str,
 ) -> anyhow::Result<XImageMentionResponse> {
-    let raw = call_ollama_with_system(base_url, model, X_IMAGE_MENTION_SYSTEM, text).await?;
+    let raw =
+        crate::services::claude::call_haiku_with_system(api_key, X_IMAGE_MENTION_SYSTEM, text)
+            .await?;
     let trimmed = raw.trim();
     let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
         &trimmed[s..=e]
@@ -308,13 +312,15 @@ Output raw JSON only:
 Image request: {"type":"image","prompt":"enhanced 2-3 sentence prompt"}
 Not image request: {"type":"feedback","message":"brief explanation"}"#;
 
-/// Classify and optionally enhance a prompt using local Qwen.
+/// Classify and optionally enhance a prompt using Claude Haiku.
 pub async fn classify_and_enhance_prompt(
-    base_url: &str,
-    model: &str,
+    api_key: &str,
+    _model: &str,
     text: &str,
 ) -> anyhow::Result<crate::services::claude::PromptClassification> {
-    let raw = call_ollama_with_system(base_url, model, CLASSIFY_PROMPT_SYSTEM, text).await?;
+    let raw =
+        crate::services::claude::call_haiku_with_system(api_key, CLASSIFY_PROMPT_SYSTEM, text)
+            .await?;
     let trimmed = raw.trim();
     let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
         &trimmed[s..=e]
@@ -356,13 +362,18 @@ Output raw JSON only:
 Genuine: {"type":"genuine","prompt":"the self-inquiry question"}
 Spam: {"type":"spam"}"#;
 
-/// Classify an X/Twitter mention using local Qwen.
+/// Classify an X/Twitter mention using Claude Haiku.
 pub async fn classify_mention(
-    base_url: &str,
-    model: &str,
+    api_key: &str,
+    _model: &str,
     tweet_text: &str,
 ) -> anyhow::Result<crate::services::claude::MentionClassification> {
-    let raw = call_ollama_with_system(base_url, model, MENTION_CLASSIFY_SYSTEM, tweet_text).await?;
+    let raw = crate::services::claude::call_haiku_with_system(
+        api_key,
+        MENTION_CLASSIFY_SYSTEM,
+        tweet_text,
+    )
+    .await?;
     let trimmed = raw.trim();
     let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
         &trimmed[s..=e]
@@ -442,4 +453,71 @@ Writing:
 ---"#,
         mins, secs, text
     )
+}
+
+const ANKY_NUDGE_SYSTEM: &str = r#"you are anky — a warm, playful presence that lives inside the writing. someone just sat down and typed a few words. they barely started. your job is to meet them where they are and invite them deeper. don't scold them. don't lecture. be alive. be curious about what those few words might mean. maybe tease them gently, maybe ask them what's underneath. 1-2 sentences max. lowercase only. no quotes. respond in their language."#;
+
+/// Quick nudge for very short writings (<10 words).
+/// Uses the user's preferred model if set, otherwise OpenRouter default, then Ollama fallback.
+pub async fn quick_nudge(
+    config: &crate::config::Config,
+    text: &str,
+    user_model: Option<&str>,
+) -> Result<String> {
+    let user_msg = if text.trim().is_empty() {
+        "they opened the page but wrote nothing.".to_string()
+    } else {
+        format!("they wrote: \"{}\"", text)
+    };
+
+    // Determine which OpenRouter model to use
+    let or_model = match user_model {
+        Some(m) if m != "default" && !m.is_empty() => m.to_string(),
+        _ => config.openrouter_light_model.clone(),
+    };
+
+    // Try OpenRouter when the key is set
+    if !config.openrouter_api_key.is_empty() {
+        tracing::info!(model = %or_model, "quick_nudge: calling openrouter");
+        match crate::services::openrouter::call_openrouter(
+            &config.openrouter_api_key,
+            &or_model,
+            ANKY_NUDGE_SYSTEM,
+            &user_msg,
+            200,
+            30,
+        )
+        .await
+        {
+            Ok(r) => {
+                tracing::info!("quick_nudge: openrouter response ({} chars)", r.len());
+                return Ok(r);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "quick_nudge: openrouter failed, falling back to ollama: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    // Fallback: Claude Haiku
+    tracing::info!("quick_nudge: falling back to claude haiku");
+    match crate::services::claude::call_haiku_with_system(
+        &config.anthropic_api_key,
+        ANKY_NUDGE_SYSTEM,
+        &user_msg,
+    )
+    .await
+    {
+        Ok(r) => {
+            tracing::info!("quick_nudge: haiku response ({} chars)", r.len());
+            Ok(r)
+        }
+        Err(e) => {
+            tracing::error!("quick_nudge: haiku error: {}", e);
+            Err(e)
+        }
+    }
 }

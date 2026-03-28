@@ -6,7 +6,9 @@ const EMBEDDING_DIM: usize = 768;
 /// Call nomic-embed-text via Ollama to embed a text string.
 /// Returns a 768-dimensional f32 vector.
 pub async fn embed_text(ollama_base_url: &str, text: &str) -> Result<Vec<f32>> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
 
     let body = serde_json::json!({
         "model": "nomic-embed-text",

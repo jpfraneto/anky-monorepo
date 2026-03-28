@@ -1,5 +1,5 @@
 // Anky Service Worker — cache-first for static assets, network-first for pages
-const CACHE_NAME = 'anky-v1';
+const CACHE_NAME = 'anky-v2';
 const STATIC_ASSETS = [
   '/static/style.css',
   '/static/htmx.min.js',
@@ -28,9 +28,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET, SSE, WebSocket, and API requests
+  // Skip non-GET, external origins, SSE, WebSocket, API, and auth requests
   if (
     event.request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/ws/') ||
     url.pathname.startsWith('/auth/') ||

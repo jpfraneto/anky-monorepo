@@ -247,6 +247,11 @@ pub async fn generate_image(prompt: &str) -> Result<Vec<u8>> {
     generate_image_at_url(prompt, COMFYUI_URL).await
 }
 
+/// Generate an image with custom dimensions.
+pub async fn generate_image_sized(prompt: &str, width: u32, height: u32) -> Result<Vec<u8>> {
+    generate_image_sized_at_url(prompt, width, height, COMFYUI_URL).await
+}
+
 /// Generate a vertical story image using the existing Flux + LoRA workflow.
 pub async fn generate_story_image(prompt: &str) -> Result<Vec<u8>> {
     let client = reqwest::Client::builder()
@@ -436,6 +441,111 @@ pub async fn generate_image_at_url(prompt: &str, comfy_url: &str) -> Result<Vec<
             .send()
             .await?;
 
+        if img_resp.status().is_success() {
+            return Ok(img_resp.bytes().await?.to_vec());
+        }
+    }
+
+    Err(anyhow!("ComfyUI generation timed out after 240s"))
+}
+
+/// Like `generate_image_at_url` but with custom width/height.
+pub async fn generate_image_sized_at_url(
+    prompt: &str,
+    width: u32,
+    height: u32,
+    comfy_url: &str,
+) -> Result<Vec<u8>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()?;
+
+    let client_id = Uuid::new_v4().to_string();
+    let lora_name = resolve_lora_model_name();
+    let prompt_text = ensure_trigger_word(prompt);
+    let workflow = json!({
+        "client_id": client_id,
+        "prompt": {
+            "1": { "class_type": "UNETLoader", "inputs": { "unet_name": FLUX_UNET, "weight_dtype": "fp8_e4m3fn" } },
+            "2": { "class_type": "VAELoader", "inputs": { "vae_name": FLUX_VAE } },
+            "3": { "class_type": "DualCLIPLoader", "inputs": { "clip_name1": FLUX_CLIP_L, "clip_name2": FLUX_T5, "type": "flux" } },
+            "4": { "class_type": "LoraLoader", "inputs": { "model": ["1", 0], "clip": ["3", 0], "lora_name": lora_name, "strength_model": LORA_STRENGTH, "strength_clip": LORA_STRENGTH } },
+            "5": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["4", 1], "text": prompt_text } },
+            "6": { "class_type": "EmptyLatentImage", "inputs": { "width": width, "height": height, "batch_size": 1 } },
+            "7": { "class_type": "KSampler", "inputs": { "model": ["4", 0], "positive": ["5", 0], "negative": ["5", 0], "latent_image": ["6", 0], "seed": rand_seed(), "steps": STEPS, "cfg": GUIDANCE, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0 } },
+            "8": { "class_type": "VAEDecode", "inputs": { "samples": ["7", 0], "vae": ["2", 0] } },
+            "9": { "class_type": "SaveImage", "inputs": { "images": ["8", 0], "filename_prefix": "anky" } }
+        }
+    });
+
+    let resp = client
+        .post(format!("{}/prompt", comfy_url))
+        .json(&workflow)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("ComfyUI queue failed: {}", body));
+    }
+
+    let queue_resp: Value = resp.json().await?;
+    let prompt_id = queue_resp["prompt_id"]
+        .as_str()
+        .ok_or_else(|| anyhow!("No prompt_id in ComfyUI response"))?
+        .to_string();
+
+    for _ in 0..120 {
+        sleep(Duration::from_secs(2)).await;
+        let history_resp = client
+            .get(format!("{}/history/{}", comfy_url, prompt_id))
+            .send()
+            .await?;
+        if !history_resp.status().is_success() {
+            continue;
+        }
+        let history: Value = history_resp.json().await?;
+        let entry = &history[&prompt_id];
+        if entry.is_null() {
+            continue;
+        }
+
+        if let Some(status) = entry["status"].as_object() {
+            if let Some(msgs) = status.get("messages").and_then(|m| m.as_array()) {
+                for msg in msgs {
+                    if msg[0].as_str() == Some("execution_error") {
+                        let err = msg[1]["exception_message"]
+                            .as_str()
+                            .unwrap_or("unknown error");
+                        return Err(anyhow!("ComfyUI execution error: {}", err));
+                    }
+                }
+            }
+        }
+
+        let outputs = &entry["outputs"];
+        let mut image_filename = None;
+        if let Some(obj) = outputs.as_object() {
+            for (_node_id, output) in obj {
+                if let Some(images) = output["images"].as_array() {
+                    if let Some(img) = images.first() {
+                        image_filename = img["filename"].as_str().map(|s| s.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
+        let filename = match image_filename {
+            Some(f) => f,
+            None => continue,
+        };
+        let img_resp = client
+            .get(format!(
+                "{}/view?filename={}&type=output",
+                comfy_url, filename
+            ))
+            .send()
+            .await?;
         if img_resp.status().is_success() {
             return Ok(img_resp.bytes().await?.to_vec());
         }

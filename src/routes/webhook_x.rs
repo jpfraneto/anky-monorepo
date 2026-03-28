@@ -636,17 +636,13 @@ pub async fn process_anky_mention(
     }
 
     // Step 1: Classify — image request or text reply?
-    // Still use Ollama for fast classification (it's good at this binary task)
-    let mention_response = ollama::classify_x_image_mention(
-        &state.config.ollama_base_url,
-        &state.config.ollama_model,
-        &text,
-    )
-    .await
-    .unwrap_or_else(|_| ollama::XImageMentionResponse {
-        is_image_request: false,
-        text_reply: None,
-    });
+    let mention_response =
+        ollama::classify_x_image_mention(&state.config.anthropic_api_key, "", &text)
+            .await
+            .unwrap_or_else(|_| ollama::XImageMentionResponse {
+                is_image_request: false,
+                text_reply: None,
+            });
 
     let is_image_request = mention_response.is_image_request;
 
@@ -903,6 +899,7 @@ pub async fn process_anky_mention(
             social_ctx.peer_context.as_deref(),
             &social_ctx.interaction_history,
             "x",
+            None,
         )
         .await;
 
@@ -998,8 +995,26 @@ pub async fn process_anky_mention(
                     text.clone()
                 }
             }
-            Ok(claude::AnkyReply::Text(ref reply)) if !reply.is_empty() => {
-                let reply_id = post_reply(&state, &tweet_id, reply).await.ok();
+            Ok(claude::AnkyReply::Thread(ref slides)) => {
+                let slides = claude::enforce_thread_limits(slides.clone(), "x");
+                let full_text = slides.join(" | ");
+                tracing::info!(
+                    "Posting X thread ({} slides) for tweet {}",
+                    slides.len(),
+                    &tweet_id
+                );
+                let cfg = &state.config;
+                let reply_ids = x_bot::reply_thread(
+                    &cfg.twitter_bot_api_key,
+                    &cfg.twitter_bot_api_secret,
+                    &cfg.twitter_bot_access_token,
+                    &cfg.twitter_bot_access_secret,
+                    &tweet_id,
+                    &slides,
+                )
+                .await
+                .unwrap_or_default();
+                let first_id = reply_ids.first().cloned();
                 let _ = upsert_x_interaction(
                     &state,
                     &tweet_id,
@@ -1008,16 +1023,78 @@ pub async fn process_anky_mention(
                     &text,
                     in_reply_to_tweet_id.as_deref(),
                     source,
-                    "replied_text",
+                    "replied_thread",
                     Some("text_reply"),
                     initial_tag,
                     initial_content,
-                    Some(reply),
-                    reply_id.as_deref(),
+                    Some(&full_text),
+                    first_id.as_deref(),
                     None,
                 )
                 .await;
-                reply.clone()
+                full_text
+            }
+            Ok(claude::AnkyReply::Text(ref reply)) if !reply.is_empty() => {
+                // Enforce 280 char limit — split into thread if needed
+                let slides = claude::enforce_thread_limits(vec![reply.clone()], "x");
+                if slides.len() > 1 {
+                    let full_text = slides.join(" | ");
+                    tracing::info!(
+                        "Single text exceeded 280, splitting into {} slides for tweet {}",
+                        slides.len(),
+                        &tweet_id
+                    );
+                    let cfg = &state.config;
+                    let reply_ids = x_bot::reply_thread(
+                        &cfg.twitter_bot_api_key,
+                        &cfg.twitter_bot_api_secret,
+                        &cfg.twitter_bot_access_token,
+                        &cfg.twitter_bot_access_secret,
+                        &tweet_id,
+                        &slides,
+                    )
+                    .await
+                    .unwrap_or_default();
+                    let first_id = reply_ids.first().cloned();
+                    let _ = upsert_x_interaction(
+                        &state,
+                        &tweet_id,
+                        &author_id,
+                        &author_username,
+                        &text,
+                        in_reply_to_tweet_id.as_deref(),
+                        source,
+                        "replied_thread",
+                        Some("text_reply"),
+                        initial_tag,
+                        initial_content,
+                        Some(&full_text),
+                        first_id.as_deref(),
+                        None,
+                    )
+                    .await;
+                    full_text
+                } else {
+                    let reply_id = post_reply(&state, &tweet_id, reply).await.ok();
+                    let _ = upsert_x_interaction(
+                        &state,
+                        &tweet_id,
+                        &author_id,
+                        &author_username,
+                        &text,
+                        in_reply_to_tweet_id.as_deref(),
+                        source,
+                        "replied_text",
+                        Some("text_reply"),
+                        initial_tag,
+                        initial_content,
+                        Some(reply),
+                        reply_id.as_deref(),
+                        None,
+                    )
+                    .await;
+                    reply.clone()
+                }
             }
             Ok(_) => {
                 let fallback = "🦍".to_string();
@@ -1043,16 +1120,12 @@ pub async fn process_anky_mention(
             }
             Err(e) => {
                 tracing::error!("Claude reply generation failed: {}", e);
-                // Fallback to Ollama
-                let fallback = ollama::classify_x_image_mention(
-                    &state.config.ollama_base_url,
-                    &state.config.ollama_model,
-                    &text,
-                )
-                .await
-                .ok()
-                .and_then(|r| r.text_reply)
-                .unwrap_or_else(|| "🦍".to_string());
+                let fallback =
+                    ollama::classify_x_image_mention(&state.config.anthropic_api_key, "", &text)
+                        .await
+                        .ok()
+                        .and_then(|r| r.text_reply)
+                        .unwrap_or_else(|| "🦍".to_string());
                 let reply_id = post_reply(&state, &tweet_id, &fallback).await.ok();
                 let claude_error = format!("Claude reply generation failed: {}", e);
                 let _ = upsert_x_interaction(
@@ -1093,6 +1166,31 @@ pub async fn process_anky_mention(
                     &reply_text,
                 ],
             );
+        }
+
+        // 5. Send interaction to Honcho so the deriver learns about this user
+        // Use the resolved peer ID from social_context (may be cross-platform linked)
+        if crate::services::honcho::is_configured(&state.config) {
+            let h_key = state.config.honcho_api_key.clone();
+            let h_ws = state.config.honcho_workspace_id.clone();
+            let h_peer = social_ctx
+                .honcho_peer_id
+                .clone()
+                .unwrap_or_else(|| format!("x_{}", author_id));
+            let h_session = format!("x_mentions_{}", author_id);
+            let h_content = format!(
+                "@{} said: {}\n\nAnky replied: {}",
+                author_username, text, reply_text
+            );
+            tokio::spawn(async move {
+                if let Err(e) = crate::services::honcho::send_writing(
+                    &h_key, &h_ws, &h_session, &h_peer, &h_content,
+                )
+                .await
+                {
+                    tracing::debug!("Honcho X interaction write failed: {}", e);
+                }
+            });
         }
     }
 

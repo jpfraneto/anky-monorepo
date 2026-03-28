@@ -103,6 +103,45 @@ pub async fn lookup_wallet(
     }))
 }
 
+/// Fetch a Farcaster user by FID and return their verified X (Twitter) username if any.
+pub async fn fetch_x_username_for_fid(api_key: &str, fid: u64) -> Result<Option<String>> {
+    if api_key.is_empty() {
+        return Ok(None);
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
+    let resp = client
+        .get("https://api.neynar.com/v2/farcaster/user/bulk")
+        .query(&[("fids", &fid.to_string())])
+        .header("x-api-key", api_key)
+        .header("accept", "application/json")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+
+    let body: serde_json::Value = resp.json().await?;
+    let x_username = body["users"]
+        .as_array()
+        .and_then(|users| users.first())
+        .and_then(|user| user["verified_accounts"].as_array())
+        .and_then(|accounts| {
+            accounts.iter().find_map(|acc| {
+                if acc["platform"].as_str() == Some("x") {
+                    acc["username"].as_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+    Ok(x_username)
+}
+
 // ── Casting ─────────────────────────────────────────────────────────────────
 
 /// Publish a cast (text reply to another cast).
@@ -142,6 +181,26 @@ pub async fn reply_to_cast(
     let hash = data["cast"]["hash"].as_str().unwrap_or("").to_string();
 
     Ok(PublishResult { hash })
+}
+
+/// Post a thread of casts, each replying to the previous one.
+/// Returns the hashes of all posted casts.
+pub async fn reply_thread(
+    api_key: &str,
+    signer_uuid: &str,
+    initial_parent_hash: &str,
+    slides: &[String],
+) -> Result<Vec<String>> {
+    let mut hashes = Vec::new();
+    let mut parent = initial_parent_hash.to_string();
+
+    for slide in slides {
+        let result = reply_to_cast(api_key, signer_uuid, &parent, slide).await?;
+        parent = result.hash.clone();
+        hashes.push(result.hash);
+    }
+
+    Ok(hashes)
 }
 
 /// Publish a cast with an image embed (reply to another cast).

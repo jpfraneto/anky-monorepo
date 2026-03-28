@@ -5,6 +5,9 @@ pub struct Config {
     pub port: u16,
     pub ollama_base_url: String,
     pub ollama_model: String,
+    pub ollama_light_model: String,
+    pub openrouter_api_key: String,
+    pub openrouter_light_model: String,
     pub anthropic_api_key: String,
     pub gemini_api_key: String,
     pub base_rpc_url: String,
@@ -50,6 +53,7 @@ pub struct Config {
     // Honcho (user identity modeling)
     pub honcho_api_key: String,
     pub honcho_workspace_id: String,
+    pub honcho_base_url: String,
     // TTS (F5-TTS local service)
     pub tts_base_url: String,
     // Cloudflare R2 (audio storage for Anky Voices)
@@ -58,6 +62,13 @@ pub struct Config {
     pub r2_access_key_id: String,
     pub r2_secret_access_key: String,
     pub r2_public_url: String,
+    // Flux Image Generation API credentials
+    pub flux_api_key: String,
+    pub flux_secret_key: String,
+    // Pinata (IPFS pinning for on-chain metadata)
+    pub pinata_jwt: String,
+    // Anky mint wallet (EIP-712 signer for birthSoul)
+    pub anky_wallet_private_key: String,
     // APNs (push notifications)
     pub apns_key_path: String,
     pub apns_key_id: String,
@@ -78,6 +89,12 @@ impl Config {
             ollama_base_url: std::env::var("OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
             ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:35b".into()),
+            ollama_light_model: std::env::var("OLLAMA_LIGHT_MODEL").unwrap_or_else(|_| {
+                std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:35b".into())
+            }),
+            openrouter_api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+            openrouter_light_model: std::env::var("OPENROUTER_LIGHT_MODEL")
+                .unwrap_or_else(|_| "meta-llama/llama-4-scout:free".into()),
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             base_rpc_url: std::env::var("BASE_RPC_URL")
@@ -125,18 +142,25 @@ impl Config {
             honcho_api_key: std::env::var("HONCHO_API_KEY").unwrap_or_default(),
             honcho_workspace_id: std::env::var("HONCHO_WORKSPACE_ID")
                 .unwrap_or_else(|_| "anky-prod".into()),
+            honcho_base_url: std::env::var("HONCHO_BASE_URL")
+                .unwrap_or_else(|_| "https://api.honcho.dev/v3".into()),
             r2_account_id: std::env::var("R2_ACCOUNT_ID").unwrap_or_default(),
             r2_bucket_name: std::env::var("R2_BUCKET_NAME")
                 .unwrap_or_else(|_| "anky-voices".into()),
             r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").unwrap_or_default(),
             r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").unwrap_or_default(),
             r2_public_url: std::env::var("R2_PUBLIC_URL").unwrap_or_default(),
+            // Flux Image Generation API credentials
+            flux_api_key: std::env::var("FLUX_API_KEY").unwrap_or_default(),
+            flux_secret_key: std::env::var("FLUX_SECRET_KEY").unwrap_or_default(),
+            pinata_jwt: std::env::var("PINATA_JWT").unwrap_or_default(),
             apns_key_path: std::env::var("APNS_KEY_PATH").unwrap_or_default(),
             apns_key_id: std::env::var("APNS_KEY_ID").unwrap_or_default(),
             apns_team_id: std::env::var("APNS_TEAM_ID").unwrap_or_default(),
             apns_bundle_id: std::env::var("APNS_BUNDLE_ID").unwrap_or_default(),
             apns_environment: std::env::var("APNS_ENVIRONMENT")
                 .unwrap_or_else(|_| "production".into()),
+            anky_wallet_private_key: std::env::var("ANKY_WALLET_PRIVATE_KEY").unwrap_or_default(),
         })
     }
 }

@@ -3,14 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>anky — your identity</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet">
+  <title>anky — log in</title>
+  <meta name="theme-color" content="#07070d">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Righteous', sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
       background: #07070d;
       color: #e0e0e0;
       height: 100vh;
@@ -18,491 +16,180 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
     }
-    #app {
-      max-width: 480px;
+    .login-box {
+      max-width: 380px;
       width: 100%;
-      padding: 20px 24px;
+      padding: 24px;
       text-align: center;
-      max-height: 100vh;
-      max-height: 100dvh;
-      overflow-y: auto;
     }
-    .screen { display: none; }
-    .screen.active { display: block; }
-    .logo {
-      font-size: 28px;
-      color: #c4a0ff;
-      margin-bottom: 4px;
-    }
-    .subtitle {
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 20px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-    }
-    .btn {
+    .login-pfp {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
       display: block;
-      width: 100%;
-      background: #1a1a2e;
-      border: 1px solid #333;
-      color: #c4a0ff;
-      font-family: 'Righteous', sans-serif;
-      font-size: 16px;
-      padding: 14px 24px;
-      cursor: pointer;
-      transition: all 0.2s;
-      margin-bottom: 12px;
+      opacity: 0.7;
     }
-    .btn:hover { background: #2a2a4e; border-color: #555; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary { border-color: #7b2ff7; }
-    .btn-dim { border-color: #222; color: #888; font-size: 14px; }
-    .divider {
-      color: #333;
-      font-size: 12px;
-      margin: 20px 0;
-    }
-    .word-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 4px;
-      margin: 12px 0;
-    }
-    .word-cell {
-      background: #111;
-      border: 1px solid #222;
-      padding: 6px 4px;
-      font-family: monospace;
-      font-size: 12px;
-      color: #e0e0e0;
-      text-align: center;
-      position: relative;
-    }
-    .word-cell .word-num {
-      position: absolute;
-      top: 1px;
-      left: 4px;
-      font-size: 8px;
-      color: #444;
-    }
-    input[type="password"], input[type="text"], textarea {
-      display: block;
-      width: 100%;
-      background: #111;
-      border: 1px solid #333;
-      color: #e0e0e0;
-      font-family: monospace;
-      font-size: 14px;
-      padding: 10px;
+    .login-title {
+      font-size: 22px;
+      font-weight: 600;
       margin-bottom: 8px;
-      outline: none;
     }
-    input[type="password"]:focus, input[type="text"]:focus, textarea:focus {
-      border-color: #7b2ff7;
-    }
-    textarea {
-      height: 120px;
-      resize: none;
-    }
-    label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: #888;
-      margin-bottom: 16px;
-      cursor: pointer;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-      justify-content: center;
-    }
-    label input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: #7b2ff7;
-    }
-    .error {
-      color: #e05050;
-      font-size: 13px;
-      margin-bottom: 12px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-    }
-    .info {
-      color: #666;
-      font-size: 13px;
-      margin-bottom: 16px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
+    .login-sub {
+      font-size: 14px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 32px;
       line-height: 1.5;
     }
-    .back-link {
-      margin-top: 32px;
-      font-size: 13px;
+    .login-btn {
+      display: block;
+      width: 100%;
+      background: #7b2ff7;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: opacity 0.2s;
     }
-    .back-link a {
-      color: #666;
+    .login-btn:hover { opacity: 0.85; }
+    .login-btn:disabled { opacity: 0.4; cursor: default; }
+    .login-btn.apple {
+      background: #fff;
+      color: #000;
+    }
+    .login-status {
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 16px;
+      min-height: 20px;
+    }
+    .login-back {
+      display: inline-block;
+      margin-top: 24px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
       text-decoration: none;
     }
-    .back-link a:hover { color: #888; }
-    .loading-dots::after {
-      content: '';
-      animation: dots 1.5s steps(4, end) infinite;
-    }
-    @keyframes dots {
-      0% { content: ''; }
-      25% { content: '.'; }
-      50% { content: '..'; }
-      75% { content: '...'; }
-    }
-    .section-title {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 16px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-    }
-    .passphrase-section {
-      margin-top: 12px;
-      text-align: left;
-    }
-    .passphrase-section label {
-      justify-content: flex-start;
-    }
-    .passphrase-label {
-      font-size: 12px;
-      color: #555;
-      margin-bottom: 6px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-    }
-    .sacred-warning {
-      color: #c4a0ff;
-      font-size: 12px;
-      font-family: system-ui, sans-serif;
-      font-weight: 400;
-      line-height: 1.6;
-      margin: 20px 0;
-      padding: 16px;
-      border: 1px solid #222;
-      background: #0f0f1a;
-      text-align: left;
-    }
+    .login-back:hover { color: rgba(255,255,255,0.5); }
   </style>
 </head>
 <body>
-  <div id="app">
-
-    <!-- WELCOME -->
-    <div class="screen active" id="screen-welcome">
-      <div class="logo">anky</div>
-      <div class="subtitle">write for your children. they'll hear your soul.</div>
-      <div id="welcome-buttons">
-        <button class="btn btn-primary" onclick="showScreen('generate')">create identity</button>
-        <button class="btn btn-dim" onclick="showScreen('import')">i have a recovery phrase</button>
-      </div>
-      <div id="welcome-unlock" style="display:none;">
-        <p class="info">your identity is stored on this device.</p>
-        <input type="password" id="unlock-pass" placeholder="passphrase" onkeydown="if(event.key==='Enter')unlockVault()">
-        <div class="error" id="unlock-error"></div>
-        <button class="btn btn-primary" onclick="unlockVault()">unlock</button>
-        <div class="divider">or</div>
-        <button class="btn btn-dim" onclick="showScreen('import')">use a different recovery phrase</button>
-      </div>
-      <div class="back-link"><a href="/">back to writing</a></div>
-    </div>
-
-    <!-- GENERATE -->
-    <div class="screen" id="screen-generate">
-      <div class="logo">anky</div>
-      <div class="subtitle">this is your soul. write it down and don't lose it.</div>
-      <div class="word-grid" id="gen-words"></div>
-      <label>
-        <input type="checkbox" id="gen-confirm"> i wrote these down
-      </label>
-      <div class="passphrase-section">
-        <div class="passphrase-label">choose a passphrase to encrypt your identity on this device</div>
-        <input type="password" id="gen-pass" placeholder="passphrase (min 6 characters)">
-        <input type="password" id="gen-pass-confirm" placeholder="confirm passphrase">
-      </div>
-      <div class="error" id="gen-error"></div>
-      <button class="btn btn-primary" id="gen-submit" onclick="submitGenerate()">save and authenticate</button>
-      <div class="back-link"><a href="javascript:showScreen('welcome')">back</a></div>
-    </div>
-
-    <!-- IMPORT -->
-    <div class="screen" id="screen-import">
-      <div class="logo">anky</div>
-      <div class="subtitle">enter your 12-word recovery phrase</div>
-      <textarea id="import-words" placeholder="enter all 12 words separated by spaces"></textarea>
-      <div class="passphrase-section">
-        <div class="passphrase-label">choose a passphrase to encrypt your identity on this device</div>
-        <input type="password" id="import-pass" placeholder="passphrase (min 6 characters)">
-        <input type="password" id="import-pass-confirm" placeholder="confirm passphrase">
-      </div>
-      <div class="error" id="import-error"></div>
-      <button class="btn btn-primary" onclick="submitImport()">restore and authenticate</button>
-      <div class="back-link"><a href="javascript:showScreen('welcome')">back</a></div>
-    </div>
-
-    <!-- LOADING -->
-    <div class="screen" id="screen-loading">
-      <div class="logo">anky</div>
-      <div class="info"><span class="loading-dots">authenticating</span></div>
-    </div>
-
+  <div class="login-box">
+    <img class="login-pfp" src="/static/icon-192.png" alt="anky">
+    <h1 class="login-title">anky</h1>
+    <p class="login-sub">log in to save your writing and see anky's interpretation of who you are.</p>
+    <button class="login-btn" id="emailBtn">log in with email</button>
+    <button class="login-btn apple" id="appleBtn">log in with apple</button>
+    <div class="login-status" id="status"></div>
+    <a class="login-back" href="/">back to writing</a>
   </div>
 
-  <script src="/static/ethers.umd.min.js"></script>
   <script>
-  (function() {
-    'use strict';
+    var privyAppId = '{{ privy_app_id | default(value="") }}';
+    var statusEl = document.getElementById('status');
 
-    var generatedMnemonic = null;
-
-    // --- Screen management ---
-    function showScreen(name) {
-      document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-      document.getElementById('screen-' + name).classList.add('active');
-    }
-    window.showScreen = showScreen;
-
-    // --- Check for existing vault on load ---
-    (function init() {
-      var vault = localStorage.getItem('anky_seed_vault');
-      if (vault) {
-        document.getElementById('welcome-buttons').style.display = 'none';
-        document.getElementById('welcome-unlock').style.display = 'block';
+    function doLogin(method) {
+      console.log('[login] starting login with method:', method, 'appId:', privyAppId ? privyAppId.substring(0,8) + '...' : 'MISSING');
+      if (!privyAppId) {
+        statusEl.textContent = 'login not configured.';
+        console.error('[login] no privy app id');
+        return;
       }
-    })();
+      statusEl.textContent = 'loading...';
+      document.getElementById('emailBtn').disabled = true;
+      document.getElementById('appleBtn').disabled = true;
 
-    // --- Crypto helpers ---
-    function getRandomBytes(n) {
-      var arr = new Uint8Array(n);
-      crypto.getRandomValues(arr);
-      return arr;
-    }
-
-    function arrayToHex(arr) {
-      return Array.from(arr).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-    }
-
-    function hexToArray(hex) {
-      var bytes = new Uint8Array(hex.length / 2);
-      for (var i = 0; i < hex.length; i += 2) {
-        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+      // Check if Privy SDK already loaded
+      if (window.Privy) {
+        console.log('[login] Privy SDK already loaded, skipping script inject');
+        initAndLogin(method);
+        return;
       }
-      return bytes;
-    }
 
-    async function deriveKey(passphrase, salt) {
-      var enc = new TextEncoder();
-      var keyMaterial = await crypto.subtle.importKey(
-        'raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']
-      );
-      return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
-      );
-    }
-
-    async function encryptPrivateKey(privateKeyHex, passphrase) {
-      var salt = getRandomBytes(16);
-      var iv = getRandomBytes(12);
-      var key = await deriveKey(passphrase, salt);
-      var enc = new TextEncoder();
-      var encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv },
-        key,
-        enc.encode(privateKeyHex)
-      );
-      return {
-        ciphertext: arrayToHex(new Uint8Array(encrypted)),
-        iv: arrayToHex(iv),
-        salt: arrayToHex(salt)
+      console.log('[login] loading Privy SDK from cdn.privy.io...');
+      var script = document.createElement('script');
+      script.src = 'https://cdn.privy.io/js-sdk/v1/privy.min.js';
+      script.onload = function() {
+        console.log('[login] Privy SDK loaded successfully, window.Privy:', typeof window.Privy);
+        initAndLogin(method);
       };
+      script.onerror = function(e) {
+        console.error('[login] failed to load Privy SDK:', e);
+        statusEl.textContent = 'could not load login. try again.';
+        enableButtons();
+      };
+      document.head.appendChild(script);
     }
 
-    async function decryptPrivateKey(vault, passphrase) {
-      var salt = hexToArray(vault.salt);
-      var iv = hexToArray(vault.iv);
-      var ciphertext = hexToArray(vault.ciphertext);
-      var key = await deriveKey(passphrase, salt);
-      var decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv },
-        key,
-        ciphertext
-      );
-      return new TextDecoder().decode(decrypted);
-    }
-
-    // --- Auth flow ---
-    async function authenticate(wallet) {
-      showScreen('loading');
-
+    function initAndLogin(method) {
+      console.log('[login] initAndLogin, window.Privy:', typeof window.Privy);
+      if (typeof window.Privy === 'undefined') {
+        console.error('[login] window.Privy is undefined after script load');
+        statusEl.textContent = 'login SDK not available. try again.';
+        enableButtons();
+        return;
+      }
       try {
-        // Step 1: Get challenge
-        var challengeResp = await fetch('/swift/v2/auth/challenge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet_address: wallet.address })
+        console.log('[login] creating Privy instance...');
+        var privy = new window.Privy({
+          appId: privyAppId,
+          config: {
+            loginMethods: [method],
+            appearance: { theme: 'dark', accentColor: '#7b2ff7' },
+          },
         });
-        var challengeData = await challengeResp.json();
-        if (!challengeData.ok) {
-          throw new Error(challengeData.error || 'challenge request failed');
-        }
-
-        // Step 2: Sign message
-        var signature = await wallet.signMessage(challengeData.message);
-
-        // Step 3: Verify with web endpoint (sets cookies)
-        var verifyResp = await fetch('/auth/seed/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            wallet_address: wallet.address,
-            challenge_id: challengeData.challenge_id,
-            signature: signature
-          })
+        console.log('[login] Privy instance created, calling login()...');
+        statusEl.textContent = '';
+        privy.login().then(function(result) {
+          console.log('[login] login result:', result ? Object.keys(result) : 'null');
+          if (result && result.authToken) {
+            statusEl.textContent = 'verifying...';
+            console.log('[login] got authToken, verifying with backend...');
+            return fetch('/auth/privy/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ auth_token: result.authToken }),
+            }).then(function(r) {
+              console.log('[login] verify response status:', r.status);
+              return r.json();
+            }).then(function(data) {
+              console.log('[login] verify response:', data);
+              if (data.ok) {
+                statusEl.textContent = 'welcome back.';
+                window.location.href = '/';
+              } else {
+                statusEl.textContent = 'verification failed: ' + (data.error || 'unknown error');
+                enableButtons();
+              }
+            });
+          } else {
+            console.log('[login] no authToken in result, user may have closed modal');
+            enableButtons();
+          }
+        }).catch(function(err) {
+          console.error('[login] login() rejected:', err);
+          statusEl.textContent = '';
+          enableButtons();
         });
-        var verifyData = await verifyResp.json();
-        if (!verifyData.ok) {
-          throw new Error(verifyData.error || 'verification failed');
-        }
-
-        // Success — set localStorage (including session token for API calls)
-        localStorage.setItem('anky_logged_in', 'true');
-        localStorage.setItem('wallet_address', wallet.address);
-        localStorage.setItem('anky_session_token', verifyData.session_token);
-        if (verifyData.username) localStorage.setItem('anky_username', verifyData.username);
-
-        window.location.href = '/';
-      } catch (e) {
-        showScreen('welcome');
-        alert('Authentication failed: ' + e.message);
+      } catch(e) {
+        console.error('[login] Privy init/login error:', e);
+        statusEl.textContent = 'login failed: ' + e.message;
+        enableButtons();
       }
     }
 
-    // --- Generate flow ---
-    window.submitGenerate = async function() {
-      var confirmed = document.getElementById('gen-confirm').checked;
-      var pass = document.getElementById('gen-pass').value;
-      var passConfirm = document.getElementById('gen-pass-confirm').value;
-      var errorEl = document.getElementById('gen-error');
-      errorEl.textContent = '';
+    function enableButtons() {
+      document.getElementById('emailBtn').disabled = false;
+      document.getElementById('appleBtn').disabled = false;
+    }
 
-      if (!confirmed) {
-        errorEl.textContent = 'please confirm you wrote down the words';
-        return;
-      }
-      if (pass.length < 6) {
-        errorEl.textContent = 'passphrase must be at least 6 characters';
-        return;
-      }
-      if (pass !== passConfirm) {
-        errorEl.textContent = 'passphrases do not match';
-        return;
-      }
-
-      try {
-        var wallet = ethers.Wallet.fromPhrase(generatedMnemonic);
-        var encrypted = await encryptPrivateKey(wallet.privateKey, pass);
-        encrypted.wallet_address = wallet.address.toLowerCase();
-        localStorage.setItem('anky_seed_vault', JSON.stringify(encrypted));
-        await authenticate(wallet);
-      } catch (e) {
-        errorEl.textContent = 'error: ' + e.message;
-      }
-    };
-
-    // --- Import flow ---
-    window.submitImport = async function() {
-      var words = document.getElementById('import-words').value.trim().toLowerCase();
-      var pass = document.getElementById('import-pass').value;
-      var passConfirm = document.getElementById('import-pass-confirm').value;
-      var errorEl = document.getElementById('import-error');
-      errorEl.textContent = '';
-
-      var wordList = words.split(/\s+/).filter(function(w) { return w.length > 0; });
-      if (wordList.length !== 12) {
-        errorEl.textContent = 'please enter exactly 12 words';
-        return;
-      }
-      if (pass.length < 6) {
-        errorEl.textContent = 'passphrase must be at least 6 characters';
-        return;
-      }
-      if (pass !== passConfirm) {
-        errorEl.textContent = 'passphrases do not match';
-        return;
-      }
-
-      try {
-        var mnemonic = wordList.join(' ');
-        var wallet = ethers.Wallet.fromPhrase(mnemonic);
-        var encrypted = await encryptPrivateKey(wallet.privateKey, pass);
-        encrypted.wallet_address = wallet.address.toLowerCase();
-        localStorage.setItem('anky_seed_vault', JSON.stringify(encrypted));
-        await authenticate(wallet);
-      } catch (e) {
-        errorEl.textContent = 'invalid recovery phrase or error: ' + e.message;
-      }
-    };
-
-    // --- Unlock flow ---
-    window.unlockVault = async function() {
-      var pass = document.getElementById('unlock-pass').value;
-      var errorEl = document.getElementById('unlock-error');
-      errorEl.textContent = '';
-
-      if (!pass) {
-        errorEl.textContent = 'enter your passphrase';
-        return;
-      }
-
-      try {
-        var vault = JSON.parse(localStorage.getItem('anky_seed_vault'));
-        var privateKeyHex = await decryptPrivateKey(vault, pass);
-        var wallet = new ethers.Wallet(privateKeyHex);
-
-        // Verify address matches
-        if (wallet.address.toLowerCase() !== vault.wallet_address) {
-          errorEl.textContent = 'decryption succeeded but address mismatch — vault may be corrupted';
-          return;
-        }
-
-        await authenticate(wallet);
-      } catch (e) {
-        errorEl.textContent = 'wrong passphrase or corrupted vault';
-      }
-    };
-
-    // --- Generate mnemonic when generate screen is shown ---
-    var origShowScreen = window.showScreen;
-    window.showScreen = function(name) {
-      origShowScreen(name);
-      if (name === 'generate' && !generatedMnemonic) {
-        var wallet = ethers.Wallet.createRandom();
-        generatedMnemonic = wallet.mnemonic.phrase;
-        var words = generatedMnemonic.split(' ');
-        var grid = document.getElementById('gen-words');
-        grid.innerHTML = '';
-        for (var i = 0; i < words.length; i++) {
-          var cell = document.createElement('div');
-          cell.className = 'word-cell';
-          cell.innerHTML = '<span class="word-num">' + (i + 1) + '</span>' + words[i];
-          grid.appendChild(cell);
-        }
-      }
-    };
-
-  })();
+    document.getElementById('emailBtn').addEventListener('click', function() { doLogin('email'); });
+    document.getElementById('appleBtn').addEventListener('click', function() { doLogin('apple'); });
   </script>
 </body>
 </html>

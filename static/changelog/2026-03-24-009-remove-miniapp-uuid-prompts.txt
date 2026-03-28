@@ -1,0 +1,1 @@
+i don't want this to be a miniapp anymore please. please delete the metadata associated with it because i shared a write endpoint one and i didn't like it. and for the write, can you just create a uuid system that has the query param as the uuid that stores the prompt directly? is that better? i don't trust the encoded url enough for weird prompts?

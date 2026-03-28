@@ -48,6 +48,19 @@
   </div>
 
   <div class="settings-group">
+    <label class="settings-label">anky's voice</label>
+    <p class="settings-hint">choose which ai model speaks as anky when responding to your writing. all free models — pick by vibe.</p>
+    <select class="settings-select" id="settings-model">
+      <option value="default" {% if preferred_model == "default" %}selected{% endif %}>default (llama 4 scout)</option>
+      <option value="meta-llama/llama-4-maverick:free" {% if preferred_model == "meta-llama/llama-4-maverick:free" %}selected{% endif %}>llama 4 maverick</option>
+      <option value="google/gemma-3-1b-it:free" {% if preferred_model == "google/gemma-3-1b-it:free" %}selected{% endif %}>gemma 3 1b (fast, tiny)</option>
+      <option value="qwen/qwen3-0.6b:free" {% if preferred_model == "qwen/qwen3-0.6b:free" %}selected{% endif %}>qwen 3 0.6b (fast, tiny)</option>
+      <option value="deepseek/deepseek-r1:free" {% if preferred_model == "deepseek/deepseek-r1:free" %}selected{% endif %}>deepseek r1 (reasoning)</option>
+      <option value="google/gemini-2.5-pro-exp-03-25:free" {% if preferred_model == "google/gemini-2.5-pro-exp-03-25:free" %}selected{% endif %}>gemini 2.5 pro (experimental)</option>
+    </select>
+  </div>
+
+  <div class="settings-group">
     <label class="settings-label">preview</label>
     <div class="settings-preview" id="settings-preview">the quick brown fox jumps over the lazy dog. write without stopping and see what emerges.</div>
   </div>
@@ -79,6 +92,7 @@
   var usernameInput = document.getElementById('settings-username');
 
   var layoutSelect = document.getElementById('settings-keyboard-layout');
+  var modelSelect = document.getElementById('settings-model');
   var currentTheme = '{{ theme }}';
 
   function updatePreview() {
@@ -122,6 +136,7 @@
         theme: currentTheme,
         idle_timeout: parseInt(timeoutSlider.value),
         keyboard_layout: layoutSelect.value,
+        preferred_model: modelSelect.value,
       }),
     })
     .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })

@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjE2MDk4LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4YUIyMERlOGY1QTRmOGUxNDdCYWFDOUQxZjZlMjM2ODYxNDg1NTE2QSJ9",
+    "payload": "eyJkb21haW4iOiJhbmt5Y29pbi5jb20ifQ",
+    "signature": "3CS4ByRoDPNBwR/DCQo64Bzm5IIn40iX+wqywSXXWI8tusdqAJe7EEVCcX4F+ULRgwhnWRNegGt5BLBdf7UFMxw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "ankycoin",
+    "iconUrl": "https://ankycoin.com/icon.png",
+    "homeUrl": "https://ankycoin.com",
+    "imageUrl": "https://ankycoin.com/image.png",
+    "buttonTitle": "get my anky",
+    "splashImageUrl": "https://ankycoin.com/splash.png",
+    "splashBackgroundColor": "#000000",
+    "webhookUrl": "https://ankycoin.com/api/webhook"
+  }
+}

@@ -10,7 +10,7 @@ use crate::state::AppState;
 /// 4. Update psychological profile every 5th session
 pub async fn run_memory_pipeline(
     state: &AppState,
-    ollama_base_url: &str,
+    _ollama_base_url: &str,
     anthropic_key: &str,
     user_id: &str,
     writing_session_id: &str,
@@ -25,45 +25,11 @@ pub async fn run_memory_pipeline(
         ),
     );
 
-    // Step 1: Embed the writing session
-    match crate::memory::embeddings::embed_text(ollama_base_url, writing_text).await {
-        Ok(embedding) => {
-            let embed_id = format!("ws-{}", writing_session_id);
-            let content_preview: String = writing_text.chars().take(500).collect();
-            let db = state.db.lock().await;
-            if let Err(e) = crate::memory::embeddings::store_embedding(
-                &db,
-                &embed_id,
-                user_id,
-                Some(writing_session_id),
-                "writing",
-                &content_preview,
-                &embedding,
-            ) {
-                state.emit_log(
-                    "WARN",
-                    "memory",
-                    &format!("Failed to store embedding: {}", e),
-                );
-            } else {
-                state.emit_log("INFO", "memory", "Writing session embedded");
-            }
-            drop(db);
-        }
-        Err(e) => {
-            state.emit_log("WARN", "memory", &format!("Embedding failed: {}", e));
-        }
-    }
+    // Step 1: Embedding dropped (local embeddings removed)
 
     // Step 2: Extract structured memories
     let extracted =
-        match crate::memory::extraction::extract_memories(
-            ollama_base_url,
-            &state.config.ollama_model,
-            writing_text,
-        )
-        .await
-        {
+        match crate::memory::extraction::extract_memories(anthropic_key, writing_text).await {
             Ok(m) => {
                 let total = m.themes.len()
                     + m.emotions.len()
@@ -94,7 +60,6 @@ pub async fn run_memory_pipeline(
     // Step 3: Store with dedup (uses Arc<Mutex<Connection>> internally)
     match crate::memory::extraction::store_memories(
         &state.db,
-        ollama_base_url,
         user_id,
         writing_session_id,
         &extracted,
@@ -213,13 +178,8 @@ pub async fn run_memory_pipeline(
             state.emit_log("INFO", "memory", "Honcho-powered profile updated");
         } else {
             // Fallback: existing Ollama profile update
-            if let Err(e) = crate::memory::profile::update_profile(
-                &state.db,
-                ollama_base_url,
-                &state.config.ollama_model,
-                user_id,
-            )
-            .await
+            if let Err(e) =
+                crate::memory::profile::update_profile(&state.db, anthropic_key, user_id).await
             {
                 state.emit_log("WARN", "memory", &format!("Profile update failed: {}", e));
             } else {

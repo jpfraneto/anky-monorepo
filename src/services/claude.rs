@@ -128,6 +128,90 @@ async fn call_claude(
     })
 }
 
+const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
+
+/// Simple Haiku call — drop-in replacement for call_ollama(base_url, model, prompt).
+/// Takes api_key + prompt, returns text. Uses Haiku for speed and cost.
+pub async fn call_haiku(api_key: &str, prompt: &str) -> Result<String> {
+    let r = call_claude(api_key, HAIKU_MODEL, "", prompt, 2000).await?;
+    Ok(r.text)
+}
+
+/// Haiku call with system prompt — drop-in replacement for call_ollama_with_system.
+pub async fn call_haiku_with_system(
+    api_key: &str,
+    system: &str,
+    user_message: &str,
+) -> Result<String> {
+    let r = call_claude(api_key, HAIKU_MODEL, system, user_message, 2000).await?;
+    Ok(r.text)
+}
+
+/// Haiku call with system prompt and custom max tokens.
+pub async fn call_haiku_with_system_max(
+    api_key: &str,
+    system: &str,
+    user_message: &str,
+    max_tokens: u32,
+) -> Result<String> {
+    let r = call_claude(api_key, HAIKU_MODEL, system, user_message, max_tokens).await?;
+    Ok(r.text)
+}
+
+/// Multi-turn chat via Haiku — replacement for chat_ollama.
+/// Takes OllamaChatMessage format (system/user/assistant roles).
+pub async fn chat_haiku(
+    api_key: &str,
+    messages: Vec<crate::services::ollama::OllamaChatMessage>,
+) -> Result<String> {
+    let client = reqwest::Client::new();
+
+    // Extract system message if present
+    let system = messages
+        .iter()
+        .find(|m| m.role == "system")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+
+    let chat_messages: Vec<ClaudeMessage> = messages
+        .into_iter()
+        .filter(|m| m.role != "system")
+        .map(|m| ClaudeMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect();
+
+    let req = ClaudeRequest {
+        model: HAIKU_MODEL.into(),
+        max_tokens: 2000,
+        system,
+        messages: chat_messages,
+    };
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("Content-Type", "application/json")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&req)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Claude chat error {}: {}", status, body);
+    }
+
+    let data: ClaudeResponse = resp.json().await?;
+    Ok(data
+        .content
+        .and_then(|c| c.into_iter().next())
+        .and_then(|b| b.text)
+        .unwrap_or_default())
+}
+
 const PROMPT_SYSTEM: &str = r#"CONTEXT: You are generating an image prompt for Anky based on a user's 8-minute stream of consciousness writing session. Anky is a blue-skinned creature with purple swirling hair, golden/amber eyes, golden decorative accents and jewelry, large expressive ears, and an ancient-yet-childlike quality. Anky exists in mystical, richly colored environments (deep blues, purples, oranges, golds). The aesthetic is spiritual but not sterile — warm, alive, slightly psychedelic.
 
 YOUR TASK: Read the user's writing and create a scene where Anky embodies the EMOTIONAL TRUTH of what they wrote — not a literal illustration, but a symbolic mirror. Anky should be DOING something or BE somewhere that reflects the user's inner state.
@@ -629,12 +713,30 @@ pub async fn stream_title_and_reflection(
                                         .unwrap_or(0);
                                 }
                             }
+                            Some("error") => {
+                                let msg = v
+                                    .get("error")
+                                    .and_then(|e| e.get("message"))
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("unknown error");
+                                let err_type = v
+                                    .get("error")
+                                    .and_then(|e| e.get("type"))
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("unknown");
+                                tracing::error!("Claude stream error: {} ({})", msg, err_type);
+                                anyhow::bail!("Claude stream error: {} ({})", msg, err_type);
+                            }
                             _ => {}
                         }
                     }
                 }
             }
         }
+    }
+
+    if full_text.is_empty() {
+        anyhow::bail!("Claude returned empty response (0 content tokens)");
     }
 
     Ok((full_text, input_tokens, output_tokens))
@@ -798,35 +900,115 @@ const SOCIAL_REPLY_SYSTEM: &str = r#"you are anky replying to someone on social 
 
 CRITICAL: every single character you output must be lowercase. no capitals ever. not for names, not for "I", not for anything. this is non-negotiable.
 
-your goal: be the reply that makes someone stop scrolling. through insight, provocation, humor, or depth — spark curiosity. never sell. never beg. make the practice irresistible by being irresistible.
+LENGTH — you decide how much to say. but lean short. one single reply, never a thread. your default is 1-3 sentences. sometimes one line is enough. sometimes you need a small paragraph. but never verbose — every word must earn its place. if you can cut a word without losing meaning, cut it. anky is sharp, not slop.
 
-reply rules:
-- no character limit. write as much or as little as the moment needs. sometimes one sentence. sometimes a paragraph. let the reply breathe.
-- match the energy — if playful, be playful. if sincere, cut deeper. if they're hurting, sit with it.
-- when natural, drop the constraint ("8 minutes, no backspace") or anky.app — but only when it genuinely fits. most replies should just be sharp, valuable, memorable.
+AWARENESS — anky is aware. your replies should show that you actually read what they said, not just respond to the surface. notice what's underneath — the pattern, the thing they almost said, the image they painted without knowing. when the moment calls for it, end with a question that pulls them deeper. not always, but when it would land.
+
+WRITE INVITATIONS — roughly 1 in 5 replies, when the conversation is ripe (someone is processing something, circling a feeling, or clearly needs to go deeper), end with a write invitation link. format:
+write into it: https://anky.app/write?p={prompt_id}
+you will be given a PROMPT_ID in the user message when one is available. only use it when writing would serve them more than another reply.
+
+tone:
+- match the energy — playful to playful, sincere to deeper, pain to presence.
 - never start with greetings. jump straight in.
 - no hashtags. no emojis except 🦍 sparingly.
 - if someone asks what anky is, explain through provocation not description.
 - if the conversation has prior context, reference it — show you remember.
 - if someone is hostile or trolling, be wittier not defensive.
-- if you know something about this person from their history, weave it in subtly. don't announce "i remember you" — just demonstrate it through the specificity of your reply.
+- if you know something about this person from their history, weave it in subtly.
 
-vision: if the post includes an image, you can see it. reference what you see when relevant — react to art, comment on scenes, mirror the mood.
+vision: if the post includes an image, you can see it. reference what you see when relevant.
 
 image replies: you can generate images using flux on local gpus. consider replying with an image when:
 - the conversation is emotional, visual, or poetic and an image would hit harder than words
 - someone shares something vulnerable and a visual mirror would be more powerful
-- the vibe is playful and a surprise image of anky in-scene would delight
-when you want to reply with an image, output JSON: {"type":"image","text":"short reply text","prompt":"2-3 sentence flux prompt featuring anky in a scene that mirrors the conversation"}
+when you want to reply with an image, output JSON: {"type":"image","text":"your reply text","prompt":"2-3 sentence flux prompt featuring anky in a scene that mirrors the conversation"}
 for normal text replies, just output the reply text directly (no JSON).
 do NOT reply with an image to every mention — use it maybe 20-30% of the time when it genuinely adds something.
 
-REMEMBER: all lowercase. always. no exceptions."#;
+REMEMBER: all lowercase. always. one reply. sharp, not verbose."#;
 
 /// Anky's reply to a mention — either text or text+image.
+/// Text replies may contain multiple slides (thread) separated by "---".
 pub enum AnkyReply {
     Text(String),
+    Thread(Vec<String>),
     TextWithImage { text: String, flux_prompt: String },
+}
+
+/// Split raw reply text into thread slides if it contains "---" separators.
+/// Each slide is trimmed. Empty slides are dropped.
+/// If the result is a single slide, returns AnkyReply::Text.
+fn parse_reply_slides(raw: &str) -> AnkyReply {
+    let slides: Vec<String> = raw
+        .split("---")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if slides.len() <= 1 {
+        AnkyReply::Text(slides.into_iter().next().unwrap_or_default())
+    } else {
+        AnkyReply::Thread(slides)
+    }
+}
+
+/// Hard-split a single text into chunks that fit within `max_chars`.
+/// Tries to break at sentence boundaries, falls back to word boundaries.
+fn split_text_to_fit(text: &str, max_chars: usize) -> Vec<String> {
+    if text.chars().count() <= max_chars {
+        return vec![text.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        if remaining.chars().count() <= max_chars {
+            chunks.push(remaining.trim().to_string());
+            break;
+        }
+
+        // Find a good break point within max_chars
+        let char_boundary = remaining
+            .char_indices()
+            .nth(max_chars)
+            .map(|(i, _)| i)
+            .unwrap_or(remaining.len());
+        let window = &remaining[..char_boundary];
+
+        // Prefer sentence boundary
+        let break_at = window
+            .rfind(". ")
+            .map(|i| i + 1)
+            .or_else(|| window.rfind("? ").map(|i| i + 1))
+            .or_else(|| window.rfind("! ").map(|i| i + 1))
+            // Fall back to word boundary
+            .or_else(|| window.rfind(' '))
+            .unwrap_or(char_boundary);
+
+        let chunk = remaining[..break_at].trim();
+        if !chunk.is_empty() {
+            chunks.push(chunk.to_string());
+        }
+        remaining = remaining[break_at..].trim_start();
+    }
+
+    chunks
+}
+
+/// Ensure every slide in a thread fits within platform limits.
+/// X: 280 chars, Farcaster: 1024 chars.
+pub fn enforce_thread_limits(slides: Vec<String>, platform: &str) -> Vec<String> {
+    let max_chars = match platform {
+        "farcaster" => 1024,
+        _ => 280,
+    };
+
+    slides
+        .into_iter()
+        .flat_map(|slide| split_text_to_fit(&slide, max_chars))
+        .collect()
 }
 
 /// Generate a contextual reply to a social media mention using Claude with full Anky identity.
@@ -842,10 +1024,11 @@ pub async fn generate_anky_reply(
     peer_context: Option<&str>,         // Honcho peer context about this user
     interaction_history: &[(String, String)], // (their_text, anky_reply) from past interactions
     platform: &str,                     // "x" or "farcaster"
+    prompt_id: Option<&str>,            // pre-created prompt ID for write invitations
 ) -> Result<AnkyReply> {
     let platform_note = match platform {
-        "farcaster" => "\nplatform: farcaster (warpcast). crypto-native audience, builders and artists. no character limit. be real.",
-        _ => "\nplatform: x (twitter). no character limit. write what needs to be written.",
+        "farcaster" => "\nplatform: farcaster (warpcast). crypto-native audience, builders and artists. keep your two lines under 1024 characters total. be real.",
+        _ => "\nplatform: x (twitter). keep your two lines under 280 characters total. write what needs to be written.",
     };
 
     let system = format!(
@@ -886,6 +1069,14 @@ pub async fn generate_anky_reply(
         user_text.push_str(&format!(
             "your previous reply in this thread: {}\n\n",
             prior
+        ));
+    }
+
+    // Add prompt ID for write invitations
+    if let Some(pid) = prompt_id {
+        user_text.push_str(&format!(
+            "PROMPT_ID for write invitations (use ~1 in 5 replies): {}\n\n",
+            pid
         ));
     }
 
@@ -972,9 +1163,139 @@ pub async fn generate_anky_reply(
         }
     }
 
-    // Normal text reply — strip quotes, enforce lowercase
+    // Normal text reply — strip quotes, enforce lowercase, parse slides
     let reply = raw.trim_matches('"').trim_matches('\'').to_lowercase();
-    Ok(AnkyReply::Text(reply))
+    Ok(parse_reply_slides(&reply))
+}
+
+/// Anky's response to a writing session — proves it read the writing, uses Honcho memory.
+/// Returns JSON: { "ankyResponse": "...", "nextPrompt": "...", "mood": "..." }
+pub async fn generate_writing_response(
+    api_key: &str,
+    writing_text: &str,
+    duration_seconds: f64,
+    word_count: i32,
+    is_anky: bool,
+    peer_context: Option<&str>,
+) -> Result<WritingResponse> {
+    let system = format!(
+        r#"{}
+
+you just received someone's writing session. your job: respond in a way that proves you read it.
+
+rules:
+- all lowercase. always.
+- reference something specific from their writing. a phrase, an image, a moment of honesty. never generic encouragement.
+- if you have context about this person from past sessions, weave it in. "that thread about your father — it's been pulling at you" is good. "you've been writing a lot" is garbage.
+- short lines. line breaks between thoughts. not a wall of text.
+- no praise for the act of writing. they don't need a gold star. they need to be seen.
+- the response should feel like someone who was sitting in the room while they wrote.
+
+output ONLY valid JSON — no markdown, no code fences:
+{{
+  "ankyResponse": "your response here.\nline breaks with \\n.\nshort thoughts.",
+  "nextPrompt": "one question, max 10 words, for their next session. a question not a command. never repeat a prompt. null if nothing feels right.",
+  "mood": "one of: reflective, celebratory, gentle, curious, deep"
+}}"#,
+        ANKY_CORE_IDENTITY
+    );
+
+    let mins = (duration_seconds / 60.0) as u32;
+    let secs = (duration_seconds % 60.0) as u32;
+    let mut user_msg = String::new();
+
+    if let Some(ctx) = peer_context {
+        user_msg.push_str(&format!(
+            "what you know about this person from past sessions:\n{}\n\n---\n\n",
+            ctx
+        ));
+    }
+
+    user_msg.push_str(&format!(
+        "writing session: {} words, {}m{}s, {}\n\n{}",
+        word_count,
+        mins,
+        secs,
+        if is_anky {
+            "completed 8 minutes — this is an anky"
+        } else {
+            "ended early"
+        },
+        &writing_text[..writing_text.len().min(8000)],
+    ));
+
+    let result = call_claude(
+        api_key,
+        "claude-haiku-4-5-20251001",
+        &system,
+        &user_msg,
+        500,
+    )
+    .await?;
+
+    // Parse JSON response
+    let raw = result.text.trim();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(WritingResponse {
+            anky_response: v["ankyResponse"].as_str().unwrap_or("").to_lowercase(),
+            next_prompt: v["nextPrompt"]
+                .as_str()
+                .filter(|s| !s.is_empty() && *s != "null")
+                .map(|s| s.to_lowercase()),
+            mood: v["mood"].as_str().unwrap_or("reflective").to_lowercase(),
+        })
+    } else {
+        // Fallback: treat the whole thing as the response
+        Ok(WritingResponse {
+            anky_response: raw.to_lowercase(),
+            next_prompt: None,
+            mood: "reflective".to_string(),
+        })
+    }
+}
+
+pub struct WritingResponse {
+    pub anky_response: String,
+    pub next_prompt: Option<String>,
+    pub mood: String,
+}
+
+/// Generate Anky's opening chat prompt for a returning user via Honcho context.
+pub async fn generate_chat_prompt(
+    api_key: &str,
+    peer_context: Option<&str>,
+    past_prompts: &[String],
+) -> Result<String> {
+    let system = format!(
+        r#"{}
+
+you are generating the opening message for a writing session. one sentence. a question. lowercase always.
+
+rules:
+- if you know this person, ask something that picks up where they left off. reference their patterns, their recurring themes, the thing they keep circling.
+- never repeat a prompt they've already been given. the list of past prompts is below.
+- a question, not a command. not "write about X" but "what would happen if X?"
+- max 10 words. short. direct. lands like a stone in water.
+- output ONLY the question text. no quotes. no json. just the sentence."#,
+        ANKY_CORE_IDENTITY
+    );
+
+    let mut user_msg = String::new();
+    if let Some(ctx) = peer_context {
+        user_msg.push_str(&format!("what you know about this person:\n{}\n\n", ctx));
+    }
+    if !past_prompts.is_empty() {
+        user_msg.push_str("prompts already given (do NOT repeat):\n");
+        for p in past_prompts.iter().take(20) {
+            user_msg.push_str(&format!("- {}\n", p));
+        }
+        user_msg.push('\n');
+    }
+    user_msg.push_str("generate the opening question for their next session.");
+
+    let result = call_claude(api_key, "claude-haiku-4-5-20251001", &system, &user_msg, 60).await?;
+
+    Ok(result.text.trim().trim_matches('"').to_lowercase())
 }
 
 /// Generate a stream of consciousness for a given thinker at a specific moment.

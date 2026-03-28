@@ -1,0 +1,22 @@
+we are implementing something on the ios anky app and need your help:   iOS side (done)
+
+  1. Associated Domains entitlement — applinks:anky.app added to Anky.entitlements
+  2. URL handling — onOpenURL + onContinueUserActivity in AnkyApp catches anky.app/write?p=UUID
+  3. API call — GET /swift/v2/prompt/{id} fetches the prompt text
+  4. Deep link flow — sets appState.deepLinkPrompt → AnkyChatView shows it as Anky message →
+  auto-starts writing session
+
+  Server side (you need to do)
+
+  1. Host apple-app-site-association at https://anky.app/.well-known/apple-app-site-association
+  2. Add the GET /swift/v2/prompt/{id} endpoint that returns:
+  { "id": "e0af4d89-...", "text": "write about your mother..." }
+
+  How it works
+
+  User taps https://anky.app/write?p=e0af4d89-... → iOS intercepts it (Universal Link) → app opens →
+  fetches prompt text from server → displays as Anky's message in chat → writing session auto-starts
+  after 0.8s.
+
+  Team ID: 84V63LKV45
+  Bundle ID: com.jpfraneto.Anky

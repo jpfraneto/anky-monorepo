@@ -262,13 +262,12 @@ async fn process_farcaster_mention(
     let _ = neynar::react_to_cast(api_key, signer, &cast_hash).await;
 
     // Classify: image request or text reply?
-    let mention_response =
-        ollama::classify_x_image_mention(&cfg.ollama_base_url, &cfg.ollama_model, &text)
-            .await
-            .unwrap_or_else(|_| ollama::XImageMentionResponse {
-                is_image_request: false,
-                text_reply: None,
-            });
+    let mention_response = ollama::classify_x_image_mention(&cfg.anthropic_api_key, "", &text)
+        .await
+        .unwrap_or_else(|_| ollama::XImageMentionResponse {
+            is_image_request: false,
+            text_reply: None,
+        });
 
     let is_image_request = mention_response.is_image_request;
 
@@ -485,6 +484,31 @@ async fn process_farcaster_mention(
             .as_ref()
             .map(|(bytes, mt)| (bytes.as_slice(), mt.as_str()));
 
+        // Pre-create a prompt for potential write invitations
+        let prompt_id = {
+            let pid = uuid::Uuid::new_v4().to_string();
+            let prompt_text = format!(
+                "what came up for you when you said: {}",
+                &text.chars().take(200).collect::<String>()
+            );
+            let db = state.db.lock().await;
+            let _ = crate::db::queries::ensure_user(&db, "anon");
+            match crate::db::queries::insert_prompt(
+                &db,
+                &pid,
+                "anon",
+                &prompt_text,
+                None,
+                Some("anky-bot"),
+            ) {
+                Ok(_) => {
+                    let _ = crate::db::queries::update_prompt_status(&db, &pid, "complete");
+                    Some(pid)
+                }
+                Err(_) => None,
+            }
+        };
+
         let anky_reply = claude::generate_anky_reply(
             &cfg.anthropic_api_key,
             &text,
@@ -495,6 +519,7 @@ async fn process_farcaster_mention(
             social_ctx.peer_context.as_deref(),
             &social_ctx.interaction_history,
             "farcaster",
+            prompt_id.as_deref(),
         )
         .await;
 
@@ -605,8 +630,11 @@ async fn process_farcaster_mention(
                     text.clone()
                 }
             }
-            Ok(claude::AnkyReply::Text(ref reply)) if !reply.is_empty() => {
-                let reply_hash = neynar::reply_to_cast(api_key, signer, &cast_hash, reply)
+            Ok(claude::AnkyReply::Thread(ref slides)) => {
+                // Collapse thread into single reply — anky replies once, not a thread
+                let single = slides.join("\n");
+                let truncated: String = single.chars().take(1024).collect();
+                let reply_hash = neynar::reply_to_cast(api_key, signer, &cast_hash, &truncated)
                     .await
                     .ok()
                     .map(|r| r.hash);
@@ -620,11 +648,34 @@ async fn process_farcaster_mention(
                     parent_hash.as_deref(),
                     "replied_text",
                     Some("text_reply"),
-                    Some(reply),
+                    Some(&truncated),
                     reply_hash.as_deref(),
                 )
                 .await;
-                reply.clone()
+                truncated
+            }
+            Ok(claude::AnkyReply::Text(ref reply)) if !reply.is_empty() => {
+                // Single reply, truncate to fit Farcaster limit
+                let truncated: String = reply.chars().take(1024).collect();
+                let reply_hash = neynar::reply_to_cast(api_key, signer, &cast_hash, &truncated)
+                    .await
+                    .ok()
+                    .map(|r| r.hash);
+                upsert_social_interaction(
+                    &state,
+                    "farcaster",
+                    &cast_hash,
+                    &author_fid.to_string(),
+                    &author_username,
+                    &text,
+                    parent_hash.as_deref(),
+                    "replied_text",
+                    Some("text_reply"),
+                    Some(&truncated),
+                    reply_hash.as_deref(),
+                )
+                .await;
+                truncated
             }
             Ok(_) => {
                 let fallback = "🦍";
@@ -650,16 +701,11 @@ async fn process_farcaster_mention(
             }
             Err(e) => {
                 tracing::error!("Claude FC reply generation failed: {}", e);
-                // Fallback to Ollama
-                let fallback = ollama::classify_x_image_mention(
-                    &cfg.ollama_base_url,
-                    &cfg.ollama_model,
-                    &text,
-                )
-                .await
-                .ok()
-                .and_then(|r| r.text_reply)
-                .unwrap_or_else(|| "🦍".to_string());
+                let fallback = ollama::classify_x_image_mention(&cfg.anthropic_api_key, "", &text)
+                    .await
+                    .ok()
+                    .and_then(|r| r.text_reply)
+                    .unwrap_or_else(|| "🦍".to_string());
                 let reply_hash = neynar::reply_to_cast(api_key, signer, &cast_hash, &fallback)
                     .await
                     .ok()
@@ -687,6 +733,31 @@ async fn process_farcaster_mention(
             truncate_for_log(&cast_hash, 10),
             truncate_for_log(&reply_text, 100)
         );
+
+        // Send interaction to Honcho so the deriver learns about this user
+        // Use the resolved peer ID from social_context (may be cross-platform linked)
+        if crate::services::honcho::is_configured(&state.config) {
+            let h_key = state.config.honcho_api_key.clone();
+            let h_ws = state.config.honcho_workspace_id.clone();
+            let h_peer = social_ctx
+                .honcho_peer_id
+                .clone()
+                .unwrap_or_else(|| format!("fc_{}", author_fid));
+            let h_session = format!("fc_mentions_{}", author_fid);
+            let h_content = format!(
+                "@{} said: {}\n\nAnky replied: {}",
+                author_username, text, reply_text
+            );
+            tokio::spawn(async move {
+                if let Err(e) = crate::services::honcho::send_writing(
+                    &h_key, &h_ws, &h_session, &h_peer, &h_content,
+                )
+                .await
+                {
+                    tracing::debug!("Honcho FC interaction write failed: {}", e);
+                }
+            });
+        }
     }
 
     Ok(())

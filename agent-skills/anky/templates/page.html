@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>anky</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:#0a0a0a;color:#e0e0e0;font-family:monospace;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#prompt{max-width:600px;text-align:center;padding:2rem;font-size:1.3rem;line-height:1.7;color:#b0b0b0;transition:opacity 1.5s ease}
+#prompt .sub{margin-top:1.5rem;font-size:0.75rem;color:#333;line-height:1.6}
+#writing{position:fixed;inset:0;display:none;padding:3rem 2rem 6rem}
+#w{width:100%;height:100%;background:transparent;border:none;outline:none;color:#e0e0e0;font-family:monospace;font-size:1rem;line-height:1.8;resize:none;caret-color:#ff6b35;overflow-y:auto;-webkit-user-select:text;user-select:text}
+#bar{position:fixed;top:0;left:0;height:4px;background:#ff6b35;width:0%;transition:width .1s linear}
+#silence{position:fixed;bottom:2rem;right:2rem;font-size:1.2rem;color:#666;font-family:monospace}
+#clock{position:fixed;top:1rem;right:2rem;font-size:1rem;color:#555;font-family:monospace}
+#done{position:fixed;inset:0;background:#0a0a0a;display:none;align-items:center;justify-content:center;font-size:.8rem;color:#222;font-family:monospace}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="clock"></div>
+<div id="prompt">
+  <p>{PROMPT}</p>
+  <p class="sub">start typing.<br>don't stop.<br>8 seconds of silence ends it.</p>
+</div>
+<div id="writing">
+  <textarea id="w" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+</div>
+<div id="done">sent. go back to the conversation.</div>
+
+<script>
+const S=8000,I=30000
+const BLOCK=['Backspace','Delete','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown',
+  'Home','End','PageUp','PageDown','Tab','Escape','F1','F2','F3','F4','F5',
+  'F6','F7','F8','F9','F10','F11','F12']
+let ks=[],t0=null,tL=null,st=null,on=true,go=false,raw=''
+const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6)
+
+document.addEventListener('paste',e=>e.preventDefault())
+document.addEventListener('cut',e=>e.preventDefault())
+document.addEventListener('copy',e=>e.preventDefault())
+document.addEventListener('contextmenu',e=>e.preventDefault())
+
+function startWriting(){
+  if(go)return
+  go=true
+  document.getElementById('prompt').style.opacity='0'
+  setTimeout(()=>{
+    document.getElementById('prompt').style.display='none'
+    const wr=document.getElementById('writing')
+    wr.style.display='block'
+    const w=document.getElementById('w')
+    w.focus()
+    w.click()
+  },400)
+}
+
+document.addEventListener('keydown',e=>{
+  if(!on)return
+  if(BLOCK.includes(e.key)||e.ctrlKey||e.metaKey||e.altKey){e.preventDefault();return}
+  if(e.key.length!==1)return
+  e.preventDefault()
+  const n=Date.now()
+  if(!go)startWriting()
+  if(!t0){t0=n;tL=n;ks.push({c:e.key,d:0})}
+  else{const d=n-tL;tL=n;ks.push({c:e.key,d})}
+  raw+=e.key
+  document.getElementById('w').value=raw
+  clearTimeout(st)
+  st=setTimeout(end,S)
+  tick()
+})
+
+document.getElementById('prompt').addEventListener('click',startWriting)
+document.getElementById('w').addEventListener('input',e=>{
+  if(!on)return
+  const w=e.target
+  const newVal=w.value
+  if(!newVal.startsWith(raw)){w.value=raw;return}
+  const added=newVal.slice(raw.length)
+  if(!added){w.value=raw;return}
+  for(const c of added){
+    const n=Date.now()
+    if(!t0){t0=n;tL=n;ks.push({c,d:0})}
+    else{const d=n-tL;tL=n;ks.push({c,d})}
+    raw+=c
+  }
+  w.value=raw
+  clearTimeout(st)
+  st=setTimeout(end,S)
+  tick()
+})
+
+let iv=null
+function tick(){
+  clearInterval(iv)
+  iv=setInterval(()=>{
+    if(!tL)return
+    const r=Math.max(0,(S-(Date.now()-tL))/1000)
+    const el=document.getElementById('silence')
+    if(r>0&&r<8){el.textContent=r.toFixed(1)+'s';el.style.color=r<3?'#ff6b35':r<5?'#888':'#555'}
+    else el.textContent=''
+    if(t0){
+      const s=(Date.now()-t0)/1000
+      document.getElementById('clock').textContent=
+        String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')
+      document.getElementById('bar').style.width=Math.min(100,s/480*100)+'%'
+    }
+  },100)
+}
+
+function buildData(){
+  const lines=[t0.toString()]
+  for(const k of ks)lines.push(k.c+' '+k.d)
+  return lines.join('\n')
+}
+
+setInterval(()=>{
+  if(on&&t0){
+    fetch('/write',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,text:raw,keystrokes:buildData(),
+        duration:tL?(tL-t0)/1000:0,done:false})
+    }).catch(()=>{})
+  }
+},I)
+
+async function end(){
+  if(!on)return
+  on=false
+  clearInterval(iv)
+  clearTimeout(st)
+  document.getElementById('silence').textContent=''
+  document.getElementById('writing').style.display='none'
+  document.getElementById('done').style.display='flex'
+  try{
+    await fetch('/write',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,text:raw,keystrokes:buildData(),
+        duration:tL?(tL-t0)/1000:0,done:true})
+    })
+  }catch(e){}
+  // try to close — won't work if opened by xdg-open, that's fine
+  // the "sent." message tells the user to go back to the conversation
+  setTimeout(()=>{try{window.close()}catch(e){}},800)
+}
+</script>
+</body>
+</html>

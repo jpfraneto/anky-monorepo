@@ -4,8 +4,6 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::memory::embeddings;
-
 const EXTRACTION_SYSTEM: &str = r#"You are a psychological pattern extractor for a consciousness journaling app called Anky. You analyze raw stream-of-consciousness writing sessions and extract structured psychological memories.
 
 Your job is to identify:
@@ -44,19 +42,10 @@ pub struct ExtractedMemories {
     pub avoidances: Vec<String>,
 }
 
-/// Extract structured memories from a writing session using local Qwen via Ollama.
-pub async fn extract_memories(
-    ollama_base_url: &str,
-    ollama_model: &str,
-    writing: &str,
-) -> Result<ExtractedMemories> {
-    let text = crate::services::ollama::call_ollama_with_system(
-        ollama_base_url,
-        ollama_model,
-        EXTRACTION_SYSTEM,
-        writing,
-    )
-    .await?;
+/// Extract structured memories from a writing session using Claude Haiku.
+pub async fn extract_memories(api_key: &str, writing: &str) -> Result<ExtractedMemories> {
+    let text = crate::services::claude::call_haiku_with_system(api_key, EXTRACTION_SYSTEM, writing)
+        .await?;
     let mut trimmed = text.trim();
     if trimmed.starts_with("```") {
         if let Some(start) = trimmed.find('{') {
@@ -70,11 +59,10 @@ pub async fn extract_memories(
     Ok(memories)
 }
 
-/// Store extracted memories in the database, deduplicating by semantic similarity.
+/// Store extracted memories in the database, deduplicating by exact text match.
 /// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn store_memories(
     db: &Arc<Mutex<Connection>>,
-    ollama_base_url: &str,
     user_id: &str,
     writing_session_id: &str,
     memories: &ExtractedMemories,
@@ -91,22 +79,22 @@ pub async fn store_memories(
         ("avoidance", &memories.avoidances),
     ];
 
+    let conn = db.lock().await;
+
     for (category, entries) in items {
         for entry in entries {
             if entry.trim().is_empty() {
                 continue;
             }
 
-            // Async: embed the entry (no conn held)
-            let entry_embedding = match embeddings::embed_text(ollama_base_url, entry).await {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            // Sync: check for duplicates and insert (lock conn)
-            let conn = db.lock().await;
-
-            let existing = get_similar_memory(&conn, user_id, category, &entry_embedding, 0.88)?;
+            // Check for exact text match dedup
+            let existing: Option<(String, i32)> = conn
+                .query_row(
+                    "SELECT id, occurrence_count FROM user_memories WHERE user_id = ?1 AND category = ?2 AND content = ?3",
+                    params![user_id, category, entry],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)),
+                )
+                .ok();
 
             if let Some((existing_id, existing_count)) = existing {
                 conn.execute(
@@ -123,55 +111,18 @@ pub async fn store_memories(
                     "entity" => 0.4,
                     _ => 0.5,
                 };
-                let blob = embeddings::vec_to_bytes(&entry_embedding);
 
                 conn.execute(
-                    "INSERT INTO user_memories (id, user_id, writing_session_id, category, content, importance, occurrence_count, first_seen_at, last_seen_at, embedding)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7, ?8)",
-                    params![id, user_id, writing_session_id, category, entry, importance, now, blob],
+                    "INSERT INTO user_memories (id, user_id, writing_session_id, category, content, importance, occurrence_count, first_seen_at, last_seen_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
+                    params![id, user_id, writing_session_id, category, entry, importance, now],
                 )?;
                 stored += 1;
             }
-            // conn dropped here at end of iteration
         }
     }
 
     Ok(stored)
-}
-
-fn get_similar_memory(
-    conn: &Connection,
-    user_id: &str,
-    category: &str,
-    query_embedding: &[f32],
-    threshold: f32,
-) -> Result<Option<(String, i32)>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, occurrence_count, embedding FROM user_memories
-         WHERE user_id = ?1 AND category = ?2",
-    )?;
-
-    let rows = stmt.query_map(params![user_id, category], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i32>(1)?,
-            row.get::<_, Vec<u8>>(2)?,
-        ))
-    })?;
-
-    let mut best: Option<(String, i32, f32)> = None;
-    for row in rows {
-        let (id, count, blob) = row?;
-        let stored_vec = embeddings::bytes_to_vec(&blob);
-        let score = embeddings::cosine_similarity(query_embedding, &stored_vec);
-        if score > threshold {
-            if best.is_none() || score > best.as_ref().unwrap().2 {
-                best = Some((id, count, score));
-            }
-        }
-    }
-
-    Ok(best.map(|(id, count, _)| (id, count)))
 }
 
 /// Get the count of anky writing sessions for a user.

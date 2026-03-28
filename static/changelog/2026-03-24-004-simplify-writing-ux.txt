@@ -1,0 +1,1 @@
+please take away the bottom navigation bar and the keyboard. its so ugly. just use the native keyboard of the phone when writing in a textarea. keep it simple. and once the user writes an anky never ever hide part of it, or trim it. just do the processing on the background and then add the reply from anky below the users writing. keep it simple
