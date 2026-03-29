@@ -1,5 +1,5 @@
 # Anky Backend — Current State
-Last updated: 2026-03-26 (session 14)
+Last updated: 2026-03-28 (session 15)
 
 ## What's working
 - `cargo check` passes on the current tree, and the mobile seed-signature unit test passes via `cargo test verifies_seed_auth_signatures`.
@@ -24,6 +24,7 @@ Last updated: 2026-03-26 (session 14)
 - Child profile create/list/detail routes are fully wired to `child_profiles` and require a bearer session tied to a stored seed wallet.
 - Cuentacuentos ready/history/complete/assign routes are wired to `cuentacuentos` and `cuentacuentos_images`, including child-scoped lookup and ready-response image URL decoration.
 - The Anky image pipeline is wired end-to-end: Ollama prompt generation, Gemini image generation with Flux/ComfyUI fallback, WebP + thumbnail generation, fallback title/reflection, formatted writing, and memory extraction.
+- **R2 CDN image upload + .anky story format**: After image generation, the pipeline converts to WebP and uploads to Cloudflare R2 (`stories/{anky_id}/page-0.webp`). The `.anky` format (YAML frontmatter + `:::page` blocks with CDN URLs and reflection text) is assembled and stored in `ankys.anky_story`. Exposed as `anky_story` field in `GET /api/v1/anky/{id}`. Uses the existing R2 service (`src/services/r2.rs`) with a new `upload_image_to_r2` function. Model: `src/models/anky_story.rs`. Gracefully degrades if R2 is not configured.
 - The cuentacuentos image pipeline is wired end-to-end: prompt rows are inserted per story phase, generated sequentially on the local GPU, and retried in the startup worker.
 - **TTS pipeline (F5-TTS)**: Local FastAPI service on `localhost:5001` (GPU 0, systemd user service `anky-tts.service`). Cross-lingual voice cloning from a single reference clip (`/home/kithkui/anky-tts/reference_voice.wav`) — same voice identity across EN/ES/ZH/HI/AR. `cuentacuentos_audio` table tracks per-language audio with status/retry. Auto-triggered after translations complete. `GET /api/v1/stories/{id}/voice` falls back to TTS when no human recording exists. 10 stories × 5 languages = 48 audio tracks generated (1 Hindi failure pending retry).
 - **Mobile settings**: `GET/PATCH /swift/v2/settings` for cross-device preferences sync including `preferred_language`. `/me` also returns `preferredLanguage`.

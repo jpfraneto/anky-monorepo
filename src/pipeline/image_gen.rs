@@ -1,5 +1,6 @@
 use crate::db::queries;
-use crate::services::{claude, comfyui, gemini};
+use crate::models::anky_story::{AnkyStory, AnkyStoryMeta, AnkyStoryPage};
+use crate::services::{claude, comfyui, gemini, r2};
 use crate::state::AppState;
 use anyhow::{anyhow, Result};
 use std::process::Command;
@@ -258,7 +259,83 @@ pub async fn generate_anky_from_writing(
         }
     }
 
-    // Step 4: Save image and mark complete
+    // Step 4: Upload image to R2 CDN and build AnkyStory
+    let cdn_url = if r2::is_configured(&state.config) {
+        let full_png = format!("data/images/{}", image_path);
+        match tokio::fs::read(&full_png).await {
+            Ok(bytes) => match r2::upload_image_to_r2(&state.config, &bytes, anky_id, 0).await {
+                Ok(url) => {
+                    state.emit_log("INFO", "r2", &format!("Uploaded to CDN: {}", url));
+                    Some(url)
+                }
+                Err(e) => {
+                    state.emit_log("WARN", "r2", &format!("R2 upload failed: {}", e));
+                    None
+                }
+            },
+            Err(e) => {
+                state.emit_log(
+                    "WARN",
+                    "r2",
+                    &format!("Could not read image file for R2 upload: {}", e),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Build and save the .anky story format
+    if cdn_url.is_some() {
+        // Fetch the reflection text (may have been set by SSE or fallback above)
+        let reflection_text = {
+            let db = state.db.lock().await;
+            queries::get_anky_by_id(&db, anky_id)?
+                .and_then(|a| a.reflection)
+                .unwrap_or_default()
+        };
+
+        let seed = writing_text
+            .chars()
+            .take(60)
+            .collect::<String>()
+            .trim()
+            .to_string();
+        let word_count = writing_text.split_whitespace().count() as u32;
+        let written_at = chrono::Utc::now().to_rfc3339();
+
+        let story = AnkyStory {
+            meta: AnkyStoryMeta {
+                anky_id: anky_id.to_string(),
+                fid: None,
+                cast_hash: None,
+                written_at,
+                duration_s: 0, // duration not available in this context
+                word_count,
+                seed,
+            },
+            pages: vec![AnkyStoryPage {
+                image_url: cdn_url,
+                text: if reflection_text.is_empty() {
+                    vec![]
+                } else {
+                    reflection_text
+                        .split("\n\n")
+                        .map(|p| p.trim().to_string())
+                        .filter(|p| !p.is_empty())
+                        .collect()
+                },
+            }],
+        };
+
+        let anky_string = story.to_anky_string();
+        let db = state.db.lock().await;
+        let _ = queries::save_anky_story(&db, anky_id, &anky_string);
+        state.emit_log("INFO", "image_gen", "AnkyStory saved");
+    }
+
+    // Step 5: Save image and mark complete
     let caption = image_prompt.clone();
     {
         let db = state.db.lock().await;
@@ -277,7 +354,7 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 5: Format writing text (Haiku — non-blocking)
+    // Step 6: Format writing text (Haiku — non-blocking)
     {
         let fmt_state = state.clone();
         let fmt_api_key = state.config.anthropic_api_key.clone();
@@ -309,7 +386,7 @@ pub async fn generate_anky_from_writing(
         });
     }
 
-    // Step 6: Memory extraction (background, non-blocking, fully local)
+    // Step 7: Memory extraction (background, non-blocking, fully local)
     {
         let mem_state = state.clone();
         let mem_ollama_url = state.config.ollama_base_url.clone();

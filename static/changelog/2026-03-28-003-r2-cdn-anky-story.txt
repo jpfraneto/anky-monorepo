@@ -1,0 +1,25 @@
+You are working on the anky-monorepo — a Rust/Axum server that processes
+8-minute stream-of-consciousness writing sessions and reflects them back
+as AI-generated images + text stories.
+
+Read CLAUDE.md and skills.md first to understand the codebase conventions.
+Then read these files in full before writing any code:
+  - Cargo.toml
+  - src/config.rs
+  - src/pipeline/image_gen.rs
+  - src/db/queries.rs
+  - src/db/migrations.rs
+  - src/routes/api.rs
+
+## What we are building
+
+The server runs on Poiesis (dual RTX 4090s, Puerto Varas, Chile, on
+Starlink). It generates images locally via Flux LoRA. The problem: it
+must NEVER serve these images directly — Starlink upload bandwidth is
+limited and latency is high for concurrent users.
+
+The solution: immediately after an image is generated, push it to
+Cloudflare R2 (S3-compatible, zero egress fees), convert to WebP first,
+and store only the CDN URL. The .anky story format (defined below) is then
+assembled with those CDN URLs and stored. The client always fetches images
+from Cloudflare's edge, never from Poiesis.

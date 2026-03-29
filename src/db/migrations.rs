@@ -1155,5 +1155,11 @@ pub fn run(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_mirrors_created ON mirrors(created_at DESC);",
     )?;
 
+    // --- anky_story on ankys: stores the full .anky format string ---
+    let has_anky_story: bool = conn.prepare("SELECT anky_story FROM ankys LIMIT 0").is_ok();
+    if !has_anky_story {
+        conn.execute_batch("ALTER TABLE ankys ADD COLUMN anky_story TEXT;")?;
+    }
+
     Ok(())
 }

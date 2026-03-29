@@ -3,7 +3,6 @@ use rusqlite::{params, Connection};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-
 /// A recalled memory for context injection.
 #[derive(Debug)]
 pub struct RecalledMemory {

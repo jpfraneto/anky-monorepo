@@ -7,6 +7,14 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-28-r2-cdn-anky-story">
+    <div class="changelog-date">2026-03-28</div>
+    <h2 class="changelog-title">R2 CDN image upload + .anky story format</h2>
+    <p class="changelog-desc">Generated images are now converted to WebP and pushed to Cloudflare R2 immediately after generation, so clients fetch from CDN edge instead of Poiesis. New .anky story format (YAML frontmatter + page blocks) assembles CDN URLs with reflection text and is stored in the DB. Exposed via GET /api/v1/anky/{id} as anky_story field.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-28-003-r2-cdn-anky-story.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-28-r2-cdn-anky-story">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-28-openrouter-fallback-session-summary">
     <div class="changelog-date">2026-03-28</div>
     <h2 class="changelog-title">OpenRouter fallback + session summary on reflection failure</h2>

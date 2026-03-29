@@ -74,6 +74,7 @@ pub async fn get_anky(
                 "image_model": detail.image_model,
                 "prompt_id": detail.prompt_id,
                 "prompt_text": detail.prompt_text,
+                "anky_story": detail.anky_story,
             })))
         }
         None => Err(AppError::NotFound(format!("anky {} not found", id))),
@@ -1610,7 +1611,8 @@ pub async fn stream_reflection(
                         // Third fallback: OpenRouter
                         let or_key = &state_clone.config.openrouter_api_key;
                         if !or_key.is_empty() {
-                            let or_prompt = crate::services::ollama::deep_reflection_prompt(&writing_text);
+                            let or_prompt =
+                                crate::services::ollama::deep_reflection_prompt(&writing_text);
                             match crate::services::openrouter::call_openrouter(
                                 or_key,
                                 "anthropic/claude-3.5-haiku",
@@ -1634,7 +1636,10 @@ pub async fn stream_reflection(
                                     state_clone.emit_log(
                                         "INFO",
                                         "stream",
-                                        &format!("OpenRouter fallback reflection saved for {}", id_short),
+                                        &format!(
+                                            "OpenRouter fallback reflection saved for {}",
+                                            id_short
+                                        ),
                                     );
                                 }
                                 Err(or_err) => {
@@ -6163,4 +6168,3 @@ pub async fn ankycoin_latest_image() -> Result<Response, AppError> {
     }))
     .into_response())
 }
-

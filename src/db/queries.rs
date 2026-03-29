@@ -1308,11 +1308,12 @@ pub struct AnkyDetail {
     pub prompt_id: Option<String>,
     pub prompt_text: Option<String>,
     pub formatted_writing: Option<String>,
+    pub anky_story: Option<String>,
 }
 
 pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini'), a.conversation_json, a.prompt_id, p.prompt_text, a.formatted_writing, a.writing_session_id
+        "SELECT a.id, a.title, a.image_path, a.image_webp, a.reflection, a.image_prompt, a.caption, a.thinker_name, a.thinker_moment, a.status, w.content, a.created_at, a.origin, COALESCE(a.image_model, 'gemini'), a.conversation_json, a.prompt_id, p.prompt_text, a.formatted_writing, a.writing_session_id, a.anky_story
          FROM ankys a
          LEFT JOIN writing_sessions w ON w.id = a.writing_session_id
          LEFT JOIN prompts p ON p.id = a.prompt_id
@@ -1339,6 +1340,7 @@ pub fn get_anky_by_id(conn: &Connection, id: &str) -> Result<Option<AnkyDetail>>
             prompt_id: row.get(15)?,
             prompt_text: row.get(16)?,
             formatted_writing: row.get(17)?,
+            anky_story: row.get(19)?,
         })
     })?;
     Ok(rows.next().and_then(|r| r.ok()))
@@ -4381,4 +4383,20 @@ pub fn list_mirrors(
         ))
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// --- AnkyStory persistence ---
+
+pub fn save_anky_story(conn: &Connection, anky_id: &str, story: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE ankys SET anky_story = ?1 WHERE id = ?2",
+        params![story, anky_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_anky_story(conn: &Connection, anky_id: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT anky_story FROM ankys WHERE id = ?1")?;
+    let mut rows = stmt.query_map(params![anky_id], |row| row.get::<_, Option<String>>(0))?;
+    Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
