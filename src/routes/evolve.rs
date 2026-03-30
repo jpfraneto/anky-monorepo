@@ -30,7 +30,7 @@ struct EvolutionTrace {
 
 pub async fn evolve_dashboard(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let traces: Vec<EvolutionTrace> = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db.prepare(
             "SELECT
                 xi.tweet_id,

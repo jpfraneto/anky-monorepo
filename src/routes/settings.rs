@@ -18,7 +18,7 @@ pub async fn settings_page(
         .ok_or_else(|| AppError::BadRequest("login required — connect your wallet first".into()))?;
 
     let (settings, username) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let settings = queries::get_user_settings(&db, &user.user_id)?;
         let username = queries::get_user_username(&db, &user.user_id)?;
         (settings, username)
@@ -100,7 +100,7 @@ pub async fn save_settings(
     };
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
 
         // Update username if provided
         if let Some(ref uname) = req.username {
@@ -186,7 +186,7 @@ pub async fn claim_username(
     }
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if !queries::check_username_available(&db, &uname, &user.user_id)? {
             return Err(AppError::BadRequest("username already taken".into()));
         }

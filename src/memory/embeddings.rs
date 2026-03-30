@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use crate::db::Connection;
 
 const EMBEDDING_DIM: usize = 768;
 
@@ -89,7 +89,7 @@ pub fn store_embedding(
     conn.execute(
         "INSERT OR REPLACE INTO memory_embeddings (id, user_id, writing_session_id, source, content, embedding)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, user_id, writing_session_id, source, content, blob],
+        crate::params![id, user_id, writing_session_id, source, content, blob],
     )?;
     Ok(())
 }
@@ -109,7 +109,7 @@ pub fn search_similar(
          WHERE user_id = ?1",
     )?;
 
-    let rows = stmt.query_map(params![user_id], |row| {
+    let rows = stmt.query_map(crate::params![user_id], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, Option<String>>(1)?,
@@ -144,7 +144,7 @@ pub fn search_similar(
 pub fn count_user_embeddings(conn: &Connection, user_id: &str) -> Result<i32> {
     let count: i32 = conn.query_row(
         "SELECT COUNT(*) FROM memory_embeddings WHERE user_id = ?1",
-        params![user_id],
+        crate::params![user_id],
         |row| row.get(0),
     )?;
     Ok(count)

@@ -50,7 +50,7 @@ async fn send_daily_notifications(state: &AppState) -> anyhow::Result<()> {
 
     // Get all users with device tokens + at least one writing session
     let targets = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_notification_targets(&db)?
     };
 

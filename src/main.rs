@@ -3,6 +3,7 @@ mod config;
 mod create_videos;
 mod db;
 mod error;
+pub mod kingdoms;
 mod memory;
 mod middleware;
 mod models;
@@ -14,88 +15,131 @@ mod state;
 mod storage;
 mod training;
 
-use crate::config::Config;
+use crate::config::{Config, RunMode};
+use crate::error::AppError;
 use crate::state::{AppState, GpuStatus};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
-/// GPU job worker: drains pro channel before free channel, runs one job at a time.
-async fn gpu_job_worker(
-    state: AppState,
-    mut pro_rx: tokio::sync::mpsc::UnboundedReceiver<state::GpuJob>,
-    mut free_rx: tokio::sync::mpsc::UnboundedReceiver<state::GpuJob>,
-) {
+async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), AppError> {
+    match job {
+        state::GpuJob::AnkyImage {
+            anky_id,
+            session_id,
+            user_id,
+            writing,
+        } => {
+            let fid: Option<u64> = {
+                let conn = crate::db::conn(&state.db)?;
+                crate::db::queries::get_user_farcaster_fid(&conn, user_id)
+                    .ok()
+                    .flatten()
+                    .and_then(|f| f.parse::<u64>().ok())
+            };
+            let kingdom = if let Some(fid) = fid {
+                crate::kingdoms::kingdom_for_fid(fid)
+            } else {
+                crate::kingdoms::kingdom_for_session(session_id)
+            };
+
+            {
+                let conn = crate::db::conn(&state.db)?;
+                let _ = crate::db::queries::set_anky_kingdom(
+                    &conn,
+                    anky_id,
+                    kingdom.id,
+                    kingdom.name,
+                    kingdom.chakra,
+                );
+            }
+
+            state.emit_log(
+                "INFO",
+                "gpu_queue",
+                &format!(
+                    "Anky {} assigned to kingdom {} ({})",
+                    &anky_id[..8.min(anky_id.len())],
+                    kingdom.name,
+                    kingdom.chakra
+                ),
+            );
+
+            pipeline::image_gen::generate_anky_from_writing(
+                state, anky_id, session_id, user_id, writing,
+            )
+            .await?;
+        }
+        state::GpuJob::CuentacuentosImages { cuentacuentos_id } => {
+            pipeline::image_gen::generate_cuentacuentos_images(cuentacuentos_id, state).await?;
+        }
+        state::GpuJob::CuentacuentosAudio { cuentacuentos_id } => {
+            pipeline::guidance_gen::generate_cuentacuentos_audio(state, cuentacuentos_id).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// GPU job worker: drains Redis pro jobs before free jobs and runs one job at a time.
+async fn gpu_job_worker(state: AppState) {
     loop {
-        // Try pro channel first, fall back to free channel
-        let job = tokio::select! {
-            biased; // always try pro first
-            Some(job) = pro_rx.recv() => job,
-            Some(job) = free_rx.recv() => job,
-            else => break, // both channels closed
+        let dequeued =
+            match crate::services::redis_queue::dequeue_job(&state.config.redis_url).await {
+                Ok(job) => job,
+                Err(e) => {
+                    state.emit_log(
+                        "ERROR",
+                        "gpu_queue",
+                        &format!("Redis dequeue failed: {}", e),
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
+            };
+
+        let Some(job) = dequeued else {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            continue;
         };
 
-        match job {
-            state::GpuJob::AnkyImage {
-                anky_id,
-                session_id,
-                user_id,
-                writing,
-            } => {
-                if let Err(e) = pipeline::image_gen::generate_anky_from_writing(
-                    &state,
-                    &anky_id,
-                    &session_id,
-                    &user_id,
-                    &writing,
-                )
-                .await
-                {
-                    state.emit_log(
-                        "ERROR",
-                        "gpu_queue",
-                        &format!(
-                            "Anky gen failed for {}: {}",
-                            &anky_id[..8.min(anky_id.len())],
-                            e
-                        ),
-                    );
-                    let db = state.db.lock().await;
-                    let _ = db::queries::mark_anky_failed(&db, &anky_id);
+        if let Err(e) = process_gpu_job(&state, &job.job).await {
+            state.emit_log(
+                "ERROR",
+                "gpu_queue",
+                &format!("GPU job {} failed: {}", &job.id[..8.min(job.id.len())], e),
+            );
+
+            if let state::GpuJob::AnkyImage { anky_id, .. } = &job.job {
+                if let Ok(conn) = crate::db::conn(&state.db) {
+                    let _ = db::queries::mark_anky_failed(&conn, anky_id);
                 }
             }
-            state::GpuJob::CuentacuentosImages { cuentacuentos_id } => {
-                if let Err(e) =
-                    pipeline::image_gen::generate_cuentacuentos_images(&cuentacuentos_id, &state)
-                        .await
-                {
-                    state.emit_log(
-                        "ERROR",
-                        "gpu_queue",
-                        &format!(
-                            "Cuentacuentos image gen failed for {}: {}",
-                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
-                            e
-                        ),
-                    );
-                }
+
+            if let Err(fail_err) =
+                crate::services::redis_queue::fail_job(&state.config.redis_url, &job).await
+            {
+                state.emit_log(
+                    "ERROR",
+                    "gpu_queue",
+                    &format!(
+                        "Redis fail handler failed for {}: {}",
+                        &job.id[..8],
+                        fail_err
+                    ),
+                );
             }
-            state::GpuJob::CuentacuentosAudio { cuentacuentos_id } => {
-                if let Err(e) =
-                    pipeline::guidance_gen::generate_cuentacuentos_audio(&state, &cuentacuentos_id)
-                        .await
-                {
-                    state.emit_log(
-                        "ERROR",
-                        "gpu_queue",
-                        &format!(
-                            "Cuentacuentos TTS failed for {}: {}",
-                            &cuentacuentos_id[..8.min(cuentacuentos_id.len())],
-                            e
-                        ),
-                    );
-                }
-            }
+            continue;
+        }
+
+        if let Err(e) =
+            crate::services::redis_queue::complete_job(&state.config.redis_url, &job.id).await
+        {
+            state.emit_log(
+                "ERROR",
+                "gpu_queue",
+                &format!("Redis completion failed for {}: {}", &job.id[..8], e),
+            );
         }
     }
 }
@@ -114,12 +158,15 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
     let port = config.port;
 
-    tracing::info!("Starting Anky server on port {}", port);
+    tracing::info!(
+        "Starting Anky with mode {:?} on port {}",
+        config.run_mode,
+        port
+    );
 
     // Open database
-    std::fs::create_dir_all("data")?;
-    let conn = db::open_db("data/anky.db")?;
-    tracing::info!("Database initialized at data/anky.db");
+    let db_pool = db::create_pool(&config.database_url).await?;
+    tracing::info!("Database initialized at {}", config.database_url);
 
     // Load templates
     let tera = tera::Tera::new("templates/**/*.html")?;
@@ -141,12 +188,9 @@ async fn main() -> anyhow::Result<()> {
     // Frame buffer for Rust-rendered livestream frames
     let frame_buffer = services::stream::new_frame_buffer();
 
-    // GPU job priority queue (pro channel drained before free channel)
-    let (gpu_queue, gpu_pro_rx, gpu_free_rx) = state::GpuJobQueue::new();
-
     // Build state
     let state = AppState {
-        db: Arc::new(Mutex::new(conn)),
+        db: db_pool,
         tera: Arc::new(tera),
         config: Arc::new(config),
         gpu_status: Arc::new(RwLock::new(GpuStatus::Idle)),
@@ -163,16 +207,35 @@ async fn main() -> anyhow::Result<()> {
         sessions: routes::session::new_session_map(),
         slot_tracker: routes::simulations::SlotTracker::new(),
         log_history: Arc::new(Mutex::new(VecDeque::new())),
-        gpu_queue,
     };
 
-    // Start GPU job worker — drains pro channel first, then free channel
-    {
+    let start_web = state.config.run_mode != RunMode::Worker;
+    let start_worker = state.config.run_mode != RunMode::Web;
+
+    // Recover any Redis jobs that were processing when the worker last crashed.
+    if start_worker {
+        let recovered =
+            crate::services::redis_queue::recover_processing_jobs(&state.config.redis_url)
+                .await
+                .unwrap_or(0);
+        if recovered > 0 {
+            tracing::info!("Recovered {} jobs from Redis on startup", recovered);
+        }
+    }
+
+    // Start GPU job worker — drains Redis pro queue before free queue.
+    if start_worker {
         let worker_state = state.clone();
         tokio::spawn(async move {
-            gpu_job_worker(worker_state, gpu_pro_rx, gpu_free_rx).await;
+            gpu_job_worker(worker_state).await;
         });
         tracing::info!("GPU priority job worker spawned");
+    }
+
+    if !start_web {
+        tracing::info!("Worker mode active; Axum server disabled");
+        tokio::signal::ctrl_c().await?;
+        return Ok(());
     }
 
     // Start chunked session reaper (kills sessions after 8s silence, finalizes ankys)
@@ -225,22 +288,74 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Retry failed ankys every 5 minutes
+    // Retry failed ankys every 5 minutes (with backoff + max retries)
+    const MAX_ANKY_RETRIES: u32 = 5;
     let retry_state = state.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
             let failed = {
-                let db = retry_state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&retry_state.db) else {
+                    continue;
+                };
                 db::queries::get_failed_ankys(&db).unwrap_or_default()
             };
             if !failed.is_empty() {
                 retry_state.emit_log(
                     "INFO",
                     "retry",
-                    &format!("Auto-retrying {} failed ankys", failed.len()),
+                    &format!(
+                        "Checking {} failed ankys for retry eligibility",
+                        failed.len()
+                    ),
                 );
                 for (anky_id, session_id, writing) in failed {
+                    // Check retry count and backoff
+                    let (retry_count, last_retry_at) = {
+                        let Some(db) = crate::db::get_conn_logged(&retry_state.db) else {
+                            continue;
+                        };
+                        db::queries::get_anky_retry_info(&db, &anky_id).unwrap_or((0, None))
+                    };
+
+                    if retry_count >= MAX_ANKY_RETRIES {
+                        // Abandon this anky — too many retries
+                        if let Some(db) = crate::db::get_conn_logged(&retry_state.db) {
+                            let _ = db::queries::mark_anky_abandoned(&db, &anky_id);
+                        }
+                        retry_state.emit_log(
+                            "WARN",
+                            "retry",
+                            &format!(
+                                "Anky {} abandoned after {} retries",
+                                &anky_id[..8.min(anky_id.len())],
+                                retry_count
+                            ),
+                        );
+                        continue;
+                    }
+
+                    // Exponential backoff: wait at least 2^N * 5 minutes since last attempt
+                    if let Some(ref last_at) = last_retry_at {
+                        if let Ok(last_time) =
+                            chrono::NaiveDateTime::parse_from_str(last_at, "%Y-%m-%d %H:%M:%S")
+                        {
+                            let now = chrono::Utc::now().naive_utc();
+                            let backoff_minutes = (2u64.pow(retry_count)) * 5;
+                            let elapsed_minutes = (now - last_time).num_minutes() as u64;
+                            if elapsed_minutes < backoff_minutes {
+                                continue; // Not enough time has passed
+                            }
+                        }
+                    }
+
+                    // Increment retry count before attempting
+                    {
+                        if let Some(db) = crate::db::get_conn_logged(&retry_state.db) {
+                            let _ = db::queries::increment_anky_retry(&db, &anky_id);
+                        }
+                    }
+
                     let s = retry_state.clone();
                     let aid = anky_id.clone();
                     let sid = session_id.clone();
@@ -258,10 +373,15 @@ async fn main() -> anyhow::Result<()> {
                             s.emit_log(
                                 "ERROR",
                                 "retry",
-                                &format!("Auto-retry failed for {}: {}", &aid[..8], e),
+                                &format!(
+                                    "Auto-retry failed for {}: {}",
+                                    &aid[..8.min(aid.len())],
+                                    e
+                                ),
                             );
-                            let db = s.db.lock().await;
-                            let _ = db::queries::mark_anky_failed(&db, &aid);
+                            if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                                let _ = db::queries::mark_anky_failed(&db, &aid);
+                            }
                         }
                     });
                     // Small delay between retries
@@ -271,7 +391,9 @@ async fn main() -> anyhow::Result<()> {
 
             // Also retry failed prompts
             let failed_prompts = {
-                let db = retry_state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&retry_state.db) else {
+                    continue;
+                };
                 db::queries::get_failed_prompts(&db).unwrap_or_default()
             };
             if !failed_prompts.is_empty() {
@@ -287,8 +409,10 @@ async fn main() -> anyhow::Result<()> {
                     tokio::spawn(async move {
                         match pipeline::prompt_gen::generate_prompt_image(&s, &pid, &pt).await {
                             Ok(image_path) => {
-                                let db = s.db.lock().await;
-                                let _ = db::queries::update_prompt_image(&db, &pid, &image_path);
+                                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                                    let _ =
+                                        db::queries::update_prompt_image(&db, &pid, &image_path);
+                                }
                                 s.emit_log(
                                     "INFO",
                                     "retry",
@@ -301,8 +425,9 @@ async fn main() -> anyhow::Result<()> {
                                     "retry",
                                     &format!("Prompt {} retry failed: {}", &pid[..8], e),
                                 );
-                                let db = s.db.lock().await;
-                                let _ = db::queries::update_prompt_status(&db, &pid, "failed");
+                                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                                    let _ = db::queries::update_prompt_status(&db, &pid, "failed");
+                                }
                             }
                         }
                     });
@@ -318,7 +443,9 @@ async fn main() -> anyhow::Result<()> {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
             let cuentacuentos_ids = {
-                let db = story_retry_state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&story_retry_state.db) else {
+                    continue;
+                };
                 db::queries::get_retryable_failed_cuentacuentos_ids(&db).unwrap_or_default()
             };
 
@@ -335,9 +462,12 @@ async fn main() -> anyhow::Result<()> {
 
             for cuentacuentos_id in cuentacuentos_ids {
                 {
-                    let db = story_retry_state.db.lock().await;
-                    let _ =
-                        db::queries::requeue_retryable_cuentacuentos_images(&db, &cuentacuentos_id);
+                    if let Some(db) = crate::db::get_conn_logged(&story_retry_state.db) {
+                        let _ = db::queries::requeue_retryable_cuentacuentos_images(
+                            &db,
+                            &cuentacuentos_id,
+                        );
+                    }
                 }
 
                 if let Err(e) = pipeline::image_gen::generate_cuentacuentos_images(
@@ -372,7 +502,9 @@ async fn main() -> anyhow::Result<()> {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
             let recovered = {
-                let db = recovery_state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&recovery_state.db) else {
+                    continue;
+                };
                 match db::queries::recover_orphaned_checkpoints(&db) {
                     Ok(n) => n,
                     Err(e) => {
@@ -399,7 +531,9 @@ async fn main() -> anyhow::Result<()> {
             // Recover ankys that are complete but missing reflection (one per cycle to avoid
             // saturating Ollama/Claude and competing with live user requests)
             let missing = {
-                let db = recovery_state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&recovery_state.db) else {
+                    continue;
+                };
                 db::queries::get_ankys_missing_reflection(&db).unwrap_or_default()
             };
             for (anky_id, _session_id, user_id, writing) in missing.into_iter().take(1) {
@@ -429,13 +563,15 @@ async fn main() -> anyhow::Result<()> {
                     .map(|ctx| ctx.format_for_prompt())
                     .unwrap_or_default();
 
-                    services::claude::generate_title_and_reflection_with_memory(
+                    services::claude::generate_title_and_reflection_with_memory_using_model(
                         &api_key,
+                        &recovery_state.config.reflection_model,
+                        Some(&recovery_state.config.conversation_model),
                         &writing,
                         &memory_ctx,
                     )
                     .await
-                    .map(|r| r.text)
+                    .map(|(r, _)| r.text)
                 } else {
                     Err(anyhow::anyhow!("no API key"))
                 };
@@ -497,17 +633,21 @@ async fn main() -> anyhow::Result<()> {
                 };
 
                 let (title, reflection) = services::claude::parse_title_reflection(&full_text);
-                let db = recovery_state.db.lock().await;
-                if let Err(e) =
-                    db::queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
-                {
-                    tracing::error!("Recovery DB save failed for {}: {}", &anky_id[..8], e);
-                } else {
-                    recovery_state.emit_log(
-                        "INFO",
-                        "recovery",
-                        &format!("Reflection recovered for {}: \"{}\"", &anky_id[..8], title),
-                    );
+                if let Some(db) = crate::db::get_conn_logged(&recovery_state.db) {
+                    if let Err(e) = db::queries::update_anky_title_reflection(
+                        &db,
+                        &anky_id,
+                        &title,
+                        &reflection,
+                    ) {
+                        tracing::error!("Recovery DB save failed for {}: {}", &anky_id[..8], e);
+                    } else {
+                        recovery_state.emit_log(
+                            "INFO",
+                            "recovery",
+                            &format!("Reflection recovered for {}: \"{}\"", &anky_id[..8], title),
+                        );
+                    }
                 }
             }
         }

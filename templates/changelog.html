@@ -7,6 +7,30 @@
   <h1>changelog</h1>
   <p class="changelog-subtitle">every change to anky, traced back to the human prompt that caused it.</p>
 
+  <div class="changelog-entry" id="2026-03-29-local-first-mind-kingdoms">
+    <div class="changelog-date">2026-03-29</div>
+    <h2 class="changelog-title">Local-first Mind + 8 Kingdoms</h2>
+    <p class="changelog-desc">All text inference now follows a local-first fallback chain: Mind (llama-server qwen3.5-27b on GPU 0) → Claude Haiku → OpenRouter. Added 8 Kingdoms system mapping each anky to a chakra/element with unique image prompt flavors. Redis job persistence with crash recovery. Retry watchdog gets exponential backoff (was unlimited). New /api/v1/mind/status endpoint.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-29-003-local-first-mind-kingdoms.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-29-local-first-mind-kingdoms">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-29-programming-classes-smart-detection">
+    <div class="changelog-date">2026-03-29</div>
+    <h2 class="changelog-title">Programming classes system + smarter Farcaster detection</h2>
+    <p class="changelog-desc">Built the programming class system: text+code slides rendered as HTML at /classes/{n} with 60s auto-advance, keyboard nav, progress bar. Class #1: "intent classification with llms" — teaches the pattern of replacing string heuristics with Claude Haiku. Also upgraded community question detection to Haiku-powered intent classification. Updated CLAUDE.md: documentation is first-class, classes are mandatory per session.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-29-002-programming-classes-smart-detection.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-29-programming-classes-smart-detection">#</a>
+  </div>
+
+  <div class="changelog-entry" id="2026-03-29-farcaster-community-writing-prompts">
+    <div class="changelog-date">2026-03-29</div>
+    <h2 class="changelog-title">Farcaster community writing prompts</h2>
+    <p class="changelog-desc">When someone tags Anky in a cast that poses a question to their followers, Anky now detects the community question and replies with a reframed writing prompt + a link to write for 8 minutes. Claude reframes the question into something deeper and personal. Regular mentions still get normal replies.</p>
+    <a class="changelog-prompt-link" href="/static/changelog/2026-03-29-001-farcaster-community-writing-prompts.txt">read the prompt</a>
+    <a class="changelog-permalink" href="/changelog#2026-03-29-farcaster-community-writing-prompts">#</a>
+  </div>
+
   <div class="changelog-entry" id="2026-03-28-r2-cdn-anky-story">
     <div class="changelog-date">2026-03-28</div>
     <h2 class="changelog-title">R2 CDN image upload + .anky story format</h2>

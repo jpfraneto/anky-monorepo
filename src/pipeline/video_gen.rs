@@ -632,10 +632,12 @@ async fn persist_script_to_db(
     completed_scenes: i32,
 ) {
     let json = serde_json::to_string(script).unwrap_or_default();
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return;
+    };
     let _ = db.execute(
         "UPDATE video_projects SET script_json = ?2, completed_scenes = ?3 WHERE id = ?1",
-        rusqlite::params![project_id, json, completed_scenes],
+        crate::params![project_id, json, completed_scenes],
     );
 }
 
@@ -656,7 +658,7 @@ async fn generate_sequential_chain(
     }
 
     let (image_prompt_template, sound_prompt_template) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let image_tpl =
             crate::db::queries::get_pipeline_prompt(&db, VIDEO_IMAGE_PROMPT_TEMPLATE_KEY)?
                 .filter(|v| !v.trim().is_empty())
@@ -670,7 +672,7 @@ async fn generate_sequential_chain(
 
     // Update step
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = crate::db::queries::update_video_project_step(&db, project_id, "generating");
     }
 
@@ -769,7 +771,7 @@ async fn generate_sequential_chain(
                                 &format!("Scene {} image saved: {}", scene_idx + 1, filename),
                             );
 
-                            let db = state.db.lock().await;
+                            let db = crate::db::conn(&state.db)?;
                             let _ = crate::db::queries::insert_cost_record(
                                 &db,
                                 "gemini",
@@ -908,7 +910,7 @@ async fn generate_sequential_chain(
                                         ),
                                     );
 
-                                    let db = state.db.lock().await;
+                                    let db = crate::db::conn(&state.db)?;
                                     let _ = crate::db::queries::insert_cost_record(
                                         &db,
                                         "grok",
@@ -1133,7 +1135,9 @@ async fn ffmpeg_concat_and_transcode(
         let has_720 = r720.map(|r| r.status.success()).unwrap_or(false);
         let has_360 = r360.map(|r| r.status.success()).unwrap_or(false);
         if has_720 || has_360 {
-            let db = st.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&st.db) else {
+                return;
+            };
             let p720 = if has_720 { &o720 } else { "" };
             let p360 = if has_360 { &o360 } else { "" };
             let _ = crate::db::queries::update_video_project_paths(&db, &pid, p720, p360);
@@ -1166,7 +1170,7 @@ pub async fn generate_video_from_script(
     // Save story_spine to DB if present
     if let Some(ref spine) = script.story_spine {
         if let Ok(spine_json) = serde_json::to_string(spine) {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ =
                 crate::db::queries::update_video_project_story_spine(&db, project_id, &spine_json);
         }
@@ -1237,7 +1241,7 @@ async fn stitch_and_encode(
     script: &VideoScript,
 ) -> Result<String> {
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = crate::db::queries::update_video_project_step(&db, project_id, "stitching");
     }
     state.emit_log("INFO", "video", "Stitching clips with ffmpeg...");

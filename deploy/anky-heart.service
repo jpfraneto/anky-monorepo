@@ -1,0 +1,20 @@
+[Unit]
+Description=Anky Heart — ComfyUI Flux LoRA (GPU 1)
+After=network.target
+
+[Service]
+Type=simple
+User=kithkui
+Environment=CUDA_VISIBLE_DEVICES=1
+WorkingDirectory=/home/kithkui/ComfyUI
+ExecStart=/home/kithkui/ComfyUI/venv/bin/python main.py \
+    --listen 127.0.0.1 \
+    --port 8188 \
+    --disable-auto-launch
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

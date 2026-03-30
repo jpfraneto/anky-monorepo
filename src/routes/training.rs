@@ -194,7 +194,7 @@ pub struct AnkyCard {
 }
 
 pub async fn next_image(State(state): State<AppState>) -> Result<Json<NextResponse>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     // Ensure training_labels table exists
     db.execute_batch(
@@ -208,12 +208,12 @@ pub async fn next_image(State(state): State<AppState>) -> Result<Json<NextRespon
     // Count stats
     let approved: i64 = db.query_row(
         "SELECT COUNT(*) FROM training_labels WHERE approved = 1",
-        [],
+        crate::params![],
         |row| row.get(0),
     )?;
     let rejected: i64 = db.query_row(
         "SELECT COUNT(*) FROM training_labels WHERE approved = 0",
-        [],
+        crate::params![],
         |row| row.get(0),
     )?;
 
@@ -226,7 +226,7 @@ pub async fn next_image(State(state): State<AppState>) -> Result<Json<NextRespon
            AND a.id NOT IN (SELECT anky_id FROM training_labels)
          ORDER BY a.created_at ASC
          LIMIT 1",
-        [],
+        crate::params![],
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -243,7 +243,7 @@ pub async fn next_image(State(state): State<AppState>) -> Result<Json<NextRespon
          WHERE status = 'complete'
            AND image_path IS NOT NULL
            AND id NOT IN (SELECT anky_id FROM training_labels)",
-        [],
+        crate::params![],
         |row| row.get(0),
     )?;
 
@@ -282,7 +282,7 @@ pub async fn vote(
     State(state): State<AppState>,
     Json(req): Json<VoteRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     // Ensure table exists
     db.execute_batch(
@@ -296,7 +296,7 @@ pub async fn vote(
     // Insert or replace the label
     db.execute(
         "INSERT OR REPLACE INTO training_labels (anky_id, approved) VALUES (?1, ?2)",
-        rusqlite::params![req.anky_id, req.approved],
+        crate::params![req.anky_id, req.approved],
     )?;
 
     // If approved, copy the image to training-images/
@@ -304,7 +304,7 @@ pub async fn vote(
         // Get the image path from the anky record
         let paths: (Option<String>, Option<String>) = db.query_row(
             "SELECT image_path, image_prompt FROM ankys WHERE id = ?1",
-            rusqlite::params![req.anky_id],
+            crate::params![req.anky_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 

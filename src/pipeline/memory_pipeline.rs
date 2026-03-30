@@ -84,7 +84,9 @@ pub async fn run_memory_pipeline(
 
     // Step 4: Update profile every 5th anky session
     let session_count = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         crate::memory::extraction::get_user_session_count(&db, user_id).unwrap_or(0)
     };
 
@@ -145,7 +147,9 @@ pub async fn run_memory_pipeline(
 
             // Write results to DB (only overwrite non-empty responses)
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let db = state.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&state.db) else {
+                return;
+            };
             if !profile_text.is_empty() {
                 let _ = db.execute(
                     "INSERT INTO user_profiles (user_id, psychological_profile, last_profile_update, updated_at)
@@ -154,25 +158,25 @@ pub async fn run_memory_pipeline(
                         psychological_profile = excluded.psychological_profile,
                         last_profile_update = excluded.last_profile_update,
                         updated_at = excluded.updated_at",
-                    rusqlite::params![user_id, profile_text, now],
+                    crate::params![user_id, profile_text, now],
                 );
             }
             if !core_tensions.is_empty() {
                 let _ = db.execute(
                     "UPDATE user_profiles SET core_tensions = ?1, updated_at = ?2 WHERE user_id = ?3",
-                    rusqlite::params![core_tensions, now, user_id],
+                    crate::params![core_tensions, now, user_id],
                 );
             }
             if !growth_edges.is_empty() {
                 let _ = db.execute(
                     "UPDATE user_profiles SET growth_edges = ?1, updated_at = ?2 WHERE user_id = ?3",
-                    rusqlite::params![growth_edges, now, user_id],
+                    crate::params![growth_edges, now, user_id],
                 );
             }
             if !emotional_signature.is_empty() {
                 let _ = db.execute(
                     "UPDATE user_profiles SET emotional_signature = ?1, updated_at = ?2 WHERE user_id = ?3",
-                    rusqlite::params![emotional_signature, now, user_id],
+                    crate::params![emotional_signature, now, user_id],
                 );
             }
             state.emit_log("INFO", "memory", "Honcho-powered profile updated");
@@ -198,7 +202,9 @@ pub async fn backfill_memories(
     anthropic_key: &str,
 ) -> (usize, usize) {
     let sessions: Vec<(String, String, String)> = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return (0, 0);
+        };
         let mut stmt = match db.prepare(
             "SELECT ws.id, ws.user_id, ws.content
              FROM writing_sessions ws
@@ -213,7 +219,7 @@ pub async fn backfill_memories(
             }
         };
         let rows = stmt
-            .query_map([], |row| {
+            .query_map(crate::params![], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,

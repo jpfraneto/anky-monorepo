@@ -175,7 +175,7 @@ pub async fn queue_post_writing_cuentacuentos(
     parent_wallet_address: &str,
 ) -> Result<String> {
     let (writing, auto_child_wallet_address, user_id) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let writing = queries::get_writing_content(&db, writing_id)?;
         let children = queries::get_child_profiles_by_parent_wallet(&db, parent_wallet_address)?;
         let auto_child_wallet_address = if children.len() == 1 {
@@ -186,7 +186,7 @@ pub async fn queue_post_writing_cuentacuentos(
         let user_id = db
             .query_row(
                 "SELECT user_id FROM writing_sessions WHERE id = ?1",
-                rusqlite::params![writing_id],
+                crate::params![writing_id],
                 |row| row.get::<_, String>(0),
             )
             .ok();
@@ -283,7 +283,7 @@ pub async fn queue_post_writing_cuentacuentos(
 
     // ── LIFECYCLE STEP 2: Save story to DB ──────────────────────────────────
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_cuentacuentos(
             &db,
             &queries::CreateCuentacuentosParams {
@@ -320,7 +320,7 @@ pub async fn queue_post_writing_cuentacuentos(
     .await;
     // Mark the training pair as exported — the writing is now consumed
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Err(e) = queries::mark_training_pair_exported(&db, writing_id) {
             tracing::warn!("failed to mark training pair exported: {}", e);
         }
@@ -330,7 +330,7 @@ pub async fn queue_post_writing_cuentacuentos(
     // The writing has been transmuted: story exists, training pair logged.
     // The raw material can now be released.
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Err(e) = queries::nullify_writing_content(&db, writing_id) {
             tracing::warn!(
                 "failed to nullify writing content for {}: {}",
@@ -357,7 +357,7 @@ pub async fn queue_post_writing_cuentacuentos(
     // ── LIFECYCLE STEP 6: Archive the anky ──────────────────────────────────
     // Transition ankys.status from "complete" to "archived" — the ritual is closed.
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         // Find the anky associated with this writing session and archive it
         if let Ok(Some((anky_id, ..))) = queries::get_anky_by_writing_session_id(&db, writing_id) {
             if let Err(e) = queries::update_anky_status(&db, &anky_id, "archived") {
@@ -374,17 +374,19 @@ pub async fn queue_post_writing_cuentacuentos(
     // Submit image generation to GPU priority queue (non-blocking, parallel to lifecycle)
     {
         let is_pro = if let Some(ref uid) = user_id {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             crate::db::queries::is_user_pro(&db, uid).unwrap_or(false)
         } else {
             false
         };
-        state.gpu_queue.submit(
-            crate::state::GpuJob::CuentacuentosImages {
+        crate::services::redis_queue::enqueue_job(
+            &state.config.redis_url,
+            &crate::state::GpuJob::CuentacuentosImages {
                 cuentacuentos_id: id.clone(),
             },
-            if is_pro { 1 } else { 0 },
-        );
+            is_pro,
+        )
+        .await?;
     }
 
     // Spawn async translation (non-blocking, parallel)
@@ -495,7 +497,7 @@ Return the translation preserving [N] markers. Do not add any explanation."#,
     let content_hi = translations.get("hi").map(|ps| ps.join("\n\n"));
     let content_ar = translations.get("ar").map(|ps| ps.join("\n\n"));
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::update_cuentacuentos_translations(
         &db,
         cuentacuentos_id,
@@ -513,12 +515,14 @@ Return the translation preserving [N] markers. Do not add any explanation."#,
     );
 
     // Queue TTS audio generation now that translations are ready
-    state.gpu_queue.submit(
-        crate::state::GpuJob::CuentacuentosAudio {
+    crate::services::redis_queue::enqueue_job(
+        &state.config.redis_url,
+        &crate::state::GpuJob::CuentacuentosAudio {
             cuentacuentos_id: cuentacuentos_id.to_string(),
         },
-        0,
-    );
+        false,
+    )
+    .await?;
 
     Ok(())
 }
@@ -585,20 +589,16 @@ async fn log_training_pair(
     kingdom: Option<&str>,
     city: Option<&str>,
 ) {
-    let db = match state.db.try_lock() {
-        Ok(db) => db,
-        Err(_) => {
-            // Non-critical — skip rather than block
-            tracing::debug!("skipped training pair log (db lock contention)");
-            return;
-        }
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        tracing::debug!("skipped training pair log (db pool unavailable)");
+        return;
     };
     if let Err(e) = db.execute(
         "INSERT OR IGNORE INTO story_training_pairs
          (id, cuentacuentos_id, writing_id, writing_input, story_title, story_content,
           chakra, kingdom, city)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![
+        crate::params![
             uuid::Uuid::new_v4().to_string(),
             cuentacuentos_id,
             writing_id,
@@ -619,7 +619,9 @@ async fn log_training_pair(
 /// Stores result in next_prompts table.
 pub async fn generate_next_prompt(state: &AppState, user_id: &str, writing_session_id: &str) {
     let writing_text = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         queries::get_writing_content(&db, writing_session_id)
             .ok()
             .flatten()
@@ -648,10 +650,12 @@ pub async fn generate_anky_response(
 ) {
     // Get session metadata
     let (duration, word_count, is_anky) = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         db.query_row(
             "SELECT duration_seconds, word_count, is_anky FROM writing_sessions WHERE id = ?1",
-            rusqlite::params![writing_session_id],
+            crate::params![writing_session_id],
             |row| {
                 Ok((
                     row.get::<_, f64>(0).unwrap_or(0.0),
@@ -687,10 +691,12 @@ pub async fn generate_anky_response(
     .await
     {
         Ok(wr) => {
-            let db = state.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&state.db) else {
+                return;
+            };
             let _ = db.execute(
                 "UPDATE writing_sessions SET anky_response = ?1, anky_next_prompt = ?2, anky_mood = ?3 WHERE id = ?4",
-                rusqlite::params![&wr.anky_response, &wr.next_prompt, &wr.mood, writing_session_id],
+                crate::params![&wr.anky_response, &wr.next_prompt, &wr.mood, writing_session_id],
             );
             tracing::info!(
                 "Anky response generated for session {}: {}",
@@ -766,7 +772,9 @@ Respond with ONLY the prompt text. One sentence. Nothing else."#,
         Ok(generated_prompt) => {
             let clean = generated_prompt.trim().trim_matches('"').trim().to_string();
             if !clean.is_empty() {
-                let db = state.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&state.db) else {
+                    return;
+                };
                 if let Err(e) =
                     queries::upsert_next_prompt(&db, user_id, &clean, Some(writing_session_id))
                 {
@@ -809,7 +817,7 @@ pub async fn generate_cuentacuentos_audio(
 
     // Load story content
     let story = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_cuentacuentos_by_id(&db, cuentacuentos_id)?
     };
     let story =
@@ -840,7 +848,7 @@ pub async fn generate_cuentacuentos_audio(
 
     // Create pending audio rows for each language
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         for (lang, _) in &languages {
             let id = uuid::Uuid::new_v4().to_string();
             queries::create_cuentacuentos_audio(&db, &id, cuentacuentos_id, lang)?;
@@ -851,11 +859,11 @@ pub async fn generate_cuentacuentos_audio(
     for (lang, content) in &languages {
         // Get the pending audio row
         let audio_id = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let row = db.query_row(
                 "SELECT id FROM cuentacuentos_audio
                  WHERE cuentacuentos_id = ?1 AND language = ?2 AND status != 'complete'",
-                rusqlite::params![cuentacuentos_id, lang],
+                crate::params![cuentacuentos_id, lang],
                 |row| row.get::<_, String>(0),
             );
             match row {
@@ -865,7 +873,7 @@ pub async fn generate_cuentacuentos_audio(
         };
 
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::update_cuentacuentos_audio_generating(&db, &audio_id)?;
         }
 
@@ -891,7 +899,7 @@ pub async fn generate_cuentacuentos_audio(
                     )
                     .await
                     {
-                        let db = state.db.lock().await;
+                        let db = crate::db::conn(&state.db)?;
                         let _ = queries::update_cuentacuentos_audio_failed(
                             &db,
                             &audio_id,
@@ -907,7 +915,7 @@ pub async fn generate_cuentacuentos_audio(
                     }
 
                     let audio_url = crate::services::r2::public_url(&state.config, &r2_key);
-                    let db = state.db.lock().await;
+                    let db = crate::db::conn(&state.db)?;
                     queries::update_cuentacuentos_audio_complete(
                         &db, &audio_id, &r2_key, &audio_url, duration,
                     )?;
@@ -919,7 +927,7 @@ pub async fn generate_cuentacuentos_audio(
                     );
                 } else {
                     // No R2 — mark complete with placeholder
-                    let db = state.db.lock().await;
+                    let db = crate::db::conn(&state.db)?;
                     queries::update_cuentacuentos_audio_complete(
                         &db,
                         &audio_id,
@@ -933,7 +941,7 @@ pub async fn generate_cuentacuentos_audio(
                 }
             }
             Err(e) => {
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 let _ =
                     queries::update_cuentacuentos_audio_failed(&db, &audio_id, &format!("{}", e));
                 tracing::error!(

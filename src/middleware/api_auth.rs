@@ -33,7 +33,17 @@ pub async fn require_api_key(
     };
 
     // Validate key exists and is active
-    let db = state.db.lock().await;
+    let db = match crate::db::conn(&state.db) {
+        Ok(db) => db,
+        Err(e) => {
+            tracing::error!("database pool error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "database unavailable" })),
+            )
+                .into_response();
+        }
+    };
     match queries::get_api_key(&db, &api_key) {
         Ok(Some(key_record)) if key_record.is_active => {
             req.extensions_mut().insert(ApiKeyInfo { key: api_key });
@@ -68,7 +78,17 @@ pub async fn optional_api_key(
         .map(|s| s.to_string());
 
     if let Some(key) = api_key {
-        let db = state.db.lock().await;
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "database unavailable" })),
+                )
+                    .into_response();
+            }
+        };
         if let Ok(Some(key_record)) = queries::get_api_key(&db, &key) {
             if key_record.is_active {
                 req.extensions_mut().insert(ApiKeyInfo { key });

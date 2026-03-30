@@ -20,7 +20,7 @@ pub async fn create_collection(
     let cost_estimate = crate::pipeline::cost::estimate_collection_cost(88);
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::ensure_user(&db, "anonymous")?;
         crate::db::queries::insert_collection(
             &db,
@@ -53,7 +53,7 @@ pub async fn get_collection(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let collection = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_collection(&db, &id)?
     };
 

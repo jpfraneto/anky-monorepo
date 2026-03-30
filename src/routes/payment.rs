@@ -26,7 +26,7 @@ pub async fn verify_payment(
 
     if result.valid {
         // Update collection payment
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::update_collection_payment(&db, &req.collection_id, &req.tx_hash)?;
 
         state.emit_log(

@@ -51,7 +51,9 @@ pub async fn run_training(
                     progress.get("loss").and_then(|v| v.as_f64()),
                 ) {
                     let _ = {
-                        let db = state_clone.db.lock().await;
+                        let Some(db) = crate::db::get_conn_logged(&state_clone.db) else {
+                            return;
+                        };
                         crate::db::queries::update_training_progress(
                             &db,
                             &run_id,

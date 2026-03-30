@@ -166,7 +166,7 @@ impl From<&ActiveSession> for SessionTraceContext {
 // ---------- helpers ----------
 
 fn authenticate_agent(
-    db: &rusqlite::Connection,
+    db: &crate::db::Connection,
     headers: &HeaderMap,
 ) -> Result<queries::AgentRecord, AppError> {
     let key = headers
@@ -191,7 +191,9 @@ async fn record_session_event(
     detail: Option<Value>,
 ) {
     let detail_json = detail.as_ref().map(Value::to_string);
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return;
+    };
     if let Err(err) = queries::insert_agent_session_event(
         &db,
         &context.session_id,
@@ -312,7 +314,7 @@ pub async fn start_session(
     Json(req): Json<StartRequest>,
 ) -> Result<Json<StartResponse>, AppError> {
     let agent = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         authenticate_agent(&db, &headers)?
     };
 
@@ -391,7 +393,7 @@ pub async fn send_chunk(
 ) -> Result<Json<ChunkResponse>, AppError> {
     // Authenticate (must be the same agent that started the session)
     let agent = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         authenticate_agent(&db, &headers)?
     };
 
@@ -693,12 +695,12 @@ pub async fn session_events(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<SessionEventsResponse>, AppError> {
     let agent = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         authenticate_agent(&db, &headers)?
     };
 
     let (owner, events) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let owner = queries::get_agent_session_owner(&db, &id)?
             .ok_or_else(|| AppError::NotFound(format!("session {} not found", id)))?;
         if owner.agent_id != agent.id {
@@ -741,12 +743,12 @@ pub async fn session_result(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<SessionResultResponse>, AppError> {
     let agent = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         authenticate_agent(&db, &headers)?
     };
 
     let (owner, events) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let owner = queries::get_agent_session_owner(&db, &id)?
             .ok_or_else(|| AppError::NotFound(format!("session {} not found", id)))?;
         if owner.agent_id != agent.id {
@@ -827,7 +829,7 @@ pub async fn session_result(
     }
 
     if let Some(ref id) = anky_id {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         anky_status = queries::get_anky_by_id(&db, id)?.map(|anky| anky.status);
     }
 
@@ -870,7 +872,7 @@ async fn finalize_non_anky(state: &AppState, session_id: &str) -> Option<String>
 
     // Save to DB
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db).ok()?;
         let _ = queries::ensure_user(&db, &session.user_id);
         let _ = queries::upsert_completed_writing_session_with_flow(
             &db,
@@ -911,10 +913,10 @@ async fn finalize_non_anky(state: &AppState, session_id: &str) -> Option<String>
 
     // Save feedback
     if let Some(ref fb) = feedback {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db).ok()?;
         let _ = db.execute(
             "UPDATE writing_sessions SET response = ?1 WHERE id = ?2",
-            rusqlite::params![fb, session_id],
+            crate::params![fb, session_id],
         );
     }
 
@@ -956,7 +958,7 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
 
     // Save to DB
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::ensure_user(&db, &session.user_id);
         queries::upsert_completed_writing_session_with_flow(
             &db,
@@ -976,7 +978,7 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
     // Create anky record
     let anky_id = uuid::Uuid::new_v4().to_string();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_anky(
             &db,
             &anky_id,
@@ -1004,10 +1006,12 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
         let prompt = crate::services::ollama::deep_reflection_prompt(&text_bg);
         match crate::services::claude::call_haiku(&api_key_bg, &prompt).await {
             Ok(r) => {
-                let db = state_bg.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&state_bg.db) else {
+                    return;
+                };
                 let _ = db.execute(
                     "UPDATE writing_sessions SET response = ?1 WHERE id = ?2",
-                    rusqlite::params![&r, &sid],
+                    crate::params![&r, &sid],
                 );
             }
             Err(e) => tracing::error!("Haiku bg reflection error: {}", e),
@@ -1017,18 +1021,20 @@ async fn finalize_anky(state: &AppState, session_id: &str) -> Result<(String, St
     // Submit image generation to GPU priority queue
     {
         let is_pro = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::is_user_pro(&db, &session.user_id).unwrap_or(false)
         };
-        state.gpu_queue.submit(
-            crate::state::GpuJob::AnkyImage {
+        crate::services::redis_queue::enqueue_job(
+            &state.config.redis_url,
+            &crate::state::GpuJob::AnkyImage {
                 anky_id: anky_id.clone(),
                 session_id: session.session_id.clone(),
                 user_id: session.user_id.clone(),
                 writing: full_text.clone(),
             },
-            if is_pro { 1 } else { 0 },
-        );
+            is_pro,
+        )
+        .await?;
     }
 
     record_session_event(

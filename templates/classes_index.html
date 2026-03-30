@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}anky — programming classes{% endblock %}
+
+{% block content %}
+<div style="max-width:700px;margin:40px auto;padding:0 20px;">
+  <h1 style="font-family:'Cinzel',serif;color:#d4a843;margin-bottom:8px;">programming classes</h1>
+  <p style="color:#999;margin-bottom:32px;">8-minute lessons from each coding session. each slide lasts 1 minute. learn by building.</p>
+
+  {% if classes | length == 0 %}
+  <p style="color:#666;">no classes yet. the first one will be generated from the next coding session.</p>
+  {% else %}
+  {% for c in classes %}
+  <a href="/classes/{{ c.number }}" style="display:block;padding:16px;margin-bottom:12px;border:1px solid rgba(212,168,67,0.15);border-radius:8px;text-decoration:none;transition:all 0.2s;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span style="font-family:'Cinzel',serif;color:#d4a843;font-size:13px;">class #{{ c.number }}</span>
+      <span style="color:#666;font-size:12px;">{{ c.created_at }}</span>
+    </div>
+    <div style="color:#e8e0d0;margin-top:6px;font-size:15px;">{{ c.title }}</div>
+    {% if c.description %}
+    <div style="color:#888;margin-top:4px;font-size:13px;">{{ c.description }}</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

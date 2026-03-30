@@ -1,0 +1,18 @@
+[Unit]
+Description=Anky GPU Worker
+After=network.target anky-mind.service anky-heart.service
+
+[Service]
+Type=simple
+User=kithkui
+WorkingDirectory=/home/kithkui/anky
+Environment=ANKY_MODE=worker
+EnvironmentFile=/home/kithkui/anky/.env.worker
+ExecStart=/home/kithkui/anky/target/release/anky
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

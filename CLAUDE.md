@@ -19,10 +19,11 @@ Anky is a writing-practice backend that is now explicitly pivoting into a parent
 - Production runs as a single systemd user service (`anky.service`) on the bare-metal machine `poiesis`, listening on port `8889`.
 - Public traffic reaches the server through `cloudflared-anky.service`: `anky.app` -> Cloudflare tunnel -> localhost:8889.
 - Current mobile split: `/swift/v2/*` is the active Base/EVM seed-identity path for the parent/child system; `/swift/v1/*` remains the legacy/older mobile surface.
-- Claude handles premium writing-derived generation and other cloud LLM tasks.
-- Ollama is the local text model layer. The current configured default is `qwen3.5:35b` at `http://localhost:11434`.
-- ComfyUI is the local Flux image layer. The live implementation is in `src/services/comfyui.rs`; current runtime code uses localhost `8188` for Flux + the Anky LoRA workflow, even though `COMFYUI_URL` also exists in config.
-- `poiesis` is the operational center: Rust server, SQLite, Ollama, ComfyUI, and the surrounding worker loops all assume that machine-local deployment model.
+- Text inference follows a local-first fallback chain: Mind (llama-server/qwen3.5-27b at `MIND_URL`) → Claude Haiku (cloud) → OpenRouter (last resort). Ollama is gone.
+- The Mind is GPU 0: llama-server serving qwen3.5-27b-q4_k_m via OpenAI-compatible API at `http://127.0.0.1:8080`. It's a thinking model — `<think>` blocks are stripped from responses.
+- ComfyUI is the local Flux image layer (GPU 1, the Heart). The live implementation is in `src/services/comfyui.rs` at localhost `8188`.
+- Redis/Valkey at `REDIS_URL` handles job persistence for crash recovery.
+- `poiesis` is the operational center: Rust server, SQLite, llama-server, ComfyUI, Redis, and the surrounding worker loops all assume that machine-local deployment model.
 
 ## Product Stance
 
@@ -39,6 +40,28 @@ Anky is a writing-practice backend that is now explicitly pivoting into a parent
 - The live ComfyUI integration is `src/services/comfyui.rs`. Do not build against a nonexistent `src/pipeline/comfyui.rs`.
 - `cargo fmt` and `cargo check` must pass before any session ends.
 - Never hardcode credentials. Read from environment variables or config struct.
+- **Documentation is first-class.** Always update `CURRENT_STATE.md`, `CLAUDE.md`, and changelog when making changes. These files are how sessions stay coherent. Do not skip documentation updates.
+
+## Programming Classes Protocol
+
+**MANDATORY**: Every coding session that results in code changes MUST produce a programming class. This is as non-negotiable as the changelog. Do it at the end of every session, right before build + deploy.
+
+Each class teaches ONE core programming concept through actual code from this repo. The audience is learning about AI and how it works, from the inner core to the outer core. Classes live at `https://anky.app/classes/{number}`.
+
+1. **Pick the ONE concept** this session best illustrates. Examples: intent classification, webhook architectures, LLM structured output, database migrations, async task spawning, template rendering, etc.
+
+2. **Build 8 slides** as JSON objects, each with:
+   - `heading`: short title for the slide (the concept point)
+   - `body`: 1-3 sentences explaining the concept in simple terms
+   - `code`: actual code from the anky repo (not pseudocode) — the real thing that was written or modified
+   - `file`: the source file path (e.g. `src/services/claude.rs`)
+   - `note`: optional teaching note or "try this" prompt
+
+3. **Structure**: Slide 1 = what we're learning and why. Slides 2-7 = the concept broken down through real code. Slide 8 = recap + connection to the bigger AI picture.
+
+4. **Insert via API**: `POST /api/v1/classes/generate` with `{"title":"...","concept":"...","slides":[...]}`.
+
+5. Classes are numbered sequentially. The Ankyverse calendar (96-day sojourns) will overlay class numbers once the mapping is defined.
 
 ## Changelog Protocol
 

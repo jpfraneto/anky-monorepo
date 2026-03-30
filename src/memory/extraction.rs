@@ -1,8 +1,6 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use crate::db::Connection;
 use serde::Deserialize;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 const EXTRACTION_SYSTEM: &str = r#"You are a psychological pattern extractor for a consciousness journaling app called Anky. You analyze raw stream-of-consciousness writing sessions and extract structured psychological memories.
 
@@ -60,9 +58,8 @@ pub async fn extract_memories(api_key: &str, writing: &str) -> Result<ExtractedM
 }
 
 /// Store extracted memories in the database, deduplicating by exact text match.
-/// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn store_memories(
-    db: &Arc<Mutex<Connection>>,
+    db: &crate::db::DbPool,
     user_id: &str,
     writing_session_id: &str,
     memories: &ExtractedMemories,
@@ -79,7 +76,7 @@ pub async fn store_memories(
         ("avoidance", &memories.avoidances),
     ];
 
-    let conn = db.lock().await;
+    let conn = crate::db::conn(db)?;
 
     for (category, entries) in items {
         for entry in entries {
@@ -91,7 +88,7 @@ pub async fn store_memories(
             let existing: Option<(String, i32)> = conn
                 .query_row(
                     "SELECT id, occurrence_count FROM user_memories WHERE user_id = ?1 AND category = ?2 AND content = ?3",
-                    params![user_id, category, entry],
+                    crate::params![user_id, category, entry],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)),
                 )
                 .ok();
@@ -100,7 +97,7 @@ pub async fn store_memories(
                 conn.execute(
                     "UPDATE user_memories SET occurrence_count = ?2, last_seen_at = ?3, importance = MIN(1.0, importance + 0.05)
                      WHERE id = ?1",
-                    params![existing_id, existing_count + 1, now],
+                    crate::params![existing_id, existing_count + 1, now],
                 )?;
             } else {
                 let id = uuid::Uuid::new_v4().to_string();
@@ -115,7 +112,7 @@ pub async fn store_memories(
                 conn.execute(
                     "INSERT INTO user_memories (id, user_id, writing_session_id, category, content, importance, occurrence_count, first_seen_at, last_seen_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
-                    params![id, user_id, writing_session_id, category, entry, importance, now],
+                    crate::params![id, user_id, writing_session_id, category, entry, importance, now],
                 )?;
                 stored += 1;
             }
@@ -129,7 +126,7 @@ pub async fn store_memories(
 pub fn get_user_session_count(conn: &Connection, user_id: &str) -> Result<i32> {
     let count: i32 = conn.query_row(
         "SELECT COUNT(*) FROM writing_sessions WHERE user_id = ?1 AND is_anky = 1",
-        params![user_id],
+        crate::params![user_id],
         |row| row.get(0),
     )?;
     Ok(count)

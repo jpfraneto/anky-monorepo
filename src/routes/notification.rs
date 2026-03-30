@@ -13,7 +13,7 @@ pub async fn signup(
     State(state): State<AppState>,
     Json(req): Json<NotifySignupRequest>,
 ) -> Result<Json<SignupResponse>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     crate::db::queries::insert_notification_signup(
         &db,
         req.email.as_deref(),

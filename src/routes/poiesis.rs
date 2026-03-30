@@ -9,7 +9,7 @@ use std::convert::Infallible;
 pub async fn poiesis_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let gpu_status = state.gpu_status.read().await;
     let total_cost = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_total_cost(&db).unwrap_or(0.0)
     };
 

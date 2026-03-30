@@ -31,7 +31,7 @@ pub async fn backfill_writings_to_files(state: &AppState) -> Result<()> {
     }
 
     let writings = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_writings_for_file_archive(&db)?
     };
 

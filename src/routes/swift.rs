@@ -11,7 +11,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::Json;
 use rand::RngCore;
-use rusqlite;
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId},
     Message, PublicKey, Secp256k1, SecretKey,
@@ -31,7 +30,7 @@ async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Ap
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| AppError::Unauthorized("missing Authorization: Bearer header".into()))?;
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let (user_id, _) = queries::get_auth_session(&db, token)?
         .ok_or_else(|| AppError::Unauthorized("invalid or expired session token".into()))?;
 
@@ -40,7 +39,7 @@ async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Ap
 
 async fn bearer_wallet_auth(state: &AppState, headers: &HeaderMap) -> Result<String, AppError> {
     let user_id = bearer_auth(state, headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let wallet_address = queries::get_user_wallet(&db, &user_id)?
         .ok_or_else(|| AppError::Unauthorized("seed identity required".into()))?;
     normalize_seed_wallet_address(&wallet_address)
@@ -196,7 +195,7 @@ pub async fn auth_seed_challenge(
         .to_string();
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_challenge(&db, &challenge_id, &wallet_address, &message, &expires_at)?;
     }
 
@@ -216,7 +215,7 @@ pub async fn auth_seed_verify_inner(
     let wallet_address = normalize_seed_wallet_address(&req.wallet_address)?;
 
     let (user_id, username) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let challenge = queries::get_active_auth_challenge(&db, &req.challenge_id)?
             .ok_or_else(|| AppError::Unauthorized("invalid or expired challenge".into()))?;
 
@@ -253,7 +252,7 @@ pub async fn auth_seed_verify_inner(
         .unwrap()
         .to_rfc3339();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
@@ -346,7 +345,7 @@ pub async fn auth_privy(
 
     // Look up or create user
     let (user_id, email, wallet, username) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Some(uid) = queries::get_user_by_privy_did(&db, &privy_did)? {
             let email = queries::get_user_email(&db, &uid).ok().flatten();
             let wallet = queries::get_user_wallet(&db, &uid).ok().flatten();
@@ -421,7 +420,7 @@ pub async fn auth_privy(
         .unwrap()
         .to_rfc3339();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
@@ -455,7 +454,7 @@ pub async fn auth_logout(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| AppError::BadRequest("missing Authorization header".into()))?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::delete_auth_session(&db, token)?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -486,7 +485,7 @@ pub async fn get_me(
     headers: HeaderMap,
 ) -> Result<Json<MeResponse>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     let username = queries::get_user_username(&db, &user_id).ok().flatten();
     let email = queries::get_user_email(&db, &user_id).ok().flatten();
@@ -498,7 +497,7 @@ pub async fn get_me(
             "SELECT display_name, profile_image_url FROM x_users WHERE user_id = ?1 LIMIT 1",
         );
         if let Ok(ref mut s) = stmt {
-            let mut rows = s.query_map(rusqlite::params![user_id], |row| {
+            let mut rows = s.query_map(crate::params![user_id], |row| {
                 Ok((
                     row.get::<_, Option<String>>(0)?,
                     row.get::<_, Option<String>>(1)?,
@@ -558,7 +557,7 @@ pub async fn list_writings(
     headers: HeaderMap,
 ) -> Result<Json<Vec<WritingItem>>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let writings = queries::get_user_writings_with_ankys(&db, &user_id)?;
     let items = writings
         .into_iter()
@@ -680,7 +679,7 @@ pub async fn submit_writing_unified(
 
     // Resolve wallet once — this determines seed vs privy behavior
     let wallet_address = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_user_wallet(&db, &user_id).ok().flatten()
     };
     let is_seed_user = wallet_address.is_some();
@@ -694,7 +693,7 @@ pub async fn submit_writing_unified(
     // === CHECKPOINT: mid-session save, return fast ===
     if req.is_checkpoint {
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::ensure_user(&db, &user_id)?;
             queries::upsert_active_writing_session(
                 &db,
@@ -809,7 +808,7 @@ pub async fn submit_writing_unified(
 
         // Privy users: persist + spawn feedback + guidance in background
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::ensure_user(&db, &user_id)?;
             queries::upsert_completed_writing_session_with_flow(
                 &db,
@@ -847,10 +846,12 @@ pub async fn submit_writing_unified(
                 crate::services::claude::call_haiku(&fb_state.config.anthropic_api_key, &prompt)
                     .await
                     .unwrap_or_else(|_| "keep flowing — every word counts.".into());
-            let db = fb_state.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&fb_state.db) else {
+                return;
+            };
             let _ = db.execute(
                 "UPDATE writing_sessions SET response = ?1 WHERE id = ?2",
-                rusqlite::params![&feedback, &fb_session],
+                crate::params![&feedback, &fb_session],
             );
         });
 
@@ -913,7 +914,7 @@ pub async fn submit_writing_unified(
     // Persist the writing session + create the anky record — then return immediately
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::ensure_user(&db, &user_id)?;
         if let Some(existing) = queries::get_writing_session_state(&db, &session_id)? {
             if existing.user_id != user_id {
@@ -949,7 +950,7 @@ pub async fn submit_writing_unified(
     // Create the anky DB record BEFORE spawning pipelines (critical bug fix)
     let anky_id = uuid::Uuid::new_v4().to_string();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_anky(
             &db,
             &anky_id,
@@ -1008,19 +1009,20 @@ pub async fn submit_writing_unified(
 
     // Submit anky image generation to priority queue
     let is_pro = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::is_user_pro(&db, &user_id).unwrap_or(false)
     };
-    let priority = if is_pro { 1 } else { 0 };
-    state.gpu_queue.submit(
-        crate::state::GpuJob::AnkyImage {
+    crate::services::redis_queue::enqueue_job(
+        &state.config.redis_url,
+        &crate::state::GpuJob::AnkyImage {
             anky_id: anky_id.clone(),
             session_id: session_id.clone(),
             user_id: user_id.clone(),
             writing: req.text.clone(),
         },
-        priority,
-    );
+        is_pro,
+    )
+    .await?;
 
     // Spawn cuentacuentos if seed user
     let has_cuentacuentos = wallet_address.is_some();
@@ -1155,8 +1157,8 @@ pub async fn get_writing_status(
     headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<WritingStatusResponse>, AppError> {
-    let user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let _user_id = bearer_auth(&state, &headers).await?;
+    let db = crate::db::conn(&state.db)?;
 
     // Get the writing session
     let writing = queries::get_writing_session(&db, &session_id)
@@ -1221,7 +1223,7 @@ pub async fn get_writing_status(
     let (anky_response, next_prompt_text, mood) = db
         .query_row(
             "SELECT anky_response, anky_next_prompt, anky_mood FROM writing_sessions WHERE id = ?1",
-            rusqlite::params![&session_id],
+            crate::params![&session_id],
             |row| {
                 Ok((
                     row.get::<_, Option<String>>(0).unwrap_or(None),
@@ -1319,7 +1321,7 @@ pub async fn create_child_profile(
 
     let child_id = uuid::Uuid::new_v4().to_string();
     let record = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_child_profile(
             &db,
             &child_id,
@@ -1342,7 +1344,7 @@ pub async fn list_children(
     headers: HeaderMap,
 ) -> Result<Json<Vec<ChildProfileItem>>, AppError> {
     let parent_wallet_address = bearer_wallet_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let children = queries::get_child_profiles_by_parent_wallet(&db, &parent_wallet_address)?;
     Ok(Json(
         children
@@ -1359,7 +1361,7 @@ pub async fn get_child_profile(
     Path(child_id): Path<String>,
 ) -> Result<Json<ChildProfileItem>, AppError> {
     let parent_wallet_address = bearer_wallet_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let child =
         queries::get_child_profile_by_id_and_parent_wallet(&db, &child_id, &parent_wallet_address)?
             .ok_or_else(|| AppError::NotFound("child profile not found".into()))?;
@@ -1525,7 +1527,7 @@ async fn resolve_child_wallet_scope(
         return Ok(None);
     };
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let child =
         queries::get_child_profile_by_id_and_parent_wallet(&db, child_id, parent_wallet_address)?
             .ok_or_else(|| AppError::NotFound("child profile not found".into()))?;
@@ -1542,7 +1544,7 @@ pub async fn cuentacuentos_ready(
     let child_wallet_address =
         resolve_child_wallet_scope(&state, &parent_wallet_address, params.child_id.as_deref())
             .await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let story = queries::get_ready_cuentacuentos(
         &db,
         &parent_wallet_address,
@@ -1568,7 +1570,7 @@ pub async fn cuentacuentos_history(
     let child_wallet_address =
         resolve_child_wallet_scope(&state, &parent_wallet_address, params.child_id.as_deref())
             .await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let stories = queries::get_cuentacuentos_history(
         &db,
         &parent_wallet_address,
@@ -1591,7 +1593,7 @@ pub async fn complete_cuentacuentos(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let parent_wallet_address = bearer_wallet_auth(&state, &headers).await?;
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_cuentacuentos_by_id_and_parent_wallet(&db, &id, &parent_wallet_address)?
             .ok_or_else(|| AppError::NotFound("cuentacuentos not found".into()))?;
         queries::mark_cuentacuentos_played(&db, &id)?;
@@ -1610,7 +1612,7 @@ pub async fn assign_cuentacuentos(
     let child_wallet_address = normalize_seed_wallet_address(&req.child_wallet_address)?;
 
     let updated_story = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
 
         queries::get_child_profile_by_derived_wallet_and_parent_wallet(
             &db,
@@ -1646,7 +1648,7 @@ pub async fn assign_cuentacuentos(
 pub async fn list_all_stories(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<CuentacuentosItem>>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let stories = queries::get_all_cuentacuentos(&db, 50)?;
     let mut items = Vec::new();
     for story in stories {
@@ -1662,7 +1664,7 @@ pub async fn get_story(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<CuentacuentosItem>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let story = queries::get_cuentacuentos_by_id(&db, &id)?
         .ok_or_else(|| AppError::NotFound("story not found".into()))?;
     let images = queries::get_cuentacuentos_images(&db, &story.id)?;
@@ -1721,7 +1723,7 @@ pub async fn set_premium(
         .unwrap_or(false);
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::set_user_premium(&db, target_user_id, is_premium)?;
     }
 
@@ -1755,7 +1757,7 @@ pub async fn get_prompt_by_id(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let prompt = queries::get_prompt_by_id(&db, &id)?
         .ok_or_else(|| AppError::NotFound("prompt not found".into()))?;
     Ok(Json(serde_json::json!({
@@ -1774,7 +1776,7 @@ pub async fn get_next_prompt(
     let user_id = bearer_auth(&state, &headers).await?;
 
     let prompt_data = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_next_prompt(&db, &user_id)?
     };
 
@@ -1814,13 +1816,13 @@ pub async fn get_chat_prompt(
     let user_id = bearer_auth(&state, &headers).await?;
     let message_id = uuid::Uuid::new_v4().to_string();
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     // Check if this is a first-time user (no writing sessions)
     let session_count: i64 = db
         .query_row(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = ?1",
-            rusqlite::params![&user_id],
+            crate::params![&user_id],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -1837,7 +1839,7 @@ pub async fn get_chat_prompt(
     let text = db
         .query_row(
             "SELECT prompt FROM next_prompts WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
-            rusqlite::params![&user_id],
+            crate::params![&user_id],
             |row| row.get::<_, String>(0),
         )
         .unwrap_or_else(|_| "what are you carrying today?".to_string());
@@ -1885,7 +1887,7 @@ pub async fn get_you(
     let user_id = bearer_auth(&state, &headers).await?;
 
     let profile = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_user_profile_full(&db, &user_id)?
     };
 
@@ -1957,7 +1959,7 @@ pub async fn get_you_ankys(
     let user_id = bearer_auth(&state, &headers).await?;
 
     let ankys = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_user_ankys(&db, &user_id)?
     };
 
@@ -2017,7 +2019,7 @@ pub async fn register_device(
     }
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::upsert_device_token(&db, &user_id, req.device_token.trim(), &req.platform)?;
     }
 
@@ -2034,7 +2036,7 @@ pub async fn delete_device(
     let user_id = bearer_auth(&state, &headers).await?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::delete_device_token(&db, &user_id, &req.platform)?;
     }
 
@@ -2061,7 +2063,7 @@ pub async fn get_settings(
     headers: HeaderMap,
 ) -> Result<Json<MobileSettingsResponse>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let s = queries::get_user_settings(&db, &user_id)?;
     Ok(Json(MobileSettingsResponse {
         font_family: s.font_family,
@@ -2093,7 +2095,7 @@ pub async fn patch_settings(
     Json(req): Json<PatchSettingsRequest>,
 ) -> Result<Json<MobileSettingsResponse>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let existing = queries::get_user_settings(&db, &user_id)?;
 
     let font_family = req.font_family.unwrap_or(existing.font_family);
@@ -2682,7 +2684,7 @@ pub async fn prepare_mint(
 ) -> Result<Json<PrepareMintResponse>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
     let wallet_address = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_user_wallet(&db, &user_id)?
             .ok_or_else(|| AppError::Unauthorized("seed identity required".into()))?
     };
@@ -2700,7 +2702,7 @@ pub async fn prepare_mint(
 
     // Check eligibility
     let (anky_id, writing_content, _db_wallet) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::check_mint_eligibility(&db, &session_id, &user_id)?.ok_or_else(|| {
             AppError::BadRequest(
                 "anky not eligible for minting: must be complete, is_anky, not already minted"
@@ -2711,14 +2713,14 @@ pub async fn prepare_mint(
 
     // Get anky details for metadata
     let anky_detail = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_by_id(&db, &anky_id)?
             .ok_or_else(|| AppError::Internal("anky record not found".into()))?
     };
 
     // Get writing session for attributes
     let (duration_seconds, word_count) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Some(ref ws_id) = anky_detail.writing_session_id {
             let ws = queries::get_writing_session(&db, ws_id)?;
             match ws {
@@ -2732,7 +2734,7 @@ pub async fn prepare_mint(
 
     // Rate limit: max 1 mint per wallet per hour
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if queries::check_mint_rate_limit(&db, &wallet_address)? {
             return Err(AppError::RateLimited(3600));
         }
@@ -2864,7 +2866,7 @@ pub async fn prepare_mint(
 
     // Update DB
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::set_anky_gas_funded(&db, &anky_id, &session_cid, &metadata_uri)?;
     }
 
@@ -2917,7 +2919,7 @@ pub async fn confirm_mint(
     let user_id = bearer_auth(&state, &headers).await?;
 
     let anky_id = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_for_mint_confirm(&db, &session_id, &user_id)?.ok_or_else(|| {
             AppError::BadRequest("anky not found or not eligible for mint confirmation".into())
         })?
@@ -2983,7 +2985,7 @@ pub async fn confirm_mint(
 
     // Update DB
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::set_anky_minted(&db, &anky_id, &req.tx_hash, token_id.as_deref())?;
     }
 
@@ -3010,7 +3012,7 @@ pub async fn anky_metadata(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let anky = queries::get_anky_by_id(&db, &id)?
         .ok_or_else(|| AppError::NotFound("anky not found".into()))?;
 

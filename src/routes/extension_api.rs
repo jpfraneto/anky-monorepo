@@ -34,7 +34,7 @@ pub async fn register(
 
     let agent_id = uuid::Uuid::new_v4().to_string();
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     // Create the API key in api_keys table (free tier tracked via agents table)
     queries::create_api_key(&db, &api_key, Some(name))?;
@@ -128,7 +128,7 @@ pub async fn transform(
     let cost_usd = cost::calculate_transform_cost(result.input_tokens, result.output_tokens);
 
     // Record transformation
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let transform_id = uuid::Uuid::new_v4().to_string();
     let api_key_str = api_key_info
         .as_ref()
@@ -172,7 +172,7 @@ pub async fn balance(
 ) -> Result<Json<BalanceResponse>, AppError> {
     let key_info = api_key_info
         .ok_or_else(|| AppError::Unauthorized("API key required. set X-API-Key header".into()))?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let key_record = queries::get_api_key(&db, &key_info.key)?
         .ok_or_else(|| AppError::NotFound("API key not found".into()))?;
 

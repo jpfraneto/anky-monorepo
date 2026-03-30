@@ -450,6 +450,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/sleeping", axum::routing::get(pages::sleeping))
         .route("/feedback", axum::routing::get(pages::feedback))
         .route("/changelog", axum::routing::get(pages::changelog))
+        // Programming classes
+        .route("/classes", axum::routing::get(pages::classes_index))
+        .route("/classes/{number}", axum::routing::get(pages::class_page))
         // Simulations — 8-slot inference dashboard
         .route(
             "/simulations",
@@ -473,6 +476,11 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/v1/llm/training-status",
             axum::routing::post(api::llm_training_status),
+        )
+        // Programming classes API
+        .route(
+            "/api/v1/classes/generate",
+            axum::routing::post(api::generate_class),
         )
         .route("/anky/{id}", axum::routing::get(pages::anky_detail))
         // Public story deep link page (no auth)
@@ -564,6 +572,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/ankys", axum::routing::get(api::list_ankys))
         .route("/api/generate", axum::routing::post(api::generate_anky))
         .route("/api/v1/anky/{id}", axum::routing::get(api::get_anky))
+        .route(
+            "/api/v1/mind/status",
+            axum::routing::get(api::get_mind_status),
+        )
         .route(
             "/api/v1/anky/{id}/metadata",
             axum::routing::get(swift::anky_metadata),
@@ -941,6 +953,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Health
         .route("/health", axum::routing::get(health::health_check))
+        .route("/api/health", axum::routing::get(health::health_check))
         // Swift / Mobile API
         .merge(swift_routes)
         // Extension API (authed)
@@ -983,6 +996,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .nest_service("/data/training-runs", ServeDir::new("data/training_runs"))
         .nest_service("/data/mirrors", ServeDir::new("data/mirrors"))
+        .nest_service("/data/classes", ServeDir::new("data/classes"))
         // Middleware layers (applied bottom-up)
         .layer(CompressionLayer::new())
         .layer(cors)

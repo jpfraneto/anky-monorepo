@@ -114,6 +114,44 @@ pub async fn upload_image_to_r2(
     Ok(format!("{}/{}", base, key))
 }
 
+/// Upload a class slide image to R2 as WebP, returning the full CDN URL.
+/// Stores under classes/{class_number}/slide-{slide_index}.webp.
+pub async fn upload_class_slide(
+    config: &Config,
+    image_bytes: &[u8],
+    class_number: i64,
+    slide_index: usize,
+) -> Result<String> {
+    let img_bytes = image_bytes.to_vec();
+    let webp_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+        let img = image::load_from_memory(&img_bytes)
+            .map_err(|e| anyhow::anyhow!("failed to decode image: {}", e))?;
+        let encoder = webp::Encoder::from_image(&img)
+            .map_err(|e| anyhow::anyhow!("webp encoder error: {}", e))?;
+        let mem = encoder.encode(85.0);
+        Ok(mem.to_vec())
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
+    let key = format!("classes/{}/slide-{}.webp", class_number, slide_index);
+
+    let client = r2_client(config);
+    let body = aws_sdk_s3::primitives::ByteStream::from(webp_bytes);
+    client
+        .put_object()
+        .bucket(&config.r2_bucket_name)
+        .key(&key)
+        .body(body)
+        .content_type("image/webp")
+        .cache_control("public, max-age=31536000, immutable")
+        .send()
+        .await?;
+
+    let base = config.r2_public_url.trim_end_matches('/');
+    Ok(format!("{}/{}", base, key))
+}
+
 /// Download an object from R2 as bytes.
 pub async fn get_object_bytes(config: &Config, key: &str) -> Result<Vec<u8>> {
     let client = r2_client(config);

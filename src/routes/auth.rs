@@ -28,7 +28,7 @@ pub async fn login(
 
     // Save state + verifier to DB
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::save_oauth_state(&db, &oauth_state, &verifier, query.redirect_to.as_deref())?;
     }
 
@@ -73,7 +73,7 @@ pub async fn callback(
 
     // Look up and delete PKCE state
     let (verifier, redirect_to) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_and_delete_oauth_state(&db, oauth_state)?
             .ok_or_else(|| AppError::BadRequest("invalid or expired state".into()))?
     };
@@ -96,7 +96,7 @@ pub async fn callback(
 
     // Check if this X user already has a linked anky user, or create one
     let user_id = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let existing = queries::get_x_user_by_x_id(&db, &user.id)?;
         let uid = match existing {
             Some(xu) => xu.user_id,
@@ -150,7 +150,7 @@ pub async fn callback(
         .to_rfc3339();
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_session(&db, &session_token, &user_id, Some(&user.id), &expires_at)?;
     }
 
@@ -187,7 +187,7 @@ pub async fn logout(
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AppError> {
     if let Some(token) = jar.get("anky_session") {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::delete_auth_session(&db, token.value());
     }
 
@@ -213,7 +213,7 @@ pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser
     // Try cookie-based session first
     if let Some(cookie) = jar.get("anky_session") {
         let token = cookie.value();
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db).ok()?;
         if let Ok(Some((user_id, x_user_id))) = queries::get_auth_session(&db, token) {
             if let Some(ref xid) = x_user_id {
                 if let Ok(Some(xu)) = queries::get_x_user_by_x_id(&db, xid) {
@@ -255,7 +255,7 @@ pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser
 
 /// Extract auth user from Privy auth token by looking up the session we created during verify.
 async fn get_auth_user_from_privy_token(state: &AppState, token: &str) -> Option<AuthUser> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db).ok()?;
     // The token is our session token created during privy verify
     if let Ok(Some((user_id, _))) = queries::get_auth_session(&db, token) {
         let wallet = queries::get_user_wallet(&db, &user_id).ok().flatten();
@@ -352,7 +352,7 @@ pub async fn privy_verify(
 
     // Step 2: Check if we already know this Privy user (fast path — no API call)
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Some(user_id) = queries::get_user_by_privy_did(&db, &privy_did)? {
             let email = queries::get_user_email(&db, &user_id)?;
             let wallet = queries::get_user_wallet(&db, &user_id)?;
@@ -478,7 +478,7 @@ pub async fn privy_verify(
 
     // Step 4: Create or find user
     let user_id = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
 
         // Try to find existing user by email first
         let existing_uid = if let Some(ref email) = email_address {
@@ -539,7 +539,7 @@ pub async fn privy_verify(
         .to_rfc3339();
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
@@ -570,7 +570,7 @@ pub async fn privy_verify(
 
     // Get final username
     let final_username = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_user_username(&db, &user_id)?
     };
 
@@ -612,7 +612,7 @@ pub async fn farcaster_verify(
 
     // Look up existing user by FID, or create one
     let user_id = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Some(uid) = queries::get_user_by_fid(&db, req.fid)? {
             // Update Farcaster info in case username/pfp changed
             let _ = queries::set_farcaster_info(
@@ -688,7 +688,7 @@ pub async fn farcaster_verify(
         .to_rfc3339();
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
@@ -705,7 +705,7 @@ pub async fn farcaster_verify(
 
     // Get final wallet + username for response
     let (final_wallet, final_username) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         (
             queries::get_user_wallet(&db, &user_id)?,
             queries::get_user_username(&db, &user_id)?,
@@ -744,7 +744,7 @@ pub async fn privy_logout(
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AppError> {
     if let Some(token) = jar.get("anky_privy_token") {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::delete_auth_session(&db, token.value());
     }
 
@@ -806,7 +806,7 @@ pub async fn seed_logout(
     jar: CookieJar,
 ) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
     if let Some(token) = jar.get("anky_session") {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::delete_auth_session(&db, token.value());
     }
 

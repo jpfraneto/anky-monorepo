@@ -1529,8 +1529,8 @@
         </div>
       </div>
     </div>
-    <p class="gap-line">
-      this is who the world sees. <a href="https://anky.app">write for 8 minutes</a> to meet who you actually are.
+    <p class="gap-line" id="gapLine">
+      this is who the world sees. <a href="https://anky.app/write">write for 8 minutes</a> to meet who you actually are.
     </p>
     <div class="result-actions">
       <button class="mint-btn" id="mintBtn">mint anky — 1 usdc</button>
@@ -1908,13 +1908,21 @@ function initMiniApp() {
     );
 
     // ── Show mirror result (shared by runMirror + openDetail) ──
+    let currentGap = '';
     function showMirrorResult(mirrorData) {
       currentMirrorId = mirrorData.id;
       currentFid = mirrorData.fid;
+      currentGap = mirrorData.gap || '';
       chatHistory = [];
       document.getElementById('chatMessages').innerHTML = '';
 
       $mirrorText.textContent = mirrorData.public_mirror;
+
+      // Populate gap line with actual gap sentence
+      const $gapLine = document.getElementById('gapLine');
+      if (currentGap) {
+        $gapLine.innerHTML = currentGap + ' <a href="https://anky.app/write">write for 8 minutes</a> to find out.';
+      }
 
       // Image: use b64 if present, else image_url
       if (mirrorData.anky_image_b64) {
@@ -2053,8 +2061,10 @@ function initMiniApp() {
     $shareBtn.addEventListener('click', async () => {
       if (!isMinted) return;
       try {
+        const gapText = currentGap || 'this is who the world sees me as.';
+        const deepLink = currentFid ? `ankycoin.com?fid=${currentFid}` : 'ankycoin.com';
         await sdk.actions.composeCast({
-          text: 'i got my anky \u2726 this is who the world sees me as. who are you really? anky.app',
+          text: `${gapText}\n\n\u2726 anky showed me this. what does it see in you?\n${deepLink}`,
         });
       } catch (e) {
         console.error('share error:', e);
@@ -2150,6 +2160,12 @@ function initMiniApp() {
         detailDebug.classList.remove('visible');
       }
       showState('detail');
+    }
+
+    // Auto-trigger mirror from ?fid= deep link
+    const urlFid = new URLSearchParams(window.location.search).get('fid');
+    if (urlFid && parseInt(urlFid, 10) > 0) {
+      runMirror(parseInt(urlFid, 10));
     }
 
     sdk.actions.ready();

@@ -1,11 +1,10 @@
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use image::{GenericImageView, Rgba, RgbaImage};
 use imageproc::drawing::draw_text_mut;
-use rusqlite::Connection;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 pub type FrameBuffer = Arc<RwLock<RgbaImage>>;
 
@@ -811,7 +810,7 @@ pub async fn spawn_ffmpeg_loop(
     stream_key: String,
     frame_buf: FrameBuffer,
     live_state: Arc<RwLock<crate::state::LiveState>>,
-    db: Arc<Mutex<Connection>>,
+    db: crate::db::DbPool,
 ) {
     // Pre-render idle frame
     set_idle_frame(&frame_buf).await;
@@ -990,7 +989,11 @@ pub async fn spawn_ffmpeg_loop(
                             // Refresh DB periodically
                             if last_db_refresh.elapsed().as_secs() >= DB_REFRESH_SECS {
                                 let (ankys, videos) = {
-                                    let conn = db_clone.lock().await;
+                                    let Some(conn) = crate::db::get_conn_logged(&db_clone) else {
+                                        tokio::time::sleep(std::time::Duration::from_millis(250))
+                                            .await;
+                                        continue;
+                                    };
                                     let a = crate::db::queries::get_slideshow_ankys(&conn)
                                         .unwrap_or_default();
                                     let v = crate::db::queries::get_slideshow_videos(&conn)

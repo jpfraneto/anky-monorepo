@@ -27,7 +27,7 @@ pub async fn validate_payment(
         api_key_str = Some(key_info.key.clone());
 
         // Registered agents get everything free
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Ok(Some(agent)) = queries::get_agent_by_key(&db, &key_info.key) {
             payment_method = "free".into();
             agent_id = Some(agent.id);
@@ -106,5 +106,11 @@ pub enum PaymentError {
 impl From<anyhow::Error> for PaymentError {
     fn from(e: anyhow::Error) -> Self {
         PaymentError::DbError(e)
+    }
+}
+
+impl From<sqlx::Error> for PaymentError {
+    fn from(e: sqlx::Error) -> Self {
+        PaymentError::DbError(e.into())
     }
 }

@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}anky class #{{ class_number }} — {{ title }}{% endblock %}
+
+{% block content %}
+<style>
+  .class-container {
+    position: fixed;
+    inset: 0;
+    background: #0a0a0f;
+    display: flex;
+    flex-direction: column;
+    z-index: 9999;
+  }
+  .class-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: rgba(0,0,0,0.9);
+    border-bottom: 1px solid rgba(255,200,50,0.15);
+  }
+  .class-number {
+    font-family: 'Cinzel', serif;
+    color: #d4a843;
+    font-size: 13px;
+    letter-spacing: 2px;
+  }
+  .class-title {
+    font-family: 'Cinzel', serif;
+    color: #e8e0d0;
+    font-size: 15px;
+  }
+  .class-timer {
+    font-family: monospace;
+    color: #d4a843;
+    font-size: 18px;
+    min-width: 55px;
+    text-align: right;
+  }
+  .class-progress-bar {
+    height: 3px;
+    background: rgba(255,200,50,0.08);
+  }
+  .class-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #d4a843, #f0c050);
+    transition: width 0.3s linear;
+    width: 0%;
+  }
+  .class-slide-area {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 60px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .slide-number {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    font-family: monospace;
+    color: rgba(212,168,67,0.3);
+    font-size: 13px;
+  }
+  .slide-heading {
+    font-family: 'Cinzel', serif;
+    color: #d4a843;
+    font-size: 22px;
+    margin-bottom: 20px;
+    text-align: center;
+    letter-spacing: 1px;
+  }
+  .slide-body {
+    color: #c8c0b0;
+    font-size: 16px;
+    line-height: 1.7;
+    max-width: 800px;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .slide-code {
+    background: #111118;
+    border: 1px solid rgba(212,168,67,0.12);
+    border-radius: 8px;
+    padding: 20px 28px;
+    max-width: 850px;
+    width: 100%;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #c8c0b0;
+    white-space: pre;
+    tab-size: 4;
+  }
+  .slide-code .kw { color: #c792ea; }
+  .slide-code .fn { color: #82aaff; }
+  .slide-code .st { color: #c3e88d; }
+  .slide-code .cm { color: #546e7a; }
+  .slide-code .ty { color: #ffcb6b; }
+  .slide-code .nb { color: #f78c6c; }
+  .slide-file {
+    font-family: monospace;
+    font-size: 11px;
+    color: rgba(212,168,67,0.4);
+    margin-bottom: 8px;
+  }
+  .slide-note {
+    color: #888;
+    font-size: 13px;
+    margin-top: 16px;
+    max-width: 700px;
+    text-align: center;
+    font-style: italic;
+  }
+  .class-dots {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(0,0,0,0.9);
+  }
+  .class-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,200,50,0.12);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .class-dot.active {
+    background: #d4a843;
+    box-shadow: 0 0 8px rgba(212,168,67,0.4);
+  }
+  .class-dot.done { background: rgba(212,168,67,0.4); }
+  .class-controls {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 6px 20px 14px;
+    background: rgba(0,0,0,0.9);
+  }
+  .class-btn {
+    background: none;
+    border: 1px solid rgba(212,168,67,0.25);
+    color: #d4a843;
+    padding: 5px 16px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  .class-btn:hover { background: rgba(212,168,67,0.08); border-color: #d4a843; }
+  .class-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    color: #e8e0d0;
+    font-family: 'Cinzel', serif;
+    text-align: center;
+    padding: 40px;
+  }
+  .class-empty h1 { color: #d4a843; margin-bottom: 16px; }
+  .class-empty p { color: #999; max-width: 400px; }
+
+  @media (max-width: 768px) {
+    .slide { padding: 24px 20px; }
+    .slide-heading { font-size: 18px; }
+    .slide-body { font-size: 14px; }
+    .slide-code { font-size: 11px; padding: 14px 16px; }
+  }
+</style>
+
+{% if not found %}
+<div class="class-empty">
+  <h1>class #{{ class_number }}</h1>
+  <p>this class hasn't been created yet. classes are generated from each coding session on anky.</p>
+  {% if latest_class > 0 %}
+  <a href="/classes/{{ latest_class }}" class="class-btn" style="margin-top:24px;">latest: class #{{ latest_class }}</a>
+  {% endif %}
+</div>
+{% else %}
+<div class="class-container" id="classPlayer">
+  <div class="class-header">
+    <span class="class-number">class #{{ class_number }}</span>
+    <span class="class-title">{{ title }}</span>
+    <span class="class-timer" id="timer">8:00</span>
+  </div>
+  <div class="class-progress-bar">
+    <div class="class-progress-fill" id="progressFill"></div>
+  </div>
+  <div class="class-slide-area">
+    {% for s in slides %}
+    <div class="slide{% if loop.index0 == 0 %} active{% endif %}">
+      <span class="slide-number">{{ loop.index }}/{{ slides | length }}</span>
+      <div class="slide-heading">{{ s.heading }}</div>
+      <div class="slide-body">{{ s.body }}</div>
+      {% if s.file %}<div class="slide-file">{{ s.file }}</div>{% endif %}
+      {% if s.code %}<div class="slide-code">{{ s.code }}</div>{% endif %}
+      {% if s.note %}<div class="slide-note">{{ s.note }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="class-dots">
+    {% for s in slides %}
+    <div class="class-dot{% if loop.index0 == 0 %} active{% endif %}" data-idx="{{ loop.index0 }}"></div>
+    {% endfor %}
+  </div>
+  <div class="class-controls">
+    <button class="class-btn" id="prevBtn">prev</button>
+    <button class="class-btn" id="playBtn">pause</button>
+    <button class="class-btn" id="nextBtn">next</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const SLIDE_DURATION = 60;
+  const TOTAL_SLIDES = {{ slides | length }};
+  let current = 0, playing = true, elapsed = 0, slideElapsed = 0;
+
+  const allSlides = document.querySelectorAll('.slide');
+  const dots = document.querySelectorAll('.class-dot');
+  const timer = document.getElementById('timer');
+  const progress = document.getElementById('progressFill');
+  const playBtn = document.getElementById('playBtn');
+
+  function go(idx) {
+    if (idx < 0 || idx >= TOTAL_SLIDES) return;
+    allSlides.forEach(s => s.classList.remove('active'));
+    dots.forEach((d,i) => { d.classList.remove('active'); d.classList.toggle('done', i < idx); });
+    current = idx;
+    allSlides[idx].classList.add('active');
+    dots[idx].classList.add('active');
+    slideElapsed = 0;
+  }
+
+  function updateTimer() {
+    const rem = Math.max(0, TOTAL_SLIDES * SLIDE_DURATION - elapsed);
+    timer.textContent = `${Math.floor(rem/60)}:${(rem%60).toString().padStart(2,'0')}`;
+    progress.style.width = `${Math.min(100, elapsed/(TOTAL_SLIDES*SLIDE_DURATION)*100)}%`;
+  }
+
+  setInterval(() => {
+    if (!playing) return;
+    elapsed++; slideElapsed++;
+    updateTimer();
+    if (slideElapsed >= SLIDE_DURATION && current < TOTAL_SLIDES - 1) go(current + 1);
+    if (elapsed >= TOTAL_SLIDES * SLIDE_DURATION) { playing = false; playBtn.textContent = 'done'; }
+  }, 1000);
+  updateTimer();
+
+  playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'pause' : 'play'; };
+  document.getElementById('prevBtn').onclick = () => { go(current-1); elapsed = current*SLIDE_DURATION; updateTimer(); };
+  document.getElementById('nextBtn').onclick = () => { go(current+1); elapsed = current*SLIDE_DURATION; updateTimer(); };
+  dots.forEach(d => d.onclick = () => { go(+d.dataset.idx); elapsed = current*SLIDE_DURATION; updateTimer(); });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(current+1); elapsed=current*SLIDE_DURATION; updateTimer(); }
+    else if (e.key === 'ArrowLeft') { go(current-1); elapsed=current*SLIDE_DURATION; updateTimer(); }
+    else if (e.key === 'p') { playing=!playing; playBtn.textContent=playing?'pause':'play'; }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -297,7 +297,7 @@ pub async fn write_page(
 
     // Resolve prompt: ?p={uuid} looks up DB, ?prompt={text} uses raw text
     let resolved_prompt = if let Some(ref uuid) = query.p {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_prompt_by_id(&db, uuid)
             .ok()
             .flatten()
@@ -313,7 +313,7 @@ pub async fn write_page(
         let lang =
             parse_accept_language(headers.get("accept-language").and_then(|v| v.to_str().ok()));
         if let Some(ref uid) = cookie_user_id {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             match crate::db::queries::get_current_inquiry(&db, uid) {
                 Ok(Some((id, question))) => (id, question),
                 _ => {
@@ -341,14 +341,14 @@ pub async fn write_page(
 
     // Recent ankys for "your threads" on the write page
     let recent_ankys = if let Some(ref uid) = cookie_user_id {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         db.prepare(
             "SELECT a.id, a.title FROM ankys a
              WHERE a.user_id = ?1 AND a.status IN ('complete', 'archived') AND a.title IS NOT NULL
              ORDER BY a.created_at DESC LIMIT 5",
         )
         .and_then(|mut stmt| {
-            stmt.query_map(rusqlite::params![uid], |row| {
+            stmt.query_map(crate::params![uid], |row| {
                 Ok(serde_json::json!({
                     "id": row.get::<_, String>(0)?,
                     "title": row.get::<_, String>(1)?,
@@ -381,7 +381,7 @@ pub async fn gallery(
     };
 
     let ankys = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         match tab {
             "mine" => crate::db::queries::get_user_ankys(&db, user_id.as_deref().unwrap())?,
             "viewed" => {
@@ -659,7 +659,7 @@ pub async fn feed_page(
     let per_page = 30;
 
     let (stats, ankys) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let s = crate::db::queries::get_feed_stats_24h(&db)?;
         let a = crate::db::queries::get_feed_ankys(&db, per_page, (page - 1) * per_page)?;
         (s, a)
@@ -708,7 +708,7 @@ pub async fn sleeping(State(state): State<AppState>) -> Result<Html<String>, App
 
 pub async fn feedback(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let entries = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_all_feedback(&db)?
     };
 
@@ -753,7 +753,7 @@ pub async fn video_dashboard(
 
         // Get user's ankys with writing text
         let ankys = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             crate::db::queries::get_user_anky_writings(&db, &user.user_id).unwrap_or_default()
         };
         ctx.insert(
@@ -776,7 +776,7 @@ pub async fn video_dashboard(
 
         // Get user's video projects
         let projects = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             crate::db::queries::get_user_video_projects(&db, &user.user_id).unwrap_or_default()
         };
         ctx.insert(
@@ -842,7 +842,7 @@ pub async fn video_pipeline_page(
 
 pub async fn stream_overlay(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ankys = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_todays_ankys(&db)?
     };
 
@@ -928,14 +928,14 @@ pub async fn pitch_deck(State(state): State<AppState>) -> Result<Html<String>, A
 
 pub async fn llm(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let runs = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db.prepare(
             "SELECT run_date, val_bpb, training_seconds, peak_vram_mb, mfu_percent,
                     total_tokens_m, num_steps, num_params_m, depth,
                     corpus_sessions, corpus_words, corpus_tokens, epochs
              FROM llm_training_runs ORDER BY run_date ASC",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(crate::params![], |row| {
             Ok(serde_json::json!({
                 "run_date": row.get::<_, String>(0)?,
                 "val_bpb": row.get::<_, f64>(1)?,
@@ -1136,7 +1136,7 @@ pub async fn leaderboard(
 ) -> Result<Html<String>, AppError> {
     let sort = query.sort.as_deref().unwrap_or("flow");
     let entries = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_leaderboard(&db, sort, 50)?
     };
 
@@ -1211,7 +1211,7 @@ pub async fn anky_detail(
     let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
 
     let anky = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_anky_by_id(&db, &id)?
     };
 
@@ -1219,7 +1219,7 @@ pub async fn anky_detail(
 
     // Always collect when a logged-in user views any anky (tracks views)
     if let Some(ref vid) = viewer_id {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = crate::db::queries::collect_anky(&db, vid, &id);
     }
 
@@ -1258,7 +1258,7 @@ pub async fn anky_detail(
 
     // Fetch associated cuentacuentos (story) for this writing session
     let story = if let Some(ref ws_id) = anky.writing_session_id {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_cuentacuentos_by_writing_id(&db, ws_id)
             .ok()
             .flatten()
@@ -1281,7 +1281,7 @@ pub async fn anky_detail(
 
     // Ownership check — enables reply UI
     let is_owner = if let Some(ref vid) = viewer_id {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_anky_owner(&db, &id)
             .ok()
             .flatten()
@@ -1295,7 +1295,7 @@ pub async fn anky_detail(
 
     // Conversation history
     let conversation_json = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_anky_conversation(&db, &id)
             .ok()
             .flatten()
@@ -1315,7 +1315,7 @@ pub async fn videos_gallery(
         .await
         .is_some();
     let items = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_all_complete_video_projects(&db)?
     };
     let mut ctx = tera::Context::new();
@@ -1675,4 +1675,89 @@ pub async fn dataset_eliminate(
     }
 
     (StatusCode::OK, format!("eliminated {} images", moved)).into_response()
+}
+
+// ── Programming classes ────────────────────────────────────────────────────
+
+pub async fn class_page(
+    State(state): State<AppState>,
+    Path(class_number): Path<i64>,
+) -> Result<Html<String>, AppError> {
+    let mut ctx = tera::Context::new();
+    ctx.insert("class_number", &class_number);
+
+    let db = crate::db::conn(&state.db)?;
+
+    // Fetch the requested class
+    let class_row = db.query_row(
+        "SELECT title, description, slides_json FROM programming_classes WHERE class_number = ?1",
+        crate::params![class_number],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    );
+
+    // Get latest class number for nav
+    let latest_class: i64 = db
+        .query_row(
+            "SELECT COALESCE(MAX(class_number), 0) FROM programming_classes",
+            crate::params![],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    drop(db);
+
+    ctx.insert("latest_class", &latest_class);
+
+    match class_row {
+        Ok((title, _description, slides_json)) => {
+            ctx.insert("found", &true);
+            ctx.insert("title", &title);
+
+            let slides: Vec<serde_json::Value> =
+                serde_json::from_str(&slides_json).unwrap_or_default();
+            ctx.insert("slides", &slides);
+        }
+        Err(_) => {
+            ctx.insert("found", &false);
+            ctx.insert("title", &"");
+            ctx.insert("slides", &Vec::<serde_json::Value>::new());
+        }
+    }
+
+    let html = state.tera.render("class.html", &ctx)?;
+    Ok(Html(html))
+}
+
+/// List all classes
+pub async fn classes_index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let mut ctx = tera::Context::new();
+
+    let classes = {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db.prepare(
+            "SELECT class_number, title, description, created_at FROM programming_classes ORDER BY class_number DESC",
+        )?;
+        let rows: Vec<serde_json::Value> = stmt
+            .query_map(crate::params![], |row| {
+                Ok(serde_json::json!({
+                    "number": row.get::<_, i64>(0)?,
+                    "title": row.get::<_, String>(1)?,
+                    "description": row.get::<_, String>(2)?,
+                    "created_at": row.get::<_, String>(3)?,
+                }))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        rows
+    };
+
+    ctx.insert("classes", &classes);
+    let html = state.tera.render("classes_index.html", &ctx)?;
+    Ok(Html(html))
 }

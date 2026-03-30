@@ -1,8 +1,17 @@
 use anyhow::{Context, Result};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum RunMode {
+    Full,
+    Web,
+    Worker,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
+    pub database_url: String,
+    pub run_mode: RunMode,
     pub ollama_base_url: String,
     pub ollama_model: String,
     pub ollama_light_model: String,
@@ -69,6 +78,13 @@ pub struct Config {
     pub pinata_jwt: String,
     // Anky mint wallet (EIP-712 signer for birthSoul)
     pub anky_wallet_private_key: String,
+    // Mind (local llama-server inference)
+    pub mind_url: String,
+    // Redis/Valkey (job persistence)
+    pub redis_url: String,
+    // Reflection tiering
+    pub reflection_model: String,
+    pub conversation_model: String,
     // APNs (push notifications)
     pub apns_key_path: String,
     pub apns_key_id: String,
@@ -86,11 +102,23 @@ impl Config {
                 .unwrap_or_else(|_| "8889".into())
                 .parse()
                 .context("PORT must be a number")?,
+            database_url: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://postgres:postgres@127.0.0.1:5432/anky".into()
+            }),
+            run_mode: match std::env::var("ANKY_MODE")
+                .unwrap_or_else(|_| "full".into())
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "web" => RunMode::Web,
+                "worker" => RunMode::Worker,
+                _ => RunMode::Full,
+            },
             ollama_base_url: std::env::var("OLLAMA_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".into()),
-            ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:35b".into()),
+            ollama_model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:27b".into()),
             ollama_light_model: std::env::var("OLLAMA_LIGHT_MODEL").unwrap_or_else(|_| {
-                std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:35b".into())
+                std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3.5:27b".into())
             }),
             openrouter_api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
             openrouter_light_model: std::env::var("OPENROUTER_LIGHT_MODEL")
@@ -160,6 +188,13 @@ impl Config {
             apns_bundle_id: std::env::var("APNS_BUNDLE_ID").unwrap_or_default(),
             apns_environment: std::env::var("APNS_ENVIRONMENT")
                 .unwrap_or_else(|_| "production".into()),
+            mind_url: std::env::var("MIND_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".into()),
+            redis_url: std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".into()),
+            reflection_model: std::env::var("ANKY_REFLECTION_MODEL")
+                .unwrap_or_else(|_| "claude-opus-4-20250514".into()),
+            conversation_model: std::env::var("ANKY_CONVERSATION_MODEL")
+                .unwrap_or_else(|_| "claude-sonnet-4-20250514".into()),
             anky_wallet_private_key: std::env::var("ANKY_WALLET_PRIVATE_KEY").unwrap_or_default(),
         })
     }

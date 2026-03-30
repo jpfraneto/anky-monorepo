@@ -244,7 +244,9 @@ pub async fn backfill_all_writings(state: &AppState) {
 
     // Pull all writing sessions ordered by created_at ASC so Honcho sees them chronologically
     let sessions: Vec<(String, String, String)> = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         let mut stmt = match db.prepare(
             "SELECT id, user_id, content
              FROM writing_sessions
@@ -258,7 +260,7 @@ pub async fn backfill_all_writings(state: &AppState) {
             }
         };
         let rows = stmt
-            .query_map([], |row| {
+            .query_map(crate::params![], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,

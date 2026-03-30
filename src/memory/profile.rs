@@ -1,7 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::db::Connection;
 
 use crate::memory::recall::MemoryPattern;
 
@@ -26,15 +24,10 @@ Keep it under 400 words. Be specific — use their actual words and patterns, no
 OUTPUT: Just the profile text in markdown. No JSON, no preamble."#;
 
 /// Update (or create) a user's psychological profile based on accumulated memories.
-/// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
-pub async fn update_profile(
-    db: &Arc<Mutex<Connection>>,
-    api_key: &str,
-    user_id: &str,
-) -> Result<()> {
+pub async fn update_profile(db: &crate::db::DbPool, api_key: &str, user_id: &str) -> Result<()> {
     // 1. Sync DB reads — lock, read, release
     let (current_profile, patterns, recent_writings, total_sessions, total_words) = {
-        let conn = db.lock().await;
+        let conn = crate::db::conn(db)?;
 
         let current_profile = get_current_profile(&conn, user_id)?;
         let patterns = get_all_patterns(&conn, user_id)?;
@@ -45,12 +38,12 @@ pub async fn update_profile(
 
         let total_sessions: i32 = conn.query_row(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = ?1 AND is_anky = 1",
-            params![user_id],
+            crate::params![user_id],
             |row| row.get(0),
         )?;
         let total_words: i64 = conn.query_row(
             "SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1",
-            params![user_id],
+            crate::params![user_id],
             |row| row.get(0),
         )?;
 
@@ -100,7 +93,7 @@ pub async fn update_profile(
 
     // 4. Sync DB write — lock, write, release
     {
-        let conn = db.lock().await;
+        let conn = crate::db::conn(db)?;
         conn.execute(
             "INSERT INTO user_profiles (user_id, total_sessions, total_anky_sessions, total_words_written, psychological_profile, last_profile_update, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
@@ -111,7 +104,7 @@ pub async fn update_profile(
                 psychological_profile = excluded.psychological_profile,
                 last_profile_update = excluded.last_profile_update,
                 updated_at = excluded.updated_at",
-            params![user_id, total_sessions, total_sessions, total_words as i32, profile_text, now],
+            crate::params![user_id, total_sessions, total_sessions, total_words as i32, profile_text, now],
         )?;
     }
 
@@ -121,7 +114,7 @@ pub async fn update_profile(
 fn get_current_profile(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt =
         conn.prepare("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1")?;
-    let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -133,7 +126,7 @@ fn get_all_patterns(conn: &Connection, user_id: &str) -> Result<Vec<MemoryPatter
          ORDER BY (importance * occurrence_count) DESC
          LIMIT 30",
     )?;
-    let rows = stmt.query_map(params![user_id], |row| {
+    let rows = stmt.query_map(crate::params![user_id], |row| {
         Ok(MemoryPattern {
             category: row.get(0)?,
             content: row.get(1)?,
@@ -157,7 +150,7 @@ fn get_recent_writing_snippets(
          ORDER BY created_at DESC
          LIMIT ?2",
     )?;
-    let rows = stmt.query_map(params![user_id, limit as i32], |row| {
+    let rows = stmt.query_map(crate::params![user_id, limit as i32], |row| {
         let content: String = row.get(0)?;
         let date: String = row.get(1)?;
         let snippet: String = content.chars().take(300).collect();

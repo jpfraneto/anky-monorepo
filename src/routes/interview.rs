@@ -117,7 +117,7 @@ pub async fn interview_start(
     State(state): State<AppState>,
     Json(req): Json<InterviewStartRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::create_interview(
         &db,
         &req.id,
@@ -133,7 +133,7 @@ pub async fn interview_message(
     State(state): State<AppState>,
     Json(req): Json<InterviewMessageRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::save_interview_message(&db, &req.interview_id, &req.role, &req.content)?;
     Ok(Json(serde_json::json!({"ok": true})))
 }
@@ -143,7 +143,7 @@ pub async fn interview_end(
     State(state): State<AppState>,
     Json(req): Json<InterviewEndRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::end_interview(
         &db,
         &req.interview_id,
@@ -170,7 +170,7 @@ pub async fn interview_history(
     Path(user_id): Path<String>,
     Query(q): Query<HistoryQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let history = queries::get_user_interview_history(&db, &user_id, q.limit)?;
     Ok(Json(serde_json::json!(history)))
 }
@@ -180,7 +180,7 @@ pub async fn interview_user_context(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     match queries::get_user_context_for_interview(&db, &user_id)? {
         Some(ctx) => Ok(Json(serde_json::json!(ctx))),
         None => Ok(Json(serde_json::json!(null))),

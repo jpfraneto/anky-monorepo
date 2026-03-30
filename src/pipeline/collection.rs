@@ -61,7 +61,7 @@ pub async fn generate_collection(
     );
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::update_collection_status(&db, collection_id, "generating")?;
     }
 
@@ -117,13 +117,13 @@ pub async fn generate_collection(
 
         // Update progress
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::update_collection_progress(&db, collection_id, (i + 1) as i32)?;
         }
     }
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::update_collection_status(&db, collection_id, "complete")?;
     }
 

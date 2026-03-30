@@ -1,0 +1,14 @@
+data/
+target/
+.git/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.deb
+WHITEPAPER.pdf
+WHITEPAPER.aux
+WHITEPAPER.log
+WHITEPAPER.out
+WHITEPAPER.toc
+cursor_*.deb

@@ -1,7 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::db::Connection;
 
 /// A recalled memory for context injection.
 #[derive(Debug)]
@@ -96,20 +94,19 @@ impl MemoryContext {
 }
 
 /// Build a complete memory context for a user, given their new writing.
-/// Takes Arc<Mutex<Connection>> to safely lock/unlock across async boundaries.
 pub async fn build_memory_context(
-    db: &Arc<Mutex<Connection>>,
+    db: &crate::db::DbPool,
     _ollama_base_url: &str,
     user_id: &str,
     _new_writing: &str,
 ) -> Result<MemoryContext> {
     // DB reads only — no more Ollama embeddings. Honcho handles semantic context.
     let (session_count, profile, patterns) = {
-        let conn = db.lock().await;
+        let conn = crate::db::conn(db)?;
 
         let session_count: i32 = conn.query_row(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = ?1 AND is_anky = 1",
-            params![user_id],
+            crate::params![user_id],
             |row| row.get(0),
         )?;
 
@@ -139,7 +136,7 @@ pub async fn build_memory_context(
 fn get_user_profile(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt =
         conn.prepare("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1")?;
-    let mut rows = stmt.query_map(params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -155,7 +152,7 @@ fn get_significant_patterns(
          ORDER BY (importance * occurrence_count) DESC
          LIMIT ?2",
     )?;
-    let rows = stmt.query_map(params![user_id, limit as i32], |row| {
+    let rows = stmt.query_map(crate::params![user_id, limit as i32], |row| {
         Ok(MemoryPattern {
             category: row.get(0)?,
             content: row.get(1)?,

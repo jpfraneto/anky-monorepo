@@ -19,7 +19,7 @@ async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, Ap
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| AppError::Unauthorized("missing Authorization: Bearer header".into()))?;
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let (user_id, _) = queries::get_auth_session(&db, token)?
         .ok_or_else(|| AppError::Unauthorized("invalid or expired session token".into()))?;
     Ok(user_id)
@@ -53,7 +53,7 @@ pub async fn list_recordings(
     Path(story_id): Path<String>,
 ) -> Result<Json<Vec<RecordingItem>>, AppError> {
     let _user_id = bearer_auth(&state, &headers).await?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let mut stmt = db.prepare(
         "SELECT sr.id, sr.story_id, sr.user_id, sr.attempt_number, sr.language, sr.status,
                 sr.duration_seconds, sr.audio_url, sr.rejection_reason,
@@ -62,7 +62,7 @@ pub async fn list_recordings(
          WHERE sr.story_id = ?1
          ORDER BY sr.approved_at DESC, sr.created_at DESC",
     )?;
-    let rows = stmt.query_map(rusqlite::params![story_id], |row| {
+    let rows = stmt.query_map(crate::params![story_id], |row| {
         Ok((
             row.get::<_, String>(0)?,          // id
             row.get::<_, String>(1)?,          // story_id
@@ -174,11 +174,11 @@ pub async fn create_recording(
 
     // Determine attempt_number (next available, max 4)
     let attempt_number = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let count: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM story_recordings WHERE story_id = ?1 AND user_id = ?2",
-                rusqlite::params![story_id, user_id],
+                crate::params![story_id, user_id],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -205,12 +205,12 @@ pub async fn create_recording(
 
     // Insert record
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         db.execute(
             "INSERT INTO story_recordings
              (id, story_id, user_id, attempt_number, language, status, duration_seconds, r2_key)
              VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
-            rusqlite::params![
+            crate::params![
                 recording_id,
                 story_id,
                 user_id,
@@ -254,7 +254,7 @@ pub async fn get_voice(
         .map(|v| v.trim().to_lowercase())
         .unwrap_or_else(|| "en".into());
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     // Try preferred language first
     let recording = db
@@ -263,7 +263,7 @@ pub async fn get_voice(
              FROM story_recordings
              WHERE story_id = ?1 AND status = 'approved' AND language = ?2
              ORDER BY approved_at DESC LIMIT 1",
-            rusqlite::params![story_id, preferred_lang],
+            crate::params![story_id, preferred_lang],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -283,7 +283,7 @@ pub async fn get_voice(
              FROM story_recordings
              WHERE story_id = ?1 AND status = 'approved'
              ORDER BY approved_at DESC LIMIT 1",
-            rusqlite::params![story_id],
+            crate::params![story_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -320,7 +320,7 @@ pub async fn get_voice(
                      FROM cuentacuentos_audio
                      WHERE cuentacuentos_id = ?1 AND status = 'complete' AND language = ?2
                      LIMIT 1",
-                    rusqlite::params![story_id, preferred_lang],
+                    crate::params![story_id, preferred_lang],
                     |row| {
                         Ok((
                             row.get::<_, String>(0)?,
@@ -337,7 +337,7 @@ pub async fn get_voice(
                          WHERE cuentacuentos_id = ?1 AND status = 'complete'
                          ORDER BY CASE language WHEN 'en' THEN 0 ELSE 1 END
                          LIMIT 1",
-                        rusqlite::params![story_id],
+                        crate::params![story_id],
                         |row| {
                             Ok((
                                 row.get::<_, String>(0)?,
@@ -372,17 +372,17 @@ pub async fn complete_listen(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = bearer_auth(&state, &headers).await?;
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     db.execute(
         "UPDATE story_recordings SET full_listen_count = full_listen_count + 1 WHERE id = ?1",
-        rusqlite::params![recording_id],
+        crate::params![recording_id],
     )?;
 
     let event_id = uuid::Uuid::new_v4().to_string();
     db.execute(
         "INSERT INTO story_listen_events (id, story_id, recording_id, user_id)
          VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![event_id, story_id, recording_id, user_id],
+        crate::params![event_id, story_id, recording_id, user_id],
     )?;
 
     Ok(Json(json!({ "ok": true })))
@@ -393,10 +393,12 @@ pub async fn complete_listen(
 async fn quality_check_recording(state: &AppState, recording_id: &str) {
     // Get recording details
     let (r2_key, story_id) = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         match db.query_row(
             "SELECT r2_key, story_id FROM story_recordings WHERE id = ?1",
-            rusqlite::params![recording_id],
+            crate::params![recording_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         ) {
             Ok(r) => r,
@@ -409,7 +411,9 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
 
     // Get story text for comparison
     let story_content = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         match queries::get_cuentacuentos_by_id(&db, &story_id) {
             Ok(Some(story)) => story.content,
             _ => {
@@ -445,7 +449,9 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
         None
     };
 
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return;
+    };
 
     match transcription {
         Some(transcribed_text) => {
@@ -456,7 +462,7 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
                     "UPDATE story_recordings
                      SET status = 'approved', audio_url = ?2, approved_at = datetime('now')
                      WHERE id = ?1",
-                    rusqlite::params![recording_id, audio_url],
+                    crate::params![recording_id, audio_url],
                 );
                 tracing::info!(
                     "Recording {} approved (similarity: {:.2})",
@@ -467,7 +473,7 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
                 let reason = format!("transcription similarity: {:.2}", similarity);
                 let _ = db.execute(
                     "UPDATE story_recordings SET status = 'rejected', rejection_reason = ?2 WHERE id = ?1",
-                    rusqlite::params![recording_id, reason],
+                    crate::params![recording_id, reason],
                 );
                 tracing::info!(
                     "Recording {} rejected (similarity: {:.2})",
@@ -487,7 +493,7 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
                 "UPDATE story_recordings
                  SET status = 'approved', audio_url = ?2, approved_at = datetime('now')
                  WHERE id = ?1",
-                rusqlite::params![recording_id, audio_url],
+                crate::params![recording_id, audio_url],
             );
             tracing::info!(
                 "Recording {} auto-approved (whisper unavailable)",
@@ -500,35 +506,8 @@ async fn quality_check_recording(state: &AppState, recording_id: &str) {
 /// Try to transcribe audio using local Whisper endpoint.
 /// Attempts Ollama's audio model or a local whisper.cpp HTTP server.
 async fn transcribe_audio(ollama_base_url: &str, audio_bytes: &[u8]) -> anyhow::Result<String> {
-    // Try whisper.cpp HTTP server on localhost:8080 (common default)
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()?;
-
-    let part = reqwest::multipart::Part::bytes(audio_bytes.to_vec())
-        .file_name("recording.m4a")
-        .mime_str("audio/mp4")?;
-    let form = reqwest::multipart::Form::new()
-        .part("file", part)
-        .text("response_format", "text");
-
-    // Try whisper.cpp server
-    let resp = client
-        .post("http://localhost:8080/inference")
-        .multipart(form)
-        .send()
-        .await;
-
-    match resp {
-        Ok(r) if r.status().is_success() => {
-            let text = r.text().await?;
-            if !text.trim().is_empty() {
-                return Ok(text);
-            }
-        }
-        _ => {}
-    }
-
+    let _ = (ollama_base_url, audio_bytes);
+    // TODO: Restore Whisper fallback once it no longer collides with llama-server on :8080.
     anyhow::bail!("no whisper endpoint available")
 }
 
@@ -576,7 +555,7 @@ pub async fn story_deep_link_page(
     Path(story_id): Path<String>,
     query: axum::extract::Query<StoryPageQuery>,
 ) -> Result<Response, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let story = queries::get_cuentacuentos_by_id(&db, &story_id)?
         .ok_or_else(|| AppError::NotFound("story not found".into()))?;
 
@@ -594,7 +573,7 @@ pub async fn story_deep_link_page(
     let audio_html = if let Some(ref rec_id) = query.recording_id {
         match db.query_row(
             "SELECT audio_url FROM story_recordings WHERE id = ?1 AND status = 'approved'",
-            rusqlite::params![rec_id],
+            crate::params![rec_id],
             |row| row.get::<_, String>(0),
         ) {
             Ok(url) => format!(

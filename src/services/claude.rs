@@ -30,7 +30,7 @@ struct ClaudeRequest {
     messages: Vec<ClaudeMessage>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ClaudeMessage {
     role: String,
     content: String,
@@ -128,45 +128,178 @@ async fn call_claude(
     })
 }
 
-const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
+pub const HAIKU_MODEL: &str = "claude-haiku-4-5-20251001";
+pub const SONNET_MODEL: &str = "claude-sonnet-4-20250514";
+pub const OPUS_MODEL: &str = "claude-opus-4-20250514";
 
-/// Simple Haiku call — drop-in replacement for call_ollama(base_url, model, prompt).
-/// Takes api_key + prompt, returns text. Uses Haiku for speed and cost.
-pub async fn call_haiku(api_key: &str, prompt: &str) -> Result<String> {
-    let r = call_claude(api_key, HAIKU_MODEL, "", prompt, 2000).await?;
-    Ok(r.text)
+/// Try Mind (local llama-server) first, reading MIND_URL from env.
+/// Returns None if Mind is not configured or fails.
+async fn try_mind(system: &str, user_message: &str, max_tokens: u32) -> Option<String> {
+    let mind_url = std::env::var("MIND_URL").unwrap_or_default();
+    if mind_url.is_empty() {
+        return None;
+    }
+    match crate::services::mind::call(&mind_url, system, user_message, max_tokens, 0.7).await {
+        Ok(result) => {
+            tracing::info!("Mind handled request locally ({} chars)", result.len());
+            Some(result)
+        }
+        Err(e) => {
+            tracing::warn!("Mind failed, falling back to cloud: {}", e);
+            None
+        }
+    }
 }
 
-/// Haiku call with system prompt — drop-in replacement for call_ollama_with_system.
+/// Try OpenRouter as last-resort fallback.
+async fn try_openrouter(system: &str, user_message: &str, max_tokens: u32) -> Result<String> {
+    let or_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
+    if or_key.is_empty() {
+        anyhow::bail!("No OpenRouter key configured for fallback");
+    }
+    crate::services::openrouter::call_openrouter(
+        &or_key,
+        "anthropic/claude-3-haiku",
+        system,
+        user_message,
+        max_tokens,
+        60,
+    )
+    .await
+}
+
+/// Simple Haiku call — drop-in replacement for call_ollama(base_url, model, prompt).
+/// Takes api_key + prompt, returns text. Uses local-first chain: Mind → Haiku → OpenRouter.
+pub async fn call_haiku(api_key: &str, prompt: &str) -> Result<String> {
+    // 1. Try Mind first (local, free)
+    if let Some(result) = try_mind("", prompt, 2000).await {
+        return Ok(result);
+    }
+
+    // 2. Try Claude Haiku
+    match call_claude(api_key, HAIKU_MODEL, "", prompt, 2000).await {
+        Ok(r) => return Ok(r.text),
+        Err(e) => {
+            tracing::warn!("Claude Haiku failed, trying OpenRouter: {}", e);
+        }
+    }
+
+    // 3. Try OpenRouter
+    try_openrouter("", prompt, 2000).await
+}
+
+/// Haiku call with system prompt — local-first chain: Mind → Haiku → OpenRouter.
 pub async fn call_haiku_with_system(
     api_key: &str,
     system: &str,
     user_message: &str,
 ) -> Result<String> {
-    let r = call_claude(api_key, HAIKU_MODEL, system, user_message, 2000).await?;
-    Ok(r.text)
+    // 1. Try Mind first
+    if let Some(result) = try_mind(system, user_message, 2000).await {
+        return Ok(result);
+    }
+
+    // 2. Try Claude Haiku
+    match call_claude(api_key, HAIKU_MODEL, system, user_message, 2000).await {
+        Ok(r) => return Ok(r.text),
+        Err(e) => {
+            tracing::warn!("Claude Haiku failed, trying OpenRouter: {}", e);
+        }
+    }
+
+    // 3. Try OpenRouter
+    try_openrouter(system, user_message, 2000).await
 }
 
-/// Haiku call with system prompt and custom max tokens.
+/// Haiku call with system prompt and custom max tokens — local-first chain.
 pub async fn call_haiku_with_system_max(
     api_key: &str,
     system: &str,
     user_message: &str,
     max_tokens: u32,
 ) -> Result<String> {
-    let r = call_claude(api_key, HAIKU_MODEL, system, user_message, max_tokens).await?;
-    Ok(r.text)
+    // 1. Try Mind first
+    if let Some(result) = try_mind(system, user_message, max_tokens).await {
+        return Ok(result);
+    }
+
+    // 2. Try Claude Haiku
+    match call_claude(api_key, HAIKU_MODEL, system, user_message, max_tokens).await {
+        Ok(r) => return Ok(r.text),
+        Err(e) => {
+            tracing::warn!("Claude Haiku failed, trying OpenRouter: {}", e);
+        }
+    }
+
+    // 3. Try OpenRouter
+    try_openrouter(system, user_message, max_tokens).await
 }
 
-/// Multi-turn chat via Haiku — replacement for chat_ollama.
+/// Haiku call with automatic fallback chain: Mind → Claude → OpenRouter.
+/// Use this for user-facing paths (social replies, classification) that should never silently fail.
+pub async fn call_haiku_with_fallback(
+    anthropic_key: &str,
+    openrouter_key: &str,
+    system: &str,
+    user_message: &str,
+    max_tokens: u32,
+) -> Result<String> {
+    // 1. Try Mind first (local, free)
+    if let Some(result) = try_mind(system, user_message, max_tokens).await {
+        return Ok(result);
+    }
+
+    // 2. Try Claude Haiku
+    match call_claude(anthropic_key, HAIKU_MODEL, system, user_message, max_tokens).await {
+        Ok(r) => Ok(r.text),
+        Err(e) => {
+            let err_str = e.to_string();
+            tracing::warn!(
+                "Claude Haiku failed ({}), falling back to OpenRouter",
+                &err_str[..err_str.len().min(80)]
+            );
+            if !openrouter_key.is_empty() {
+                crate::services::openrouter::call_openrouter(
+                    openrouter_key,
+                    "anthropic/claude-haiku-4-5-20251001",
+                    system,
+                    user_message,
+                    max_tokens,
+                    30,
+                )
+                .await
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Multi-turn chat via local-first chain: Mind → Haiku → OpenRouter.
 /// Takes OllamaChatMessage format (system/user/assistant roles).
 pub async fn chat_haiku(
     api_key: &str,
     messages: Vec<crate::services::ollama::OllamaChatMessage>,
 ) -> Result<String> {
-    let client = reqwest::Client::new();
+    // 1. Try Mind first (local, free)
+    let mind_url = std::env::var("MIND_URL").unwrap_or_default();
+    if !mind_url.is_empty() {
+        let mind_msgs: Vec<(String, String)> = messages
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        match crate::services::mind::chat(&mind_url, &mind_msgs, 2000).await {
+            Ok(result) => {
+                tracing::info!("Mind handled chat locally ({} chars)", result.len());
+                return Ok(result);
+            }
+            Err(e) => {
+                tracing::warn!("Mind chat failed, falling back to cloud: {}", e);
+            }
+        }
+    }
 
-    // Extract system message if present
+    // 2. Try Claude Haiku
     let system = messages
         .iter()
         .find(|m| m.role == "system")
@@ -174,21 +307,22 @@ pub async fn chat_haiku(
         .unwrap_or_default();
 
     let chat_messages: Vec<ClaudeMessage> = messages
-        .into_iter()
+        .iter()
         .filter(|m| m.role != "system")
         .map(|m| ClaudeMessage {
-            role: m.role,
-            content: m.content,
+            role: m.role.clone(),
+            content: m.content.clone(),
         })
         .collect();
 
     let req = ClaudeRequest {
         model: HAIKU_MODEL.into(),
         max_tokens: 2000,
-        system,
+        system: system.clone(),
         messages: chat_messages,
     };
 
+    let client = reqwest::Client::new();
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
         .header("Content-Type", "application/json")
@@ -196,20 +330,43 @@ pub async fn chat_haiku(
         .header("anthropic-version", "2023-06-01")
         .json(&req)
         .send()
-        .await?;
+        .await;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Claude chat error {}: {}", status, body);
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let data: ClaudeResponse = r.json().await?;
+            return Ok(data
+                .content
+                .and_then(|c| c.into_iter().next())
+                .and_then(|b| b.text)
+                .unwrap_or_default());
+        }
+        Ok(r) => {
+            let status = r.status();
+            let body = r.text().await.unwrap_or_default();
+            tracing::warn!(
+                "Claude chat error {}, falling back to OpenRouter: {}",
+                status,
+                &body[..body.len().min(120)]
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Claude chat request failed, falling back to OpenRouter: {}",
+                e
+            );
+        }
     }
 
-    let data: ClaudeResponse = resp.json().await?;
-    Ok(data
-        .content
-        .and_then(|c| c.into_iter().next())
-        .and_then(|b| b.text)
-        .unwrap_or_default())
+    // 3. Try OpenRouter — flatten to single-turn since openrouter helper is single-turn
+    let user_content = messages
+        .iter()
+        .filter(|m| m.role != "system")
+        .map(|m| format!("{}: {}", m.role, m.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    try_openrouter(&system, &user_content, 2000).await
 }
 
 const PROMPT_SYSTEM: &str = r#"CONTEXT: You are generating an image prompt for Anky based on a user's 8-minute stream of consciousness writing session. Anky is a blue-skinned creature with purple swirling hair, golden/amber eyes, golden decorative accents and jewelry, large expressive ears, and an ancient-yet-childlike quality. Anky exists in mystical, richly colored environments (deep blues, purples, oranges, golds). The aesthetic is spiritual but not sterile — warm, alive, slightly psychedelic.
@@ -406,25 +563,11 @@ pub struct MentionClassification {
 }
 
 pub async fn generate_prompt(api_key: &str, writing: &str) -> Result<ClaudeResult> {
-    call_claude(
-        api_key,
-        "claude-sonnet-4-20250514",
-        PROMPT_SYSTEM,
-        writing,
-        500,
-    )
-    .await
+    call_claude(api_key, SONNET_MODEL, PROMPT_SYSTEM, writing, 500).await
 }
 
 pub async fn generate_reflection(api_key: &str, writing: &str) -> Result<ClaudeResult> {
-    call_claude(
-        api_key,
-        "claude-sonnet-4-20250514",
-        REFLECTION_SYSTEM,
-        writing,
-        2000,
-    )
-    .await
+    call_claude(api_key, SONNET_MODEL, REFLECTION_SYSTEM, writing, 2000).await
 }
 
 pub async fn generate_title(
@@ -437,14 +580,7 @@ pub async fn generate_title(
         "WRITING SESSION:\n{}\n\nIMAGE PROMPT:\n{}\n\nREFLECTION:\n{}",
         writing, image_prompt, reflection
     );
-    call_claude(
-        api_key,
-        "claude-sonnet-4-20250514",
-        TITLE_SYSTEM,
-        &user_msg,
-        50,
-    )
-    .await
+    call_claude(api_key, SONNET_MODEL, TITLE_SYSTEM, &user_msg, 50).await
 }
 
 const TRANSFORM_SYSTEM: &str = r#"You are Anky, a consciousness companion. The user has just completed an 8-minute stream of consciousness writing session — raw, unfiltered, and vulnerable. They will provide their writing and optionally a specific transformation prompt.
@@ -471,7 +607,7 @@ pub async fn transform_writing(
         ),
         None => TRANSFORM_SYSTEM.to_string(),
     };
-    call_claude(api_key, "claude-sonnet-4-20250514", &system, writing, 1500).await
+    call_claude(api_key, SONNET_MODEL, &system, writing, 1500).await
 }
 
 const CHAT_SYSTEM: &str = r#"You are Anky, a consciousness companion. You are continuing a conversation with someone who just completed a stream of consciousness writing session. You have already reflected on their writing.
@@ -488,12 +624,22 @@ pub async fn chat_about_writing(
     history: &[(String, String)], // (role, content) pairs
     new_message: &str,
 ) -> Result<ClaudeResult> {
+    chat_about_writing_with_model(api_key, SONNET_MODEL, Some(HAIKU_MODEL), writing, reflection, history, new_message).await
+}
+
+pub async fn chat_about_writing_with_model(
+    api_key: &str,
+    model: &str,
+    fallback_model: Option<&str>,
+    writing: &str,
+    reflection: &str,
+    history: &[(String, String)], // (role, content) pairs
+    new_message: &str,
+) -> Result<ClaudeResult> {
     let system = format!(
         "{}\n\nTHE USER'S ORIGINAL WRITING:\n{}\n\nYOUR PREVIOUS REFLECTION:\n{}",
         CHAT_SYSTEM, writing, reflection
     );
-
-    let client = reqwest::Client::new();
 
     let mut messages: Vec<ClaudeMessage> = history
         .iter()
@@ -507,10 +653,44 @@ pub async fn chat_about_writing(
         content: new_message.into(),
     });
 
+    call_claude_with_messages(api_key, model, fallback_model, &system, messages, 1000).await
+}
+
+async fn call_claude_with_messages(
+    api_key: &str,
+    model: &str,
+    fallback_model: Option<&str>,
+    system: &str,
+    messages: Vec<ClaudeMessage>,
+    max_tokens: u32,
+) -> Result<ClaudeResult> {
+    match call_claude_with_messages_once(api_key, model, system, messages.clone(), max_tokens).await
+    {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            if let Some(fallback) = fallback_model.filter(|fallback| *fallback != model) {
+                tracing::warn!("Claude model {} failed, retrying with {}", model, fallback);
+                call_claude_with_messages_once(api_key, fallback, system, messages, max_tokens).await
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+async fn call_claude_with_messages_once(
+    api_key: &str,
+    model: &str,
+    system: &str,
+    messages: Vec<ClaudeMessage>,
+    max_tokens: u32,
+) -> Result<ClaudeResult> {
+    let client = reqwest::Client::new();
+
     let req = ClaudeRequest {
-        model: "claude-sonnet-4-20250514".into(),
-        max_tokens: 1000,
-        system,
+        model: model.into(),
+        max_tokens,
+        system: system.into(),
         messages,
     };
 
@@ -589,7 +769,7 @@ Respond in the same language they wrote in. Start directly with the title — no
 pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Result<ClaudeResult> {
     call_claude(
         api_key,
-        "claude-sonnet-4-20250514",
+        SONNET_MODEL,
         TITLE_AND_REFLECTION_SYSTEM_STRANGER,
         writing,
         2000,
@@ -599,21 +779,77 @@ pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Resu
 
 /// Generate title+reflection with memory context injected into the system prompt.
 /// Memory context comes FIRST — it frames the reading. The reflection prompt follows.
+/// Local-first: Mind → Claude Sonnet → OpenRouter fallback.
 pub async fn generate_title_and_reflection_with_memory(
     api_key: &str,
     writing: &str,
     memory_context: &str,
 ) -> Result<ClaudeResult> {
+    generate_title_and_reflection_with_memory_using_model(
+        api_key,
+        SONNET_MODEL,
+        Some(HAIKU_MODEL),
+        writing,
+        memory_context,
+    )
+    .await
+    .map(|(result, _)| result)
+}
+
+pub async fn generate_title_and_reflection_with_memory_using_model(
+    api_key: &str,
+    model: &str,
+    fallback_model: Option<&str>,
+    writing: &str,
+    memory_context: &str,
+) -> Result<(ClaudeResult, String)> {
     let system = if memory_context.is_empty() {
         TITLE_AND_REFLECTION_SYSTEM_STRANGER.to_string()
     } else {
-        // Memory context first, then the "known" variant of the reflection prompt
         format!(
             "{}\n\n{}",
             memory_context, TITLE_AND_REFLECTION_SYSTEM_KNOWN
         )
     };
-    call_claude(api_key, "claude-sonnet-4-20250514", &system, writing, 2000).await
+
+    // 1. Try Mind first (local, free)
+    if let Some(result) = try_mind(&system, writing, 2000).await {
+        return Ok((
+            ClaudeResult {
+                text: result,
+                input_tokens: 0,
+                output_tokens: 0,
+            },
+            "mind".to_string(),
+        ));
+    }
+
+    match call_claude(api_key, model, &system, writing, 2000).await {
+        Ok(r) => Ok((r, model.to_string())),
+        Err(e) => {
+            if let Some(fallback) = fallback_model.filter(|fallback| *fallback != model) {
+                tracing::warn!(
+                    "Claude {} failed for reflection, trying {}: {}",
+                    model,
+                    fallback,
+                    e
+                );
+                if let Ok(r) = call_claude(api_key, fallback, &system, writing, 2000).await {
+                    return Ok((r, fallback.to_string()));
+                }
+            }
+            tracing::warn!("Claude reflection fallback chain failed, trying OpenRouter: {}", e);
+            let text = try_openrouter(&system, writing, 2000).await?;
+            Ok((
+                ClaudeResult {
+                    text,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                },
+                "openrouter".to_string(),
+            ))
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -633,6 +869,55 @@ pub async fn stream_title_and_reflection(
     writing: &str,
     tx: tokio::sync::mpsc::Sender<String>,
     memory_context: Option<&str>,
+) -> Result<(String, i64, i64, String)> {
+    stream_title_and_reflection_with_model(
+        api_key,
+        SONNET_MODEL,
+        Some(HAIKU_MODEL),
+        writing,
+        tx,
+        memory_context,
+    )
+    .await
+}
+
+pub async fn stream_title_and_reflection_with_model(
+    api_key: &str,
+    model: &str,
+    fallback_model: Option<&str>,
+    writing: &str,
+    tx: tokio::sync::mpsc::Sender<String>,
+    memory_context: Option<&str>,
+) -> Result<(String, i64, i64, String)> {
+    match stream_title_and_reflection_once(api_key, model, writing, tx.clone(), memory_context).await {
+        Ok((full_text, input_tokens, output_tokens)) => {
+            Ok((full_text, input_tokens, output_tokens, model.to_string()))
+        }
+        Err(err) => {
+            if let Some(fallback) = fallback_model.filter(|fallback| *fallback != model) {
+                tracing::warn!(
+                    "Claude stream model {} failed, retrying with {}: {}",
+                    model,
+                    fallback,
+                    err
+                );
+                let (full_text, input_tokens, output_tokens) =
+                    stream_title_and_reflection_once(api_key, fallback, writing, tx, memory_context)
+                        .await?;
+                Ok((full_text, input_tokens, output_tokens, fallback.to_string()))
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+async fn stream_title_and_reflection_once(
+    api_key: &str,
+    model: &str,
+    writing: &str,
+    tx: tokio::sync::mpsc::Sender<String>,
+    memory_context: Option<&str>,
 ) -> Result<(String, i64, i64)> {
     let system = match memory_context {
         Some(ctx) if !ctx.is_empty() => {
@@ -643,7 +928,7 @@ pub async fn stream_title_and_reflection(
     };
     let client = reqwest::Client::new();
     let req = ClaudeStreamRequest {
-        model: "claude-sonnet-4-20250514".into(),
+        model: model.into(),
         max_tokens: 2000,
         system,
         messages: vec![ClaudeMessage {
@@ -781,16 +1066,9 @@ pub async fn generate_suggested_replies(
             context.push_str(&format!("\n{}: {}", label, content));
         }
     }
-    let result = call_claude(
-        api_key,
-        "claude-haiku-4-5-20251001",
-        SUGGEST_REPLIES_SYSTEM,
-        &context,
-        200,
-    )
-    .await?;
+    let text = call_haiku_with_system_max(api_key, SUGGEST_REPLIES_SYSTEM, &context, 200).await?;
 
-    let trimmed = result.text.trim();
+    let trimmed = text.trim();
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
         let r1 = v
             .get("reply1")
@@ -908,6 +1186,8 @@ WRITE INVITATIONS — roughly 1 in 5 replies, when the conversation is ripe (som
 write into it: https://anky.app/write?p={prompt_id}
 you will be given a PROMPT_ID in the user message when one is available. only use it when writing would serve them more than another reply.
 
+COMMUNITY QUESTIONS — when told THIS IS A COMMUNITY QUESTION, someone is asking a big question to their followers and tagged you. your job shifts: you MUST end with the write invitation link. reframe their question into something that pulls people past the intellectual answer and into the personal, felt truth. be provocative. make people want to sit down and write for 8 minutes. the link is how they do it.
+
 tone:
 - match the energy — playful to playful, sincere to deeper, pain to presence.
 - never start with greetings. jump straight in.
@@ -1011,6 +1291,120 @@ pub fn enforce_thread_limits(slides: Vec<String>, platform: &str) -> Vec<String>
         .collect()
 }
 
+/// Classify whether a social media post is a community question — someone
+/// posing a question or prompt to their followers (not just talking to Anky directly).
+/// Uses Claude Haiku with OpenRouter fallback.
+pub async fn classify_community_question(
+    anthropic_key: &str,
+    openrouter_key: &str,
+    text: &str,
+) -> Result<bool> {
+    let system = r#"you classify social media posts. determine if the author is posing a question, prompt, or invitation to their followers/audience — something that invites people to share their thoughts, experiences, or ideas. this includes:
+- direct questions to the audience ("what's your take on X?", "how do you think about Y?")
+- open invitations ("share your most radical idea about Z")
+- prompts that invite reflection ("tell me about a time when...")
+
+this does NOT include:
+- someone just talking to the bot directly ("hey anky what do you think")
+- simple greetings or reactions
+- someone sharing their own opinion without inviting others to respond
+- image requests or commands
+
+output only: {"community_question": true} or {"community_question": false}"#;
+
+    let raw = call_haiku_with_fallback(anthropic_key, openrouter_key, system, text, 100).await?;
+    let trimmed = raw.trim();
+    let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        &trimmed[s..=e]
+    } else {
+        trimmed
+    };
+
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+        return Ok(v["community_question"].as_bool().unwrap_or(false));
+    }
+
+    Ok(false)
+}
+
+/// Reframe a community question into a deeper, personal writing prompt.
+/// Uses Claude Haiku with OpenRouter fallback.
+pub async fn reframe_as_writing_prompt(
+    anthropic_key: &str,
+    openrouter_key: &str,
+    question: &str,
+) -> Result<String> {
+    let system = r#"you take a question someone asked on social media and reframe it into a personal, introspective writing prompt. the prompt should pull the writer deeper than the original question — past the intellectual answer into the felt, lived experience underneath. one or two sentences max. all lowercase. no quotes around it. output only the prompt text, nothing else."#;
+
+    let prompt =
+        call_haiku_with_fallback(anthropic_key, openrouter_key, system, question, 150).await?;
+    let prompt = prompt.trim().to_string();
+
+    if prompt.is_empty() {
+        anyhow::bail!("Empty prompt from Claude");
+    }
+
+    Ok(prompt)
+}
+
+/// Generate 8 slide descriptions and concepts for a programming class.
+/// Returns (concepts, slide_prompts) — concepts are short text labels,
+/// slide_prompts are ComfyUI image prompts featuring Anky teaching.
+pub async fn generate_class_slides(
+    api_key: &str,
+    session_summary: &str,
+    class_number: i64,
+) -> Result<(Vec<String>, Vec<String>)> {
+    let system = r#"you design 8-slide programming classes. each slide covers 1 minute of an 8-minute lesson. the slides feature anky (blue-skinned, purple swirling hair, golden eyes, ancient-yet-childlike) in teaching scenes.
+
+given a summary of a coding session, produce:
+1. eight concept labels (short, 5-10 words each) — what the presenter says during each minute
+2. eight image prompts for flux — anky in a scene that visually represents each concept. rich colors, mystical-yet-technical aesthetic. anky should be doing something related to the concept (writing code on floating tablets, debugging with magnifying glass, connecting nodes in a network, etc.)
+
+output JSON only:
+{"concepts":["...","...","...","...","...","...","...","..."],"prompts":["...","...","...","...","...","...","...","..."]}"#;
+
+    let user_msg = format!(
+        "class #{}\n\nsession summary:\n{}",
+        class_number, session_summary
+    );
+    let raw = call_haiku_with_system_max(api_key, system, &user_msg, 3000).await?;
+    let trimmed = raw.trim();
+    let json_str = if let (Some(s), Some(e)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        &trimmed[s..=e]
+    } else {
+        trimmed
+    };
+
+    let v: serde_json::Value = serde_json::from_str(json_str)?;
+    let concepts: Vec<String> = v["concepts"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let prompts: Vec<String> = v["prompts"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if concepts.len() != 8 || prompts.len() != 8 {
+        anyhow::bail!(
+            "Expected 8 concepts and 8 prompts, got {} and {}",
+            concepts.len(),
+            prompts.len()
+        );
+    }
+
+    Ok((concepts, prompts))
+}
+
 /// Generate a contextual reply to a social media mention using Claude with full Anky identity.
 /// Returns either a text reply or a text+image reply (Anky decides).
 /// Now accepts Honcho peer context and interaction history for continuity.
@@ -1025,6 +1419,8 @@ pub async fn generate_anky_reply(
     interaction_history: &[(String, String)], // (their_text, anky_reply) from past interactions
     platform: &str,                     // "x" or "farcaster"
     prompt_id: Option<&str>,            // pre-created prompt ID for write invitations
+    force_write_invitation: bool,       // always include write link (community questions)
+    openrouter_key: Option<&str>,       // fallback when Anthropic credits are depleted
 ) -> Result<AnkyReply> {
     let platform_note = match platform {
         "farcaster" => "\nplatform: farcaster (warpcast). crypto-native audience, builders and artists. keep your two lines under 1024 characters total. be real.",
@@ -1074,10 +1470,17 @@ pub async fn generate_anky_reply(
 
     // Add prompt ID for write invitations
     if let Some(pid) = prompt_id {
-        user_text.push_str(&format!(
-            "PROMPT_ID for write invitations (use ~1 in 5 replies): {}\n\n",
-            pid
-        ));
+        if force_write_invitation {
+            user_text.push_str(&format!(
+                "PROMPT_ID: {}\nTHIS IS A COMMUNITY QUESTION — someone is asking a question to their followers and tagged you. you MUST end your reply with a write invitation. reframe the question into something that pulls people deeper, then include the link. your reply should provoke people into wanting to write. format the link as:\nwrite into it: https://anky.app/write?p={}\n\n",
+                pid, pid
+            ));
+        } else {
+            user_text.push_str(&format!(
+                "PROMPT_ID for write invitations (use ~1 in 5 replies): {}\n\n",
+                pid
+            ));
+        }
     }
 
     // Add the actual mention
@@ -1086,6 +1489,50 @@ pub async fn generate_anky_reply(
 
     if tweet_image.is_some() {
         user_text.push_str("\n\n(the post above includes an attached image, shown below. reference it in your reply if relevant.)");
+    }
+
+    // Try Mind first for text-only requests (no image)
+    if tweet_image.is_none() {
+        if let Some(result) = try_mind(&system, &user_text, 300).await {
+            // Parse Mind result same as Claude result below
+            let raw = result.trim().to_string();
+            if raw.starts_with('{') {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    if v["type"].as_str() == Some("image") {
+                        let text = v["text"]
+                            .as_str()
+                            .unwrap_or("")
+                            .trim()
+                            .trim_matches('"')
+                            .to_lowercase();
+                        let prompt = v["prompt"].as_str().unwrap_or("").trim().to_string();
+                        if !prompt.is_empty() {
+                            return Ok(AnkyReply::TextWithImage {
+                                text: if text.is_empty() {
+                                    "🦍".to_string()
+                                } else {
+                                    text
+                                },
+                                flux_prompt: prompt,
+                            });
+                        }
+                    } else if v["type"].as_str() == Some("reply") {
+                        let reply = v["reply"]
+                            .as_str()
+                            .unwrap_or("🦍")
+                            .trim()
+                            .trim_matches('"')
+                            .to_lowercase();
+                        return Ok(AnkyReply::Text(reply));
+                    }
+                }
+            }
+            // Plain text response
+            let cleaned = raw.trim_matches('"').to_lowercase();
+            if !cleaned.is_empty() {
+                return Ok(AnkyReply::Text(cleaned));
+            }
+        }
     }
 
     // Build content — text-only or multimodal
@@ -1123,20 +1570,38 @@ pub async fn generate_anky_reply(
         .send()
         .await?;
 
-    if !resp.status().is_success() {
+    let raw = if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Claude API error {}: {}", status, body);
-    }
-
-    let data: ClaudeResponse = resp.json().await?;
-    let raw = data
-        .content
-        .and_then(|c| c.into_iter().next())
-        .and_then(|b| b.text)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+        // Try OpenRouter fallback for credit/rate errors
+        let or_key = openrouter_key.unwrap_or("");
+        if !or_key.is_empty()
+            && (body.contains("credit balance")
+                || status.as_u16() == 429
+                || body.contains("overloaded"))
+        {
+            tracing::warn!("Anthropic unavailable for reply, falling back to OpenRouter");
+            crate::services::openrouter::call_openrouter(
+                or_key,
+                "anthropic/claude-haiku-4-5-20251001",
+                &system,
+                &user_text,
+                300,
+                30,
+            )
+            .await?
+        } else {
+            anyhow::bail!("Claude API error {}: {}", status, body);
+        }
+    } else {
+        let data: ClaudeResponse = resp.json().await?;
+        data.content
+            .and_then(|c| c.into_iter().next())
+            .and_then(|b| b.text)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
 
     // Check if Claude decided to reply with an image
     if raw.starts_with('{') {

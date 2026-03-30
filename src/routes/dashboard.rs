@@ -11,7 +11,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Result<Html<String>, Ap
 
     // Load recent summaries for initial render
     let summaries: Vec<serde_json::Value> = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db
             .prepare(
                 "SELECT id, created_at, period_start, period_end, summary
@@ -21,7 +21,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Result<Html<String>, Ap
             )
             .unwrap_or_else(|_| panic!("summaries query"));
         let rows = stmt
-            .query_map([], |row| {
+            .query_map(crate::params![], |row| {
                 Ok(serde_json::json!({
                     "id": row.get::<_, String>(0)?,
                     "created_at": row.get::<_, String>(1)?,
@@ -74,14 +74,14 @@ pub async fn dashboard_summaries(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<serde_json::Value>>, AppError> {
     let summaries: Vec<serde_json::Value> = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db.prepare(
             "SELECT id, created_at, period_start, period_end, summary
              FROM system_summaries
              ORDER BY created_at DESC
              LIMIT 20",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(crate::params![], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
                 "created_at": row.get::<_, String>(1)?,
@@ -104,12 +104,14 @@ pub async fn generate_system_summary(state: &AppState) {
 
     // 1. Gather DB activity stats for the last 30 minutes
     let stats = {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
 
         let writings: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM writing_sessions WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -117,7 +119,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let ankys: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM writing_sessions WHERE created_at >= ?1 AND is_anky = 1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -125,7 +127,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let anky_images: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM ankys WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -133,7 +135,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let meditations: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM personalized_meditations WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -141,7 +143,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let breathwork: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM personalized_breathwork WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -149,7 +151,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let cuentacuentos: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM cuentacuentos WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -157,7 +159,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let new_users: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM users WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -165,7 +167,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let unique_writers: i32 = db
             .query_row(
                 "SELECT COUNT(DISTINCT user_id) FROM writing_sessions WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -173,7 +175,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let total_words: i64 = db
             .query_row(
                 "SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -181,7 +183,7 @@ pub async fn generate_system_summary(state: &AppState) {
         let failed_ankys: i32 = db
             .query_row(
                 "SELECT COUNT(*) FROM ankys WHERE status = 'failed' AND created_at >= ?1",
-                rusqlite::params![period_start],
+                crate::params![period_start],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -274,11 +276,13 @@ Recent log entries ({} total):
     // 5. Store in DB
     let id = uuid::Uuid::new_v4().to_string();
     {
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return;
+        };
         if let Err(e) = db.execute(
             "INSERT INTO system_summaries (id, period_start, period_end, raw_stats, summary)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, period_start, period_end, raw_stats, summary],
+            crate::params![id, period_start, period_end, raw_stats, summary],
         ) {
             tracing::error!("Failed to store system summary: {}", e);
             return;

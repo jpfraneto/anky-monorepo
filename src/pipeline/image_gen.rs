@@ -97,29 +97,86 @@ pub async fn generate_anky_from_writing(
         ),
     );
 
-    // Step 1: Generate image prompt (Haiku) — non-fatal, fall back to raw text
-    state.emit_log("INFO", "haiku", "Generating image prompt...");
-    let image_prompt = match crate::services::claude::call_haiku_with_system(
-        api_key,
-        crate::services::ollama::IMAGE_PROMPT_SYSTEM,
-        writing_text,
-    )
-    .await
-    {
-        Ok(p) => {
-            state.emit_log("INFO", "haiku", "Image prompt ready");
-            p
+    // Step 1: Generate image prompt (Mind → Haiku fallback) — non-fatal, fall back to raw text
+    state.emit_log("INFO", "image_gen", "Generating image prompt...");
+    let image_prompt_raw = {
+        // Try Mind first (local, free)
+        let mind_url = &state.config.mind_url;
+        if !mind_url.is_empty() {
+            match crate::services::mind::call(
+                mind_url,
+                crate::services::ollama::IMAGE_PROMPT_SYSTEM,
+                writing_text,
+                500,
+                0.7,
+            )
+            .await
+            {
+                Ok(p) => {
+                    state.emit_log("INFO", "mind", "Image prompt ready (local)");
+                    Some(p)
+                }
+                Err(e) => {
+                    state.emit_log(
+                        "WARN",
+                        "mind",
+                        &format!("Mind unavailable for image prompt: {}", e),
+                    );
+                    None
+                }
+            }
+        } else {
+            None
         }
-        Err(e) => {
-            state.emit_log(
-                "WARN",
-                "haiku",
-                &format!(
-                    "Haiku unavailable ({}), using raw writing text as prompt",
-                    e
-                ),
-            );
-            writing_text.to_string()
+    };
+
+    let image_prompt_base = match image_prompt_raw {
+        Some(p) => p,
+        None => {
+            // Fall back to Claude Haiku
+            match crate::services::claude::call_haiku_with_system(
+                api_key,
+                crate::services::ollama::IMAGE_PROMPT_SYSTEM,
+                writing_text,
+            )
+            .await
+            {
+                Ok(p) => {
+                    state.emit_log("INFO", "haiku", "Image prompt ready");
+                    p
+                }
+                Err(e) => {
+                    state.emit_log(
+                        "WARN",
+                        "haiku",
+                        &format!(
+                            "Haiku unavailable ({}), using raw writing text as prompt",
+                            e
+                        ),
+                    );
+                    writing_text.to_string()
+                }
+            }
+        }
+    };
+
+    // Append kingdom image flavor if set on this anky
+    let image_prompt = {
+        let kingdom_flavor: Option<String> = {
+            let db = crate::db::conn(&state.db)?;
+            if let Ok(Some(detail)) = queries::get_anky_by_id(&db, anky_id) {
+                detail.kingdom_id.and_then(|kid| {
+                    crate::kingdoms::KINGDOMS
+                        .get(kid as usize)
+                        .map(|k| k.image_prompt_flavor.to_string())
+                })
+            } else {
+                None
+            }
+        };
+        match kingdom_flavor {
+            Some(flavor) => format!("{}, {}", image_prompt_base, flavor),
+            None => image_prompt_base,
         }
     };
 
@@ -133,7 +190,7 @@ pub async fn generate_anky_from_writing(
         {
             Ok(p) => {
                 {
-                    let db = state.db.lock().await;
+                    let db = crate::db::conn(&state.db)?;
                     queries::insert_cost_record(
                         &db,
                         "gemini",
@@ -163,7 +220,7 @@ pub async fn generate_anky_from_writing(
     // WebP conversion
     match convert_to_webp(&image_path) {
         Ok(webp) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_webp(&db, anky_id, &webp);
             state.emit_log("INFO", "image_gen", &format!("WebP saved: {}", webp));
         }
@@ -179,7 +236,7 @@ pub async fn generate_anky_from_writing(
     // Thumbnail generation
     match generate_thumbnail(&image_path) {
         Ok(thumb) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_thumb(&db, anky_id, &thumb);
             state.emit_log("INFO", "image_gen", &format!("Thumbnail saved: {}", thumb));
         }
@@ -195,7 +252,7 @@ pub async fn generate_anky_from_writing(
     // Step 3: Fallback — generate title+reflection if streaming endpoint didn't set them
     {
         let has_reflection = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let anky = queries::get_anky_by_id(&db, anky_id)?;
             anky.map(|a| a.reflection.as_ref().map_or(false, |r| !r.is_empty()))
                 .unwrap_or(false)
@@ -236,8 +293,10 @@ pub async fn generate_anky_from_writing(
                 .map(|ctx| ctx.format_for_prompt())
             };
 
-            let tr = claude::generate_title_and_reflection_with_memory(
+            let (tr, model_used) = claude::generate_title_and_reflection_with_memory_using_model(
                 api_key,
+                &state.config.reflection_model,
+                Some(&state.config.conversation_model),
                 writing_text,
                 memory_ctx.as_deref().unwrap_or(""),
             )
@@ -245,12 +304,12 @@ pub async fn generate_anky_from_writing(
             let (title, reflection) = claude::parse_title_reflection(&tr.text);
             let tr_cost =
                 crate::pipeline::cost::estimate_claude_cost(tr.input_tokens, tr.output_tokens);
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::update_anky_title_reflection(&db, anky_id, &title, &reflection)?;
             queries::insert_cost_record(
                 &db,
                 "claude",
-                "claude-sonnet-4-20250514",
+                &model_used,
                 tr.input_tokens,
                 tr.output_tokens,
                 tr_cost,
@@ -290,7 +349,7 @@ pub async fn generate_anky_from_writing(
     if cdn_url.is_some() {
         // Fetch the reflection text (may have been set by SSE or fallback above)
         let reflection_text = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::get_anky_by_id(&db, anky_id)?
                 .and_then(|a| a.reflection)
                 .unwrap_or_default()
@@ -330,7 +389,7 @@ pub async fn generate_anky_from_writing(
         };
 
         let anky_string = story.to_anky_string();
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::save_anky_story(&db, anky_id, &anky_string);
         state.emit_log("INFO", "image_gen", "AnkyStory saved");
     }
@@ -338,7 +397,7 @@ pub async fn generate_anky_from_writing(
     // Step 5: Save image and mark complete
     let caption = image_prompt.clone();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::update_anky_image_complete(&db, anky_id, &image_prompt, &image_path, &caption)?;
         let _ = queries::set_anky_image_model(&db, anky_id, &image_model);
     }
@@ -364,10 +423,12 @@ pub async fn generate_anky_from_writing(
             let prompt = crate::services::ollama::format_writing_prompt(&fmt_text);
             match crate::services::claude::call_haiku(&fmt_api_key, &prompt).await {
                 Ok(formatted) => {
-                    let db = fmt_state.db.lock().await;
+                    let Some(db) = crate::db::get_conn_logged(&fmt_state.db) else {
+                        return;
+                    };
                     let _ = db.execute(
                         "UPDATE ankys SET formatted_writing = ?1 WHERE id = ?2",
-                        rusqlite::params![&formatted, &fmt_anky_id],
+                        crate::params![&formatted, &fmt_anky_id],
                     );
                     fmt_state.emit_log(
                         "INFO",
@@ -484,7 +545,7 @@ pub async fn generate_image_only_with_aspect(
     let image_path = gemini::save_image(&image_result.base64, anky_id)?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_cost_record(
             &db,
             "gemini",
@@ -500,7 +561,7 @@ pub async fn generate_image_only_with_aspect(
     // WebP conversion
     match convert_to_webp(&image_path) {
         Ok(webp) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_webp(&db, anky_id, &webp);
             state.emit_log("INFO", "image_gen", &format!("WebP saved: {}", webp));
         }
@@ -516,7 +577,7 @@ pub async fn generate_image_only_with_aspect(
     // Thumbnail generation
     match generate_thumbnail(&image_path) {
         Ok(thumb) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_thumb(&db, anky_id, &thumb);
             state.emit_log("INFO", "image_gen", &format!("Thumbnail saved: {}", thumb));
         }
@@ -529,10 +590,38 @@ pub async fn generate_image_only_with_aspect(
         }
     }
 
-    // Step 3: Update DB with image only
+    // Step 3: Upload to R2 CDN
+    let cdn_url = if r2::is_configured(&state.config) {
+        let full_path = format!("data/images/{}", image_path);
+        match tokio::fs::read(&full_path).await {
+            Ok(bytes) => match r2::upload_image_to_r2(&state.config, &bytes, anky_id, 0).await {
+                Ok(url) => {
+                    state.emit_log("INFO", "r2", &format!("Image uploaded to CDN: {}", url));
+                    Some(url)
+                }
+                Err(e) => {
+                    state.emit_log("WARN", "r2", &format!("R2 upload failed: {}", e));
+                    None
+                }
+            },
+            Err(e) => {
+                state.emit_log(
+                    "WARN",
+                    "r2",
+                    &format!("Could not read image for R2 upload: {}", e),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Step 4: Update DB with image — prefer CDN URL over local path
+    let stored_path = cdn_url.as_deref().unwrap_or(&image_path);
     {
-        let db = state.db.lock().await;
-        queries::update_anky_image_only(&db, anky_id, &image_prompt, &image_path)?;
+        let db = crate::db::conn(&state.db)?;
+        queries::update_anky_image_only(&db, anky_id, &image_prompt, stored_path)?;
         let _ = queries::set_anky_image_model(&db, anky_id, "gemini");
     }
 
@@ -560,13 +649,13 @@ pub async fn generate_flux_image(prompt: &str, comfy_url: &str) -> anyhow::Resul
 /// Generate queued cuentacuentos phase images sequentially on the single GPU.
 pub async fn generate_cuentacuentos_images(cuentacuentos_id: &str, state: &AppState) -> Result<()> {
     let rows = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_pending_cuentacuentos_images(&db, cuentacuentos_id)?
     };
 
     for row in rows {
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::mark_cuentacuentos_image_generating(&db, &row.id)?;
         }
 
@@ -576,12 +665,12 @@ pub async fn generate_cuentacuentos_images(cuentacuentos_id: &str, state: &AppSt
                 let phase_index = usize::try_from(row.phase_index)
                     .map_err(|_| anyhow!("invalid phase index {}", row.phase_index))?;
                 let image_url = comfyui::save_story_image(bytes, cuentacuentos_id, phase_index)?;
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 queries::set_cuentacuentos_image_generated(&db, &row.id, &image_url)?;
             }
             Err(err) => {
                 let next_status = "failed";
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 queries::set_cuentacuentos_image_status(&db, &row.id, next_status)?;
                 tracing::warn!(
                     cuentacuentos_id = %row.cuentacuentos_id,
@@ -638,7 +727,7 @@ pub async fn generate_image_only_flux(
     // WebP conversion
     match convert_to_webp(&image_path) {
         Ok(webp) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_webp(&db, anky_id, &webp);
             state.emit_log("INFO", "flux", &format!("WebP saved: {}", webp));
         }
@@ -650,7 +739,7 @@ pub async fn generate_image_only_flux(
     // Thumbnail generation
     match generate_thumbnail(&image_path) {
         Ok(thumb) => {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = queries::update_anky_thumb(&db, anky_id, &thumb);
             state.emit_log("INFO", "flux", &format!("Thumbnail saved: {}", thumb));
         }
@@ -663,10 +752,38 @@ pub async fn generate_image_only_flux(
         }
     }
 
-    // Save to DB
+    // Upload to R2 CDN
+    let cdn_url = if r2::is_configured(&state.config) {
+        let full_path = format!("data/images/{}", image_path);
+        match tokio::fs::read(&full_path).await {
+            Ok(bytes) => match r2::upload_image_to_r2(&state.config, &bytes, anky_id, 0).await {
+                Ok(url) => {
+                    state.emit_log("INFO", "r2", &format!("Image uploaded to CDN: {}", url));
+                    Some(url)
+                }
+                Err(e) => {
+                    state.emit_log("WARN", "r2", &format!("R2 upload failed: {}", e));
+                    None
+                }
+            },
+            Err(e) => {
+                state.emit_log(
+                    "WARN",
+                    "r2",
+                    &format!("Could not read image for R2 upload: {}", e),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Save to DB — prefer CDN URL over local path
+    let stored_path = cdn_url.as_deref().unwrap_or(&image_path);
     {
-        let db = state.db.lock().await;
-        queries::update_anky_image_only(&db, anky_id, &image_prompt, &image_path)?;
+        let db = crate::db::conn(&state.db)?;
+        queries::update_anky_image_only(&db, anky_id, &image_prompt, stored_path)?;
         let _ = queries::set_anky_image_model(&db, anky_id, "flux");
     }
 

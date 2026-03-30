@@ -447,7 +447,13 @@ pub async fn agent_live_write(
     };
 
     let agent = {
-        let db = state.db.lock().await;
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({"error": "database unavailable"}));
+            }
+        };
         queries::get_agent_by_key(&db, &api_key).ok().flatten()
     };
 
@@ -771,7 +777,13 @@ pub async fn stream_text_sse(
 /// GET /api/ankys/today — JSON list of today's completed ankys with images.
 pub async fn todays_ankys(State(state): State<AppState>) -> Json<serde_json::Value> {
     let ankys = {
-        let db = state.db.lock().await;
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({"count": 0, "ankys": []}));
+            }
+        };
         crate::db::queries::get_todays_ankys(&db).unwrap_or_default()
     };
 

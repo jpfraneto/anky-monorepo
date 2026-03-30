@@ -287,7 +287,7 @@ async fn upsert_x_interaction(
     reply_tweet_id: Option<&str>,
     error_message: Option<&str>,
 ) -> anyhow::Result<()> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     db.execute(
         "INSERT INTO x_interactions (
             id, tweet_id, x_user_id, x_username, tweet_text, status, classification,
@@ -316,7 +316,7 @@ async fn upsert_x_interaction(
                 ELSE x_interactions.error_message
             END,
             updated_at = datetime('now')",
-        rusqlite::params![
+        crate::params![
             tweet_id,
             tweet_id,
             author_id,
@@ -527,10 +527,10 @@ pub async fn process_anky_mention(
             // Save task to DB as "running"
             let task_db_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
             {
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 let _ = db.execute(
                     "INSERT INTO x_evolution_tasks (id, tweet_id, tag, content, author, status) VALUES (?1, ?2, ?3, ?4, ?5, 'running')",
-                    rusqlite::params![&task_db_id, &tweet_id, &tag, &content, &format!("@{}", author_username)],
+                    crate::params![&task_db_id, &tweet_id, &tag, &content, &format!("@{}", author_username)],
                 );
             }
 
@@ -542,10 +542,10 @@ pub async fn process_anky_mention(
 
                     // Update DB with result
                     {
-                        let db = state.db.lock().await;
+                        let db = crate::db::conn(&state.db)?;
                         let _ = db.execute(
                             "UPDATE x_evolution_tasks SET status = 'done', summary = ?1, completed_at = datetime('now') WHERE id = ?2",
-                            rusqlite::params![&summary, &task_db_id],
+                            crate::params![&summary, &task_db_id],
                         );
                     }
 
@@ -590,10 +590,10 @@ pub async fn process_anky_mention(
                     let bridge_error = format!("Hermes dispatch failed: {}", e);
                     // Update DB with error
                     {
-                        let db = state.db.lock().await;
+                        let db = crate::db::conn(&state.db)?;
                         let _ = db.execute(
                             "UPDATE x_evolution_tasks SET status = 'error', summary = ?1, completed_at = datetime('now') WHERE id = ?2",
-                            rusqlite::params![&format!("error: {}", e), &task_db_id],
+                            crate::params![&format!("error: {}", e), &task_db_id],
                         );
                     }
                     let error_reply =
@@ -833,11 +833,11 @@ pub async fn process_anky_mention(
 
         // 2. Check if Anky already replied in this thread (conversation memory)
         let prior_reply = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             if let Some(ref parent_id) = in_reply_to_tweet_id {
                 db.query_row(
                     "SELECT anky_reply_text FROM x_conversations WHERE tweet_id = ?1 OR parent_tweet_id = ?1 ORDER BY created_at DESC LIMIT 1",
-                    rusqlite::params![parent_id],
+                    crate::params![parent_id],
                     |row| row.get::<_, String>(0),
                 ).ok()
             } else {
@@ -900,6 +900,8 @@ pub async fn process_anky_mention(
             &social_ctx.interaction_history,
             "x",
             None,
+            false,
+            Some(&state.config.openrouter_api_key),
         )
         .await;
 
@@ -1153,11 +1155,11 @@ pub async fn process_anky_mention(
 
         // 4. Save to conversation memory
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             let _ = db.execute(
                 "INSERT OR REPLACE INTO x_conversations (tweet_id, author_id, author_username, parent_tweet_id, mention_text, anky_reply_text)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![
+                crate::params![
                     &tweet_id,
                     &author_id,
                     &author_username,

@@ -30,7 +30,7 @@ pub async fn generate_for_thinker(
         stream_result.output_tokens,
     );
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::insert_cost_record(
             &db,
             "claude",
@@ -63,7 +63,7 @@ pub async fn generate_for_thinker(
     let session_id = uuid::Uuid::new_v4().to_string();
     let word_count = stream_text.split_whitespace().count() as i32;
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::ensure_user(&db, "system")?;
         crate::db::queries::insert_writing_session(
             &db,
@@ -81,17 +81,17 @@ pub async fn generate_for_thinker(
     let anky_id = if let Some(id) = existing_anky_id {
         // Update the existing record with writing session link
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             db.execute(
                 "UPDATE ankys SET writing_session_id = ?2 WHERE id = ?1",
-                rusqlite::params![id, session_id],
+                crate::params![id, session_id],
             )?;
         }
         id.to_string()
     } else {
         let id = uuid::Uuid::new_v4().to_string();
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             crate::db::queries::insert_anky(
                 &db,
                 &id,

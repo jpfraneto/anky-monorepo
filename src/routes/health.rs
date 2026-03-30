@@ -13,7 +13,7 @@ pub fn init_start_time() {
 pub async fn health_check(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
     let gpu_status = state.gpu_status.read().await;
     let total_cost = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_total_cost(&db).unwrap_or(0.0)
     };
 

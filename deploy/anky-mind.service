@@ -1,0 +1,27 @@
+[Unit]
+Description=Anky Mind — llama-server qwen3.5-27b (GPU 0)
+After=network.target
+
+[Service]
+Type=simple
+User=kithkui
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/usr/local/bin/llama-server \
+    --model /home/kithkui/models/qwen3.5-27b-q4_k_m.gguf \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --n-gpu-layers 99 \
+    --parallel 2 \
+    --ctx-size 32768 \
+    --batch-size 512 \
+    --ubatch-size 512 \
+    --cont-batching \
+    --no-mmap \
+    --log-disable
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

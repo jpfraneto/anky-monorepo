@@ -174,7 +174,9 @@ async fn queue_farcaster_cast(state: AppState, cast: neynar::Cast, source: &'sta
 
 async fn claim_social_interaction(state: &AppState, cast: &neynar::Cast) -> bool {
     let stale_window = format!("-{} minutes", FARCASTER_RETRY_STALE_MINUTES);
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return false;
+    };
     match db.execute(
         "INSERT INTO social_interactions (
             id, platform, post_id, author_id, author_username, post_text,
@@ -196,7 +198,7 @@ async fn claim_social_interaction(state: &AppState, cast: &neynar::Cast) -> bool
               OR social_interactions.updated_at < datetime('now', ?6)
               OR social_interactions.status NOT IN ('processing', 'received', 'classified')
           )",
-        rusqlite::params![
+        crate::params![
             &cast.hash,
             cast.author_fid.to_string(),
             if cast.author_username.is_empty() {
@@ -441,11 +443,11 @@ async fn process_farcaster_mention(
 
         // Check if Anky already replied in this thread
         let prior_reply = {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             if let Some(ref ph) = parent_hash {
                 db.query_row(
                     "SELECT reply_text FROM social_interactions WHERE platform = 'farcaster' AND (post_id = ?1 OR parent_id = ?1) AND reply_text IS NOT NULL ORDER BY created_at DESC LIMIT 1",
-                    rusqlite::params![ph],
+                    crate::params![ph],
                     |row| row.get::<_, String>(0),
                 ).ok()
             } else {
@@ -484,14 +486,57 @@ async fn process_farcaster_mention(
             .as_ref()
             .map(|(bytes, mt)| (bytes.as_slice(), mt.as_str()));
 
-        // Pre-create a prompt for potential write invitations
+        // Detect community questions — someone posing a question to their
+        // followers and tagging Anky. In these cases Anky should always
+        // reply with a writing prompt invitation.
+        let mention_stripped = strip_mentions(&text);
+        let is_community_question = if parent_hash.is_none() && mention_stripped.len() > 15 {
+            // Use Claude Haiku to understand intent, not just check for `?`
+            claude::classify_community_question(
+                &cfg.anthropic_api_key,
+                &cfg.openrouter_api_key,
+                &mention_stripped,
+            )
+            .await
+            .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if is_community_question {
+            tracing::info!(
+                "FC community question detected for cast {}",
+                truncate_for_log(&cast_hash, 10)
+            );
+        }
+
+        // Pre-create a prompt for write invitations.
+        // For community questions, generate a deeper prompt that reframes
+        // the original question into a personal writing invitation.
         let prompt_id = {
             let pid = uuid::Uuid::new_v4().to_string();
-            let prompt_text = format!(
-                "what came up for you when you said: {}",
-                &text.chars().take(200).collect::<String>()
-            );
-            let db = state.db.lock().await;
+            let prompt_text = if is_community_question {
+                // Use Claude to reframe the question into a writing prompt
+                let reframed = claude::reframe_as_writing_prompt(
+                    &cfg.anthropic_api_key,
+                    &cfg.openrouter_api_key,
+                    &mention_stripped,
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    format!(
+                        "what came up for you when you read: {}",
+                        &mention_stripped.chars().take(200).collect::<String>()
+                    )
+                });
+                reframed
+            } else {
+                format!(
+                    "what came up for you when you said: {}",
+                    &text.chars().take(200).collect::<String>()
+                )
+            };
+            let db = crate::db::conn(&state.db)?;
             let _ = crate::db::queries::ensure_user(&db, "anon");
             match crate::db::queries::insert_prompt(
                 &db,
@@ -520,6 +565,8 @@ async fn process_farcaster_mention(
             &social_ctx.interaction_history,
             "farcaster",
             prompt_id.as_deref(),
+            is_community_question,
+            Some(&cfg.openrouter_api_key),
         )
         .await;
 
@@ -789,7 +836,9 @@ async fn upsert_social_interaction(
     reply_text: Option<&str>,
     reply_id: Option<&str>,
 ) {
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return;
+    };
     let _ = db.execute(
         "INSERT INTO social_interactions (
             id, platform, post_id, author_id, author_username, post_text,
@@ -804,7 +853,7 @@ async fn upsert_social_interaction(
             reply_text = COALESCE(excluded.reply_text, social_interactions.reply_text),
             reply_id = COALESCE(excluded.reply_id, social_interactions.reply_id),
             updated_at = datetime('now')",
-        rusqlite::params![
+        crate::params![
             post_id,
             platform,
             post_id,

@@ -78,13 +78,15 @@ async fn upsert_social_peer(
     platform_user_id: &str,
     platform_username: &str,
 ) -> (Option<String>, Option<String>) {
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return (None, None);
+    };
 
     // Try to find existing
     let existing: Option<(Option<String>, Option<String>)> = db
         .query_row(
             "SELECT honcho_peer_id, user_id FROM social_peers WHERE platform = ?1 AND platform_user_id = ?2",
-            rusqlite::params![platform, platform_user_id],
+            crate::params![platform, platform_user_id],
             |row| Ok((row.get(0).ok(), row.get(1).ok())),
         )
         .ok();
@@ -93,7 +95,7 @@ async fn upsert_social_peer(
         // Update last_seen and increment count
         let _ = db.execute(
             "UPDATE social_peers SET last_seen_at = datetime('now'), interaction_count = interaction_count + 1, platform_username = COALESCE(?3, platform_username) WHERE platform = ?1 AND platform_user_id = ?2",
-            rusqlite::params![platform, platform_user_id, if platform_username.is_empty() { None } else { Some(platform_username) }],
+            crate::params![platform, platform_user_id, if platform_username.is_empty() { None } else { Some(platform_username) }],
         );
         return (peer_id, user_id);
     }
@@ -118,11 +120,13 @@ async fn upsert_social_peer(
                         x_username
                     );
                     // Check if we have an existing X peer with this username
-                    let db = state.db.lock().await;
+                    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+                        return (None, None);
+                    };
                     let x_peer: Option<(String, Option<String>)> = db
                         .query_row(
                             "SELECT honcho_peer_id, user_id FROM social_peers WHERE platform = 'x' AND platform_username = ?1",
-                            rusqlite::params![&x_username],
+                            crate::params![&x_username],
                             |row| Ok((row.get::<_, String>(0)?, row.get(1).ok())),
                         )
                         .ok();
@@ -145,10 +149,12 @@ async fn upsert_social_peer(
         }
 
         // Re-acquire db lock for the insert
-        let db = state.db.lock().await;
+        let Some(db) = crate::db::get_conn_logged(&state.db) else {
+            return (None, None);
+        };
         let _ = db.execute(
             "INSERT OR IGNORE INTO social_peers (id, platform, platform_user_id, platform_username, honcho_peer_id) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
+            crate::params![
                 &id,
                 platform,
                 platform_user_id,
@@ -159,7 +165,7 @@ async fn upsert_social_peer(
     } else {
         let _ = db.execute(
             "INSERT OR IGNORE INTO social_peers (id, platform, platform_user_id, platform_username, honcho_peer_id) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
+            crate::params![
                 &id,
                 platform,
                 platform_user_id,
@@ -179,7 +185,9 @@ async fn fetch_interaction_history(
     platform: &str,
     platform_user_id: &str,
 ) -> Vec<(String, String)> {
-    let db = state.db.lock().await;
+    let Some(db) = crate::db::get_conn_logged(&state.db) else {
+        return Vec::new();
+    };
 
     match platform {
         "x" => {
@@ -192,7 +200,7 @@ async fn fetch_interaction_history(
                 Ok(s) => s,
                 Err(_) => return Vec::new(),
             };
-            stmt.query_map(rusqlite::params![platform_user_id], |row| {
+            stmt.query_map(crate::params![platform_user_id], |row| {
                 Ok((
                     row.get::<_, String>(0).unwrap_or_default(),
                     row.get::<_, String>(1).unwrap_or_default(),
@@ -212,7 +220,7 @@ async fn fetch_interaction_history(
                 Ok(s) => s,
                 Err(_) => return Vec::new(),
             };
-            stmt.query_map(rusqlite::params![platform_user_id], |row| {
+            stmt.query_map(crate::params![platform_user_id], |row| {
                 Ok((
                     row.get::<_, String>(0).unwrap_or_default(),
                     row.get::<_, String>(1).unwrap_or_default(),

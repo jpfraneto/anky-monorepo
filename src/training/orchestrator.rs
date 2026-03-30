@@ -58,7 +58,7 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
 
     // Record training run
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_training_run(
             &db,
             &training_run_id,
@@ -90,7 +90,7 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
             }
 
             {
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 queries::complete_training_run(&db, &training_run_id, &stable_path)?;
             }
 
@@ -113,7 +113,7 @@ pub async fn run_training_cycle(state: &AppState) -> Result<()> {
 
     // Send notifications
     let signups = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_notification_signups(&db)?
     };
 

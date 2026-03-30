@@ -65,7 +65,7 @@ pub async fn create_prompt_api(
     let created_by = req.created_by.as_deref().unwrap_or("Anky");
 
     let created_at = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::ensure_user(&db, user_id)?;
         queries::insert_prompt(
             &db,
@@ -98,7 +98,9 @@ pub async fn create_prompt_api(
     tokio::spawn(async move {
         match crate::pipeline::prompt_gen::generate_prompt_image(&s, &pid, &pt).await {
             Ok(image_path) => {
-                let db = s.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&s.db) else {
+                    return;
+                };
                 let _ = queries::update_prompt_image(&db, &pid, &image_path);
                 s.emit_log(
                     "INFO",
@@ -113,7 +115,9 @@ pub async fn create_prompt_api(
                     "prompt",
                     &format!("Prompt {} image failed: {}", &pid[..8], e),
                 );
-                let db = s.db.lock().await;
+                let Some(db) = crate::db::get_conn_logged(&s.db) else {
+                    return;
+                };
                 let _ = queries::update_prompt_status(&db, &pid, "failed");
             }
         }
@@ -152,7 +156,7 @@ pub async fn create_prompt_quick(
     let created_by = req.created_by.as_deref().unwrap_or("anon");
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::ensure_user(&db, "anon")?;
         queries::insert_prompt(
             &db,
@@ -178,7 +182,7 @@ pub async fn get_prompt_api(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let (prompt, sessions_count, creator_username) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let prompt = queries::get_prompt_by_id(&db, &id)?;
         match &prompt {
             Some(p) => {
@@ -215,7 +219,7 @@ pub async fn prompt_page(
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
     let (prompt, creator_username, settings) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let prompt = queries::get_prompt_by_id(&db, &id)?;
         let prompt = prompt.ok_or_else(|| AppError::NotFound("prompt not found".into()))?;
         let creator_username = queries::get_display_username(&db, &prompt.creator_user_id)?;
@@ -298,7 +302,7 @@ pub async fn submit_prompt_writing(
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Verify prompt exists
     let prompt = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_prompt_by_id(&db, &id)?
     };
     let prompt = prompt.ok_or_else(|| AppError::NotFound("prompt not found".into()))?;
@@ -312,7 +316,7 @@ pub async fn submit_prompt_writing(
     let word_count = req.content.split_whitespace().count() as i32;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_prompt_session(
             &db,
             &session_id,
@@ -364,7 +368,7 @@ pub async fn list_prompts_api(
     let sort = query.sort.as_deref().unwrap_or("recent");
 
     let (prompts, total) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_prompts_paginated(&db, page, limit, sort)?
     };
 
@@ -402,7 +406,7 @@ pub async fn random_prompt_api(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let prompt = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_random_prompt(&db)?
     };
 

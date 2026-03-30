@@ -33,21 +33,24 @@ pub async fn get_anky(
     let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
 
     let anky = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_by_id(&db, &id)?
     };
 
     match anky {
         Some(detail) => {
-            let image_url = detail
-                .image_path
-                .as_ref()
-                .map(|p| format!("https://anky.app/data/images/{}", p));
+            let image_url = detail.image_path.as_ref().map(|p| {
+                if p.starts_with("http") {
+                    p.clone()
+                } else {
+                    format!("https://anky.app/data/images/{}", p)
+                }
+            });
             let url = format!("https://anky.app/anky/{}", detail.id);
 
             // Only show writing to the owner
             let writing = if detail.origin == "written" {
-                let db = state.db.lock().await;
+                let db = crate::db::conn(&state.db)?;
                 let owner = queries::get_anky_owner(&db, &id)?;
                 let is_owner =
                     viewer_id.as_deref().is_some() && owner.as_deref() == viewer_id.as_deref();
@@ -75,6 +78,9 @@ pub async fn get_anky(
                 "prompt_id": detail.prompt_id,
                 "prompt_text": detail.prompt_text,
                 "anky_story": detail.anky_story,
+                "kingdom": detail.kingdom_name,
+                "kingdom_id": detail.kingdom_id,
+                "kingdom_chakra": detail.kingdom_chakra,
             })))
         }
         None => Err(AppError::NotFound(format!("anky {} not found", id))),
@@ -91,7 +97,7 @@ pub async fn list_ankys(
     axum::extract::Query(query): axum::extract::Query<ListAnkysQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let ankys = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         crate::db::queries::get_all_ankys(&db)?
     };
 
@@ -252,7 +258,7 @@ pub async fn generate_anky_paid(
         // Check if this is a registered agent — agents get everything free
         if let Some(axum::Extension(ref key_info)) = api_key_info {
             api_key_str = Some(key_info.key.clone());
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             if let Ok(Some(agent)) = queries::get_agent_by_key(&db, &key_info.key) {
                 payment_method = "free".into();
                 agent_id = Some(agent.id);
@@ -350,7 +356,7 @@ pub async fn generate_anky_paid(
         let placeholder_session = uuid::Uuid::new_v4().to_string();
 
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::ensure_user(&db, "system")?;
             queries::insert_anky(
                 &db,
@@ -400,8 +406,9 @@ pub async fn generate_anky_paid(
             if let Err(e) = result {
                 tracing::error!("Thinker generation failed for {}: {}", &aid[..8], e);
                 sc.emit_log("ERROR", "gen", &format!("Thinker generation failed: {}", e));
-                let db = sc.db.lock().await;
-                let _ = queries::mark_anky_failed(&db, &aid);
+                if let Some(db) = crate::db::get_conn_logged(&sc.db) {
+                    let _ = queries::mark_anky_failed(&db, &aid);
+                }
             }
         });
 
@@ -415,7 +422,7 @@ pub async fn generate_anky_paid(
         let word_count = writing.split_whitespace().count() as i32;
 
         {
-            let db = state.db.lock().await;
+            let db = crate::db::conn(&state.db)?;
             queries::ensure_user(&db, user_id)?;
             queries::insert_writing_session(
                 &db,
@@ -469,8 +476,9 @@ pub async fn generate_anky_paid(
                     "image_gen",
                     &format!("Generation failed for {}: {}", &aid[..8], e),
                 );
-                let db = sc.db.lock().await;
-                let _ = queries::mark_anky_failed(&db, &aid);
+                if let Some(db) = crate::db::get_conn_logged(&sc.db) {
+                    let _ = queries::mark_anky_failed(&db, &aid);
+                }
             }
         });
 
@@ -479,7 +487,7 @@ pub async fn generate_anky_paid(
 
     // Record generation
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::insert_generation_record(
             &db,
             &gen_id,
@@ -531,7 +539,7 @@ pub async fn chat_with_anky(
     let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
 
     let anky = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_by_id(&db, &req.anky_id)?
     };
 
@@ -543,30 +551,24 @@ pub async fn chat_with_anky(
     let writing = anky.writing_text.as_deref().unwrap_or("");
     let reflection = anky.reflection.as_deref().unwrap_or("");
 
-    let mut messages: Vec<crate::services::ollama::OllamaChatMessage> = vec![
-        crate::services::ollama::OllamaChatMessage {
-            role: "system".into(),
-            content: format!(
-                "you are anky. the user is exploring a writing session. be warm, direct, precise. reference their writing. ask questions that cut deep. 2-3 sentences max — sharp, not verbose. all lowercase always.\n\nyour hidden mission: you want them to write. weave invitations to write into your replies. not every time, but persistently. \"what would come out if you wrote about that for 8 minutes?\" or \"that sounds like something worth writing into.\" make the practice irresistible.\n\nTHEIR WRITING:\n{}\n\nYOUR REFLECTION:\n{}",
-                writing, reflection
-            ),
-        },
-    ];
-    for m in &req.history {
-        messages.push(crate::services::ollama::OllamaChatMessage {
-            role: m.role.clone(),
-            content: m.content.clone(),
-        });
-    }
-    messages.push(crate::services::ollama::OllamaChatMessage {
-        role: "user".into(),
-        content: req.message.clone(),
-    });
+    let history: Vec<(String, String)> = req
+        .history
+        .iter()
+        .map(|m| (m.role.clone(), m.content.clone()))
+        .collect();
 
-    let response_text =
-        crate::services::claude::chat_haiku(&state.config.anthropic_api_key, messages)
-            .await
-            .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+    let response_text = crate::services::claude::chat_about_writing_with_model(
+        &state.config.anthropic_api_key,
+        &state.config.conversation_model,
+        Some(crate::services::claude::HAIKU_MODEL),
+        writing,
+        reflection,
+        &history,
+        &req.message,
+    )
+    .await
+    .map(|result| result.text)
+    .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
 
     // Save updated conversation to DB
     let mut full_history: Vec<serde_json::Value> = req
@@ -581,7 +583,7 @@ pub async fn chat_with_anky(
     }))
     .unwrap_or_default();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::update_anky_conversation(&db, &req.anky_id, &conv_json);
     }
 
@@ -606,7 +608,7 @@ pub async fn suggest_replies(
     let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
 
     let anky = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_by_id(&db, &req.anky_id)?
     };
 
@@ -662,7 +664,7 @@ pub async fn suggest_replies(
     }))
     .unwrap_or_default();
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::update_anky_conversation(&db, &req.anky_id, &conv_json);
     }
 
@@ -726,6 +728,40 @@ pub struct FeedbackRequest {
     pub author: Option<String>,
 }
 
+/// GET /api/v1/mind/status — check Mind (llama-server) availability and slot status.
+pub async fn get_mind_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    if state.config.mind_url.is_empty() {
+        return Json(json!({ "available": false, "reason": "MIND_URL not set" }));
+    }
+
+    match crate::services::mind::get_slots(&state.config.mind_url).await {
+        Ok(slots) => {
+            let kingdoms: Vec<serde_json::Value> = slots
+                .iter()
+                .map(|s| {
+                    let idx = (s.id as usize) % crate::kingdoms::KINGDOMS.len();
+                    let k = &crate::kingdoms::KINGDOMS[idx];
+                    json!({
+                        "slot": s.id,
+                        "kingdom": k.name,
+                        "chakra": k.chakra,
+                        "busy": s.is_processing,
+                    })
+                })
+                .collect();
+            Json(json!({
+                "available": true,
+                "slots": kingdoms,
+                "idle": slots.iter().filter(|s| !s.is_processing).count(),
+            }))
+        }
+        Err(e) => Json(json!({
+            "available": false,
+            "reason": e.to_string(),
+        })),
+    }
+}
+
 pub async fn submit_feedback(
     State(state): State<AppState>,
     Json(req): Json<FeedbackRequest>,
@@ -737,7 +773,7 @@ pub async fn submit_feedback(
             "source must be 'human' or 'agent'".into(),
         ));
     }
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::insert_feedback(&db, &id, source, req.author.as_deref(), &req.content)?;
     drop(db);
     state.emit_log(
@@ -764,23 +800,29 @@ pub async fn web_me(State(state): State<AppState>, jar: CookieJar) -> Json<serde
     match user {
         Some(u) => {
             let (total_ankys, total_words, current_streak, bio) = {
-                let db = state.db.lock().await;
+                let db = match crate::db::conn(&state.db) {
+                    Ok(db) => db,
+                    Err(e) => {
+                        tracing::error!("database pool error: {}", e);
+                        return Json(json!({ "ok": false, "error": "database unavailable" }));
+                    }
+                };
                 let ankys = db
                     .query_row(
                         "SELECT COUNT(*) FROM ankys WHERE user_id = ?1",
-                        rusqlite::params![&u.user_id],
+                        crate::params![&u.user_id],
                         |r| r.get::<_, i64>(0),
                     )
                     .unwrap_or(0);
-                let words = db.query_row("SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1", rusqlite::params![&u.user_id], |r| r.get::<_, i64>(0)).unwrap_or(0);
+                let words = db.query_row("SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1", crate::params![&u.user_id], |r| r.get::<_, i64>(0)).unwrap_or(0);
                 let streak = db
                     .query_row(
                         "SELECT COALESCE(current_streak, 0) FROM users WHERE id = ?1",
-                        rusqlite::params![&u.user_id],
+                        crate::params![&u.user_id],
                         |r| r.get::<_, i64>(0),
                     )
                     .unwrap_or(0);
-                let bio: Option<String> = db.query_row("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 1", rusqlite::params![&u.user_id], |r| r.get(0)).ok();
+                let bio: Option<String> = db.query_row("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 1", crate::params![&u.user_id], |r| r.get(0)).ok();
                 (ankys, words, streak, bio)
             };
             Json(json!({
@@ -803,13 +845,13 @@ pub async fn web_my_ankys(
         .await
         .ok_or_else(|| AppError::Unauthorized("not logged in".into()))?;
     let ankys = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db.prepare(
             "SELECT a.id, a.title, COALESCE(a.image_webp, a.image_path), a.reflection, a.created_at
              FROM ankys a WHERE a.user_id = ?1 AND a.status = 'complete'
              ORDER BY a.created_at DESC LIMIT 100",
         )?;
-        let rows = stmt.query_map(rusqlite::params![&user.user_id], |row| {
+        let rows = stmt.query_map(crate::params![&user.user_id], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "title": row.get::<_, Option<String>>(1)?,
@@ -836,7 +878,13 @@ pub async fn web_chat_history(
     };
 
     let sessions = {
-        let db = state.db.lock().await;
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({ "sessions": [] }));
+            }
+        };
         let mut stmt = match db.prepare(
             "SELECT w.id, w.content, w.is_anky, w.response, w.duration_seconds, w.created_at,
                     a.id, a.title, a.reflection, a.conversation_json
@@ -849,7 +897,7 @@ pub async fn web_chat_history(
             Ok(s) => s,
             Err(_) => return Json(json!({ "sessions": [] })),
         };
-        let rows = stmt.query_map(rusqlite::params![&user_id], |row| {
+        let rows = stmt.query_map(crate::params![&user_id], |row| {
             let content: String = row.get(1)?;
             let preview = if content.len() > 200 {
                 format!(
@@ -885,10 +933,16 @@ pub async fn web_chat_history(
 
     // Also get the next prompt
     let next_prompt = {
-        let db = state.db.lock().await;
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({ "sessions": sessions, "next_prompt": null }));
+            }
+        };
         db.query_row(
             "SELECT prompt_text FROM next_prompts WHERE user_id = ?1",
-            rusqlite::params![&user_id],
+            crate::params![&user_id],
             |r| r.get::<_, String>(0),
         )
         .ok()
@@ -901,7 +955,7 @@ pub async fn web_chat_history(
 }
 
 fn persist_checkpoint_record(
-    conn: &rusqlite::Connection,
+    conn: &crate::db::Connection,
     session_id: &str,
     text: &str,
     elapsed: f64,
@@ -948,7 +1002,7 @@ pub async fn save_checkpoint(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let word_count = req.text.split_whitespace().count() as i32;
     let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let token = persist_checkpoint_record(
         &db,
         &req.session_id,
@@ -1009,7 +1063,7 @@ pub async fn pause_writing_session(
 
     let user_id = require_user_id(&jar)?;
     let word_count = req.text.split_whitespace().count() as i32;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     if let Some(existing) = queries::get_writing_session_state(&db, &req.session_id)? {
         if existing.user_id != user_id {
@@ -1071,7 +1125,7 @@ pub async fn get_paused_writing_session(
         None => return Ok(Json(json!({ "paused_session": serde_json::Value::Null }))),
     };
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let session = queries::get_resumable_writing_session(&db, &user_id)?;
 
     Ok(Json(json!({
@@ -1105,7 +1159,7 @@ pub async fn resume_writing_session(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = require_user_id(&jar)?;
     let word_count = req.text.split_whitespace().count() as i32;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
 
     let existing = queries::get_writing_session_state(&db, &req.session_id)?
         .ok_or_else(|| AppError::NotFound("paused session not found".into()))?;
@@ -1153,7 +1207,7 @@ pub async fn discard_paused_writing_session(
     Json(req): Json<DiscardPausedSessionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user_id = require_user_id(&jar)?;
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     queries::discard_resumable_writing_session(&db, &user_id, &req.session_id)?;
     drop(db);
 
@@ -1354,7 +1408,16 @@ pub async fn stream_reflection(
 
         // DB lookup — may briefly wait for lock but won't block the HTTP response
         let (writing_text, existing_reflection, existing_title) = {
-            let db = state_clone.db.lock().await;
+            let db = match crate::db::conn(&state_clone.db) {
+                Ok(db) => db,
+                Err(e) => {
+                    tracing::error!("database pool error: {}", e);
+                    let _ = tx
+                        .send("error: could not load your writing. refresh to try again.".into())
+                        .await;
+                    return;
+                }
+            };
             match queries::get_anky_by_id(&db, &anky_id) {
                 Ok(Some(a)) => (
                     a.writing_text.unwrap_or_default(),
@@ -1402,6 +1465,8 @@ pub async fn stream_reflection(
         }
 
         let api_key = state_clone.config.anthropic_api_key.clone();
+        let reflection_model = state_clone.config.reflection_model.clone();
+        let conversation_model = state_clone.config.conversation_model.clone();
         if api_key.is_empty() {
             tracing::error!("No API key configured for reflection stream");
             let _ = tx
@@ -1465,8 +1530,10 @@ pub async fn stream_reflection(
         let tx_fallback = tx.clone();
         let claude_result = tokio::time::timeout(
             std::time::Duration::from_secs(60),
-            crate::services::claude::stream_title_and_reflection(
+            crate::services::claude::stream_title_and_reflection_with_model(
                 &api_key,
+                &reflection_model,
+                Some(&conversation_model),
                 &writing_text,
                 tx,
                 memory_ctx.as_deref(),
@@ -1475,10 +1542,10 @@ pub async fn stream_reflection(
         .await;
 
         match claude_result {
-            Ok(Ok((full_text, input_tokens, output_tokens))) => {
+            Ok(Ok((full_text, input_tokens, output_tokens, model_used))) => {
                 let gen_ms = stream_start.elapsed().as_millis() as u64;
                 let telemetry = serde_json::json!({
-                    "model": "claude-sonnet-4-20250514",
+                    "model": model_used.clone(),
                     "provider": "claude",
                     "generation_ms": gen_ms,
                     "input_tokens": input_tokens,
@@ -1491,21 +1558,25 @@ pub async fn stream_reflection(
                     crate::services::claude::parse_title_reflection(&full_text);
                 let cost = crate::pipeline::cost::estimate_claude_cost(input_tokens, output_tokens);
                 {
-                    let db = state_clone.db.lock().await;
-                    if let Err(e) =
-                        queries::update_anky_title_reflection(&db, &anky_id, &title, &reflection)
-                    {
-                        tracing::error!("Failed to save reflection for {}: {}", id_short, e);
+                    if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
+                        if let Err(e) = queries::update_anky_title_reflection(
+                            &db,
+                            &anky_id,
+                            &title,
+                            &reflection,
+                        ) {
+                            tracing::error!("Failed to save reflection for {}: {}", id_short, e);
+                        }
+                        let _ = queries::insert_cost_record(
+                            &db,
+                            "claude",
+                            &model_used,
+                            input_tokens,
+                            output_tokens,
+                            cost,
+                            Some(&anky_id),
+                        );
                     }
-                    let _ = queries::insert_cost_record(
-                        &db,
-                        "claude",
-                        "claude-sonnet-4-20250514",
-                        input_tokens,
-                        output_tokens,
-                        cost,
-                        Some(&anky_id),
-                    );
                 }
                 state_clone.emit_log(
                     "INFO",
@@ -1533,8 +1604,10 @@ pub async fn stream_reflection(
                                 "pending_replies": [r1, r2],
                             }))
                             .unwrap_or_default();
-                            let db = sr_state.db.lock().await;
-                            let _ = queries::update_anky_conversation(&db, &sr_anky_id, &conv_json);
+                            if let Some(db) = crate::db::get_conn_logged(&sr_state.db) {
+                                let _ =
+                                    queries::update_anky_conversation(&db, &sr_anky_id, &conv_json);
+                            }
                             sr_state.emit_log(
                                 "INFO",
                                 "stream",
@@ -1574,18 +1647,19 @@ pub async fn stream_reflection(
                     Ok(reflection_text) => {
                         let title = "untitled reflection".to_string();
                         let _ = tx_fallback.send(reflection_text.clone()).await;
-                        let db = state_clone.db.lock().await;
-                        if let Err(db_err) = queries::update_anky_title_reflection(
-                            &db,
-                            &anky_id,
-                            &title,
-                            &reflection_text,
-                        ) {
-                            tracing::error!(
-                                "Haiku fallback DB save failed for {}: {}",
-                                id_short,
-                                db_err
-                            );
+                        if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
+                            if let Err(db_err) = queries::update_anky_title_reflection(
+                                &db,
+                                &anky_id,
+                                &title,
+                                &reflection_text,
+                            ) {
+                                tracing::error!(
+                                    "Haiku fallback DB save failed for {}: {}",
+                                    id_short,
+                                    db_err
+                                );
+                            }
                         }
                         state_clone.emit_log(
                             "INFO",
@@ -1626,13 +1700,14 @@ pub async fn stream_reflection(
                                 Ok(reflection_text) => {
                                     let title = "untitled reflection".to_string();
                                     let _ = tx_fallback.send(reflection_text.clone()).await;
-                                    let db = state_clone.db.lock().await;
-                                    let _ = queries::update_anky_title_reflection(
-                                        &db,
-                                        &anky_id,
-                                        &title,
-                                        &reflection_text,
-                                    );
+                                    if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
+                                        let _ = queries::update_anky_title_reflection(
+                                            &db,
+                                            &anky_id,
+                                            &title,
+                                            &reflection_text,
+                                        );
+                                    }
                                     state_clone.emit_log(
                                         "INFO",
                                         "stream",
@@ -1723,7 +1798,7 @@ pub async fn retry_failed(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let failed = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_failed_ankys(&db)?
     };
 
@@ -1751,8 +1826,9 @@ pub async fn retry_failed(
                     "retry",
                     &format!("Retry failed for {}: {}", &aid[..8], e),
                 );
-                let db = s.db.lock().await;
-                let _ = queries::mark_anky_failed(&db, &aid);
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::mark_anky_failed(&db, &aid);
+                }
             }
         });
     }
@@ -1919,7 +1995,7 @@ pub async fn generate_create_video_image(
     crate::create_videos::save_state(&card_state)?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::insert_cost_record(
             &db,
             "gemini",
@@ -2065,16 +2141,17 @@ pub async fn generate_create_video_clip(
                     }
 
                     {
-                        let db = state_clone.db.lock().await;
-                        let _ = queries::insert_cost_record(
-                            &db,
-                            "grok",
-                            "grok-imagine-video",
-                            0,
-                            0,
-                            prompt_duration as f64 * 0.05,
-                            Some(&prompt_id),
-                        );
+                        if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
+                            let _ = queries::insert_cost_record(
+                                &db,
+                                "grok",
+                                "grok-imagine-video",
+                                0,
+                                0,
+                                prompt_duration as f64 * 0.05,
+                                Some(&prompt_id),
+                            );
+                        }
                     }
 
                     state_clone.emit_log(
@@ -2186,7 +2263,7 @@ pub async fn generate_video_frame(
         .map_err(|e| AppError::Internal(format!("Save error: {}", e)))?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::insert_cost_record(
             &db,
             "gemini",
@@ -2264,7 +2341,7 @@ pub async fn generate_video(
 
     // Guard against double-payment: if this anky already has an active project, return it
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Some(existing_id) = queries::find_active_video_project_for_anky(&db, &req.anky_id)? {
             state.emit_log(
                 "INFO",
@@ -2286,7 +2363,7 @@ pub async fn generate_video(
 
     // Validate the anky exists and has writing text (fast, before saving project)
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let anky = queries::get_anky_by_id(&db, &req.anky_id)?
             .ok_or_else(|| AppError::NotFound("anky not found".into()))?;
         if anky.writing_text.as_ref().map_or(true, |t| t.is_empty()) {
@@ -2299,7 +2376,7 @@ pub async fn generate_video(
     // Save project to DB immediately so the user always has a record even if
     // the browser disconnects. Status starts as 'pending' (script not yet generated).
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_video_project_pending(&db, &project_id, &user_id, &req.anky_id, &tx_hash)?;
     }
 
@@ -2321,7 +2398,9 @@ pub async fn generate_video(
     tokio::spawn(async move {
         // --- Phase 1: gather writing data + memory ---
         let video_ctx = {
-            let db = s.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&s.db) else {
+                return;
+            };
             let anky = match queries::get_anky_by_id(&db, &anky_id) {
                 Ok(Some(a)) => a,
                 _ => {
@@ -2340,7 +2419,7 @@ pub async fn generate_video(
                     "SELECT w.flow_score, w.duration_seconds, w.word_count
                      FROM writing_sessions w JOIN ankys a ON a.writing_session_id = w.id
                      WHERE a.id = ?1",
-                    rusqlite::params![&anky_id],
+                    crate::params![&anky_id],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .unwrap_or((None, 480.0, writing_text.split_whitespace().count() as i32));
@@ -2378,7 +2457,9 @@ pub async fn generate_video(
 
         // --- Phase 2: generate script with Claude ---
         let script_prompt_override = {
-            let db = s.db.lock().await;
+            let Some(db) = crate::db::get_conn_logged(&s.db) else {
+                return;
+            };
             queries::get_pipeline_prompt(&db, crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY)
                 .ok()
                 .flatten()
@@ -2392,8 +2473,9 @@ pub async fn generate_video(
         {
             Ok(r) => r,
             Err(e) => {
-                let db = s.db.lock().await;
-                let _ = queries::update_video_project_status(&db, &pid, "failed");
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::update_video_project_status(&db, &pid, "failed");
+                }
                 s.emit_log(
                     "ERROR",
                     "video",
@@ -2410,16 +2492,17 @@ pub async fn generate_video(
             script_result.output_tokens,
         );
         {
-            let db = s.db.lock().await;
-            let _ = queries::insert_cost_record(
-                &db,
-                "claude",
-                "claude-sonnet-4-20250514",
-                script_result.input_tokens,
-                script_result.output_tokens,
-                script_cost,
-                Some(&pid),
-            );
+            if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                let _ = queries::insert_cost_record(
+                    &db,
+                    "claude",
+                    "claude-sonnet-4-20250514",
+                    script_result.input_tokens,
+                    script_result.output_tokens,
+                    script_cost,
+                    Some(&pid),
+                );
+            }
         }
 
         let scene_count = script.scenes.len() as i32;
@@ -2427,8 +2510,9 @@ pub async fn generate_video(
 
         // Update project with script data, transition to 'generating'
         {
-            let db = s.db.lock().await;
-            let _ = queries::update_video_project_script(&db, &pid, &script_json, scene_count);
+            if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                let _ = queries::update_video_project_script(&db, &pid, &script_json, scene_count);
+            }
         }
 
         s.emit_log(
@@ -2445,9 +2529,14 @@ pub async fn generate_video(
         match crate::pipeline::video_gen::generate_video_from_script(&s, &pid, &mut script).await {
             Ok(video_path) => {
                 let updated_json = serde_json::to_string(&script).unwrap_or_default();
-                let db = s.db.lock().await;
-                let _ =
-                    queries::update_video_project_complete(&db, &pid, &video_path, &updated_json);
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::update_video_project_complete(
+                        &db,
+                        &pid,
+                        &video_path,
+                        &updated_json,
+                    );
+                }
                 s.emit_log(
                     "INFO",
                     "video",
@@ -2455,8 +2544,9 @@ pub async fn generate_video(
                 );
             }
             Err(e) => {
-                let db = s.db.lock().await;
-                let _ = queries::update_video_project_status(&db, &pid, "failed");
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::update_video_project_status(&db, &pid, "failed");
+                }
                 s.emit_log(
                     "ERROR",
                     "video",
@@ -2480,7 +2570,7 @@ pub async fn get_video_project(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let project = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_video_project(&db, &id)?
             .ok_or_else(|| AppError::NotFound("video project not found".into()))?
     };
@@ -2517,7 +2607,7 @@ pub async fn resume_video_project(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let project = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_video_project(&db, &id)?
             .ok_or_else(|| AppError::NotFound("video project not found".into()))?
     };
@@ -2565,7 +2655,7 @@ pub async fn resume_video_project(
 
     // Reset status to generating
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = queries::update_video_project_status(&db, &id, "generating");
     }
 
@@ -2586,9 +2676,14 @@ pub async fn resume_video_project(
         match result {
             Ok(video_path) => {
                 let updated_json = serde_json::to_string(&script).unwrap_or_default();
-                let db = s.db.lock().await;
-                let _ =
-                    queries::update_video_project_complete(&db, &pid, &video_path, &updated_json);
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::update_video_project_complete(
+                        &db,
+                        &pid,
+                        &video_path,
+                        &updated_json,
+                    );
+                }
                 s.emit_log(
                     "INFO",
                     "video",
@@ -2596,8 +2691,9 @@ pub async fn resume_video_project(
                 );
             }
             Err(e) => {
-                let db = s.db.lock().await;
-                let _ = queries::update_video_project_status(&db, &pid, "failed");
+                if let Some(db) = crate::db::get_conn_logged(&s.db) {
+                    let _ = queries::update_video_project_status(&db, &pid, "failed");
+                }
                 s.emit_log(
                     "ERROR",
                     "video",
@@ -2631,7 +2727,7 @@ pub async fn get_video_pipeline_config(
         .ok_or_else(|| AppError::BadRequest("login required".into()))?;
 
     let (script_prompt, image_template, sound_template, spend_7d, spend_all_time, recent_projects) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let script_prompt =
             queries::get_pipeline_prompt(&db, crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY)?
                 .unwrap_or_else(|| {
@@ -2713,7 +2809,7 @@ pub async fn save_video_pipeline_config(
     }
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::upsert_pipeline_prompt(
             &db,
             crate::pipeline::video_gen::VIDEO_SCRIPT_PROMPT_KEY,
@@ -3243,7 +3339,7 @@ pub async fn og_embed_image(State(state): State<AppState>) -> Result<Response, A
 
     // Get latest complete anky with user info
     let embed = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_latest_anky_for_embed(&db)?
     };
 
@@ -3934,7 +4030,7 @@ async fn render_anky_reflection_card_bytes(
     use imageproc::drawing::draw_text_mut;
 
     let anky = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_anky_by_id(&db, id)?
     }
     .ok_or_else(|| AppError::NotFound(format!("anky {} not found", id)))?;
@@ -4169,7 +4265,7 @@ pub async fn upload_studio_video(
     let scene_data = meta.get("scenes").map(|s| s.to_string());
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::insert_video_recording(
             &db,
             &video_id,
@@ -4229,7 +4325,7 @@ pub async fn get_feed(
     let per_page = query.per_page.clamp(1, 50);
 
     let items = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_feed(&db, viewer_id.as_deref(), page, per_page)?
     };
 
@@ -4277,7 +4373,7 @@ pub async fn toggle_like(
     };
 
     let (liked, count) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let liked = queries::toggle_like(&db, &user_id, &id)?;
         let count = queries::get_like_count(&db, &id)?;
         (liked, count)
@@ -4374,7 +4470,7 @@ pub async fn admin_story_tester(
         auth_token.ok_or_else(|| AppError::Unauthorized("authentication required".into()))?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_auth_session(&db, auth_token)?
             .ok_or_else(|| AppError::Unauthorized("invalid or expired session".into()))?;
     }
@@ -4407,7 +4503,7 @@ pub async fn story_test(
         .ok_or_else(|| AppError::Unauthorized("missing Authorization: Bearer header".into()))?;
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         queries::get_auth_session(&db, token)?
             .ok_or_else(|| AppError::Unauthorized("invalid or expired session token".into()))?;
     }
@@ -5199,7 +5295,7 @@ pub async fn mirror(
 
     // ── Cache check: return existing mirror if available ──
     if !force_regen {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         if let Ok(Some(cached)) = crate::db::queries::get_mirror_by_fid(&db, fid) {
             let (
                 id,
@@ -5210,6 +5306,7 @@ pub async fn mirror(
                 follower_count,
                 bio,
                 public_mirror,
+                gap,
                 descriptors_json,
                 image_path,
                 created_at,
@@ -5239,6 +5336,7 @@ pub async fn mirror(
                 "follower_count": follower_count,
                 "bio": bio,
                 "public_mirror": public_mirror,
+                "gap": gap,
                 "flux_descriptors": descriptors,
                 "anky_image_b64": image_b64,
                 "anky_image_mime": image_mime,
@@ -5401,7 +5499,7 @@ pub async fn mirror(
     };
 
     let user_message = format!(
-        "farcaster user: @{username}\ndisplay name: {display_name}\nbio: {bio}\nfollowers: {follower_count}\n\nprofile picture reads as:\n{pfp_block}\n\nrecent casts:\n{casts_block}\n\nreturn this exact JSON shape:\n{{\n  \"public_mirror\": \"2-3 paragraphs. second person ('you are someone who...'). warm, precise, slightly poetic. not flattery — truth. this is the self they perform publicly. end with one sentence that names the gap: what this person seems to be reaching for that they haven't yet said out loud.\",\n  \"flux_descriptors\": {{\n    \"energy\": \"one word — e.g. volcanic / still / scattered / rooted\",\n    \"archetype\": \"one word — e.g. builder / seeker / witness / herald\",\n    \"color_mood\": \"2-3 words — dominant emotional color palette\",\n    \"posture\": \"how this anky holds itself physically\",\n    \"aura\": \"one evocative phrase — the feeling this anky radiates\",\n    \"expression\": \"what emotion lives on this anky's face\",\n    \"held_object\": \"ONE specific object this anky holds that represents who this person is — not generic. derive it from their casts and interests. e.g. 'a cracked hourglass leaking starlight' or 'a hand-drawn map with no edges' or 'a burning letter they refuse to send'. make it symbolic and personal.\",\n    \"background_scene\": \"the specific environment behind this anky — derived from the person's world. not generic 'sacred temple'. e.g. 'a rooftop garden at dawn with half-finished code scrolling on floating screens' or 'the inside of a volcano where books grow from lava'. make it feel like THEIR world.\",\n    \"clothing_detail\": \"one distinctive clothing/armor detail unique to this anky — e.g. 'a cloak woven from old chat messages' or 'chest plate with a glowing compass that points inward' or 'bare-chested with constellation scars'. something that tells their story.\",\n    \"symbolic_marking\": \"a specific symbol or marking on the anky's body beyond the default gold forehead diamond — derived from the person's identity. e.g. 'spiral fractal tattoos down both arms' or 'a single word in an unknown script across the collarbone' or 'glowing circuit-board lines under translucent skin'\"\n  }}\n}}",
+        "farcaster user: @{username}\ndisplay name: {display_name}\nbio: {bio}\nfollowers: {follower_count}\n\nprofile picture reads as:\n{pfp_block}\n\nrecent casts:\n{casts_block}\n\nreturn this exact JSON shape:\n{{\n  \"public_mirror\": \"2-3 paragraphs. second person ('you are someone who...'). warm, precise, slightly poetic. not flattery — truth. this is the self they perform publicly. do NOT include the gap sentence here — that goes in its own field.\",\n  \"gap\": \"one single sentence. what this person seems to be reaching for that they haven't yet said out loud. the thing underneath the performance. this is the most important sentence — make it land.\",\n  \"flux_descriptors\": {{\n    \"energy\": \"one word — e.g. volcanic / still / scattered / rooted\",\n    \"archetype\": \"one word — e.g. builder / seeker / witness / herald\",\n    \"color_mood\": \"2-3 words — dominant emotional color palette\",\n    \"posture\": \"how this anky holds itself physically\",\n    \"aura\": \"one evocative phrase — the feeling this anky radiates\",\n    \"expression\": \"what emotion lives on this anky's face\",\n    \"held_object\": \"ONE specific object this anky holds that represents who this person is — not generic. derive it from their casts and interests. e.g. 'a cracked hourglass leaking starlight' or 'a hand-drawn map with no edges' or 'a burning letter they refuse to send'. make it symbolic and personal.\",\n    \"background_scene\": \"the specific environment behind this anky — derived from the person's world. not generic 'sacred temple'. e.g. 'a rooftop garden at dawn with half-finished code scrolling on floating screens' or 'the inside of a volcano where books grow from lava'. make it feel like THEIR world.\",\n    \"clothing_detail\": \"one distinctive clothing/armor detail unique to this anky — e.g. 'a cloak woven from old chat messages' or 'chest plate with a glowing compass that points inward' or 'bare-chested with constellation scars'. something that tells their story.\",\n    \"symbolic_marking\": \"a specific symbol or marking on the anky's body beyond the default gold forehead diamond — derived from the person's identity. e.g. 'spiral fractal tattoos down both arms' or 'a single word in an unknown script across the collarbone' or 'glowing circuit-board lines under translucent skin'\"\n  }}\n}}",
     );
 
     // Try Sonnet first, fall back to Haiku if overloaded/unavailable
@@ -5457,6 +5555,7 @@ pub async fn mirror(
     };
 
     let public_mirror = parsed["public_mirror"].as_str().unwrap_or("").to_string();
+    let gap = parsed["gap"].as_str().unwrap_or("").to_string();
     let fd = &parsed["flux_descriptors"];
     let descriptors = FluxDescriptors {
         energy: fd["energy"].as_str().unwrap_or("rooted").to_string(),
@@ -5552,7 +5651,7 @@ pub async fn mirror(
     .unwrap_or_default();
 
     {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let _ = crate::db::queries::insert_mirror(
             &db,
             &mirror_id,
@@ -5563,6 +5662,7 @@ pub async fn mirror(
             follower_count,
             bio,
             &public_mirror,
+            &gap,
             &descriptors_json,
             Some(&image_path),
         );
@@ -5577,6 +5677,7 @@ pub async fn mirror(
         "follower_count": follower_count,
         "bio": bio,
         "public_mirror": public_mirror,
+        "gap": gap,
         "flux_descriptors": {
             "energy": descriptors.energy,
             "archetype": descriptors.archetype,
@@ -5600,14 +5701,14 @@ pub async fn mirror(
 pub async fn mirror_latest_image(State(state): State<AppState>) -> Result<Response, AppError> {
     // Get latest mirror with image_path and avatar_url
     let (image_path, avatar_url) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db
             .prepare(
                 "SELECT image_path, avatar_url FROM mirrors WHERE image_path IS NOT NULL ORDER BY created_at DESC LIMIT 1",
             )
             .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
         let mut rows = stmt
-            .query_map([], |row| {
+            .query_map(crate::params![], |row| {
                 Ok((
                     row.get::<_, Option<String>>(0)?,
                     row.get::<_, Option<String>>(1)?,
@@ -5726,7 +5827,7 @@ pub async fn mirror_gallery(
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
 
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let rows = crate::db::queries::list_mirrors(&db, limit, offset)
         .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
 
@@ -5741,6 +5842,7 @@ pub async fn mirror_gallery(
                 avatar_url,
                 follower_count,
                 public_mirror,
+                gap,
                 descriptors_json,
                 image_path,
                 created_at,
@@ -5756,6 +5858,7 @@ pub async fn mirror_gallery(
                     "avatar_url": avatar_url,
                     "follower_count": follower_count,
                     "public_mirror": public_mirror,
+                    "gap": gap,
                     "flux_descriptors": descriptors,
                     "image_url": image_url,
                     "created_at": created_at,
@@ -5786,14 +5889,14 @@ pub async fn mirror_chat(
 
     // Load mirror from DB
     let (public_mirror, username, descriptors_json, bio) = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db
             .prepare(
                 "SELECT public_mirror, username, flux_descriptors_json, bio FROM mirrors WHERE id = ?1",
             )
             .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
         let mut rows = stmt
-            .query_map(rusqlite::params![mirror_id], |row| {
+            .query_map(crate::params![mirror_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -5952,12 +6055,12 @@ pub async fn mirror_mint_sig(
 
     // Look up mirror to get FID
     let fid = {
-        let db = state.db.lock().await;
+        let db = crate::db::conn(&state.db)?;
         let mut stmt = db
             .prepare("SELECT fid FROM mirrors WHERE id = ?1")
             .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
         let mut rows = stmt
-            .query_map(rusqlite::params![mirror_id], |row| row.get::<_, i64>(0))
+            .query_map(crate::params![mirror_id], |row| row.get::<_, i64>(0))
             .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
         rows.next()
             .and_then(|r| r.ok())
@@ -6019,7 +6122,7 @@ pub async fn mirror_metadata(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let db = state.db.lock().await;
+    let db = crate::db::conn(&state.db)?;
     let mut stmt = db
         .prepare(
             "SELECT fid, username, display_name, public_mirror, flux_descriptors_json, image_path, avatar_url
@@ -6027,7 +6130,7 @@ pub async fn mirror_metadata(
         )
         .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
     let row = stmt
-        .query_row(rusqlite::params![id], |row| {
+        .query_row(crate::params![id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -6167,4 +6270,85 @@ pub async fn ankycoin_latest_image() -> Result<Response, AppError> {
         "prompt": prompt,
     }))
     .into_response())
+}
+
+// ── Programming class generation ───────────────────────────────────────────
+
+/// POST /api/v1/classes/generate
+/// Body: { "title": "...", "concept": "...", "slides": [{"heading":"...","body":"...","code":"...","file":"...","note":"..."}, ...] }
+/// Stores a programming class with 8 text+code slides.
+pub async fn generate_class(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let title = body["title"]
+        .as_str()
+        .unwrap_or("untitled class")
+        .to_string();
+    let concept = body["concept"].as_str().unwrap_or("").to_string();
+    let description = body["description"].as_str().unwrap_or("").to_string();
+    let slides = &body["slides"];
+
+    if !slides.is_array() || slides.as_array().map(|a| a.len()).unwrap_or(0) == 0 {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(json!({"error": "slides array is required"})),
+        )
+            .into_response();
+    }
+
+    let class_number = {
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "database unavailable"})),
+                )
+                    .into_response();
+            }
+        };
+        queries::next_class_number(&db).unwrap_or(1)
+    };
+
+    let slides_json = serde_json::to_string(slides).unwrap_or_default();
+
+    let db = match crate::db::conn(&state.db) {
+        Ok(db) => db,
+        Err(e) => {
+            tracing::error!("database pool error: {}", e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "database unavailable"})),
+            )
+                .into_response();
+        }
+    };
+    if let Err(e) = queries::insert_programming_class(
+        &db,
+        class_number,
+        &title,
+        &description,
+        &concept,
+        &slides_json,
+        None,
+    ) {
+        tracing::error!("Failed to save class {}: {}", class_number, e);
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("save failed: {}", e)})),
+        )
+            .into_response();
+    }
+
+    tracing::info!("Class {} '{}' saved", class_number, title);
+
+    Json(json!({
+        "class_number": class_number,
+        "title": title,
+        "concept": concept,
+        "url": format!("https://anky.app/classes/{}", class_number),
+    }))
+    .into_response()
 }
