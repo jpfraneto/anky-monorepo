@@ -49,7 +49,14 @@ fn load_fonts() -> &'static Fonts {
 }
 
 pub fn new_frame_buffer() -> FrameBuffer {
-    let img = render_idle_frame();
+    // If fonts aren't available (e.g. Docker/Railway), use a blank frame
+    let img = if std::path::Path::new(MONO_PATH).exists()
+        && std::path::Path::new(RIGHTEOUS_PATH).exists()
+    {
+        render_idle_frame()
+    } else {
+        RgbaImage::from_pixel(WIDTH, HEIGHT, BG)
+    };
     Arc::new(RwLock::new(img))
 }
 
