@@ -12,9 +12,10 @@ pub fn init_start_time() {
 
 pub async fn health_check(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
     let gpu_status = state.gpu_status.read().await;
-    let total_cost = {
-        let db = crate::db::conn(&state.db)?;
-        crate::db::queries::get_total_cost(&db).unwrap_or(0.0)
+    // Don't fail healthcheck if DB is unreachable — cost is nice-to-have
+    let total_cost = match crate::db::conn(&state.db) {
+        Ok(db) => crate::db::queries::get_total_cost(&db).unwrap_or(0.0),
+        Err(_) => 0.0,
     };
 
     let uptime = START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);

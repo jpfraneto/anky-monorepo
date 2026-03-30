@@ -10,7 +10,8 @@ pub type DbPool = PgPool;
 pub async fn create_pool(database_url: &str) -> std::result::Result<PgPool, sqlx::Error> {
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        .min_connections(2)
+        .min_connections(0)
+        .acquire_timeout(std::time::Duration::from_secs(15))
         .connect(database_url)
         .await?;
 

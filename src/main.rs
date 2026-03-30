@@ -164,9 +164,10 @@ async fn main() -> anyhow::Result<()> {
         port
     );
 
-    // Open database
+    // Open database — log before connecting so we can diagnose hangs
+    tracing::info!("Connecting to database at {}", config.database_url);
     let db_pool = db::create_pool(&config.database_url).await?;
-    tracing::info!("Database initialized at {}", config.database_url);
+    tracing::info!("Database initialized");
 
     // Load templates
     let tera = tera::Tera::new("templates/**/*.html")?;
@@ -269,14 +270,18 @@ async fn main() -> anyhow::Result<()> {
         &format!("Anky server starting on port {}", port),
     );
 
-    if let Err(e) = storage::files::backfill_writings_to_files(&state).await {
-        tracing::error!("Writing archive backfill failed: {}", e);
-        state.emit_log(
-            "ERROR",
-            "writing_archive",
-            &format!("Startup backfill failed: {}", e),
-        );
-    }
+    // Run backfill in background so it doesn't delay server startup
+    let backfill_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = storage::files::backfill_writings_to_files(&backfill_state).await {
+            tracing::error!("Writing archive backfill failed: {}", e);
+            backfill_state.emit_log(
+                "ERROR",
+                "writing_archive",
+                &format!("Startup backfill failed: {}", e),
+            );
+        }
+    });
 
     // Honcho historical backfill — send all existing writings so Honcho builds user models
     if services::honcho::is_configured(&state.config) {
