@@ -216,38 +216,87 @@ pub struct GalleryQuery {
     pub tab: Option<String>,
 }
 
-pub async fn home(
+/// Miniapp HTML — single self-contained file, baked into the binary.
+static MINIAPP_HTML: &str = include_str!("../../templates/miniapp.html");
+
+/// Altar HTML served at /altar for web browsers (Stripe payments).
+static ALTAR_HTML: &str = include_str!("../../templates/altar.html");
+
+/// Login bridge HTML served at /login for phone-seal handoff.
+static LOGIN_HTML: &str = include_str!("../../templates/login.html");
+
+#[derive(Deserialize)]
+pub struct SealBridgeQuery {
+    pub challenge: Option<String>,
+}
+
+pub async fn altar_page() -> Html<String> {
+    Html(ALTAR_HTML.to_string())
+}
+
+pub async fn seal_bridge_page(
     State(state): State<AppState>,
-    jar: CookieJar,
-) -> Result<(CookieJar, Html<String>), AppError> {
-    // Set anonymous cookie on first visit
-    let jar = if jar.get("anky_user_id").is_none() {
-        let id = uuid::Uuid::new_v4().to_string();
-        let cookie = axum_extra::extract::cookie::Cookie::build(("anky_user_id", id))
-            .max_age(time::Duration::days(365))
-            .http_only(false)
-            .same_site(tower_cookies::cookie::SameSite::Lax)
-            .path("/")
-            .build();
-        jar.add(cookie)
+    Query(query): Query<SealBridgeQuery>,
+) -> Result<Html<String>, AppError> {
+    let challenge = query.challenge.unwrap_or_default();
+    let app_scheme_url = if challenge.is_empty() {
+        "anky://".to_string()
     } else {
-        jar
+        format!("anky://seal?challenge={}", urlencoding::encode(&challenge))
     };
 
-    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
     let mut ctx = tera::Context::new();
-    ctx.insert("privy_app_id", &state.config.privy_app_id);
-    ctx.insert("logged_in", &user.is_some());
-    if let Some(ref u) = user {
-        ctx.insert("user_id", &u.user_id);
-        ctx.insert("username", &u.username.as_deref().unwrap_or("anon"));
-        ctx.insert(
-            "profile_image_url",
-            &u.profile_image_url
-                .as_deref()
-                .unwrap_or("/static/icon-192.png"),
-        );
+    ctx.insert("app_scheme_url", &app_scheme_url);
+    ctx.insert("install_url", &state.config.ios_app_url);
+    let html = state.tera.render("seal.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn home(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Html<String>), AppError> {
+    let jar = crate::routes::auth::ensure_visitor_cookie(jar);
+
+    // Farcaster miniapp: serve React build for Warpcast/Farcaster clients or iframe embeds
+    let ua = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let fetch_dest = headers
+        .get("sec-fetch-dest")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let is_farcaster = ua.contains("Farcaster") || ua.contains("Warpcast") || fetch_dest == "iframe";
+
+    if is_farcaster {
+        return Ok((jar, Html(MINIAPP_HTML.to_string())));
     }
+
+    // Normal browser: serve the Tera landing page
+    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
+    let logged_in = user.is_some();
+    let profile_image_url = user
+        .as_ref()
+        .and_then(|u| u.profile_image_url.clone())
+        .unwrap_or_default();
+
+    let username = user
+        .as_ref()
+        .and_then(|u| u.username.clone())
+        .unwrap_or_default();
+
+    let wallet_address = user
+        .as_ref()
+        .and_then(|u| u.wallet_address.clone())
+        .unwrap_or_default();
+
+    let mut ctx = tera::Context::new();
+    ctx.insert("logged_in", &logged_in);
+    ctx.insert("profile_image_url", &profile_image_url);
+    ctx.insert("username", &username);
+    ctx.insert("wallet_address", &wallet_address);
     let html = state.tera.render("landing.html", &ctx)?;
     Ok((jar, Html(html)))
 }
@@ -275,25 +324,13 @@ pub async fn write_page(
         }
     }
 
-    // Set anonymous cookie on first visit so /write doesn't reject them
-    let jar = if jar.get("anky_user_id").is_none() {
-        let id = uuid::Uuid::new_v4().to_string();
-        let cookie = axum_extra::extract::cookie::Cookie::build(("anky_user_id", id))
-            .max_age(time::Duration::days(365))
-            .http_only(false)
-            .same_site(tower_cookies::cookie::SameSite::Lax)
-            .path("/")
-            .build();
-        jar.add(cookie)
-    } else {
-        jar
-    };
+    let jar = crate::routes::auth::ensure_visitor_cookie(jar);
 
     let user = crate::routes::auth::get_auth_user(&state, &jar).await;
     let username = user.as_ref().and_then(|u| u.username.clone());
     let logged_in = user.is_some();
 
-    let cookie_user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let cookie_user_id = crate::routes::auth::visitor_id_from_jar(&jar);
 
     // Resolve prompt: ?p={uuid} looks up DB, ?prompt={text} uses raw text
     let resolved_prompt = if let Some(ref uuid) = query.p {
@@ -371,7 +408,7 @@ pub async fn gallery(
     jar: CookieJar,
     Query(query): Query<GalleryQuery>,
 ) -> Result<Html<String>, AppError> {
-    let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let user_id = crate::routes::auth::visitor_id_from_jar(&jar);
     let has_user = user_id.is_some();
 
     let tab = match query.tab.as_deref() {
@@ -627,11 +664,8 @@ pub async fn ankycoin_page(State(state): State<AppState>) -> Result<Html<String>
     Ok(Html(html))
 }
 
-pub async fn login_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    let mut ctx = tera::Context::new();
-    ctx.insert("privy_app_id", &state.config.privy_app_id);
-    let html = state.tera.render("login.html", &ctx)?;
-    Ok(Html(html))
+pub async fn login_page() -> Html<String> {
+    Html(LOGIN_HTML.to_string())
 }
 
 pub async fn test_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -889,6 +923,24 @@ pub async fn stories_page(
     Ok(Html(html))
 }
 
+pub async fn ankys_page(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Html<String>, AppError> {
+    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
+    let mut ctx = tera::Context::new();
+    ctx.insert("logged_in", &user.is_some());
+    ctx.insert("active_tab", "ankys");
+    ctx.insert("r2_public_url", &state.config.r2_public_url);
+    if let Some(ref u) = user {
+        if let Some(ref uname) = u.username {
+            ctx.insert("username", uname);
+        }
+    }
+    let html = state.tera.render("ankys.html", &ctx)?;
+    Ok(Html(html))
+}
+
 pub async fn you_page(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -897,7 +949,6 @@ pub async fn you_page(
     let mut ctx = tera::Context::new();
     ctx.insert("logged_in", &user.is_some());
     ctx.insert("active_tab", "you");
-    ctx.insert("privy_app_id", &state.config.privy_app_id);
     if let Some(ref u) = user {
         ctx.insert("user_id", &u.user_id);
         ctx.insert("username", &u.username.as_deref().unwrap_or("anon"));
@@ -917,6 +968,23 @@ pub async fn you_page(
 pub async fn changelog(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let ctx = tera::Context::new();
     let html = state.tera.render("changelog.html", &ctx)?;
+    Ok(Html(html))
+}
+
+pub async fn easter_gallery(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let mut images: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir("static/easter") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".png") {
+                images.push(name);
+            }
+        }
+    }
+    images.sort();
+    let mut ctx = tera::Context::new();
+    ctx.insert("images", &images);
+    let html = state.tera.render("easter.html", &ctx)?;
     Ok(Html(html))
 }
 
@@ -1179,6 +1247,12 @@ pub async fn pitch(State(state): State<AppState>) -> Result<Html<String>, AppErr
     Ok(Html(html))
 }
 
+pub async fn station(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("station.html", &ctx)?;
+    Ok(Html(html))
+}
+
 /// Serve the auto-generated pitch deck PDF.
 pub async fn pitch_deck_pdf() -> Result<impl axum::response::IntoResponse, AppError> {
     let path = std::path::Path::new("static/pitch-deck.pdf");
@@ -1208,7 +1282,7 @@ pub async fn anky_detail(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> Result<Html<String>, AppError> {
-    let viewer_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let viewer_id = crate::routes::auth::visitor_id_from_jar(&jar);
 
     let anky = {
         let db = crate::db::conn(&state.db)?;
@@ -1760,4 +1834,73 @@ pub async fn classes_index(State(state): State<AppState>) -> Result<Html<String>
     ctx.insert("classes", &classes);
     let html = state.tera.render("classes_index.html", &ctx)?;
     Ok(Html(html))
+}
+
+pub async fn encoder(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let ctx = tera::Context::new();
+    let html = state.tera.render("encoder.html", &ctx)?;
+    Ok(Html(html))
+}
+
+/// API: return anky data with keystroke stream for the encoder page
+pub async fn encoder_data(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let db = crate::db::conn(&state.db)?;
+
+    // If anky_id provided, fetch that one; otherwise list all available
+    if let Some(anky_id) = params.get("id") {
+        let row = db.query_row(
+            "SELECT a.id, a.title, a.kingdom_name, a.image_path,
+                    ws.content, ws.keystroke_deltas, ws.duration_seconds, ws.word_count
+             FROM ankys a
+             JOIN writing_sessions ws ON ws.id = a.writing_session_id
+             WHERE a.id = ?1
+               AND ws.keystroke_deltas IS NOT NULL
+               AND length(ws.keystroke_deltas) > 10",
+            crate::params![anky_id],
+            |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "title": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    "kingdom": row.get::<_, Option<String>>(2)?.unwrap_or("Poiesis".into()),
+                    "image_path": row.get::<_, Option<String>>(3)?,
+                    "text": row.get::<_, String>(4)?,
+                    "keystroke_deltas": row.get::<_, Option<String>>(5)?,
+                    "duration": row.get::<_, f64>(6)?,
+                    "word_count": row.get::<_, i32>(7)?,
+                }))
+            },
+        );
+        match row {
+            Ok(data) => Ok(axum::Json(data)),
+            Err(_) => Ok(axum::Json(serde_json::json!({"error": "not found"}))),
+        }
+    } else {
+        // List all ankys with keystroke data
+        let mut stmt = db.prepare(
+            "SELECT a.id, a.title, a.kingdom_name, a.image_path,
+                    ws.word_count, ws.duration_seconds
+             FROM ankys a
+             JOIN writing_sessions ws ON ws.id = a.writing_session_id
+             WHERE ws.is_anky = 1
+               AND ws.keystroke_deltas IS NOT NULL
+               AND length(ws.keystroke_deltas) > 100
+               AND a.image_path IS NOT NULL
+             ORDER BY ws.created_at DESC"
+        )?;
+        let rows: Vec<serde_json::Value> = stmt.query_map(crate::params![], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "title": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                "kingdom": row.get::<_, Option<String>>(2)?.unwrap_or("Poiesis".into()),
+                "image_path": row.get::<_, Option<String>>(3)?,
+                "word_count": row.get::<_, i32>(4)?,
+                "duration": row.get::<_, f64>(5)?,
+            }))
+        })?.filter_map(|r| r.ok()).collect();
+
+        Ok(axum::Json(serde_json::json!({ "ankys": rows })))
+    }
 }

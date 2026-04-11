@@ -1,506 +1,551 @@
-{% extends "base.html" %}
-{% block title %}ANKY | {{ title }}{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>ANKY | {{ title }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="anky">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta property="og:title" content="ANKY | {{ title }}">
+  <meta property="og:description" content="{{ reflection | truncate(length=300) }}">
+  {% if image_webp %}<meta property="og:image" content="https://anky.app/data/images/{{ image_webp }}">
+  {% elif image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
+  <meta property="og:image:width" content="1024">
+  <meta property="og:image:height" content="1024">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://anky.app/anky/{{ id }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ANKY | {{ title }}">
+  <meta name="twitter:description" content="{{ reflection | truncate(length=300) }}">
+  {% if image_webp %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_webp }}">{% endif %}
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👽</text></svg>">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0a0a0a; color: #e0e0e0;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
 
-{% block head %}
-<style>
-  .anky-thread {
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 24px 16px 120px 16px;
-  }
+    :root { --app-vh: 100dvh; }
 
-  /* ── Section labels ─────────────────── */
-  .section-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: rgba(255,255,255,0.15);
-    margin-bottom: 16px;
-  }
-  .anky-section {
-    margin-bottom: 48px;
-    padding-bottom: 32px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
-  .anky-section:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-  }
+    .app {
+      display: flex; flex-direction: column;
+      min-height: 100dvh; width: 100%;
+      max-width: 640px; margin: 0 auto;
+      background: #0a0a0a;
+    }
 
-  /* ── Image ───────────────────────────── */
-  .anky-thread-image {
-    width: 100%;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 20px;
-  }
-  .anky-thread-image img {
-    width: 100%;
-    display: block;
-  }
-  .anky-thread-image .generating-placeholder {
-    aspect-ratio: 1;
-    background: #111;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255,255,255,0.2);
-    font-size: 14px;
-  }
+    /* ── TOP NAV ── */
+    .top-nav {
+      flex-shrink: 0; height: 52px;
+      display: flex; align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: sticky; top: 0; z-index: 10;
+      background: #0a0a0a;
+    }
+    .nav-back {
+      background: none; border: none; padding: 8px; cursor: pointer;
+      color: rgba(255,255,255,0.5); font-size: 20px;
+      display: flex; align-items: center; gap: 6px;
+      text-decoration: none; transition: color 0.2s;
+    }
+    .nav-back:hover { color: rgba(255,255,255,0.8); }
+    .nav-back-label { font-size: 14px; }
+    .nav-spacer { flex: 1; }
 
-  /* ── Title + meta ────────────────────── */
-  .anky-thread-title {
-    font-size: 22px;
-    font-weight: 400;
-    color: rgba(255,255,255,0.9);
-    margin: 0 0 8px 0;
-    line-height: 1.3;
-  }
-  .anky-thread-meta {
-    font-size: 12px;
-    color: rgba(255,255,255,0.25);
-    margin-bottom: 12px;
-  }
-  .anky-share-btn {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.4);
-    border-radius: 8px;
-    padding: 6px 14px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .anky-share-btn:hover {
-    border-color: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.6);
-  }
+    /* ── CONTENT ── */
+    .content-area {
+      flex: 1; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
 
-  /* ── Writing (always visible) ────────── */
-  .anky-thread-writing {
-    font-size: 14px;
-    line-height: 1.7;
-    color: rgba(255,255,255,0.4);
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    margin-bottom: 20px;
-    padding: 12px;
-    background: rgba(255,255,255,0.02);
-    border-radius: 8px;
-  }
+    .anky-thread {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px 16px 120px 16px;
+    }
 
-  /* ── Reflection ──────────────────────── */
-  .anky-thread-reflection {
-    font-size: 15px;
-    line-height: 1.8;
-    color: rgba(255,255,255,0.75);
-    margin-bottom: 24px;
-  }
-  .anky-thread-reflection h3 {
-    font-size: 17px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.85);
-    margin: 20px 0 8px 0;
-  }
-  .anky-thread-reflection h4 {
-    font-size: 15px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.8);
-    margin: 16px 0 6px 0;
-  }
-  .anky-thread-reflection strong { color: rgba(255,255,255,0.9); }
-  .anky-thread-reflection em { color: rgba(255,255,255,0.65); font-style: italic; }
-  .anky-thread-reflection p { margin: 0 0 12px 0; }
-  .anky-thread-reflection blockquote {
-    border-left: 2px solid rgba(255,255,255,0.1);
-    margin: 12px 0;
-    padding: 4px 12px;
-    color: rgba(255,255,255,0.5);
-  }
-  .anky-thread-reflection ul { padding-left: 20px; margin: 8px 0; }
-  .anky-thread-reflection li { margin-bottom: 4px; }
-  .anky-thread-reflection hr {
-    border: none;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    margin: 16px 0;
-  }
+    /* ── Section labels ─────────────────── */
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.15);
+      margin-bottom: 16px;
+    }
+    .anky-section {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .anky-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
 
-  .reflection-streaming .stream-cursor {
-    display: inline-block;
-    width: 2px;
-    height: 1em;
-    background: #7b2ff7;
-    margin-left: 2px;
-    vertical-align: text-bottom;
-    animation: blink 1s step-end infinite;
-  }
-  @keyframes blink { 50% { opacity: 0; } }
+    /* ── Image ───────────────────────────── */
+    .anky-thread-image {
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .anky-thread-image img {
+      width: 100%;
+      display: block;
+    }
+    .anky-thread-image .generating-placeholder {
+      aspect-ratio: 1;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.25);
+      font-size: 13px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+    .generating-placeholder::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        110deg,
+        transparent 25%,
+        rgba(123,47,247,0.06) 37%,
+        rgba(123,47,247,0.12) 50%,
+        rgba(123,47,247,0.06) 63%,
+        transparent 75%
+      );
+      background-size: 200% 100%;
+      animation: imgShimmer 2s ease-in-out infinite;
+    }
+    @keyframes imgShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .generating-placeholder .gen-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      opacity: 0.4;
+      animation: genPulse 2s ease-in-out infinite;
+    }
+    @keyframes genPulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.05); }
+    }
+    .generating-placeholder .gen-label {
+      position: relative; z-index: 1;
+      letter-spacing: 0.05em;
+    }
 
-  /* ── Story tab ───────────────────────── */
-  .anky-thread-tabs {
-    display: flex;
-    gap: 0;
-    margin-bottom: 16px;
-  }
-  .anky-thread-tab {
-    background: none;
-    border: none;
-    color: rgba(255,255,255,0.3);
-    font-size: 13px;
-    padding: 8px 20px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: color 0.2s, border-color 0.2s;
-    letter-spacing: 0.04em;
-  }
-  .anky-thread-tab:hover { color: rgba(255,255,255,0.5); }
-  .anky-thread-tab.active {
-    color: rgba(255,255,255,0.85);
-    border-bottom-color: rgba(255,255,255,0.4);
-  }
-  .anky-thread-tab-content { display: none; }
-  .anky-thread-tab-content.active { display: block; }
+    /* ── Title + meta ────────────────────── */
+    .anky-thread-title {
+      font-size: 22px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.9);
+      margin: 0 0 8px 0;
+      line-height: 1.3;
+    }
+    .anky-thread-meta {
+      font-size: 12px;
+      color: rgba(255,255,255,0.25);
+      margin-bottom: 12px;
+    }
+    .anky-share-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.4);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .anky-share-btn:hover {
+      border-color: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6);
+    }
 
-  .anky-story-meta {
-    font-size: 11px;
-    color: rgba(255,255,255,0.3);
-    margin-bottom: 6px;
-  }
-  .anky-story-title {
-    font-size: 18px;
-    font-weight: 400;
-    color: rgba(255,255,255,0.8);
-    margin: 0 0 14px 0;
-    font-style: italic;
-  }
-  .anky-story-content {
-    font-size: 15px;
-    line-height: 1.7;
-    color: rgba(255,255,255,0.65);
-    white-space: pre-line;
-  }
+    /* ── Writing (always visible) ────────── */
+    .anky-thread-writing {
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.4);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-bottom: 20px;
+      padding: 12px;
+      background: rgba(255,255,255,0.02);
+      border-radius: 8px;
+    }
 
-  /* ── Conversation ────────────────────── */
-  .conv-bubble {
-    max-width: 85%;
-    padding: 10px 14px;
-    border-radius: 16px;
-    font-size: 14px;
-    line-height: 1.5;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    margin-bottom: 8px;
-  }
-  .conv-bubble.user {
-    margin-left: auto;
-    background: #7b2ff7;
-    color: #fff;
-    border-bottom-right-radius: 4px;
-  }
-  .conv-bubble.anky {
-    background: #1a1a1a;
-    color: #e0e0e0;
-    border-bottom-left-radius: 4px;
-  }
-  .conv-thinking {
-    color: rgba(255,255,255,0.3);
-    font-style: italic;
-  }
+    /* ── Reflection ──────────────────────── */
+    .anky-thread-reflection {
+      font-size: 15px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.75);
+      margin-bottom: 24px;
+    }
+    .anky-thread-reflection h2 {
+      font-size: 19px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.9);
+      margin: 24px 0 10px 0;
+    }
+    .anky-thread-reflection h2:first-child { margin-top: 0; }
+    .anky-thread-reflection h3 {
+      font-size: 17px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.85);
+      margin: 20px 0 8px 0;
+    }
+    .anky-thread-reflection h4 {
+      font-size: 15px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.8);
+      margin: 16px 0 6px 0;
+    }
+    .anky-thread-reflection strong { color: rgba(255,255,255,0.9); }
+    .anky-thread-reflection em { color: rgba(255,255,255,0.65); font-style: italic; }
+    .anky-thread-reflection p { margin: 0 0 12px 0; }
+    .anky-thread-reflection blockquote {
+      border-left: 2px solid rgba(255,255,255,0.1);
+      margin: 12px 0;
+      padding: 4px 12px;
+      color: rgba(255,255,255,0.5);
+    }
+    .anky-thread-reflection ul { padding-left: 20px; margin: 8px 0; }
+    .anky-thread-reflection li { margin-bottom: 4px; }
+    .anky-thread-reflection hr {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin: 16px 0;
+    }
+    .anky-thread-reflection a {
+      color: #c9abff; text-decoration: underline; text-underline-offset: 2px;
+    }
 
-  /* ── Reply area ──────────────────────── */
-  .reply-suggestions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-    margin-top: 16px;
-  }
-  .reply-suggestion-btn {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.6);
-    border-radius: 12px;
-    padding: 10px 14px;
-    font-size: 14px;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.2s;
-    line-height: 1.4;
-  }
-  .reply-suggestion-btn:hover {
-    border-color: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.8);
-  }
-  .reply-custom-wrap {
-    display: flex;
-    gap: 8px;
-    align-items: flex-end;
-  }
-  .reply-textarea {
-    flex: 1;
-    background: #111;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 10px 14px;
-    color: #e0e0e0;
-    font-size: 14px;
-    font-family: inherit;
-    resize: none;
-    min-height: 20px;
-    max-height: 200px;
-    outline: none;
-  }
-  .reply-textarea:focus { border-color: rgba(255,255,255,0.2); }
-  .reply-textarea::placeholder { color: rgba(255,255,255,0.2); }
-  .reply-send-btn {
-    background: rgba(255,255,255,0.1);
-    border: none;
-    color: rgba(255,255,255,0.5);
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.2s;
-  }
-  .reply-send-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
-  .reply-send-btn:disabled { opacity: 0.3; cursor: default; }
+    .reflection-streaming .stream-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: #7b2ff7;
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
 
-  .anky-mode-hint {
-    font-size: 11px;
-    color: rgba(255,255,255,0.12);
-    text-align: center;
-    margin-top: 8px;
-    transition: color 0.3s;
-  }
-  .anky-mode-hint.active {
-    color: rgba(123,47,247,0.5);
-  }
+    /* ── Story tab ───────────────────────── */
+    .anky-thread-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+    }
+    .anky-thread-tab {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.3);
+      font-size: 13px;
+      padding: 8px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+      letter-spacing: 0.04em;
+    }
+    .anky-thread-tab:hover { color: rgba(255,255,255,0.5); }
+    .anky-thread-tab.active {
+      color: rgba(255,255,255,0.85);
+      border-bottom-color: rgba(255,255,255,0.4);
+    }
+    .anky-thread-tab-content { display: none; }
+    .anky-thread-tab-content.active { display: block; }
 
-  /* ── Login nudge ─────────────────────── */
-  .talk-login-nudge {
-    color: rgba(255,255,255,0.3);
-    font-size: 14px;
-    text-align: center;
-    padding: 24px 0;
-  }
-  .talk-login-nudge a {
-    color: rgba(255,255,255,0.5);
-    text-decoration: underline;
-  }
+    .anky-story-meta {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 6px;
+    }
+    .anky-story-title {
+      font-size: 18px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.8);
+      margin: 0 0 14px 0;
+      font-style: italic;
+    }
+    .anky-story-content {
+      font-size: 15px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.65);
+      white-space: pre-line;
+    }
 
-  /* ── Fullscreen writing mode (ANKY MODE) ── */
-  .anky-mode-surface {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    max-width: 640px;
-    margin: 0 auto;
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #e0e0e0;
-    background: #0a0a0a;
-    z-index: 9999;
-  }
-  .am-idle-bar-wrap {
-    flex-shrink: 0;
-    height: 3px;
-    width: 100%;
-    background: transparent;
-  }
-  .am-idle-bar-fill {
-    height: 100%;
-    width: 0%;
-    background: #ff4444;
-    transition: width 0.1s linear;
-    opacity: 0;
-  }
-  .am-idle-bar-fill.warning { opacity: 1; }
-  .am-prompt {
-    padding: 16px 16px 0 16px;
-    font-size: 17px;
-    line-height: 1.6;
-    color: rgba(255,255,255,0.15);
-    font-style: italic;
-    flex-shrink: 0;
-  }
-  .am-textarea {
-    flex: 1;
-    min-height: 0;
-    margin: 12px 16px 0 16px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    outline: none;
-    resize: none;
-    font-size: 16px;
-    line-height: 1.7;
-    color: #d0d0d0;
-    font-family: system-ui, -apple-system, sans-serif;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    caret-color: #7b2ff7;
-    overflow-y: auto;
-  }
-  .am-textarea::-webkit-scrollbar { width: 0; }
-  .am-bottom {
-    flex-shrink: 0;
-    padding: 8px 16px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .am-chakra-bar {
-    height: 3px;
-    width: 100%;
-    background: #1a1a1a;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .am-chakra-fill {
-    height: 100%;
-    width: 0%;
-    transition: width 0.1s linear;
-  }
-  .am-bottom-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    min-height: 36px;
-  }
-  .am-timer {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 18px;
-    color: #666;
-    font-variant-numeric: tabular-nums;
-  }
-  .am-timer.past-zero { color: #c4a0ff; }
-  .am-send-btn {
-    display: none;
-    background: #fff;
-    color: #0a0a0a;
-    border: none;
-    border-radius: 8px;
-    padding: 8px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .am-send-btn:hover { background: #e0e0e0; }
-  .am-send-btn.visible { display: block; }
-</style>
-<meta property="og:title" content="ANKY | {{ title }}">
-<meta property="og:description" content="{{ reflection | truncate(length=300) }}">
-{% if image_webp %}<meta property="og:image" content="https://anky.app/data/images/{{ image_webp }}">
-{% elif image_path %}<meta property="og:image" content="https://anky.app/data/images/{{ image_path }}">{% endif %}
-<meta property="og:image:width" content="1024">
-<meta property="og:image:height" content="1024">
-<meta property="og:type" content="article">
-<meta property="og:url" content="https://anky.app/anky/{{ id }}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="ANKY | {{ title }}">
-<meta name="twitter:description" content="{{ reflection | truncate(length=300) }}">
-{% if image_webp %}<meta name="twitter:image" content="https://anky.app/data/images/{{ image_webp }}">{% endif %}
-{% endblock %}
+    /* ── Conversation ────────────────────── */
+    .talk-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: min(760px, calc(var(--app-vh) - 160px));
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .conversation-thread {
+      flex: 1;
+      min-height: 320px;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overscroll-behavior: contain;
+      scroll-behavior: smooth;
+    }
+    .conv-bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      white-space: normal;
+      margin-bottom: 8px;
+    }
+    .conv-bubble.user {
+      margin-left: auto;
+      background: #7b2ff7;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+      white-space: pre-wrap;
+    }
+    .conv-bubble.anky {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      border-bottom-left-radius: 4px;
+    }
+    .conv-bubble.anky .msg-content p { margin: 0 0 12px 0; }
+    .conv-bubble.anky .msg-content p:last-child { margin-bottom: 0; }
+    .conv-bubble.anky .msg-content h2,
+    .conv-bubble.anky .msg-content h3,
+    .conv-bubble.anky .msg-content h4 {
+      margin: 0 0 10px 0;
+      color: rgba(255,255,255,0.92);
+      font-weight: 500;
+      line-height: 1.25;
+    }
+    .conv-bubble.anky .msg-content h2 { font-size: 17px; }
+    .conv-bubble.anky .msg-content h3,
+    .conv-bubble.anky .msg-content h4 { font-size: 15px; }
+    .conv-bubble.anky .msg-content ul { margin: 10px 0; padding-left: 18px; }
+    .conv-bubble.anky .msg-content li { margin-bottom: 6px; }
+    .conv-bubble.anky .msg-content blockquote {
+      margin: 12px 0; padding-left: 12px;
+      border-left: 2px solid rgba(255,255,255,0.14);
+      color: rgba(255,255,255,0.64);
+    }
+    .conv-bubble.anky .msg-content hr {
+      border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 14px 0;
+    }
+    .conv-bubble.anky .msg-content a { color: #c8b0ff; text-decoration: underline; }
+    .conv-bubble.anky .msg-content pre {
+      margin: 12px 0; padding: 12px;
+      background: rgba(0,0,0,0.35); border-radius: 12px; overflow-x: auto;
+    }
+    .conv-bubble.anky .msg-content code {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+    }
+    .conv-thinking { color: rgba(255,255,255,0.3); font-style: italic; }
 
-{% block content %}
-<div class="anky-thread" id="ankyThread">
+    /* ── Reply area ──────────────────────── */
+    .talk-input-panel {
+      flex-shrink: 0;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(10,10,10,0) 0%, rgba(10,10,10,0.94) 24%, rgba(10,10,10,0.98) 100%);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      backdrop-filter: blur(10px);
+    }
+    .reply-suggestions {
+      display: flex; flex-direction: column; gap: 8px;
+      margin-bottom: 12px; margin-top: 16px;
+    }
+    .reply-suggestion-btn {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.6);
+      border-radius: 12px; padding: 10px 14px;
+      font-size: 14px; text-align: left;
+      cursor: pointer; transition: all 0.2s; line-height: 1.4;
+    }
+    .reply-suggestion-btn:hover {
+      border-color: rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.8);
+    }
+    .reply-custom-wrap { display: flex; gap: 8px; align-items: flex-end; }
+    .reply-textarea {
+      flex: 1; background: #111;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 10px 14px;
+      color: #e0e0e0; font-size: 14px;
+      font-family: inherit; resize: none;
+      min-height: 20px; max-height: 200px; outline: none;
+    }
+    .reply-textarea:focus { border-color: rgba(255,255,255,0.2); }
+    .reply-textarea::placeholder { color: rgba(255,255,255,0.2); }
+    .reply-send-btn {
+      background: rgba(255,255,255,0.1); border: none;
+      color: rgba(255,255,255,0.5); border-radius: 10px;
+      padding: 10px 16px; font-size: 14px;
+      cursor: pointer; white-space: nowrap; transition: all 0.2s;
+    }
+    .reply-send-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+    .reply-send-btn:disabled { opacity: 0.3; cursor: default; }
 
-  <!-- SECTION 1: who the world sees -->
-  <section class="anky-section" id="sectionWorld">
-    <div class="section-label">who the world sees</div>
+    /* ── Login nudge ─────────────────────── */
+    .talk-login-nudge {
+      color: rgba(255,255,255,0.3);
+      font-size: 14px; text-align: center; padding: 24px 0;
+    }
+    .talk-login-nudge a {
+      color: rgba(255,255,255,0.5); text-decoration: underline;
+    }
 
-    {% if status == "complete" and image_path %}
-    <div class="anky-thread-image">
-      <picture>
-        {% if image_webp %}<source srcset="/data/images/{{ image_webp }}" type="image/webp">{% endif %}
-        <img src="/data/images/{{ image_path }}" alt="{{ title }}">
-      </picture>
+    @media (max-width: 768px) {
+      .anky-thread { padding-bottom: 32px; }
+      .talk-shell {
+        min-height: calc(var(--app-vh) - 96px);
+        margin-left: -4px; margin-right: -4px;
+      }
+      .conversation-thread { min-height: 0; padding-bottom: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <nav class="top-nav">
+    <a class="nav-back" href="/" title="back to home">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+      <span class="nav-back-label">back</span>
+    </a>
+    <div class="nav-spacer"></div>
+  </nav>
+
+  <div class="content-area">
+    <div class="anky-thread" id="ankyThread">
+
+      <!-- SECTION 1: who the world sees -->
+      <section class="anky-section" id="sectionWorld">
+        <div class="section-label">who the world sees</div>
+
+        {% if status == "complete" and image_path %}
+        <div class="anky-thread-image">
+          <picture>
+            {% if image_webp %}<source srcset="/data/images/{{ image_webp }}" type="image/webp">{% endif %}
+            <img src="/data/images/{{ image_path }}" alt="{{ title }}">
+          </picture>
+          <div style="margin-top:6px;font-size:11px;display:flex;gap:12px;opacity:0.3;">
+            <a href="/data/images/{{ image_path }}" download style="color:inherit;">download png</a>
+            {% if image_webp %}<a href="/data/images/{{ image_webp }}" download style="color:inherit;">download webp</a>{% endif %}
+          </div>
+        </div>
+        {% elif status == "generating" %}
+        <div class="anky-thread-image" id="imageSection">
+          <div class="generating-placeholder">
+            <div class="gen-icon">&#9998;</div>
+            <div class="gen-label">your anky is being born...</div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if title and title != "untitled" %}
+        <h1 class="anky-thread-title" id="threadTitle">{{ title }}</h1>
+        {% else %}
+        <h1 class="anky-thread-title" id="threadTitle"></h1>
+        {% endif %}
+        <div class="anky-thread-meta">
+          {{ created_at }}
+          {% if status == "complete" %}
+          <button class="anky-share-btn" id="shareBtn" style="margin-left:12px;">share</button>
+          {% endif %}
+        </div>
+      </section>
+
+      <!-- SECTION 2: your anky -->
+      <section class="anky-section" id="sectionYours">
+        <div class="section-label">your anky</div>
+
+        {% if writing %}
+        <div class="anky-thread-writing">{% if formatted_writing %}{{ formatted_writing }}{% else %}{{ writing }}{% endif %}</div>
+        {% endif %}
+
+        {% if reflection or has_story %}
+        {% if reflection and has_story %}
+        <div class="anky-thread-tabs">
+          <button class="anky-thread-tab active" data-tab="mind">reflection</button>
+          <button class="anky-thread-tab" data-tab="heart">story</button>
+        </div>
+        {% endif %}
+
+        {% if reflection %}
+        <div class="anky-thread-tab-content active" id="content-mind">
+          <div class="anky-thread-reflection" id="reflectionContent">{{ reflection }}</div>
+        </div>
+        {% endif %}
+
+        {% if has_story %}
+        <div class="anky-thread-tab-content {% if not reflection %}active{% endif %}" id="content-heart">
+          <div class="anky-story-meta">
+            {% if story_kingdom %}<span>{{ story_kingdom }}</span>{% endif %}
+            {% if story_city %} &middot; {{ story_city }}{% endif %}
+          </div>
+          <h3 class="anky-story-title">{{ story_title }}</h3>
+          <div class="anky-story-content">{{ story_content }}</div>
+        </div>
+        {% endif %}
+        {% elif status == "generating" %}
+        <div class="anky-thread-reflection reflection-streaming" id="reflectionContent"></div>
+        {% endif %}
+      </section>
+
+      <!-- SECTION 3: talk with this anky -->
+      <section class="anky-section" id="sectionTalk">
+        <div class="section-label">talk with this anky</div>
+
+        <div class="talk-shell">
+          <div class="conversation-thread" id="conversationThread"></div>
+
+          {% if is_logged_in | default(value=false) %}
+          <div class="talk-input-panel">
+            <div class="reply-suggestions" id="replySuggestions"></div>
+            <div class="reply-custom-wrap">
+              <textarea class="reply-textarea" id="replyInput" placeholder="talk to anky about this..." rows="1"></textarea>
+              <button class="reply-send-btn" id="replySendBtn" disabled>send</button>
+            </div>
+          </div>
+          {% else %}
+          <div class="talk-input-panel">
+            <div class="talk-login-nudge">
+              <a href="/login">seal on your phone</a> to talk with this anky
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
     </div>
-    {% elif status == "generating" %}
-    <div class="anky-thread-image">
-      <div class="generating-placeholder">generating...</div>
-    </div>
-    {% endif %}
-
-    {% if title and title != "untitled" %}
-    <h1 class="anky-thread-title" id="threadTitle">{{ title }}</h1>
-    {% else %}
-    <h1 class="anky-thread-title" id="threadTitle"></h1>
-    {% endif %}
-    <div class="anky-thread-meta">
-      {{ created_at }}
-      {% if status == "complete" %}
-      <button class="anky-share-btn" id="shareBtn" style="margin-left:12px;">share</button>
-      {% endif %}
-    </div>
-  </section>
-
-  <!-- SECTION 2: your anky -->
-  <section class="anky-section" id="sectionYours">
-    <div class="section-label">your anky</div>
-
-    {% if writing %}
-    <div class="anky-thread-writing">{% if formatted_writing %}{{ formatted_writing }}{% else %}{{ writing }}{% endif %}</div>
-    {% endif %}
-
-    {% if reflection or has_story %}
-    {% if reflection and has_story %}
-    <div class="anky-thread-tabs">
-      <button class="anky-thread-tab active" data-tab="mind">reflection</button>
-      <button class="anky-thread-tab" data-tab="heart">story</button>
-    </div>
-    {% endif %}
-
-    {% if reflection %}
-    <div class="anky-thread-tab-content active" id="content-mind">
-      <div class="anky-thread-reflection" id="reflectionContent">{{ reflection }}</div>
-    </div>
-    {% endif %}
-
-    {% if has_story %}
-    <div class="anky-thread-tab-content {% if not reflection %}active{% endif %}" id="content-heart">
-      <div class="anky-story-meta">
-        {% if story_kingdom %}<span>{{ story_kingdom }}</span>{% endif %}
-        {% if story_city %} · {{ story_city }}{% endif %}
-      </div>
-      <h3 class="anky-story-title">{{ story_title }}</h3>
-      <div class="anky-story-content">{{ story_content }}</div>
-    </div>
-    {% endif %}
-    {% elif status == "generating" %}
-    <div class="anky-thread-reflection reflection-streaming" id="reflectionContent"></div>
-    {% endif %}
-  </section>
-
-  <!-- SECTION 3: talk with this anky -->
-  <section class="anky-section" id="sectionTalk">
-    <div class="section-label">talk with this anky</div>
-
-    <div id="conversationThread"></div>
-
-    {% if is_logged_in | default(value=false) %}
-    <div class="reply-suggestions" id="replySuggestions"></div>
-    <div class="reply-custom-wrap">
-      <textarea class="reply-textarea" id="replyInput" placeholder="talk to anky about this..." rows="1"></textarea>
-      <button class="reply-send-btn" id="replySendBtn" disabled>send</button>
-    </div>
-    <div class="anky-mode-hint" id="ankyModeHint">keep typing and anky mode activates</div>
-    {% else %}
-    <div class="talk-login-nudge">
-      <a href="/login">log in</a> to talk with this anky
-    </div>
-    {% endif %}
-  </section>
-
+  </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
 (function() {
   var ankyId = '{{ id }}';
@@ -522,40 +567,143 @@
   });
 
   // ── Markdown renderer ───────────────────
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = String(s == null ? '' : s);
+    return div.innerHTML;
+  }
+
+  function sanitizeUrl(url) {
+    var value = String(url || '').trim();
+    if (!value) return '';
+    if (/^(https?:|mailto:|\/)/i.test(value)) {
+      return escapeHtml(value);
+    }
+    return '';
+  }
+
+  function renderInlineMarkdown(text) {
+    var html = escapeHtml(text);
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, url) {
+      var safe = sanitizeUrl(url);
+      if (!safe) return escapeHtml(label) + ' (' + escapeHtml(url) + ')';
+      var attrs = safe.charAt(0) === '/'
+        ? ''
+        : ' target="_blank" rel="noopener noreferrer"';
+      return '<a href="' + safe + '"' + attrs + '>' + escapeHtml(label) + '</a>';
+    });
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    html = html.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    return html;
+  }
+
   function renderMarkdown(text) {
-    return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/_(.+?)_/g, '<em>$1</em>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^---$/gm, '<hr>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br>');
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var html = [];
+    var paragraph = [];
+    var listItems = [];
+    var inCode = false;
+    var codeLines = [];
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      html.push('<p>' + paragraph.map(renderInlineMarkdown).join('<br>') + '</p>');
+      paragraph = [];
+    }
+
+    function flushList() {
+      if (!listItems.length) return;
+      html.push('<ul>' + listItems.map(function(item) {
+        return '<li>' + renderInlineMarkdown(item) + '</li>';
+      }).join('') + '</ul>');
+      listItems = [];
+    }
+
+    function flushCode() {
+      if (!codeLines.length) return;
+      html.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
+      codeLines = [];
+    }
+
+    lines.forEach(function(rawLine) {
+      var line = rawLine || '';
+
+      if (line.trim().slice(0, 3) === '```') {
+        flushParagraph();
+        flushList();
+        if (inCode) {
+          flushCode();
+          inCode = false;
+        } else {
+          inCode = true;
+        }
+        return;
+      }
+
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        return;
+      }
+
+      var heading = line.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        var level = heading[1].length;
+        if (level < 2) level = 2;
+        if (level > 4) level = 4;
+        html.push('<h' + level + '>' + renderInlineMarkdown(heading[2]) + '</h' + level + '>');
+        return;
+      }
+
+      if (/^---+$/.test(line.trim())) {
+        flushParagraph();
+        flushList();
+        html.push('<hr>');
+        return;
+      }
+
+      var quote = line.match(/^>\s?(.*)$/);
+      if (quote) {
+        flushParagraph();
+        flushList();
+        html.push('<blockquote>' + renderInlineMarkdown(quote[1]) + '</blockquote>');
+        return;
+      }
+
+      var bullet = line.match(/^\s*[-*]\s+(.+)$/);
+      if (bullet) {
+        flushParagraph();
+        listItems.push(bullet[1]);
+        return;
+      }
+
+      flushList();
+      paragraph.push(line);
+    });
+
+    flushParagraph();
+    flushList();
+    flushCode();
+
+    return html.join('');
   }
 
   function applyMarkdown(el) {
     if (!el) return;
     var raw = el.textContent;
     if (!raw.trim()) return;
-    var html = renderMarkdown(raw);
-    html = '<p>' + html + '</p>';
-    html = html.replace(/<p>\s*<\/p>/g, '');
-    html = html.replace(/<p>(<h[34]>)/g, '$1');
-    html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
-    html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
-    html = html.replace(/<p>(<ul>)/g, '$1');
-    html = html.replace(/(<\/ul>)<\/p>/g, '$1');
-    html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
-    html = html.replace(/<p>(<blockquote>)/g, '$1');
-    html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
-    el.innerHTML = html;
+    el.innerHTML = renderMarkdown(raw);
   }
 
   var reflEl = document.getElementById('reflectionContent');
@@ -574,15 +722,26 @@
         if (!streamDone) { streamDone = true; es.close(); location.reload(); }
       }, 90000);
 
+      var userScrolledUp = false;
+      var contentArea = document.querySelector('.content-area');
+      if (contentArea) {
+        contentArea.addEventListener('scroll', function() {
+          var distFromBottom = contentArea.scrollHeight - contentArea.scrollTop - contentArea.clientHeight;
+          userScrolledUp = distFromBottom > 150;
+        });
+      }
+
       es.onmessage = function(e) {
         rawText += e.data + '\n';
-        var html = renderMarkdown(rawText);
-        html = '<p>' + html + '</p>';
-        html = html.replace(/<p>\s*<\/p>/g, '');
-        html = html.replace(/<p>(<h[34]>)/g, '$1');
-        html = html.replace(/(<\/h[34]>)<\/p>/g, '$1');
-        reflEl.innerHTML = html + '<span class="stream-cursor"></span>';
-        window.scrollTo(0, document.body.scrollHeight);
+        reflEl.innerHTML = renderMarkdown(rawText) + '<span class="stream-cursor"></span>';
+        if (!userScrolledUp) {
+          var target = contentArea || window;
+          if (contentArea) {
+            contentArea.scrollTop = contentArea.scrollHeight;
+          } else {
+            window.scrollTo(0, document.body.scrollHeight);
+          }
+        }
       };
       es.addEventListener('done', function() {
         if (streamDone) return;
@@ -592,7 +751,29 @@
         reflEl.classList.remove('reflection-streaming');
         var cursor = reflEl.querySelector('.stream-cursor');
         if (cursor) cursor.remove();
-        setTimeout(function() { location.reload(); }, 2000);
+
+        // Show image skeleton if not already present
+        var imgSection = document.getElementById('imageSection');
+        if (imgSection) {
+          var label = imgSection.querySelector('.gen-label');
+          if (label) label.textContent = 'generating your anky image...';
+        }
+
+        // Poll for image completion instead of blind reload
+        var imgPollCount = 0;
+        var imgPoll = setInterval(function() {
+          imgPollCount++;
+          if (imgPollCount > 90) { clearInterval(imgPoll); location.reload(); return; }
+          fetch('/api/v1/anky/' + ankyId).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.status === 'complete') {
+              clearInterval(imgPoll);
+              location.reload();
+            } else if (imgPollCount % 10 === 0 && imgSection) {
+              var label = imgSection.querySelector('.gen-label');
+              if (label) label.textContent = 'still painting...';
+            }
+          }).catch(function() {});
+        }, 3000);
       });
       es.onerror = function() {
         if (streamDone) return;
@@ -615,16 +796,17 @@
   var replySendBtn = document.getElementById('replySendBtn');
   var chatHistory = [];
 
-  function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
+  function scrollConversation() {
+    if (!convEl) return;
+    setTimeout(function() {
+      convEl.scrollTop = convEl.scrollHeight;
+    }, 40);
   }
 
   // Load existing conversation
   var existingConv = null;
   {% if conversation_json %}
-  try { existingConv = JSON.parse('{{ conversation_json | safe }}'); } catch(e) {}
+  try { existingConv = JSON.parse({{ conversation_json | json_encode | safe }}); } catch(e) {}
   {% endif %}
 
   if (existingConv && existingConv.messages && existingConv.messages.length > 0) {
@@ -632,6 +814,7 @@
       addBubble(m.role === 'user' ? 'user' : 'anky', m.content);
       chatHistory.push({ role: m.role, content: m.content });
     });
+    scrollConversation();
   }
 
   function addBubble(type, text) {
@@ -639,7 +822,10 @@
     var bubble = document.createElement('div');
     bubble.className = 'conv-bubble ' + type;
     if (type === 'anky') {
-      bubble.innerHTML = renderMarkdown(text);
+      var content = document.createElement('div');
+      content.className = 'msg-content';
+      content.innerHTML = renderMarkdown(text);
+      bubble.appendChild(content);
     } else {
       bubble.innerHTML = escapeHtml(text);
     }
@@ -685,31 +871,43 @@
     if (!msg.trim()) return;
     if (suggestionsEl) suggestionsEl.innerHTML = '';
     addBubble('user', msg);
+    chatHistory.push({ role: 'user', content: msg });
+    scrollConversation();
 
     var thinking = document.createElement('div');
     thinking.className = 'conv-bubble anky conv-thinking';
     thinking.textContent = 'thinking...';
     convEl.appendChild(thinking);
-    // Scroll to top of thinking bubble
-    thinking.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollConversation();
 
     fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anky_id: ankyId, message: msg, history: chatHistory }),
+      body: JSON.stringify({ anky_id: ankyId, message: msg, history: chatHistory.slice(0, -1) }),
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      return r.json().then(function(data) {
+        if (!r.ok) {
+          throw new Error(data.error || 'something went wrong.');
+        }
+        return data;
+      });
+    })
     .then(function(data) {
-      chatHistory.push({ role: 'user', content: msg });
-      chatHistory.push({ role: 'assistant', content: data.response });
+      var reply = typeof data.response === 'string' ? data.response.trim() : '';
+      if (!reply) {
+        throw new Error('anky returned an empty reply. try again.');
+      }
+      chatHistory.push({ role: 'assistant', content: reply });
       thinking.className = 'conv-bubble anky';
-      thinking.innerHTML = renderMarkdown(data.response);
-      // Scroll to top of anky's reply
-      thinking.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      thinking.innerHTML = '<div class="msg-content">' + renderMarkdown(reply) + '</div>';
+      scrollConversation();
       fetchSuggestions();
     })
-    .catch(function() {
-      thinking.textContent = 'something went wrong.';
+    .catch(function(err) {
+      chatHistory.pop();
+      thinking.textContent = err && err.message ? err.message : 'something went wrong.';
+      scrollConversation();
     });
   }
 
@@ -723,331 +921,22 @@
     replyInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (replyInput.value.trim() && !ankyModeTriggered) {
+        if (replyInput.value.trim()) {
           sendReply(replyInput.value.trim());
           replyInput.value = '';
           replyInput.style.height = 'auto';
           replySendBtn.disabled = true;
-          resetTypingTracker();
         }
       }
     });
     replySendBtn.addEventListener('click', function() {
-      if (replyInput.value.trim() && !ankyModeTriggered) {
+      if (replyInput.value.trim()) {
         sendReply(replyInput.value.trim());
         replyInput.value = '';
         replyInput.style.height = 'auto';
         replySendBtn.disabled = true;
-        resetTypingTracker();
       }
     });
-  }
-
-  // ── 30-second ANKY MODE ─────────────────
-  var ANKY_MODE_THRESHOLD = 30;
-  var TYPING_IDLE_RESET = 5;
-  var typingStartedAt = null;
-  var lastTypingInputAt = null;
-  var typingCheckInterval = null;
-  var ankyModeTriggered = false;
-  var ankyModeHint = document.getElementById('ankyModeHint');
-
-  function resetTypingTracker() {
-    typingStartedAt = null;
-    lastTypingInputAt = null;
-    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
-    if (ankyModeHint) { ankyModeHint.classList.remove('active'); ankyModeHint.textContent = 'keep typing and anky mode activates'; }
-  }
-
-  if (replyInput) {
-    replyInput.addEventListener('input', function() {
-      if (ankyModeTriggered) return;
-      var now = Date.now();
-      lastTypingInputAt = now;
-      if (!typingStartedAt) {
-        typingStartedAt = now;
-        typingCheckInterval = setInterval(checkAnkyMode, 500);
-      }
-    });
-  }
-
-  function checkAnkyMode() {
-    if (ankyModeTriggered) return;
-    var now = Date.now();
-    // Reset if idle for 5+ seconds
-    if (lastTypingInputAt && (now - lastTypingInputAt) / 1000 > TYPING_IDLE_RESET) {
-      resetTypingTracker();
-      return;
-    }
-    var elapsed = typingStartedAt ? (now - typingStartedAt) / 1000 : 0;
-    // Update hint
-    if (ankyModeHint && elapsed > 10) {
-      var remaining = Math.ceil(ANKY_MODE_THRESHOLD - elapsed);
-      if (remaining > 0) {
-        ankyModeHint.classList.add('active');
-        ankyModeHint.textContent = 'anky mode in ' + remaining + 's...';
-      }
-    }
-    if (elapsed >= ANKY_MODE_THRESHOLD) {
-      triggerAnkyMode();
-    }
-  }
-
-  function triggerAnkyMode() {
-    ankyModeTriggered = true;
-    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
-
-    var carryOverText = replyInput ? replyInput.value.replace(/\n/g, ' ') : '';
-    var elapsedAlready = typingStartedAt ? (Date.now() - typingStartedAt) / 1000 : 0;
-
-    // Hide page
-    document.getElementById('ankyThread').style.display = 'none';
-    var navbar = document.querySelector('.navbar');
-    if (navbar) navbar.style.display = 'none';
-    var mobileNav = document.getElementById('mobile-nav');
-    if (mobileNav) mobileNav.style.display = 'none';
-    document.body.style.overflow = 'hidden';
-
-    // Create writing surface
-    var surface = document.createElement('div');
-    surface.className = 'anky-mode-surface';
-    surface.id = 'ankyModeSurface';
-    surface.innerHTML =
-      '<div class="am-idle-bar-wrap"><div class="am-idle-bar-fill" id="amIdleBar"></div></div>' +
-      '<div class="am-prompt">anky mode activated. keep going.</div>' +
-      '<textarea class="am-textarea" id="amTextarea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
-      '<div class="am-bottom">' +
-        '<div class="am-chakra-bar"><div class="am-chakra-fill" id="amChakra"></div></div>' +
-        '<div class="am-bottom-row">' +
-          '<span class="am-timer" id="amTimer">8:00</span>' +
-          '<button class="am-send-btn" id="amSendBtn">send</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(surface);
-
-    var textarea = document.getElementById('amTextarea');
-    textarea.value = carryOverText;
-    textarea.focus();
-    textarea.selectionStart = textarea.selectionEnd = carryOverText.length;
-
-    initAnkyModeSession(textarea, elapsedAlready);
-  }
-
-  function initAnkyModeSession(textarea, elapsedAlready) {
-    var CHAKRA_COLORS = ['#ff0000','#ff6600','#ffcc00','#33cc33','#3399ff','#6633cc','#9933ff','#ffffff'];
-    var IDLE_TIMEOUT = 8.0;
-    var IDLE_VISIBLE_AFTER = 3.0;
-    var SESSION_DURATION = 480.0;
-
-    var amState = 'writing';
-    var sessionStarted = Date.now() - (elapsedAlready * 1000);
-    var lastInputAt = Date.now();
-    var activeTime = elapsedAlready;
-    var pausedAtActive = 0;
-    var keystrokeDeltas = [];
-    var lastKeystrokeAt = null;
-    var sessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      var r = Math.random() * 16 | 0;
-      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
-
-    var idleBar = document.getElementById('amIdleBar');
-    var chakraFill = document.getElementById('amChakra');
-    var timer = document.getElementById('amTimer');
-    var sendBtn = document.getElementById('amSendBtn');
-
-    var tickInterval = setInterval(tick, 100);
-
-    // Keydown handler
-    textarea.addEventListener('keydown', function(e) {
-      if (amState === 'sent') { e.preventDefault(); return; }
-
-      if (amState === 'paused') {
-        if (e.key === 'Enter') { e.preventDefault(); doSend(); return; }
-        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); return; }
-        if (e.key.length === 1) { resumeFromPause(); }
-      }
-
-      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
-        e.preventDefault();
-        return;
-      }
-
-      if (amState === 'writing' && e.key.length === 1) {
-        var now = Date.now();
-        lastInputAt = now;
-        if (lastKeystrokeAt) keystrokeDeltas.push(now - lastKeystrokeAt);
-        lastKeystrokeAt = now;
-        idleBar.style.width = '0%';
-        idleBar.classList.remove('warning');
-      }
-    });
-
-    textarea.addEventListener('input', function() {
-      if (amState === 'paused') resumeFromPause();
-      if (textarea.value.includes('\n')) {
-        var pos = textarea.selectionStart;
-        textarea.value = textarea.value.replace(/\n/g, ' ');
-        textarea.selectionStart = textarea.selectionEnd = pos;
-      }
-      if (amState === 'writing') lastInputAt = Date.now();
-    });
-
-    textarea.addEventListener('paste', function(e) { e.preventDefault(); });
-
-    sendBtn.addEventListener('click', function() {
-      if (amState === 'paused') doSend();
-    });
-
-    function resumeFromPause() {
-      lastInputAt = Date.now();
-      sessionStarted = Date.now() - (pausedAtActive * 1000);
-      amState = 'writing';
-      sendBtn.classList.remove('visible');
-      idleBar.style.width = '0%';
-      idleBar.classList.remove('warning');
-      if (!tickInterval) tickInterval = setInterval(tick, 100);
-      textarea.focus();
-    }
-
-    function tick() {
-      if (amState !== 'writing') return;
-      var now = Date.now();
-      activeTime = (now - sessionStarted) / 1000;
-      var idleElapsed = (now - lastInputAt) / 1000;
-
-      if (idleElapsed > IDLE_VISIBLE_AFTER && textarea.value.length > 0) {
-        var idleProgress = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
-        idleBar.style.width = (idleProgress * 100) + '%';
-        idleBar.classList.add('warning');
-      } else {
-        idleBar.style.width = '0%';
-        idleBar.classList.remove('warning');
-      }
-
-      if (idleElapsed >= IDLE_TIMEOUT && textarea.value.length > 0) {
-        pauseSession();
-        return;
-      }
-
-      updateTimer();
-      updateChakra();
-    }
-
-    function pauseSession() {
-      amState = 'paused';
-      pausedAtActive = activeTime;
-      clearInterval(tickInterval);
-      tickInterval = null;
-      idleBar.style.width = '100%';
-      idleBar.classList.add('warning');
-      sendBtn.classList.add('visible');
-    }
-
-    function updateTimer() {
-      var remaining = SESSION_DURATION - activeTime;
-      if (remaining >= 0) {
-        var mins = Math.floor(remaining / 60);
-        var secs = Math.floor(remaining % 60);
-        timer.textContent = mins + ':' + String(secs).padStart(2, '0');
-        timer.classList.remove('past-zero');
-      } else {
-        var over = Math.abs(remaining);
-        var mins = Math.floor(over / 60);
-        var secs = Math.floor(over % 60);
-        timer.textContent = '+' + mins + ':' + String(secs).padStart(2, '0');
-        timer.classList.add('past-zero');
-      }
-    }
-
-    function updateChakra() {
-      var progress = Math.min(activeTime / SESSION_DURATION, 1);
-      var colorIdx = Math.min(Math.floor(progress * 8), 7);
-      var stops = [];
-      for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
-      chakraFill.style.background = stops.length === 1
-        ? stops[0]
-        : 'linear-gradient(to right, ' + stops.join(', ') + ')';
-      chakraFill.style.width = (progress * 100) + '%';
-    }
-
-    function calcFlowScore() {
-      if (keystrokeDeltas.length < 5) return 0;
-      var mean = keystrokeDeltas.reduce(function(a, b) { return a + b; }, 0) / keystrokeDeltas.length;
-      var variance = keystrokeDeltas.reduce(function(a, d) { return a + Math.pow(d - mean, 2); }, 0) / keystrokeDeltas.length;
-      var std = Math.sqrt(variance);
-      var cv = mean > 0 ? std / mean : 1;
-      var stability = Math.max(0, 1 - cv) * 0.45;
-      var totalPause = keystrokeDeltas.filter(function(d) { return d > 2000; }).reduce(function(a, d) { return a + d; }, 0) / 1000;
-      var continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
-      var density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
-      return Math.min(1, Math.max(0, stability + continuity + density));
-    }
-
-    function doSend() {
-      amState = 'sent';
-      var text = textarea.value;
-      var words = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-      var isAnky = activeTime >= 480 && words >= 300;
-      var flowScore = calcFlowScore();
-
-      // Submit writing
-      fetch('/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          duration: activeTime,
-          flow_score: flowScore,
-          session_id: sessionId,
-          keystroke_deltas: keystrokeDeltas,
-        }),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        // Remove writing surface
-        var surface = document.getElementById('ankyModeSurface');
-        if (surface) surface.remove();
-        document.body.style.overflow = '';
-
-        if (data.anky_id || data.ankyId) {
-          // New anky created — go to it
-          window.location.href = '/anky/' + (data.anky_id || data.ankyId);
-        } else {
-          // Short write — restore page and add as chat message
-          exitAnkyMode();
-          if (data.response) {
-            addBubble('user', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
-            var ankyBubble = addBubble('anky', data.response);
-            if (ankyBubble) ankyBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            chatHistory.push({ role: 'user', content: text });
-            chatHistory.push({ role: 'assistant', content: data.response });
-            fetchSuggestions();
-          } else {
-            exitAnkyMode();
-          }
-        }
-      })
-      .catch(function() {
-        var surface = document.getElementById('ankyModeSurface');
-        if (surface) surface.remove();
-        exitAnkyMode();
-      });
-    }
-  }
-
-  function exitAnkyMode() {
-    var surface = document.getElementById('ankyModeSurface');
-    if (surface) surface.remove();
-    document.getElementById('ankyThread').style.display = '';
-    var navbar = document.querySelector('.navbar');
-    if (navbar) navbar.style.display = '';
-    var mobileNav = document.getElementById('mobile-nav');
-    if (mobileNav) mobileNav.style.display = '';
-    document.body.style.overflow = '';
-    ankyModeTriggered = false;
-    resetTypingTracker();
-    if (replyInput) { replyInput.value = ''; replyInput.style.height = 'auto'; }
   }
 
   // ── Share ───────────────────────────────
@@ -1065,6 +954,24 @@
       }
     });
   }
+
+  function updateViewportHeight() {
+    var viewportHeight = window.visualViewport
+      ? window.visualViewport.height
+      : window.innerHeight;
+    document.documentElement.style.setProperty('--app-vh', viewportHeight + 'px');
+    scrollConversation();
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportHeight);
+    window.visualViewport.addEventListener('scroll', updateViewportHeight);
+  } else {
+    window.addEventListener('resize', updateViewportHeight);
+  }
+
+  updateViewportHeight();
 })();
 </script>
-{% endblock %}
+</body>
+</html>
