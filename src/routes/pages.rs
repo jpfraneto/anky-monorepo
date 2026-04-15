@@ -252,12 +252,20 @@ pub async fn seal_bridge_page(
     Ok(Html(html))
 }
 
+#[derive(serde::Deserialize, Default)]
+pub struct LangQuery {
+    pub lang: Option<String>,
+}
+
 pub async fn home(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
+    Query(lang_q): Query<LangQuery>,
 ) -> Result<(CookieJar, Html<String>), AppError> {
     let jar = crate::routes::auth::ensure_visitor_cookie(jar);
+    // Persist `?lang=` as a cookie so the choice sticks
+    let jar = set_lang_cookie_if_query(jar, lang_q.lang.as_deref());
 
     // Farcaster miniapp: serve React build for Warpcast/Farcaster clients or iframe embeds
     let ua = headers
@@ -268,7 +276,8 @@ pub async fn home(
         .get("sec-fetch-dest")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let is_farcaster = ua.contains("Farcaster") || ua.contains("Warpcast") || fetch_dest == "iframe";
+    let is_farcaster =
+        ua.contains("Farcaster") || ua.contains("Warpcast") || fetch_dest == "iframe";
 
     if is_farcaster {
         return Ok((jar, Html(MINIAPP_HTML.to_string())));
@@ -293,12 +302,38 @@ pub async fn home(
         .unwrap_or_default();
 
     let mut ctx = tera::Context::new();
+    crate::i18n::inject_into_context(
+        &state.i18n,
+        &mut ctx,
+        &headers,
+        &jar,
+        lang_q.lang.as_deref(),
+    );
     ctx.insert("logged_in", &logged_in);
     ctx.insert("profile_image_url", &profile_image_url);
     ctx.insert("username", &username);
     ctx.insert("wallet_address", &wallet_address);
     let html = state.tera.render("landing.html", &ctx)?;
     Ok((jar, Html(html)))
+}
+
+/// If `?lang=xx` is present, set the `anky_lang` cookie so future pages pick it up.
+fn set_lang_cookie_if_query(jar: CookieJar, lang: Option<&str>) -> CookieJar {
+    if let Some(l) = lang {
+        let primary = l.split('-').next().unwrap_or(l).trim().to_lowercase();
+        if !primary.is_empty()
+            && primary.len() <= 8
+            && primary.chars().all(|c| c.is_ascii_alphabetic())
+        {
+            let cookie = axum_extra::extract::cookie::Cookie::build(("anky_lang", primary))
+                .path("/")
+                .max_age(time::Duration::days(365))
+                .same_site(axum_extra::extract::cookie::SameSite::Lax)
+                .build();
+            return jar.add(cookie);
+        }
+    }
+    jar
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -329,6 +364,10 @@ pub async fn write_page(
     let user = crate::routes::auth::get_auth_user(&state, &jar).await;
     let username = user.as_ref().and_then(|u| u.username.clone());
     let logged_in = user.is_some();
+    let wallet_address = user
+        .as_ref()
+        .and_then(|u| u.wallet_address.clone())
+        .unwrap_or_default();
 
     let cookie_user_id = crate::routes::auth::visitor_id_from_jar(&jar);
 
@@ -366,10 +405,12 @@ pub async fn write_page(
     };
 
     let mut ctx = tera::Context::new();
+    crate::i18n::inject_into_context(&state.i18n, &mut ctx, &headers, &jar, None);
     if let Some(ref uname) = username {
         ctx.insert("username", uname);
     }
     ctx.insert("logged_in", &logged_in);
+    ctx.insert("wallet_address", &wallet_address);
     if let Some(ref uid) = cookie_user_id {
         ctx.insert("user_token", uid);
     }
@@ -943,11 +984,22 @@ pub async fn ankys_page(
 
 pub async fn you_page(
     State(state): State<AppState>,
+    headers: HeaderMap,
     jar: CookieJar,
-) -> Result<Html<String>, AppError> {
+    Query(lang_q): Query<LangQuery>,
+) -> Result<(CookieJar, Html<String>), AppError> {
+    let jar = crate::routes::auth::ensure_visitor_cookie(jar);
+    let jar = set_lang_cookie_if_query(jar, lang_q.lang.as_deref());
     let user = crate::routes::auth::get_auth_user(&state, &jar).await;
     let mut ctx = tera::Context::new();
-    ctx.insert("logged_in", &user.is_some());
+    crate::i18n::inject_into_context(
+        &state.i18n,
+        &mut ctx,
+        &headers,
+        &jar,
+        lang_q.lang.as_deref(),
+    );
+    ctx.insert("logged_in", &true);
     ctx.insert("active_tab", "you");
     if let Some(ref u) = user {
         ctx.insert("user_id", &u.user_id);
@@ -957,12 +1009,18 @@ pub async fn you_page(
             "profile_image_url",
             &u.profile_image_url
                 .as_deref()
-                .unwrap_or("/static/icon-192.png"),
+                .unwrap_or(""),
         );
         ctx.insert("email", &u.email.as_deref().unwrap_or(""));
+    } else if let Some(visitor_id) = crate::routes::auth::visitor_id_from_jar(&jar) {
+        ctx.insert("user_id", &visitor_id);
+        ctx.insert("username", &"you");
+        ctx.insert("display_name", &"YOU");
+        ctx.insert("profile_image_url", &"");
+        ctx.insert("email", &"");
     }
     let html = state.tera.render("you.html", &ctx)?;
-    Ok(Html(html))
+    Ok((jar, Html(html)))
 }
 
 pub async fn changelog(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -1279,9 +1337,12 @@ pub async fn pitch_subdomain_redirect() -> axum::response::Redirect {
 
 pub async fn anky_detail(
     State(state): State<AppState>,
+    headers: HeaderMap,
     jar: CookieJar,
     Path(id): Path<String>,
-) -> Result<Html<String>, AppError> {
+    Query(lang_q): Query<LangQuery>,
+) -> Result<(CookieJar, Html<String>), AppError> {
+    let jar = set_lang_cookie_if_query(jar, lang_q.lang.as_deref());
     let viewer_id = crate::routes::auth::visitor_id_from_jar(&jar);
 
     let anky = {
@@ -1302,6 +1363,13 @@ pub async fn anky_detail(
     let show_writing = anky.origin != "generated";
 
     let mut ctx = tera::Context::new();
+    crate::i18n::inject_into_context(
+        &state.i18n,
+        &mut ctx,
+        &headers,
+        &jar,
+        lang_q.lang.as_deref(),
+    );
     ctx.insert("id", &anky.id);
     ctx.insert("title", &anky.title.as_deref().unwrap_or("untitled"));
     ctx.insert("image_path", &anky.image_path.as_deref().unwrap_or(""));
@@ -1378,7 +1446,7 @@ pub async fn anky_detail(
     ctx.insert("conversation_json", &conversation_json);
 
     let html = state.tera.render("anky.html", &ctx)?;
-    Ok(Html(html))
+    Ok((jar, Html(html)))
 }
 
 pub async fn videos_gallery(
@@ -1888,19 +1956,643 @@ pub async fn encoder_data(
                AND ws.keystroke_deltas IS NOT NULL
                AND length(ws.keystroke_deltas) > 100
                AND a.image_path IS NOT NULL
-             ORDER BY ws.created_at DESC"
+             ORDER BY ws.created_at DESC",
         )?;
-        let rows: Vec<serde_json::Value> = stmt.query_map(crate::params![], |row| {
-            Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "title": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                "kingdom": row.get::<_, Option<String>>(2)?.unwrap_or("Poiesis".into()),
-                "image_path": row.get::<_, Option<String>>(3)?,
-                "word_count": row.get::<_, i32>(4)?,
-                "duration": row.get::<_, f64>(5)?,
-            }))
-        })?.filter_map(|r| r.ok()).collect();
+        let rows: Vec<serde_json::Value> = stmt
+            .query_map(crate::params![], |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "title": row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    "kingdom": row.get::<_, Option<String>>(2)?.unwrap_or("Poiesis".into()),
+                    "image_path": row.get::<_, Option<String>>(3)?,
+                    "word_count": row.get::<_, i32>(4)?,
+                    "duration": row.get::<_, f64>(5)?,
+                }))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(axum::Json(serde_json::json!({ "ankys": rows })))
     }
+}
+
+/// Classify an anky into one of the 8 ankyverse kingdoms (chakras) via Claude Haiku.
+/// Returns (kingdom_name, kingdom_id, reason). Cached per-anky in Postgres.
+async fn classify_anky_kingdom(
+    state: &AppState,
+    anky_id: &str,
+    reflection: &str,
+    writing: &str,
+    title: &str,
+) -> (String, i32, String) {
+    // Cached?
+    if let Ok(db) = crate::db::conn(&state.db) {
+        if let Ok((k, id, reason)) = db.query_row(
+            "SELECT kingdom_name, kingdom_id, reason FROM anky_kingdom_classification WHERE anky_id = ?1",
+            crate::params![anky_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i32>(1)?, r.get::<_, String>(2)?)),
+        ) {
+            return (k, id, reason);
+        }
+    }
+
+    // Build the kingdoms block for the prompt.
+    let mut kingdom_block = String::new();
+    for k in crate::kingdoms::KINGDOMS.iter() {
+        kingdom_block.push_str(&format!(
+            "- {} ({}, {}): lesson — {}\n",
+            k.name, k.chakra, k.element, k.lesson
+        ));
+    }
+
+    let system = "You are Anky, the oracle of the ankyverse. Your job is to read a single \
+writing session and say which of the 8 kingdoms it belongs to. Each kingdom is a chakra — a \
+distinct register of consciousness. Read for the underlying current, not the surface topic. \
+Return STRICT JSON only: {\"kingdom\":\"<Name>\",\"reason\":\"<one precise sentence, max 24 \
+words, explaining why>\"}. The kingdom name MUST be one of: Primordia, Emblazion, Chryseos, \
+Eleasis, Voxlumis, Insightia, Claridium, Poiesis.";
+
+    let user_prompt = format!(
+        "THE 8 KINGDOMS:\n{}\n\
+─────────\n\
+TITLE: {}\n\n\
+WRITING (raw stream from the person):\n{}\n\n\
+REFLECTION (what the oracle said back):\n{}\n\n\
+─────────\n\
+Now classify. Respond with JSON only.",
+        kingdom_block,
+        title,
+        writing.chars().take(1200).collect::<String>(),
+        reflection.chars().take(1500).collect::<String>(),
+    );
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    let fallback = || {
+        // Deterministic fallback: hash the anky id into one of 8.
+        let k = crate::kingdoms::kingdom_for_session(anky_id);
+        (
+            k.name.to_string(),
+            k.id as i32,
+            format!("classified by ankyverse resonance ({}).", k.chakra),
+        )
+    };
+
+    if api_key.is_empty() {
+        return fallback();
+    }
+
+    let result = crate::services::claude::call_claude_public(
+        &api_key,
+        crate::services::claude::HAIKU_MODEL,
+        system,
+        &user_prompt,
+        400,
+    )
+    .await;
+
+    let (kingdom_name, reason) = match result {
+        Ok(r) => {
+            // Strip code fences if present.
+            let raw = r.text.trim();
+            let json_str = raw
+                .trim_start_matches("```json")
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim();
+            match serde_json::from_str::<serde_json::Value>(json_str) {
+                Ok(v) => {
+                    let k = v
+                        .get("kingdom")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string());
+                    let r = v
+                        .get("reason")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    match k {
+                        Some(k) if crate::kingdoms::KINGDOMS.iter().any(|kk| kk.name == k) => {
+                            (k, r)
+                        }
+                        _ => return fallback(),
+                    }
+                }
+                Err(_) => return fallback(),
+            }
+        }
+        Err(e) => {
+            tracing::warn!("classify_anky_kingdom: {}", e);
+            return fallback();
+        }
+    };
+
+    let kingdom_id = crate::kingdoms::KINGDOMS
+        .iter()
+        .find(|k| k.name == kingdom_name)
+        .map(|k| k.id as i32)
+        .unwrap_or(0);
+
+    // Cache.
+    if let Ok(db) = crate::db::conn(&state.db) {
+        let _ = db.execute(
+            "INSERT INTO anky_kingdom_classification (anky_id, kingdom_name, kingdom_id, reason) \
+             VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT (anky_id) DO UPDATE SET kingdom_name = EXCLUDED.kingdom_name, \
+                 kingdom_id = EXCLUDED.kingdom_id, reason = EXCLUDED.reason",
+            crate::params![anky_id, &kingdom_name, &kingdom_id, &reason],
+        );
+    }
+
+    (kingdom_name, kingdom_id, reason)
+}
+
+/// Legacy 5-mood classifier (unused by new `/profile-testing` handler but kept
+/// in case future experiments want the keyword fallback).
+#[allow(dead_code)]
+fn classify_emotional_kingdom(reflection: &str, writing: &str, title: &str) -> &'static str {
+    let haystack = format!("{} {} {}", reflection, writing, title).to_lowercase();
+    let kingdoms: [(&str, &[&str]); 5] = [
+        (
+            "Fear",
+            &[
+                "fear", "afraid", "anxious", "anxiety", "trap", "cage", "contain", "stuck",
+                "scared", "panic", "threat", "danger", "dread", "tight", "clench", "hide", "avoid",
+            ],
+        ),
+        (
+            "Creativity",
+            &[
+                "create",
+                "creat",
+                "art",
+                "imagine",
+                "imagin",
+                "vision",
+                "idea",
+                "dream",
+                "kaleidosc",
+                "color",
+                "wild",
+                "dance",
+                "cascad",
+                "flow",
+                "invent",
+                "build",
+                "make",
+                "craft",
+                "play",
+                "whirl",
+                "spiral",
+                "psychedel",
+                "ayahuasca",
+                "dmt",
+            ],
+        ),
+        (
+            "Clarity",
+            &[
+                "clear",
+                "clarity",
+                "truth",
+                "thread",
+                "realize",
+                "understand",
+                "see clearly",
+                "arrival",
+                "frame",
+                "name it",
+                "naming",
+                "sharp",
+                "precise",
+                "crystal",
+                "focus",
+                "mirror",
+                "witness",
+                "surface",
+                "architecture",
+                "simpl",
+            ],
+        ),
+        (
+            "Grief",
+            &[
+                "grief",
+                "loss",
+                "lost",
+                "empty",
+                "ache",
+                "gone",
+                "sad",
+                "tear",
+                "mourn",
+                "absence",
+                "distance",
+                "ghost",
+                "slow",
+                "silent",
+                "lonel",
+                "alone",
+                "hermit",
+                "purge",
+                "throwing up",
+                "body",
+            ],
+        ),
+        (
+            "Love",
+            &[
+                "love", "tender", "soft", "heart", "warm", "family", "friend", "together", "kind",
+                "care", "belong", "thank", "hug", "plushie", "mother", "father", "home",
+            ],
+        ),
+    ];
+
+    let mut best = ("Creativity", 0i32);
+    for (name, keywords) in kingdoms.iter() {
+        let mut score = 0i32;
+        for kw in keywords.iter() {
+            if haystack.contains(kw) {
+                score += 1;
+            }
+        }
+        if score > best.1 {
+            best = (name, score);
+        }
+    }
+    best.0
+}
+
+fn image_public_url(path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") || path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/data/images/{}", path)
+    }
+}
+
+/// Generate (or reuse) the 3-4 sentence written portrait of the writer
+/// synthesized across ALL their sessions. Cached per user; invalidated when
+/// anky_count changes (i.e. they wrote a new one).
+async fn generate_user_portrait(
+    state: &AppState,
+    user_id: &str,
+    username: &str,
+    sessions: &[serde_json::Value],
+) -> String {
+    let anky_count = sessions.len() as i32;
+
+    // Cached and still valid?
+    if let Ok(db) = crate::db::conn(&state.db) {
+        if let Ok((portrait, cached_count)) = db.query_row(
+            "SELECT portrait, anky_count FROM anky_user_portrait WHERE user_id = ?1",
+            crate::params![user_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i32>(1)?)),
+        ) {
+            if cached_count == anky_count {
+                return portrait;
+            }
+        }
+    }
+
+    // Build the distribution + a compact digest of each session for Claude.
+    let mut by_kingdom: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    for s in sessions.iter() {
+        if let Some(k) = s.get("kingdom").and_then(|v| v.as_str()) {
+            *by_kingdom.entry(k.to_string()).or_insert(0) += 1;
+        }
+    }
+    let mut dist: Vec<(String, i32)> = by_kingdom.into_iter().collect();
+    dist.sort_by(|a, b| b.1.cmp(&a.1));
+    let dist_line = dist
+        .iter()
+        .map(|(k, c)| format!("{} ({})", k, c))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut sessions_block = String::new();
+    for (i, s) in sessions.iter().enumerate() {
+        let kingdom = s.get("kingdom").and_then(|v| v.as_str()).unwrap_or("");
+        let date = s.get("date").and_then(|v| v.as_str()).unwrap_or("");
+        let title = s.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let reason = s
+            .get("kingdom_reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let reflection = s.get("reflection").and_then(|v| v.as_str()).unwrap_or("");
+        sessions_block.push_str(&format!(
+            "[{}] {} — {} ({})\n  why: {}\n  oracle said: {}\n\n",
+            i + 1,
+            date,
+            kingdom,
+            title,
+            reason,
+            reflection.chars().take(280).collect::<String>(),
+        ));
+    }
+
+    let system = "You are Anky, the oracle. You have read everything this person has ever \
+written on the ankyverse. Your task is to write a single PORTRAIT of the writer as a whole — \
+who this person is, where they are right now, what the pattern of their writing reveals. \
+\
+Hard rules: \
+\
+1) Exactly 3 or 4 sentences. No more, no less. \
+2) Second person. Speak TO the writer (\"you\"), not about them. \
+3) Reference their actual kingdom distribution by name — e.g. \"you keep returning to Eleasis\" \
+   or \"most of your writing lives in the heart kingdom\". Be specific to the shape of THEIR map. \
+4) Reference a recurring theme or motif you notice across sessions (an image, a word, a posture). \
+5) No generic language. Forbidden phrases include: \"you are a thoughtful writer\", \"your \
+   writing shows\", \"introspective\", \"reflective\", \"on a journey\", \"finding yourself\". \
+6) Slightly uncanny. Like a close friend who has read every single one of their ankys. \
+7) Plain prose. No markdown, no headings, no quotes around it.";
+
+    let user_prompt = format!(
+        "WRITER: {}\n\
+TOTAL ANKYS: {}\n\
+KINGDOM DISTRIBUTION: {}\n\n\
+ALL THEIR SESSIONS (newest first):\n\n{}\n\n\
+Write the portrait now. 3-4 sentences. Plain text only.",
+        username, anky_count, dist_line, sessions_block,
+    );
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    if api_key.is_empty() {
+        return format!(
+            "your writing has landed mostly in {}. {} sessions in, a shape is forming.",
+            dist.first().map(|(k, _)| k.as_str()).unwrap_or("Poiesis"),
+            anky_count
+        );
+    }
+
+    let result = crate::services::claude::call_claude_public(
+        &api_key,
+        crate::services::claude::SONNET_MODEL,
+        system,
+        &user_prompt,
+        400,
+    )
+    .await;
+
+    let portrait = match result {
+        Ok(r) => {
+            let mut t = r.text.trim().to_string();
+            // strip wrapping quotes / code fences just in case
+            t = t
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim()
+                .to_string();
+            if t.starts_with('"') && t.ends_with('"') && t.len() > 2 {
+                t = t[1..t.len() - 1].to_string();
+            }
+            t
+        }
+        Err(e) => {
+            tracing::warn!("generate_user_portrait: {}", e);
+            format!(
+                "your writing has landed mostly in {}. {} sessions in, a shape is forming.",
+                dist.first().map(|(k, _)| k.as_str()).unwrap_or("Poiesis"),
+                anky_count
+            )
+        }
+    };
+
+    if let Ok(db) = crate::db::conn(&state.db) {
+        let _ = db.execute(
+            "INSERT INTO anky_user_portrait (user_id, portrait, anky_count) \
+             VALUES (?1, ?2, ?3) \
+             ON CONFLICT (user_id) DO UPDATE SET portrait = EXCLUDED.portrait, \
+                 anky_count = EXCLUDED.anky_count, \
+                 generated_at = to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')",
+            crate::params![user_id, &portrait, &anky_count],
+        );
+    }
+
+    portrait
+}
+
+/// GET /profile-testing — prototype of the new profile map.
+/// Loads the most prolific user (≥8 ankys), classifies each session into
+/// one of 8 ankyverse kingdoms, and renders the world-map profile.
+pub async fn profile_testing_page(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+    let db = crate::db::conn(&state.db)?;
+
+    // Pick the user with the most real ankys that have both reflection + image.
+    let user_id: String = db
+        .query_row(
+            "SELECT a.user_id
+               FROM ankys a
+               JOIN writing_sessions ws ON ws.id = a.writing_session_id
+              WHERE a.reflection IS NOT NULL
+                AND a.image_path IS NOT NULL
+              GROUP BY a.user_id
+             HAVING COUNT(*) >= 8
+              ORDER BY COUNT(*) DESC
+              LIMIT 1",
+            crate::params![],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "api-user".to_string());
+
+    let username: String = db
+        .query_row(
+            "SELECT COALESCE(username, display_name, id) FROM users WHERE id = ?1",
+            crate::params![&user_id],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| user_id.clone());
+
+    // Pull the latest 12 complete ankys for this user.
+    #[derive(Debug)]
+    struct Row {
+        id: String,
+        title: String,
+        reflection: String,
+        image_path: String,
+        content: String,
+        word_count: i64,
+        duration_seconds: f64,
+        created_at: String,
+    }
+
+    let rows: Vec<Row> = {
+        let mut stmt = db.prepare(
+            "SELECT a.id,
+                    COALESCE(a.title, 'untitled'),
+                    COALESCE(a.reflection, ''),
+                    COALESCE(a.image_webp, a.image_path, ''),
+                    COALESCE(ws.content, ''),
+                    COALESCE(ws.word_count, 0),
+                    COALESCE(ws.duration_seconds, 0.0),
+                    a.created_at
+               FROM ankys a
+               JOIN writing_sessions ws ON ws.id = a.writing_session_id
+              WHERE a.user_id = ?1
+                AND a.reflection IS NOT NULL
+                AND a.image_path IS NOT NULL
+              ORDER BY a.created_at DESC
+              LIMIT 12",
+        )?;
+        let iter = stmt.query_map(crate::params![&user_id], |r| {
+            Ok(Row {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                reflection: r.get(2)?,
+                image_path: r.get(3)?,
+                content: r.get(4)?,
+                word_count: r.get(5)?,
+                duration_seconds: r.get(6)?,
+                created_at: r.get(7)?,
+            })
+        })?;
+        iter.filter_map(|r| r.ok()).collect()
+    };
+
+    // Classify each anky in parallel via Claude Haiku (cached per-anky in DB).
+    let mut classifications: Vec<(String, i32, String)> = Vec::with_capacity(rows.len());
+    {
+        let mut futs = Vec::with_capacity(rows.len());
+        for r in rows.iter() {
+            futs.push(classify_anky_kingdom(
+                &state,
+                &r.id,
+                &r.reflection,
+                &r.content,
+                &r.title,
+            ));
+        }
+        let results = futures::future::join_all(futs).await;
+        classifications.extend(results);
+    }
+
+    // Build serializable sessions.
+    let sessions: Vec<serde_json::Value> = rows
+        .iter()
+        .zip(classifications.into_iter())
+        .map(|(r, (kingdom, kingdom_id, reason))| {
+            let secs = r.duration_seconds as i64;
+            let mins = secs / 60;
+            let rem = secs % 60;
+            let duration = format!("{}:{:02}", mins, rem);
+
+            // "apr 11" style. created_at is stored as "YYYY-MM-DD HH:MM:SS" (no TZ).
+            let date = chrono::NaiveDateTime::parse_from_str(&r.created_at, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .or_else(|| {
+                    chrono::DateTime::parse_from_rfc3339(&r.created_at)
+                        .ok()
+                        .map(|d| d.naive_utc())
+                })
+                .map(|d| d.format("%b %-d").to_string().to_lowercase())
+                .unwrap_or_else(|| r.created_at.clone());
+
+            // Trim the reflection: strip the "hey, thanks for being who you are. my thoughts:" preamble
+            // and any leading markdown heading so the quoted snippet reads cleanly.
+            let cleaned = r
+                .reflection
+                .replace("hey, thanks for being who you are. my thoughts:", "")
+                .trim()
+                .to_string();
+            // Strip leading "## ..." heading line
+            let after_heading = cleaned
+                .lines()
+                .skip_while(|l| l.trim().is_empty() || l.trim_start().starts_with('#'))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let trimmed = after_heading.trim();
+            // Take first ~2 sentences / 320 chars
+            let snippet: String = if trimmed.len() > 320 {
+                let cut = trimmed[..320]
+                    .rfind(|c: char| c == '.' || c == '!' || c == '?')
+                    .map(|i| i + 1)
+                    .unwrap_or(320);
+                trimmed[..cut].to_string()
+            } else {
+                trimmed.to_string()
+            };
+
+            let k_meta = crate::kingdoms::KINGDOMS
+                .iter()
+                .find(|k| k.name == kingdom)
+                .unwrap_or(&crate::kingdoms::KINGDOMS[7]);
+            serde_json::json!({
+                "id": r.id,
+                "title": r.title,
+                "kingdom": kingdom,
+                "kingdom_id": kingdom_id,
+                "kingdom_chakra": k_meta.chakra,
+                "kingdom_element": k_meta.element,
+                "kingdom_lesson": k_meta.lesson,
+                "kingdom_reason": reason,
+                "date": date,
+                "words": r.word_count,
+                "duration": duration,
+                "image_url": image_public_url(&r.image_path),
+                "reflection": snippet,
+                "sealed": r.duration_seconds >= 480.0,
+            })
+        })
+        .collect();
+
+    // Dominant kingdom
+    let mut counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    for s in &sessions {
+        if let Some(k) = s.get("kingdom").and_then(|v| v.as_str()) {
+            *counts.entry(k.to_string()).or_insert(0) += 1;
+        }
+    }
+    let dominant = counts
+        .iter()
+        .max_by_key(|(_, c)| **c)
+        .map(|(k, _)| k.clone())
+        .unwrap_or_else(|| "Poiesis".to_string());
+
+    // Hero image = latest anky's image
+    let hero_image = sessions
+        .first()
+        .and_then(|s| s.get("image_url").and_then(|v| v.as_str()))
+        .unwrap_or("/static/icon-192.png")
+        .to_string();
+
+    // Kingdom metadata for the front end (all 8, ordered by chakra)
+    let kingdoms_meta: Vec<serde_json::Value> = crate::kingdoms::KINGDOMS
+        .iter()
+        .map(|k| {
+            serde_json::json!({
+                "id": k.id,
+                "name": k.name,
+                "chakra": k.chakra,
+                "element": k.element,
+                "lesson": k.lesson,
+            })
+        })
+        .collect();
+
+    let kingdom_counts: Vec<serde_json::Value> = crate::kingdoms::KINGDOMS
+        .iter()
+        .filter_map(|k| {
+            counts.get(k.name).map(|c| {
+                serde_json::json!({
+                    "id": k.id,
+                    "name": k.name,
+                    "chakra": k.chakra,
+                    "count": c,
+                })
+            })
+        })
+        .collect();
+
+    let portrait = generate_user_portrait(&state, &user_id, &username, &sessions).await;
+
+    let mut ctx = tera::Context::new();
+    ctx.insert("username", &username);
+    ctx.insert("sessions", &sessions);
+    ctx.insert("dominant_kingdom", &dominant);
+    ctx.insert("hero_image", &hero_image);
+    ctx.insert("kingdom_counts", &kingdom_counts);
+    ctx.insert("kingdoms_meta", &kingdoms_meta);
+    ctx.insert("portrait", &portrait);
+
+    let html = state.tera.render("profile_testing.html", &ctx)?;
+    Ok(Html(html))
 }

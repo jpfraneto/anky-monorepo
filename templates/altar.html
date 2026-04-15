@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>anky — the altar</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👽</text></svg>">
+<meta property="og:title" content="anky — the altar" />
+<meta property="og:description" content="burn an offering. the altar remembers." />
+<meta property="og:image" content="https://anky.app/image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=IM+Fell+English:ital@0;1&family=Righteous&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: #04040d;
+  color: #e8e0d0;
+  font-family: 'Righteous', sans-serif;
+}
+
+/* ── Top nav ── */
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: rgba(4, 4, 13, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.top-nav a, .top-nav button {
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: rgba(232, 224, 208, 0.4);
+  text-decoration: none;
+  letter-spacing: 0.08em;
+  transition: color 0.2s;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.top-nav a:hover, .top-nav button:hover { color: rgba(232, 224, 208, 0.8); }
+.top-nav .nav-center {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(232, 224, 208, 0.6);
+  letter-spacing: 0.12em;
+}
+.nav-user {
+  font-size: 0.75rem;
+  color: rgba(232, 184, 75, 0.5);
+}
+
+/* ── Container ── */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 80px 1.5rem 3rem;
+  text-align: center;
+  gap: 1.5rem;
+}
+
+/* ── Altar image ── */
+.altar-image {
+  width: min(85vw, 400px);
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(232, 184, 75, 0.2), 0 0 60px rgba(232, 184, 75, 0.08);
+  transition: box-shadow 0.6s ease;
+}
+.altar-image.glow {
+  box-shadow: 0 0 50px rgba(232, 184, 75, 0.5), 0 0 100px rgba(232, 184, 75, 0.25), 0 0 150px rgba(232, 184, 75, 0.1);
+}
+
+/* ── Total burned ── */
+.total-burned {
+  font-family: 'Cinzel', serif;
+  font-size: 2rem;
+  font-weight: 900;
+  color: #E8B84B;
+  letter-spacing: 0.04em;
+}
+
+/* ── Burn input section ── */
+.burn-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  max-width: 320px;
+}
+.burn-input {
+  width: 100%;
+  padding: 0.9rem 1.2rem;
+  font-family: 'Cinzel', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  text-align: center;
+  background: transparent;
+  color: #E8B84B;
+  border: 1px solid rgba(232, 184, 75, 0.25);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.2s;
+  -moz-appearance: textfield;
+}
+.burn-input::-webkit-outer-spin-button,
+.burn-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.burn-input::placeholder { color: rgba(232, 184, 75, 0.25); }
+.burn-input:focus { border-color: rgba(232, 184, 75, 0.5); }
+
+.burn-btn {
+  width: 100%;
+  padding: 1rem;
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: #E8B84B;
+  color: #04040d;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+}
+.burn-btn:hover {
+  background: #FFD97D;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(232,184,75,0.3);
+}
+.burn-btn:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
+
+.burn-status {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.95rem;
+  color: rgba(232, 224, 208, 0.5);
+  min-height: 1.4em;
+}
+.burn-status.error { color: #ff6b6b; }
+.burn-status.success { color: #3DD6FF; }
+
+/* ── Leaderboard ── */
+.leaderboard {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+.section-title {
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(232, 224, 208, 0.25);
+  margin-bottom: 0.3rem;
+}
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.9rem;
+  color: rgba(232, 224, 208, 0.45);
+}
+.lb-rank { width: 1.6em; color: rgba(232, 184, 75, 0.35); font-style: normal; }
+.lb-name { flex: 1; text-align: left; padding: 0 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-amount { color: rgba(232, 184, 75, 0.5); font-style: normal; font-family: 'Cinzel', serif; font-size: 0.85rem; }
+
+/* ── Recent burns ── */
+.recent-burns {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.5rem;
+}
+.recent-row {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  color: rgba(232, 224, 208, 0.3);
+}
+
+/* ── QR Login modal ── */
+.qr-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0,0,0,0.85);
+  align-items: center;
+  justify-content: center;
+}
+.qr-overlay.active { display: flex; }
+.qr-modal {
+  background: #0a0a14;
+  border: 1px solid rgba(232, 184, 75, 0.15);
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 340px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+}
+.qr-title {
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(232, 224, 208, 0.7);
+  letter-spacing: 0.1em;
+}
+.qr-sub {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.9rem;
+  color: rgba(232, 224, 208, 0.4);
+  line-height: 1.5;
+}
+.qr-code-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 212px;
+  min-height: 212px;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.qr-code-link svg {
+  display: block;
+  width: 180px;
+  height: 180px;
+}
+.qr-code-link.is-action {
+  cursor: pointer;
+  width: min(100%, 280px);
+  min-height: 0;
+  padding: 16px 20px;
+  background: #E8B84B;
+  color: #04040d;
+}
+.qr-code-link.is-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(232,184,75,0.16);
+}
+.qr-placeholder,
+.qr-link-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.5;
+}
+.qr-placeholder {
+  color: rgba(4, 4, 13, 0.6);
+  max-width: 10rem;
+}
+.qr-link-label {
+  color: inherit;
+}
+.qr-error {
+  min-height: 1.3em;
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.88rem;
+  color: #ff6b6b;
+  text-align: center;
+}
+.qr-waiting {
+  font-size: 0.8rem;
+  color: rgba(232, 224, 208, 0.3);
+  letter-spacing: 0.05em;
+}
+.qr-waiting .dot { animation: dotBlink 1.4s infinite; }
+.qr-waiting .dot:nth-child(2) { animation-delay: 0.2s; }
+.qr-waiting .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotBlink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+.qr-close {
+  background: none;
+  border: 1px solid rgba(232, 224, 208, 0.15);
+  color: rgba(232, 224, 208, 0.3);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: 'Righteous', sans-serif;
+}
+.qr-close:hover { border-color: rgba(232, 224, 208, 0.3); color: rgba(232, 224, 208, 0.5); }
+
+.anon-note {
+  font-family: 'IM Fell English', Georgia, serif;
+  font-style: italic;
+  font-size: 0.8rem;
+  color: rgba(232, 224, 208, 0.25);
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="/write">&larr; write</a>
+  <span class="nav-center">the altar</span>
+  <span id="navRight">
+    <button id="loginBtn" onclick="startQrLogin()">login &rarr;</button>
+    <span class="nav-user" id="navUser" style="display:none"></span>
+  </span>
+</nav>
+
+<!-- QR login modal -->
+<div class="qr-overlay" id="qrOverlay">
+  <div class="qr-modal">
+    <div class="qr-title">login with your phone</div>
+    <div class="qr-sub" id="qrSub">scan this with your anky app to connect your identity</div>
+    <a class="qr-code-link" id="qrDeeplink" aria-label="Login with the anky app">
+      <span class="qr-placeholder">preparing login...</span>
+    </a>
+    <div class="qr-error" id="qrError" hidden></div>
+    <div class="qr-waiting" id="qrWaiting" hidden>waiting for login<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+    <button class="qr-close" onclick="closeQrLogin()">cancel</button>
+  </div>
+</div>
+
+<div class="container">
+  <img class="altar-image" id="altarImage" src="/image.png" alt="anky" />
+
+  <div class="total-burned" id="totalBurned">$0.00 burned</div>
+
+  <div class="burn-section">
+    <input class="burn-input" id="burnInput" type="number" min="1" step="0.01" value="1.11" placeholder="$" />
+    <button class="burn-btn" id="burnBtn">burn</button>
+    <div class="burn-status" id="burnStatus"></div>
+    <div class="anon-note" id="anonNote">burning anonymously. <a href="#" onclick="startQrLogin(); return false;" style="color: rgba(232,184,75,0.4);">log in to be remembered.</a></div>
+  </div>
+
+  <div class="leaderboard" id="leaderboard">
+    <div class="section-title">top offerings</div>
+  </div>
+
+  <div class="recent-burns" id="recentBurns">
+    <div class="section-title">recent</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const $altarImage = document.getElementById('altarImage');
+  const $totalBurned = document.getElementById('totalBurned');
+  const $burnInput = document.getElementById('burnInput');
+  const $burnBtn = document.getElementById('burnBtn');
+  const $burnStatus = document.getElementById('burnStatus');
+  const $leaderboard = document.getElementById('leaderboard');
+  const $recentBurns = document.getElementById('recentBurns');
+  const $qrSub = document.getElementById('qrSub');
+  const $qrDeeplink = document.getElementById('qrDeeplink');
+  const $qrError = document.getElementById('qrError');
+  const $qrWaiting = document.getElementById('qrWaiting');
+
+  let altarData = null;
+  let solanaAddress = null;
+  let activeQrChallenge = null;
+  const mobileQrMedia = window.matchMedia('(max-width: 768px), (pointer: coarse)');
+
+  // Check for existing session
+  // (cookie-based — if they sealed before, they're still logged in)
+  async function checkSession() {
+    try {
+      const resp = await fetch('/api/me');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.wallet_address || data.solana_address) {
+          solanaAddress = data.wallet_address || data.solana_address;
+          showLoggedIn();
+        }
+      }
+    } catch(e) {}
+  }
+  checkSession();
+
+  function showLoggedIn() {
+    document.getElementById('loginBtn').style.display = 'none';
+    const navUser = document.getElementById('navUser');
+    navUser.textContent = solanaAddress.slice(0, 4) + '..' + solanaAddress.slice(-4);
+    navUser.style.display = 'inline';
+    document.getElementById('anonNote').style.display = 'none';
+  }
+
+  function formatUsd(microUsdc) {
+    return '$' + (microUsdc / 1000000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function timeAgo(dateStr) {
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  function truncAddr(a) {
+    if (!a || a.length < 12) return a || 'anon';
+    return a.slice(0, 6) + '..' + a.slice(-4);
+  }
+
+  function render(data) {
+    altarData = data;
+    $altarImage.src = data.image_url;
+    $totalBurned.textContent = formatUsd(data.total_burned_usdc) + ' burned';
+
+    const lbTitle = $leaderboard.querySelector('.section-title');
+    $leaderboard.innerHTML = '';
+    $leaderboard.appendChild(lbTitle);
+    (data.top_burners || []).forEach((b, i) => {
+      const row = document.createElement('div');
+      row.className = 'lb-row';
+      const name = b.display_name || truncAddr(b.user_identifier);
+      row.innerHTML = '<span class="lb-rank">' + (i+1) + '.</span><span class="lb-name">' + name + '</span><span class="lb-amount">' + formatUsd(b.total_usdc) + '</span>';
+      $leaderboard.appendChild(row);
+    });
+
+    const rbTitle = $recentBurns.querySelector('.section-title');
+    $recentBurns.innerHTML = '';
+    $recentBurns.appendChild(rbTitle);
+    (data.recent_burns || []).forEach(b => {
+      const row = document.createElement('div');
+      row.className = 'recent-row';
+      row.textContent = (b.display_name || 'anon') + ' burned ' + formatUsd(b.amount_usdc) + ' \u2014 ' + timeAgo(b.created_at);
+      $recentBurns.appendChild(row);
+    });
+  }
+
+  async function loadAltar() {
+    try {
+      const resp = await fetch('/api/altar');
+      if (resp.ok) render(await resp.json());
+    } catch(e) { console.error('load altar:', e); }
+  }
+  loadAltar();
+
+  // ── QR Login ──
+  let qrPollTimer = null;
+
+  function getQrSubtitle() {
+    if (mobileQrMedia.matches) {
+      return 'you are already on your phone. tap below to open anky, or download it if this phone does not have it yet.';
+    }
+    return 'scan this with your phone camera. it will open anky if it is installed, or send you to the download.';
+  }
+
+  function setQrCardMarkup(markup) {
+    $qrDeeplink.innerHTML = markup;
+  }
+
+  function resetQrCard() {
+    activeQrChallenge = null;
+    $qrSub.textContent = getQrSubtitle();
+    $qrError.hidden = true;
+    $qrError.textContent = '';
+    $qrWaiting.hidden = true;
+    $qrDeeplink.removeAttribute('href');
+    $qrDeeplink.classList.remove('is-action');
+    setQrCardMarkup('<span class="qr-placeholder">preparing your seal...</span>');
+  }
+
+  function showQrError(message, deeplink) {
+    $qrError.textContent = message;
+    $qrError.hidden = false;
+    $qrWaiting.hidden = true;
+
+    if (deeplink) {
+      $qrDeeplink.href = deeplink;
+      $qrDeeplink.classList.add('is-action');
+      setQrCardMarkup('<span class="qr-link-label">open anky</span>');
+    } else {
+      $qrDeeplink.removeAttribute('href');
+      $qrDeeplink.classList.remove('is-action');
+      setQrCardMarkup('<span class="qr-placeholder">seal unavailable right now</span>');
+    }
+  }
+
+  async function readJson(resp) {
+    try {
+      return await resp.json();
+    } catch (e) {
+      return {};
+    }
+  }
+
+  window.startQrLogin = async function() {
+    const overlay = document.getElementById('qrOverlay');
+    overlay.classList.add('active');
+    resetQrCard();
+
+    try {
+      const resp = await fetch('/api/auth/qr', { method: 'POST' });
+      const data = await readJson(resp);
+
+      if (!resp.ok) {
+        throw new Error(data.error || 'could not create a seal request');
+      }
+      if (!data.id || !data.deeplink) {
+        throw new Error('seal request was incomplete');
+      }
+
+      renderQrCode(data);
+
+      // Poll for seal
+      if (qrPollTimer) clearInterval(qrPollTimer);
+      qrPollTimer = setInterval(async () => {
+        try {
+          const poll = await fetch('/api/auth/qr/' + data.id);
+          const status = await poll.json();
+          if (status.sealed && status.session_token) {
+            clearInterval(qrPollTimer);
+            qrPollTimer = null;
+            // Set session cookie
+            document.cookie = 'anky_session=' + status.session_token + '; path=/; max-age=2592000; secure; samesite=lax';
+            solanaAddress = status.solana_address;
+            showLoggedIn();
+            overlay.classList.remove('active');
+          }
+        } catch(e) {}
+      }, 2000);
+
+      // Auto-expire after 5 min
+      setTimeout(() => {
+        if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+      }, 300000);
+
+    } catch(e) {
+      console.error('qr login error:', e);
+      showQrError(e.message || 'could not create a seal request', activeQrChallenge && activeQrChallenge.deeplink);
+    }
+  };
+
+  window.closeQrLogin = function() {
+    document.getElementById('qrOverlay').classList.remove('active');
+    if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+  };
+
+  function renderQrCode(data) {
+    activeQrChallenge = data;
+    $qrSub.textContent = getQrSubtitle();
+    $qrError.hidden = true;
+    $qrError.textContent = '';
+    $qrWaiting.hidden = false;
+
+    if (mobileQrMedia.matches) {
+      $qrDeeplink.href = data.deeplink;
+      $qrDeeplink.classList.add('is-action');
+      setQrCardMarkup('<span class="qr-link-label">open anky</span>');
+      return;
+    }
+
+    if (data.qr_svg) {
+      setQrCardMarkup(data.qr_svg);
+      $qrDeeplink.removeAttribute('href');
+      $qrDeeplink.classList.remove('is-action');
+      return;
+    }
+
+    showQrError('the QR code did not render. open the anky app directly instead.', data.deeplink);
+  }
+
+  const handleQrMediaChange = () => {
+    if (activeQrChallenge) {
+      renderQrCode(activeQrChallenge);
+    } else {
+      $qrSub.textContent = getQrSubtitle();
+    }
+  };
+
+  if (typeof mobileQrMedia.addEventListener === 'function') {
+    mobileQrMedia.addEventListener('change', handleQrMediaChange);
+  } else if (typeof mobileQrMedia.addListener === 'function') {
+    mobileQrMedia.addListener(handleQrMediaChange);
+  }
+
+  // Check for Stripe redirect
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('burn') === 'success' && params.get('session_id')) {
+    $burnStatus.textContent = 'verifying payment...';
+    $burnStatus.className = 'burn-status';
+    fetch('/api/altar/stripe-success?session_id=' + params.get('session_id'))
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          $burnStatus.textContent = data.error;
+          $burnStatus.className = 'burn-status error';
+        } else {
+          render(data);
+          $altarImage.classList.add('glow');
+          setTimeout(() => $altarImage.classList.remove('glow'), 2000);
+          $burnStatus.textContent = 'your offering has been received. the altar remembers.';
+          $burnStatus.className = 'burn-status success';
+        }
+        window.history.replaceState({}, '', '/altar');
+      })
+      .catch(() => {
+        $burnStatus.textContent = 'could not verify payment';
+        $burnStatus.className = 'burn-status error';
+      });
+  }
+
+  // Burn button — Stripe Checkout (works logged in or anonymous)
+  $burnBtn.addEventListener('click', async () => {
+    const dollars = parseFloat($burnInput.value);
+    if (!dollars || dollars < 1) {
+      $burnStatus.textContent = 'minimum $1';
+      $burnStatus.className = 'burn-status error';
+      return;
+    }
+
+    $burnBtn.disabled = true;
+    $burnStatus.textContent = 'preparing...';
+    $burnStatus.className = 'burn-status';
+
+    try {
+      const resp = await fetch('/api/altar/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount_cents: Math.round(dollars * 100),
+          display_name: solanaAddress ? truncAddr(solanaAddress) : null,
+        }),
+      });
+
+      const data = await resp.json();
+
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      } else {
+        $burnStatus.textContent = data.error || 'something went wrong';
+        $burnStatus.className = 'burn-status error';
+      }
+    } catch(e) {
+      $burnStatus.textContent = 'connection error';
+      $burnStatus.className = 'burn-status error';
+    }
+
+    $burnBtn.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>

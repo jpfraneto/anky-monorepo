@@ -309,15 +309,19 @@ The key distinction is:
 
 ## Onboarding Flow
 
+This section is now superseded by the narrative-game onboarding direction in:
+
+- [mobile-ios-onboarding-story-spec.md](/home/kithkui/anky/docs/internal/mobile-ios-onboarding-story-spec.md)
+- [mobile-ios-onboarding-implementation-spec.md](/home/kithkui/anky/docs/internal/mobile-ios-onboarding-implementation-spec.md)
+
 Recommended sequence:
 
 1. first open
-2. brief explanation of the practice
-3. generate identity silently
-4. present recovery phrase ceremony
-5. require user acknowledgment
-6. authenticate silently
-7. land on `WRITE NOW`
+2. generate identity silently
+3. authenticate silently
+4. move directly into the invitation and first writing session
+5. unlock the full shell only after the first real anky
+6. present the recovery phrase ceremony after the first real anky, or on the next calm return
 
 Do not put email, phone, social login, or conventional profile creation in front of the practice.
 
@@ -338,6 +342,12 @@ The user should understand:
 - it never leaves the device
 
 Avoid generic crypto-wallet onboarding aesthetics.
+
+Recommended simplification:
+
+- do not interrupt the very first writing mission with the recovery phrase
+- let the person feel the ritual first
+- ask them to protect what they opened only after the first real anky exists
 
 ## Writing Experience Spec
 

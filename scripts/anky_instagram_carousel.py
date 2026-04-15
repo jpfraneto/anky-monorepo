@@ -173,9 +173,13 @@ print(f"Caption preview: {caption[:150]}...")
 
 print("\nPosting carousel to Instagram...")
 
-# Instagram credentials
-INSTAGRAM_ACCESS_TOKEN = "EAAVWWRotLMMBQZBr6HoYsxke1XbZBlfEWG8vZCrFyPFZBqdHXdxHyYpecjqlc64hkp75wfPyCjT2biPHVmTmKZBBqECYHjqe4LnXPRg9WuYhc2LrEnQYiCm5tz1jnKeT4ZBnZAYn7Cbe5ZCe7nuF2kirZCm9DieKouNIQE7CB3C2ZCcy4Q40ZCHjNpuESGvW94IHMLAI0HUy4J8lsoy"
-INSTAGRAM_USER_ID = "17841480674971908"
+# Instagram credentials from environment
+INSTAGRAM_ACCESS_TOKEN = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+INSTAGRAM_USER_ID = os.environ.get("INSTAGRAM_USER_ID", "")
+
+if not INSTAGRAM_ACCESS_TOKEN or not INSTAGRAM_USER_ID:
+    print("Missing Instagram credentials. Set INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_USER_ID env vars.")
+    sys.exit(1)
 
 # Instagram Graph API endpoints
 BASE_URL = "https://graph.instagram.com"

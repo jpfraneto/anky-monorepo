@@ -559,13 +559,15 @@ body.writing-active .session-bar { height: 44px; }
 #life-bar {
   position: absolute;
   top: 0;
-  left: 0;
-  height: 3px;
+  right: 0;
+  height: 6px;
   width: 100%;
-  background: #7b2ff7;
   z-index: 10;
   opacity: 0;
   transition: width 0.08s linear, opacity 0.3s ease;
+  background: linear-gradient(90deg, #ff2200 0%, #ff6600 30%, #ffcc00 60%, #44ff00 100%);
+  border-radius: 0 0 0 2px;
+  box-shadow: 0 0 6px rgba(255, 68, 0, 0.5);
 }
 
 /* ==================== Immersive writing mode ==================== */
@@ -613,8 +615,14 @@ body.chat-active .writing-main {
   line-height: 1.8;
   font-size: 17px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
   border-radius: 12px;
+}
+
+.chat-bubble.anky {
+  white-space: normal;
+  min-width: min(100%, 520px);
 }
 
 .chat-bubble.user {
@@ -3619,6 +3627,28 @@ body.chat-active .writing-main {
   height: 100vh;
   height: 100dvh;
   height: var(--vh, 100dvh);
+}
+
+/* Prompt page — chat mode: full viewport, input pinned to bottom */
+.prompt-page.chat-active .writing-container {
+  height: 100vh;
+  height: 100dvh;
+  height: var(--vh, 100dvh);
+}
+.prompt-page.chat-active .session-bar {
+  display: none;
+}
+.prompt-page.chat-active .chat-input-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.prompt-page.chat-active .chat-container {
+  padding-bottom: 80px;
 }
 
 /* Prompt background image with dark overlay */

@@ -1,0 +1,692 @@
+
+(function() {
+  var ankyId = 'null';
+  var isLoggedIn = truefalse;
+  var status = 'null';
+
+  // ── Tabs ────────────────────────────────
+  var tabs = document.querySelectorAll('.anky-thread-tab');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var target = tab.dataset.tab;
+      var mind = document.getElementById('content-mind');
+      var heart = document.getElementById('content-heart');
+      if (mind) mind.classList.toggle('active', target === 'mind');
+      if (heart) heart.classList.toggle('active', target === 'heart');
+    });
+  });
+
+  // ── Markdown renderer ───────────────────
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = String(s == null ? '' : s);
+    return div.innerHTML;
+  }
+
+  function sanitizeUrl(url) {
+    var value = String(url || '').trim();
+    if (!value) return '';
+    if (/^(https?:|mailto:|\/)/i.test(value)) {
+      return escapeHtml(value);
+    }
+    return '';
+  }
+
+  function renderInlineMarkdown(text) {
+    var html = escapeHtml(text);
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, url) {
+      var safe = sanitizeUrl(url);
+      if (!safe) return escapeHtml(label) + ' (' + escapeHtml(url) + ')';
+      var attrs = safe.charAt(0) === '/'
+        ? ''
+        : ' target="_blank" rel="noopener noreferrer"';
+      return '<a href="' + safe + '"' + attrs + '>' + escapeHtml(label) + '</a>';
+    });
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    html = html.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    return html;
+  }
+
+  function renderMarkdown(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var html = [];
+    var paragraph = [];
+    var listItems = [];
+    var inCode = false;
+    var codeLines = [];
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      html.push('<p>' + paragraph.map(renderInlineMarkdown).join('<br>') + '</p>');
+      paragraph = [];
+    }
+
+    function flushList() {
+      if (!listItems.length) return;
+      html.push('<ul>' + listItems.map(function(item) {
+        return '<li>' + renderInlineMarkdown(item) + '</li>';
+      }).join('') + '</ul>');
+      listItems = [];
+    }
+
+    function flushCode() {
+      if (!codeLines.length) return;
+      html.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
+      codeLines = [];
+    }
+
+    lines.forEach(function(rawLine) {
+      var line = rawLine || '';
+
+      if (line.trim().slice(0, 3) === '```') {
+        flushParagraph();
+        flushList();
+        if (inCode) {
+          flushCode();
+          inCode = false;
+        } else {
+          inCode = true;
+        }
+        return;
+      }
+
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        return;
+      }
+
+      var heading = line.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        var level = Math.min(heading[1].length + 1, 4);
+        html.push('<h' + level + '>' + renderInlineMarkdown(heading[2]) + '</h' + level + '>');
+        return;
+      }
+
+      if (/^---+$/.test(line.trim())) {
+        flushParagraph();
+        flushList();
+        html.push('<hr>');
+        return;
+      }
+
+      var quote = line.match(/^>\s?(.*)$/);
+      if (quote) {
+        flushParagraph();
+        flushList();
+        html.push('<blockquote>' + renderInlineMarkdown(quote[1]) + '</blockquote>');
+        return;
+      }
+
+      var bullet = line.match(/^\s*[-*]\s+(.+)$/);
+      if (bullet) {
+        flushParagraph();
+        listItems.push(bullet[1]);
+        return;
+      }
+
+      flushList();
+      paragraph.push(line);
+    });
+
+    flushParagraph();
+    flushList();
+    flushCode();
+
+    return html.join('');
+  }
+
+  function applyMarkdown(el) {
+    if (!el) return;
+    var raw = el.textContent;
+    if (!raw.trim()) return;
+    el.innerHTML = renderMarkdown(raw);
+  }
+
+  var reflEl = document.getElementById('reflectionContent');
+  if (reflEl && status !== 'generating') {
+    applyMarkdown(reflEl);
+  }
+
+  // ── SSE reflection streaming ──
+  if (status === 'generating' && reflEl) {
+    (function connectStream(attempt) {
+      var maxRetries = 3;
+      var rawText = '';
+      var streamDone = false;
+      var es = new EventSource('/api/stream-reflection/' + ankyId);
+      var safetyTimeout = setTimeout(function() {
+        if (!streamDone) { streamDone = true; es.close(); location.reload(); }
+      }, 90000);
+
+      es.onmessage = function(e) {
+        rawText += e.data + '\n';
+        reflEl.innerHTML = renderMarkdown(rawText) + '<span class="stream-cursor"></span>';
+        window.scrollTo(0, document.body.scrollHeight);
+      };
+      es.addEventListener('done', function() {
+        if (streamDone) return;
+        streamDone = true;
+        clearTimeout(safetyTimeout);
+        es.close();
+        reflEl.classList.remove('reflection-streaming');
+        var cursor = reflEl.querySelector('.stream-cursor');
+        if (cursor) cursor.remove();
+        setTimeout(function() { location.reload(); }, 2000);
+      });
+      es.onerror = function() {
+        if (streamDone) return;
+        streamDone = true;
+        clearTimeout(safetyTimeout);
+        es.close();
+        if (!rawText && attempt < maxRetries) {
+          setTimeout(function() { connectStream(attempt + 1); }, attempt * 3000);
+          return;
+        }
+        setTimeout(function() { location.reload(); }, 5000);
+      };
+    })(1);
+  }
+
+  // ── Conversation ────────────────────────
+  var convEl = document.getElementById('conversationThread');
+  var suggestionsEl = document.getElementById('replySuggestions');
+  var replyInput = document.getElementById('replyInput');
+  var replySendBtn = document.getElementById('replySendBtn');
+  var chatHistory = [];
+
+  function scrollConversation() {
+    if (!convEl) return;
+    setTimeout(function() {
+      convEl.scrollTop = convEl.scrollHeight;
+    }, 40);
+  }
+
+  // Load existing conversation
+  var existingConv = null;
+  
+  try { existingConv = JSON.parse(null); } catch(e) {}
+  
+
+  if (existingConv && existingConv.messages && existingConv.messages.length > 0) {
+    existingConv.messages.forEach(function(m) {
+      addBubble(m.role === 'user' ? 'user' : 'anky', m.content);
+      chatHistory.push({ role: m.role, content: m.content });
+    });
+    scrollConversation();
+  }
+
+  function addBubble(type, text) {
+    if (!convEl) return;
+    var bubble = document.createElement('div');
+    bubble.className = 'conv-bubble ' + type;
+    if (type === 'anky') {
+      var content = document.createElement('div');
+      content.className = 'msg-content';
+      content.innerHTML = renderMarkdown(text);
+      bubble.appendChild(content);
+    } else {
+      bubble.innerHTML = escapeHtml(text);
+    }
+    convEl.appendChild(bubble);
+    return bubble;
+  }
+
+  // Fetch suggested replies
+  if (isLoggedIn && suggestionsEl && status === 'complete') {
+    fetchSuggestions();
+  }
+
+  function fetchSuggestions() {
+    if (!suggestionsEl) return;
+    suggestionsEl.innerHTML = '';
+    fetch('/api/suggest-replies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: ankyId, history: chatHistory }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      suggestionsEl.innerHTML = '';
+      if (data.reply1) {
+        var btn1 = document.createElement('button');
+        btn1.className = 'reply-suggestion-btn';
+        btn1.textContent = data.reply1;
+        btn1.onclick = function() { sendReply(data.reply1); };
+        suggestionsEl.appendChild(btn1);
+      }
+      if (data.reply2) {
+        var btn2 = document.createElement('button');
+        btn2.className = 'reply-suggestion-btn';
+        btn2.textContent = data.reply2;
+        btn2.onclick = function() { sendReply(data.reply2); };
+        suggestionsEl.appendChild(btn2);
+      }
+    })
+    .catch(function() {});
+  }
+
+  function sendReply(msg) {
+    if (!msg.trim()) return;
+    if (suggestionsEl) suggestionsEl.innerHTML = '';
+    addBubble('user', msg);
+    chatHistory.push({ role: 'user', content: msg });
+    scrollConversation();
+
+    var thinking = document.createElement('div');
+    thinking.className = 'conv-bubble anky conv-thinking';
+    thinking.textContent = 'thinking...';
+    convEl.appendChild(thinking);
+    scrollConversation();
+
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anky_id: ankyId, message: msg, history: chatHistory.slice(0, -1) }),
+    })
+    .then(function(r) {
+      return r.json().then(function(data) {
+        if (!r.ok) {
+          throw new Error(data.error || 'something went wrong.');
+        }
+        return data;
+      });
+    })
+    .then(function(data) {
+      var reply = data.response || 'hmm, something went quiet inside. try again.';
+      chatHistory.push({ role: 'assistant', content: reply });
+      thinking.className = 'conv-bubble anky';
+      thinking.innerHTML = '<div class="msg-content">' + renderMarkdown(reply) + '</div>';
+      scrollConversation();
+      fetchSuggestions();
+    })
+    .catch(function(err) {
+      chatHistory.pop();
+      thinking.textContent = err && err.message ? err.message : 'something went wrong.';
+      scrollConversation();
+    });
+  }
+
+  // Custom reply input
+  if (replyInput && replySendBtn) {
+    replyInput.addEventListener('input', function() {
+      replyInput.style.height = 'auto';
+      replyInput.style.height = Math.min(replyInput.scrollHeight, 200) + 'px';
+      replySendBtn.disabled = !replyInput.value.trim();
+    });
+    replyInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (replyInput.value.trim() && !ankyModeTriggered) {
+          sendReply(replyInput.value.trim());
+          replyInput.value = '';
+          replyInput.style.height = 'auto';
+          replySendBtn.disabled = true;
+          resetTypingTracker();
+        }
+      }
+    });
+    replySendBtn.addEventListener('click', function() {
+      if (replyInput.value.trim() && !ankyModeTriggered) {
+        sendReply(replyInput.value.trim());
+        replyInput.value = '';
+        replyInput.style.height = 'auto';
+        replySendBtn.disabled = true;
+        resetTypingTracker();
+      }
+    });
+  }
+
+  // ── 30-second ANKY MODE ─────────────────
+  var ANKY_MODE_THRESHOLD = 30;
+  var TYPING_IDLE_RESET = 5;
+  var typingStartedAt = null;
+  var lastTypingInputAt = null;
+  var typingCheckInterval = null;
+  var ankyModeTriggered = false;
+  var ankyModeHint = document.getElementById('ankyModeHint');
+
+  function resetTypingTracker() {
+    typingStartedAt = null;
+    lastTypingInputAt = null;
+    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
+    if (ankyModeHint) { ankyModeHint.classList.remove('active'); ankyModeHint.textContent = 'keep typing and anky mode activates'; }
+  }
+
+  if (replyInput) {
+    replyInput.addEventListener('input', function() {
+      if (ankyModeTriggered) return;
+      var now = Date.now();
+      lastTypingInputAt = now;
+      if (!typingStartedAt) {
+        typingStartedAt = now;
+        typingCheckInterval = setInterval(checkAnkyMode, 500);
+      }
+    });
+  }
+
+  function checkAnkyMode() {
+    if (ankyModeTriggered) return;
+    var now = Date.now();
+    // Reset if idle for 5+ seconds
+    if (lastTypingInputAt && (now - lastTypingInputAt) / 1000 > TYPING_IDLE_RESET) {
+      resetTypingTracker();
+      return;
+    }
+    var elapsed = typingStartedAt ? (now - typingStartedAt) / 1000 : 0;
+    // Update hint
+    if (ankyModeHint && elapsed > 10) {
+      var remaining = Math.ceil(ANKY_MODE_THRESHOLD - elapsed);
+      if (remaining > 0) {
+        ankyModeHint.classList.add('active');
+        ankyModeHint.textContent = 'anky mode in ' + remaining + 's...';
+      }
+    }
+    if (elapsed >= ANKY_MODE_THRESHOLD) {
+      triggerAnkyMode();
+    }
+  }
+
+  function triggerAnkyMode() {
+    ankyModeTriggered = true;
+    if (typingCheckInterval) { clearInterval(typingCheckInterval); typingCheckInterval = null; }
+
+    var carryOverText = replyInput ? replyInput.value.replace(/\n/g, ' ') : '';
+    var elapsedAlready = typingStartedAt ? (Date.now() - typingStartedAt) / 1000 : 0;
+
+    // Hide page
+    document.getElementById('ankyThread').style.display = 'none';
+    var navbar = document.querySelector('.navbar');
+    if (navbar) navbar.style.display = 'none';
+    var mobileNav = document.getElementById('mobile-nav');
+    if (mobileNav) mobileNav.style.display = 'none';
+    document.body.style.overflow = 'hidden';
+
+    // Create writing surface
+    var surface = document.createElement('div');
+    surface.className = 'anky-mode-surface';
+    surface.id = 'ankyModeSurface';
+    surface.innerHTML =
+      '<div class="am-idle-bar-wrap"><div class="am-idle-bar-fill" id="amIdleBar"></div></div>' +
+      '<div class="am-prompt">anky mode activated. keep going.</div>' +
+      '<textarea class="am-textarea" id="amTextarea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+      '<div class="am-bottom">' +
+        '<div class="am-chakra-bar"><div class="am-chakra-fill" id="amChakra"></div></div>' +
+        '<div class="am-bottom-row">' +
+          '<span class="am-timer" id="amTimer">8:00</span>' +
+          '<button class="am-send-btn" id="amSendBtn">send</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(surface);
+
+    var textarea = document.getElementById('amTextarea');
+    textarea.value = carryOverText;
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = carryOverText.length;
+
+    initAnkyModeSession(textarea, elapsedAlready);
+  }
+
+  function initAnkyModeSession(textarea, elapsedAlready) {
+    var CHAKRA_COLORS = ['#ff0000','#ff6600','#ffcc00','#33cc33','#3399ff','#6633cc','#9933ff','#ffffff'];
+    var IDLE_TIMEOUT = 8.0;
+    var IDLE_VISIBLE_AFTER = 3.0;
+    var SESSION_DURATION = 480.0;
+
+    var amState = 'writing';
+    var sessionStarted = Date.now() - (elapsedAlready * 1000);
+    var lastInputAt = Date.now();
+    var activeTime = elapsedAlready;
+    var pausedAtActive = 0;
+    var keystrokeDeltas = [];
+    var lastKeystrokeAt = null;
+    var sessionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+
+    var idleBar = document.getElementById('amIdleBar');
+    var chakraFill = document.getElementById('amChakra');
+    var timer = document.getElementById('amTimer');
+    var sendBtn = document.getElementById('amSendBtn');
+
+    var tickInterval = setInterval(tick, 100);
+
+    // Keydown handler
+    textarea.addEventListener('keydown', function(e) {
+      if (amState === 'sent') { e.preventDefault(); return; }
+
+      if (amState === 'paused') {
+        if (e.key === 'Enter') { e.preventDefault(); doSend(); return; }
+        if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); return; }
+        if (e.key.length === 1) { resumeFromPause(); }
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+        e.preventDefault();
+        return;
+      }
+
+      if (amState === 'writing' && e.key.length === 1) {
+        var now = Date.now();
+        lastInputAt = now;
+        if (lastKeystrokeAt) keystrokeDeltas.push(now - lastKeystrokeAt);
+        lastKeystrokeAt = now;
+        idleBar.style.width = '0%';
+        idleBar.classList.remove('warning');
+      }
+    });
+
+    textarea.addEventListener('input', function() {
+      if (amState === 'paused') resumeFromPause();
+      if (textarea.value.includes('\n')) {
+        var pos = textarea.selectionStart;
+        textarea.value = textarea.value.replace(/\n/g, ' ');
+        textarea.selectionStart = textarea.selectionEnd = pos;
+      }
+      if (amState === 'writing') lastInputAt = Date.now();
+    });
+
+    textarea.addEventListener('paste', function(e) { e.preventDefault(); });
+
+    sendBtn.addEventListener('click', function() {
+      if (amState === 'paused') doSend();
+    });
+
+    function resumeFromPause() {
+      lastInputAt = Date.now();
+      sessionStarted = Date.now() - (pausedAtActive * 1000);
+      amState = 'writing';
+      sendBtn.classList.remove('visible');
+      idleBar.style.width = '0%';
+      idleBar.classList.remove('warning');
+      if (!tickInterval) tickInterval = setInterval(tick, 100);
+      textarea.focus();
+    }
+
+    function tick() {
+      if (amState !== 'writing') return;
+      var now = Date.now();
+      activeTime = (now - sessionStarted) / 1000;
+      var idleElapsed = (now - lastInputAt) / 1000;
+
+      if (idleElapsed > IDLE_VISIBLE_AFTER && textarea.value.length > 0) {
+        var idleProgress = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
+        idleBar.style.width = (idleProgress * 100) + '%';
+        idleBar.classList.add('warning');
+      } else {
+        idleBar.style.width = '0%';
+        idleBar.classList.remove('warning');
+      }
+
+      if (idleElapsed >= IDLE_TIMEOUT && textarea.value.length > 0) {
+        pauseSession();
+        return;
+      }
+
+      updateTimer();
+      updateChakra();
+    }
+
+    function pauseSession() {
+      amState = 'paused';
+      pausedAtActive = activeTime;
+      clearInterval(tickInterval);
+      tickInterval = null;
+      idleBar.style.width = '100%';
+      idleBar.classList.add('warning');
+      sendBtn.classList.add('visible');
+    }
+
+    function updateTimer() {
+      var remaining = SESSION_DURATION - activeTime;
+      if (remaining >= 0) {
+        var mins = Math.floor(remaining / 60);
+        var secs = Math.floor(remaining % 60);
+        timer.textContent = mins + ':' + String(secs).padStart(2, '0');
+        timer.classList.remove('past-zero');
+      } else {
+        var over = Math.abs(remaining);
+        var mins = Math.floor(over / 60);
+        var secs = Math.floor(over % 60);
+        timer.textContent = '+' + mins + ':' + String(secs).padStart(2, '0');
+        timer.classList.add('past-zero');
+      }
+    }
+
+    function updateChakra() {
+      var progress = Math.min(activeTime / SESSION_DURATION, 1);
+      var colorIdx = Math.min(Math.floor(progress * 8), 7);
+      var stops = [];
+      for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
+      chakraFill.style.background = stops.length === 1
+        ? stops[0]
+        : 'linear-gradient(to right, ' + stops.join(', ') + ')';
+      chakraFill.style.width = (progress * 100) + '%';
+    }
+
+    function calcFlowScore() {
+      if (keystrokeDeltas.length < 5) return 0;
+      var mean = keystrokeDeltas.reduce(function(a, b) { return a + b; }, 0) / keystrokeDeltas.length;
+      var variance = keystrokeDeltas.reduce(function(a, d) { return a + Math.pow(d - mean, 2); }, 0) / keystrokeDeltas.length;
+      var std = Math.sqrt(variance);
+      var cv = mean > 0 ? std / mean : 1;
+      var stability = Math.max(0, 1 - cv) * 0.45;
+      var totalPause = keystrokeDeltas.filter(function(d) { return d > 2000; }).reduce(function(a, d) { return a + d; }, 0) / 1000;
+      var continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
+      var density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
+      return Math.min(1, Math.max(0, stability + continuity + density));
+    }
+
+    function doSend() {
+      amState = 'sent';
+      var text = textarea.value;
+      var words = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+      var isAnky = activeTime >= 480 && words >= 300;
+      var flowScore = calcFlowScore();
+
+      // Submit writing
+      fetch('/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          duration: activeTime,
+          flow_score: flowScore,
+          session_id: sessionId,
+          keystroke_deltas: keystrokeDeltas,
+        }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        // Remove writing surface
+        var surface = document.getElementById('ankyModeSurface');
+        if (surface) surface.remove();
+        document.body.style.overflow = '';
+
+        if (data.anky_id || data.ankyId) {
+          // New anky created — go to it
+          window.location.href = '/anky/' + (data.anky_id || data.ankyId);
+        } else {
+          // Short write — restore page and add as chat message
+          exitAnkyMode();
+          if (data.response) {
+            addBubble('user', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+            var ankyBubble = addBubble('anky', data.response);
+            if (ankyBubble) ankyBubble.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            chatHistory.push({ role: 'user', content: text });
+            chatHistory.push({ role: 'assistant', content: data.response });
+            fetchSuggestions();
+          } else {
+            exitAnkyMode();
+          }
+        }
+      })
+      .catch(function() {
+        var surface = document.getElementById('ankyModeSurface');
+        if (surface) surface.remove();
+        exitAnkyMode();
+      });
+    }
+  }
+
+  function exitAnkyMode() {
+    var surface = document.getElementById('ankyModeSurface');
+    if (surface) surface.remove();
+    document.getElementById('ankyThread').style.display = '';
+    var navbar = document.querySelector('.navbar');
+    if (navbar) navbar.style.display = '';
+    var mobileNav = document.getElementById('mobile-nav');
+    if (mobileNav) mobileNav.style.display = '';
+    document.body.style.overflow = '';
+    ankyModeTriggered = false;
+    resetTypingTracker();
+    if (replyInput) { replyInput.value = ''; replyInput.style.height = 'auto'; }
+  }
+
+  // ── Share ───────────────────────────────
+  var shareBtn = document.getElementById('shareBtn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', function() {
+      var url = window.location.href;
+      if (navigator.share) {
+        navigator.share({ title: document.title, url: url }).catch(function() {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(function() {
+          shareBtn.textContent = 'copied';
+          setTimeout(function() { shareBtn.textContent = 'share'; }, 1500);
+        });
+      }
+    });
+  }
+
+  function updateViewportHeight() {
+    var viewportHeight = window.visualViewport
+      ? window.visualViewport.height
+      : window.innerHeight;
+    document.documentElement.style.setProperty('--app-vh', viewportHeight + 'px');
+    scrollConversation();
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportHeight);
+    window.visualViewport.addEventListener('scroll', updateViewportHeight);
+  } else {
+    window.addEventListener('resize', updateViewportHeight);
+  }
+
+  updateViewportHeight();
+})();

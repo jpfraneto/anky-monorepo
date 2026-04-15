@@ -217,7 +217,9 @@ pub async fn prompt_page(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
-) -> Result<Html<String>, AppError> {
+) -> Result<(CookieJar, Html<String>), AppError> {
+    let jar = crate::routes::auth::ensure_visitor_cookie(jar);
+
     let (prompt, creator_username, settings) = {
         let db = crate::db::conn(&state.db)?;
         let prompt = queries::get_prompt_by_id(&db, &id)?;
@@ -281,7 +283,7 @@ pub async fn prompt_page(
     }
 
     let html = state.tera.render("prompt.html", &ctx)?;
-    Ok(Html(html))
+    Ok((jar, Html(html)))
 }
 
 #[derive(serde::Deserialize)]

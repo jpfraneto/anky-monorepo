@@ -15,6 +15,7 @@ pub mod push_scheduler;
 pub mod r2;
 pub mod redis_queue;
 pub mod stream;
+pub(crate) mod streaming_text;
 pub mod tts;
 pub mod twitter;
 pub mod wallet;

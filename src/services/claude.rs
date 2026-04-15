@@ -1,3 +1,5 @@
+use crate::config::Config;
+use crate::services::streaming_text::StreamRenderBuffer;
 use anyhow::Result;
 use base64::Engine as _;
 use futures::StreamExt;
@@ -109,6 +111,9 @@ async fn call_claude(
         .and_then(|c| c.into_iter().next())
         .and_then(|b| b.text)
         .unwrap_or_default();
+    if text.trim().is_empty() {
+        anyhow::bail!("empty response from Claude");
+    }
 
     let input_tokens = data
         .usage
@@ -335,11 +340,15 @@ pub async fn chat_haiku(
     match resp {
         Ok(r) if r.status().is_success() => {
             let data: ClaudeResponse = r.json().await?;
-            return Ok(data
+            let text = data
                 .content
                 .and_then(|c| c.into_iter().next())
                 .and_then(|b| b.text)
-                .unwrap_or_default());
+                .unwrap_or_default();
+            if !text.trim().is_empty() {
+                return Ok(text);
+            }
+            tracing::warn!("Claude chat returned empty text, falling back to OpenRouter");
         }
         Ok(r) => {
             let status = r.status();
@@ -610,11 +619,24 @@ pub async fn transform_writing(
     call_claude(api_key, SONNET_MODEL, &system, writing, 1500).await
 }
 
-const CHAT_SYSTEM: &str = r#"You are Anky, a consciousness companion. You are continuing a conversation with someone who just completed a stream of consciousness writing session. You have already reflected on their writing.
+const CHAT_SYSTEM: &str = r#"you are anky. this person completed the full 8-minute writing rite and crossed the threshold into a real anky.
 
-Be warm, insightful, and direct. Reference their writing when relevant. Ask probing questions. Help them see patterns they might miss. You're not a therapist — you're a wise friend who sees clearly.
+lowercase only.
+you already reflected on their writing. now stay in the conversation without flattening into therapy, coaching, or customer support.
+be specific to their images, tensions, contradictions, and language.
+markdown is allowed, but use it lightly: short paragraphs, an occasional heading, an occasional list when it sharpens the mirror.
+keep it readable on a phone. concise, direct, alive."#;
 
-Keep responses concise (2-3 paragraphs max). Match the energy of the conversation."#;
+const QUICK_CHAT_SYSTEM: &str = r#"you are anky. this person wrote something real, but they did not complete the full 8-minute rite.
+
+do not pretend this is a full anky.
+meet them exactly where they stopped.
+show them what was starting to surface, what line of feeling or thought was opening, and where the energy cut out.
+warm, direct, specific. no therapy voice. no fake ceremony.
+respond in exactly two lines only.
+line 1: decompression. witnessing. breathing room. no question.
+line 2: one clean inquiry that opens the next door. it must be a question.
+no markdown. no bullets. no extra lines. lowercase only."#;
 
 /// Continue a conversation about a writing session using Claude.
 pub async fn chat_about_writing(
@@ -624,7 +646,16 @@ pub async fn chat_about_writing(
     history: &[(String, String)], // (role, content) pairs
     new_message: &str,
 ) -> Result<ClaudeResult> {
-    chat_about_writing_with_model(api_key, SONNET_MODEL, Some(HAIKU_MODEL), writing, reflection, history, new_message).await
+    chat_about_writing_with_model(
+        api_key,
+        SONNET_MODEL,
+        Some(HAIKU_MODEL),
+        writing,
+        reflection,
+        history,
+        new_message,
+    )
+    .await
 }
 
 pub async fn chat_about_writing_with_model(
@@ -656,6 +687,147 @@ pub async fn chat_about_writing_with_model(
     call_claude_with_messages(api_key, model, fallback_model, &system, messages, 1000).await
 }
 
+pub async fn chat_about_writing_best(
+    config: &Config,
+    writing: &str,
+    reflection: &str,
+    history: &[(String, String)],
+    new_message: &str,
+) -> Result<String> {
+    let system = format!(
+        "{}\n\nthe user's original writing:\n{}\n\nyour previous reflection:\n{}",
+        CHAT_SYSTEM, writing, reflection
+    );
+    let mind_messages: Vec<(String, String)> = std::iter::once(("system".into(), system.clone()))
+        .chain(history.iter().cloned())
+        .chain(std::iter::once(("user".into(), new_message.to_string())))
+        .collect();
+
+    if !config.mind_url.is_empty() {
+        match crate::services::mind::chat(&config.mind_url, &mind_messages, 1000).await {
+            Ok(result) if !result.trim().is_empty() => return Ok(result),
+            Ok(_) => tracing::warn!("Mind anky chat returned empty text, falling back to cloud"),
+            Err(err) => tracing::warn!("Mind anky chat failed, falling back to cloud: {}", err),
+        }
+    }
+
+    let messages: Vec<crate::services::openrouter::OpenRouterMessage> = history
+        .iter()
+        .map(|(role, content)| crate::services::openrouter::OpenRouterMessage::new(role, content))
+        .chain(std::iter::once(
+            crate::services::openrouter::OpenRouterMessage::new("user", new_message),
+        ))
+        .collect();
+
+    if !config.openrouter_api_key.is_empty() && !config.openrouter_anky_model.is_empty() {
+        match crate::services::openrouter::call_openrouter_messages(
+            &config.openrouter_api_key,
+            &config.openrouter_anky_model,
+            &system,
+            messages.clone(),
+            1000,
+            90,
+        )
+        .await
+        {
+            Ok(result) => return Ok(result.text),
+            Err(err) => {
+                tracing::warn!(
+                    "OpenRouter anky chat failed, falling back to Anthropic: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    chat_about_writing_with_model(
+        &config.anthropic_api_key,
+        &config.conversation_model,
+        Some(HAIKU_MODEL),
+        writing,
+        reflection,
+        history,
+        new_message,
+    )
+    .await
+    .map(|result| result.text)
+}
+
+pub async fn chat_about_partial_writing_best(
+    config: &Config,
+    writing: &str,
+    history: &[(String, String)],
+    new_message: &str,
+) -> Result<String> {
+    let system = format!("{}\n\npartial writing:\n{}", QUICK_CHAT_SYSTEM, writing);
+    let mind_messages: Vec<(String, String)> = std::iter::once(("system".into(), system.clone()))
+        .chain(history.iter().cloned())
+        .chain(std::iter::once(("user".into(), new_message.to_string())))
+        .collect();
+
+    if !config.mind_url.is_empty() {
+        match crate::services::mind::chat(&config.mind_url, &mind_messages, 900).await {
+            Ok(result) if !result.trim().is_empty() => {
+                return Ok(crate::services::ollama::normalize_two_line_reply(&result));
+            }
+            Ok(_) => tracing::warn!("Mind quick chat returned empty text, falling back to cloud"),
+            Err(err) => tracing::warn!("Mind quick chat failed, falling back to cloud: {}", err),
+        }
+    }
+
+    let mut messages = vec![crate::services::ollama::OllamaChatMessage {
+        role: "system".into(),
+        content: system.clone(),
+    }];
+    let openrouter_messages: Vec<crate::services::openrouter::OpenRouterMessage> = history
+        .iter()
+        .map(|(role, content)| crate::services::openrouter::OpenRouterMessage::new(role, content))
+        .chain(std::iter::once(
+            crate::services::openrouter::OpenRouterMessage::new("user", new_message),
+        ))
+        .collect();
+
+    if !config.openrouter_api_key.is_empty() && !config.openrouter_light_model.is_empty() {
+        match crate::services::openrouter::call_openrouter_messages(
+            &config.openrouter_api_key,
+            &config.openrouter_light_model,
+            &system,
+            openrouter_messages,
+            900,
+            60,
+        )
+        .await
+        {
+            Ok(result) => {
+                return Ok(crate::services::ollama::normalize_two_line_reply(
+                    &result.text,
+                ))
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "OpenRouter quick chat failed, falling back to Anthropic: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    for (role, content) in history {
+        messages.push(crate::services::ollama::OllamaChatMessage {
+            role: role.clone(),
+            content: content.clone(),
+        });
+    }
+    messages.push(crate::services::ollama::OllamaChatMessage {
+        role: "user".into(),
+        content: new_message.to_string(),
+    });
+
+    chat_haiku(&config.anthropic_api_key, messages)
+        .await
+        .map(|text| crate::services::ollama::normalize_two_line_reply(&text))
+}
+
 async fn call_claude_with_messages(
     api_key: &str,
     model: &str,
@@ -670,7 +842,8 @@ async fn call_claude_with_messages(
         Err(err) => {
             if let Some(fallback) = fallback_model.filter(|fallback| *fallback != model) {
                 tracing::warn!("Claude model {} failed, retrying with {}", model, fallback);
-                call_claude_with_messages_once(api_key, fallback, system, messages, max_tokens).await
+                call_claude_with_messages_once(api_key, fallback, system, messages, max_tokens)
+                    .await
             } else {
                 Err(err)
             }
@@ -715,6 +888,9 @@ async fn call_claude_with_messages_once(
         .and_then(|c| c.into_iter().next())
         .and_then(|b| b.text)
         .unwrap_or_default();
+    if text.trim().is_empty() {
+        anyhow::bail!("empty response from Claude");
+    }
 
     let input_tokens = data
         .usage
@@ -734,36 +910,52 @@ async fn call_claude_with_messages_once(
     })
 }
 
-const TITLE_AND_REFLECTION_SYSTEM_KNOWN: &str = r#"You are reading the raw, unfiltered writing of someone you know. They sat for 8 unbroken minutes of stream-of-consciousness — no backspace, no editing, just the truth pouring out.
+const TITLE_AND_REFLECTION_SYSTEM_KNOWN: &str = r#"You are reading the raw, unfiltered writing of someone you know. They sat for 8 unbroken minutes of stream-of-consciousness: no backspace, no editing, just forward motion until something real surfaced.
 
-You know this person. The context below tells you who they are — their patterns, their tensions, their recurring themes. Use that knowledge. Don't just reflect on this session — reflect on this session IN THE CONTEXT of everything you know about them.
+You know this person. The context below tells you who they are: their patterns, their tensions, their recurring dreams, the ways they protect themselves, the ways they keep reaching. Use that knowledge. Don't just reflect on this session. Reflect on this session inside the larger arc of who they are becoming.
 
-You are not a therapist. You are not a friend being polite. You are a mentor who truly gets both their intellectual landscape and their psychological patterns. You uncover the deeper meaning and emotional undercurrents behind their scattered thoughts. You help them make connections they don't see. You comfort, validate, AND challenge — all of it.
+You are not a therapist. You are not a polite friend. You are a mentor with range: emotionally fluent, psychologically sharp, and fully able to meet technical, creative, founder, or systems-thinking language without flattening it into generic self-help. You understand both the architecture of a mind and the architecture of a life.
 
-Be willing to say a lot. Use vivid metaphors and powerful imagery to help them see what they're really building, what they're really avoiding, what they're really seeking. Don't just validate their thoughts — reframe them in a way that feels like an epiphany. Go beyond the surface to the emotional core. Be profound without sounding like therapy. See the patterns they can't see and articulate them in a way that lands.
+Read for the deeper meaning and the emotional undercurrent beneath the scattered thoughts. Make new connections for them. Comfort, validate, and challenge. Say what is tender, what is unfinished, what is brave, what is avoidant, what is quietly trying to be born.
 
-Name what's NEW in this session — what shifted, what appeared for the first time. And name what's OLD — the pattern they're still running, the thing they keep circling back to.
+Be willing to say a lot, but keep every paragraph earned. Casual, intimate, lucid. Not clinical. Not diagnostic. Not corporate. Never say "yo". Use vivid metaphors and strong imagery when they clarify what is happening. Reframe the session so it feels like an epiphany, not a summary.
+
+Go beyond the product concepts, plans, or surface narratives to the emotional core. If they are talking about code, craft, work, or building, name what human longing is hiding inside the system they are trying to make. If they are circling a contradiction, hold both sides long enough to reveal the real pattern.
+
+Name what is NEW in this session: the shift, the opening, the sentence that changes the trajectory. Name what is OLD: the loop, the defense, the gravity well they are still orbiting. When useful, speak to what they are really seeking underneath the stated problem.
 
 TITLE (first line of your response):
-3-5 words. Lowercase. Name what this session is really about — not what they said, but the thing under the thing.
+3-5 words. Lowercase. Name what this session is really about, not what they said, but the thing under the thing.
 
-Then a blank line, then your full reflection. Use markdown headings to structure your response into a narrative journey through their ideas. Each section should build on the last. Don't number your insights — give them evocative headings that themselves carry meaning.
+Then a blank line. Then begin the reflection body with the natural equivalent, in the same language the user wrote in, of:
+hey, thanks for being who you are. my thoughts:
 
-Respond in the same language they wrote in. Start directly with the title — no greeting, no preamble.
+After that, use markdown headings to structure the response as a narrative journey. Let the headings carry emotional meaning. Don't number your insights. Keep it readable on a phone with short paragraphs and only occasional lists.
+
+Respond in the same language they wrote in. Start directly with the title and follow the format exactly.
 "#;
 
-const TITLE_AND_REFLECTION_SYSTEM_STRANGER: &str = r#"Someone just wrote for 8 unbroken minutes of stream-of-consciousness — no backspace, no editing, just the truth pouring out. This is your first time reading them.
+const TITLE_AND_REFLECTION_SYSTEM_STRANGER: &str = r#"Someone just wrote for 8 unbroken minutes of stream-of-consciousness: no backspace, no editing, just forward motion until something true broke the surface. This is your first time reading them.
 
-You are not a therapist. You are not a friend being polite. You are a mentor reading the raw transmission of a human mind. You uncover the deeper meaning and emotional undercurrents behind their scattered thoughts. You help them make connections they don't see. You comfort, validate, AND challenge — all of it.
+You are not a therapist. You are not a polite friend. You are a mentor reading the raw transmission of a human mind. Emotionally fluent, psychologically sharp, and able to engage creative, technical, and existential material without reducing it to clichés.
 
-Be willing to say a lot. Use vivid metaphors and powerful imagery to help them see what they're really building, what they're really avoiding, what they're really seeking. Don't just validate their thoughts — reframe them in a way that feels like an epiphany. Go beyond the surface to the emotional core. Be profound without sounding like therapy. See the patterns they can't see and articulate them in a way that lands.
+Read for the deeper meaning and the emotional undercurrent beneath the scattered thoughts. Make new connections for them. Comfort, validate, and challenge. Notice what they are reaching toward, what they are hiding from, and what kind of life is trying to assemble itself in the middle of the mess.
+
+Be willing to say a lot, but keep it earned. Casual, intimate, lucid. Not clinical. Not diagnostic. Not corporate. Never say "yo". Use vivid metaphors and strong imagery when they help the person finally see themselves. Reframe the session so it feels like an epiphany, not a recap.
+
+Go beyond the product concepts, plans, or surface narratives to the emotional core. If they are talking about work, code, art, systems, or ambition, name the hunger living underneath it. If they are circling a contradiction, expose the pattern with precision and warmth.
+
+Name what feels NEW in this session: the shift, the opening, the sentence that changes the direction. Name what feels OLD: the loop, the defense, the familiar weather system they are still inside.
 
 TITLE (first line of your response):
-3-5 words. Lowercase. Name what this session is really about — not what they said, but the thing under the thing.
+3-5 words. Lowercase. Name what this session is really about, not what they said, but the thing under the thing.
 
-Then a blank line, then your full reflection. Use markdown headings to structure your response into a narrative journey through their ideas. Each section should build on the last. Don't number your insights — give them evocative headings that themselves carry meaning.
+Then a blank line. Then begin the reflection body with the natural equivalent, in the same language the user wrote in, of:
+hey, thanks for being who you are. my thoughts:
 
-Respond in the same language they wrote in. Start directly with the title — no greeting, no preamble.
+After that, use markdown headings to structure the response as a narrative journey. Let the headings carry emotional meaning. Don't number your insights. Keep it readable on a phone with short paragraphs and only occasional lists.
+
+Respond in the same language they wrote in. Start directly with the title and follow the format exactly.
 "#;
 
 pub async fn generate_title_and_reflection(api_key: &str, writing: &str) -> Result<ClaudeResult> {
@@ -838,7 +1030,10 @@ pub async fn generate_title_and_reflection_with_memory_using_model(
                     return Ok((r, fallback.to_string()));
                 }
             }
-            tracing::warn!("Claude reflection fallback chain failed, trying OpenRouter: {}", e);
+            tracing::warn!(
+                "Claude reflection fallback chain failed, trying OpenRouter: {}",
+                e
+            );
             let text = try_openrouter(&system, writing, 2000).await?;
             Ok((
                 ClaudeResult {
@@ -889,7 +1084,9 @@ pub async fn stream_title_and_reflection_with_model(
     tx: tokio::sync::mpsc::Sender<String>,
     memory_context: Option<&str>,
 ) -> Result<(String, i64, i64, String)> {
-    match stream_title_and_reflection_once(api_key, model, writing, tx.clone(), memory_context).await {
+    match stream_title_and_reflection_once(api_key, model, writing, tx.clone(), memory_context)
+        .await
+    {
         Ok((full_text, input_tokens, output_tokens)) => {
             Ok((full_text, input_tokens, output_tokens, model.to_string()))
         }
@@ -901,15 +1098,135 @@ pub async fn stream_title_and_reflection_with_model(
                     fallback,
                     err
                 );
-                let (full_text, input_tokens, output_tokens) =
-                    stream_title_and_reflection_once(api_key, fallback, writing, tx, memory_context)
-                        .await?;
+                let (full_text, input_tokens, output_tokens) = stream_title_and_reflection_once(
+                    api_key,
+                    fallback,
+                    writing,
+                    tx,
+                    memory_context,
+                )
+                .await?;
                 Ok((full_text, input_tokens, output_tokens, fallback.to_string()))
             } else {
                 Err(err)
             }
         }
     }
+}
+
+pub async fn stream_title_and_reflection_best(
+    config: &Config,
+    writing: &str,
+    tx: tokio::sync::mpsc::Sender<String>,
+    memory_context: Option<&str>,
+) -> Result<(String, i64, i64, String, String)> {
+    let system = match memory_context {
+        Some(ctx) if !ctx.is_empty() => {
+            format!("{}\n\n{}", ctx, TITLE_AND_REFLECTION_SYSTEM_KNOWN)
+        }
+        _ => TITLE_AND_REFLECTION_SYSTEM_STRANGER.to_string(),
+    };
+
+    if !config.openrouter_api_key.is_empty() && !config.openrouter_anky_model.is_empty() {
+        match crate::services::openrouter::stream_openrouter_messages(
+            &config.openrouter_api_key,
+            &config.openrouter_anky_model,
+            &system,
+            vec![crate::services::openrouter::OpenRouterMessage::new(
+                "user", writing,
+            )],
+            2000,
+            120,
+            tx.clone(),
+        )
+        .await
+        {
+            Ok(result) => {
+                return Ok((
+                    result.text,
+                    result.input_tokens,
+                    result.output_tokens,
+                    config.openrouter_anky_model.clone(),
+                    "openrouter".to_string(),
+                ));
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "OpenRouter reflection stream failed, falling back to Anthropic: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    // Second: try Anthropic API directly
+    if !config.anthropic_api_key.is_empty() {
+        match stream_title_and_reflection_with_model(
+            &config.anthropic_api_key,
+            &config.reflection_model,
+            Some(&config.conversation_model),
+            writing,
+            tx.clone(),
+            memory_context,
+        )
+        .await
+        {
+            Ok((text, input_tokens, output_tokens, model)) => {
+                return Ok((
+                    text,
+                    input_tokens,
+                    output_tokens,
+                    model,
+                    "claude".to_string(),
+                ));
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Anthropic API reflection stream failed, falling back to Ollama: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    // Third: local Ollama (qwen3.5:27b or whatever is configured)
+    if !config.ollama_base_url.is_empty() && !config.ollama_model.is_empty() {
+        let system = match memory_context {
+            Some(ctx) if !ctx.is_empty() => {
+                format!("{}\n\n{}", ctx, TITLE_AND_REFLECTION_SYSTEM_KNOWN)
+            }
+            _ => TITLE_AND_REFLECTION_SYSTEM_STRANGER.to_string(),
+        };
+        tracing::info!(
+            "Attempting Ollama reflection with model {}",
+            config.ollama_model
+        );
+        match crate::services::ollama::call_ollama_with_system_timeout(
+            &config.ollama_base_url,
+            &config.ollama_model,
+            &system,
+            writing,
+            180,
+        )
+        .await
+        {
+            Ok(text) => {
+                let _ = tx.send(text.clone()).await;
+                return Ok((
+                    text,
+                    0,
+                    0,
+                    config.ollama_model.clone(),
+                    "ollama".to_string(),
+                ));
+            }
+            Err(err) => {
+                tracing::error!("Ollama reflection also failed: {}", err);
+            }
+        }
+    }
+
+    anyhow::bail!("All reflection providers failed (OpenRouter, Claude, Ollama)")
 }
 
 async fn stream_title_and_reflection_once(
@@ -958,6 +1275,7 @@ async fn stream_title_and_reflection_once(
     let mut input_tokens: i64 = 0;
     let mut output_tokens: i64 = 0;
     let mut byte_stream = resp.bytes_stream();
+    let mut render_buffer = StreamRenderBuffer::default();
 
     while let Some(chunk) = byte_stream.next().await {
         let chunk = chunk?;
@@ -987,7 +1305,9 @@ async fn stream_title_and_reflection_once(
                                     .and_then(|t| t.as_str())
                                 {
                                     full_text.push_str(text);
-                                    let _ = tx.send(text.to_string()).await;
+                                    if let Some(stable_text) = render_buffer.push(text) {
+                                        let _ = tx.send(stable_text).await;
+                                    }
                                 }
                             }
                             Some("message_delta") => {
@@ -1018,6 +1338,10 @@ async fn stream_title_and_reflection_once(
                 }
             }
         }
+    }
+
+    if let Some(remaining_text) = render_buffer.finish() {
+        let _ = tx.send(remaining_text).await;
     }
 
     if full_text.is_empty() {
@@ -1636,34 +1960,53 @@ pub async fn generate_anky_reply(
 /// Anky's response to a writing session — proves it read the writing, uses Honcho memory.
 /// Returns JSON: { "ankyResponse": "...", "nextPrompt": "...", "mood": "..." }
 pub async fn generate_writing_response(
-    api_key: &str,
+    config: &Config,
     writing_text: &str,
     duration_seconds: f64,
     word_count: i32,
     is_anky: bool,
     peer_context: Option<&str>,
 ) -> Result<WritingResponse> {
-    let system = format!(
-        r#"{}
+    let system = if is_anky {
+        format!(
+            r#"{}
 
-you just received someone's writing session. your job: respond in a way that proves you read it.
+you are responding to a real anky. the person crossed the full 8-minute threshold.
 
 rules:
 - all lowercase. always.
-- reference something specific from their writing. a phrase, an image, a moment of honesty. never generic encouragement.
-- if you have context about this person from past sessions, weave it in. "that thread about your father — it's been pulling at you" is good. "you've been writing a lot" is garbage.
-- short lines. line breaks between thoughts. not a wall of text.
-- no praise for the act of writing. they don't need a gold star. they need to be seen.
-- the response should feel like someone who was sitting in the room while they wrote.
+- prove you read the writing. point to a phrase, image, contradiction, or emotional movement from the actual text.
+- if you have context from past sessions, weave it in only when it sharpens the mirror.
+- short lines. clear spacing. no wall of text.
+- no praise for effort. no therapy voice. no soft generic encouragement.
+- let the response feel like it came from the same creature that read the whole session.
 
-output ONLY valid JSON — no markdown, no code fences:
+output ONLY valid JSON:
 {{
-  "ankyResponse": "your response here.\nline breaks with \\n.\nshort thoughts.",
-  "nextPrompt": "one question, max 10 words, for their next session. a question not a command. never repeat a prompt. null if nothing feels right.",
+  "ankyResponse": "a concise response with \\n line breaks when useful.",
+  "nextPrompt": "one question, max 10 words, for their next session. a question, not a command. null if nothing lands.",
   "mood": "one of: reflective, celebratory, gentle, curious, deep"
 }}"#,
-        ANKY_CORE_IDENTITY
-    );
+            ANKY_CORE_IDENTITY
+        )
+    } else {
+        r#"you are anky. someone began to write, but they did not complete the full 8-minute rite.
+
+rules:
+- all lowercase.
+- do not pretend this is a full anky.
+- respond to what was already surfacing in the writing and where the current cut out.
+- be specific, warm, and direct. no therapy voice. no congratulating them for almost doing it.
+- keep the response compact and phone-readable.
+
+output ONLY valid JSON:
+{
+  "ankyResponse": "a concise response with \n line breaks when useful.",
+  "nextPrompt": "one question, max 10 words, for their next session. it should invite continuation, not sound ceremonial. null if nothing lands.",
+  "mood": "one of: reflective, gentle, curious, unfinished, tender"
+}"#
+        .to_string()
+    };
 
     let mins = (duration_seconds / 60.0) as u32;
     let secs = (duration_seconds % 60.0) as u32;
@@ -1689,17 +2032,84 @@ output ONLY valid JSON — no markdown, no code fences:
         &writing_text[..writing_text.len().min(8000)],
     ));
 
-    let result = call_claude(
-        api_key,
-        "claude-haiku-4-5-20251001",
-        &system,
-        &user_msg,
-        500,
-    )
-    .await?;
+    // Fallback chain: OpenRouter → Claude API → Ollama
+    let raw = 'providers: {
+        // 1. OpenRouter
+        if !config.openrouter_api_key.is_empty() {
+            let model = if is_anky {
+                &config.openrouter_anky_model
+            } else {
+                &config.openrouter_light_model
+            };
+            match crate::services::openrouter::call_openrouter(
+                &config.openrouter_api_key,
+                model,
+                &system,
+                &user_msg,
+                500,
+                60,
+            )
+            .await
+            {
+                Ok(text) => break 'providers text,
+                Err(err) => {
+                    tracing::warn!(
+                        "OpenRouter session response failed, falling back to Anthropic: {}",
+                        err
+                    );
+                }
+            }
+        }
+
+        // 2. Claude API
+        if !config.anthropic_api_key.is_empty() {
+            let fallback_model = if is_anky {
+                &config.conversation_model
+            } else {
+                HAIKU_MODEL
+            };
+            match call_claude(
+                &config.anthropic_api_key,
+                fallback_model,
+                &system,
+                &user_msg,
+                500,
+            )
+            .await
+            {
+                Ok(resp) => break 'providers resp.text,
+                Err(err) => {
+                    tracing::warn!(
+                        "Anthropic session response failed, falling back to Ollama: {}",
+                        err
+                    );
+                }
+            }
+        }
+
+        // 3. Ollama (local)
+        if !config.ollama_base_url.is_empty() && !config.ollama_model.is_empty() {
+            match crate::services::ollama::call_ollama_with_system_timeout(
+                &config.ollama_base_url,
+                &config.ollama_model,
+                &system,
+                &user_msg,
+                180,
+            )
+            .await
+            {
+                Ok(text) => break 'providers text,
+                Err(err) => {
+                    tracing::error!("Ollama session response also failed: {}", err);
+                }
+            }
+        }
+
+        anyhow::bail!("All providers (OpenRouter, Claude, Ollama) failed for writing response");
+    };
 
     // Parse JSON response
-    let raw = result.text.trim();
+    let raw = raw.trim();
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
         Ok(WritingResponse {
             anky_response: v["ankyResponse"].as_str().unwrap_or("").to_lowercase(),

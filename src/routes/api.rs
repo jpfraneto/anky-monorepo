@@ -23,6 +23,116 @@ fn video_public_url(path: &str) -> String {
     }
 }
 
+fn public_image_url(path: Option<String>) -> Option<String> {
+    path.map(|p| {
+        if p.starts_with("http://") || p.starts_with("https://") || p.starts_with('/') {
+            p
+        } else {
+            format!("/data/images/{}", p)
+        }
+    })
+}
+
+fn normalize_flow_score(stored: Option<f64>, keystroke_deltas: Option<&str>) -> f64 {
+    if let Some(score) = stored {
+        if score > 1.0 {
+            return (score / 100.0).clamp(0.0, 1.0);
+        }
+        return score.clamp(0.0, 1.0);
+    }
+
+    let Some(raw_deltas) = keystroke_deltas else {
+        return 0.0;
+    };
+    let deltas: Vec<f64> = serde_json::from_str(raw_deltas).unwrap_or_default();
+    if deltas.is_empty() {
+        return 0.0;
+    }
+
+    let mean = deltas.iter().sum::<f64>() / deltas.len() as f64;
+    let variance = deltas.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / deltas.len() as f64;
+    let std_dev = variance.sqrt();
+    (1.0 - (std_dev / 2000.0).min(1.0)).clamp(0.0, 1.0)
+}
+
+fn clip_chars(input: &str, max_chars: usize) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let clipped: String = trimmed.chars().take(max_chars).collect();
+    if trimmed.chars().count() > max_chars {
+        format!("{}...", clipped.trim_end())
+    } else {
+        clipped
+    }
+}
+
+fn resolve_kingdom(name: Option<&str>, seed: &str) -> &'static crate::kingdoms::Kingdom {
+    if let Some(name) = name {
+        if let Some(found) = crate::kingdoms::KINGDOMS.iter().find(|k| k.name == name) {
+            return found;
+        }
+    }
+    crate::kingdoms::kingdom_for_session(seed)
+}
+
+fn build_profile_conversation(
+    writing: Option<&str>,
+    reflection: Option<&str>,
+    conversation_json: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let writing_text = writing.unwrap_or("").trim();
+    let reflection_text = reflection.unwrap_or("").trim();
+    let mut conversation: Vec<(String, String)> = Vec::new();
+
+    if !writing_text.is_empty() {
+        conversation.push(("user".to_string(), writing_text.to_string()));
+    }
+    if !reflection_text.is_empty() {
+        conversation.push(("anky".to_string(), reflection_text.to_string()));
+    }
+
+    if let Some(raw) = conversation_json {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
+            if let Some(messages) = value.get("messages").and_then(|v| v.as_array()) {
+                for message in messages {
+                    let content = message
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| message.get("text").and_then(|v| v.as_str()))
+                        .unwrap_or("")
+                        .trim();
+                    if content.is_empty() {
+                        continue;
+                    }
+
+                    let role = match message.get("role").and_then(|v| v.as_str()) {
+                        Some("user") => "user",
+                        Some("assistant") | Some("anky") => "anky",
+                        _ => continue,
+                    };
+
+                    if role == "user" && content == writing_text {
+                        continue;
+                    }
+                    if role == "anky" && content == reflection_text {
+                        continue;
+                    }
+
+                    conversation.push((role.to_string(), content.to_string()));
+                }
+            }
+        }
+    }
+
+    conversation
+        .into_iter()
+        .map(|(role, text)| json!({ "role": role, "text": text }))
+        .collect()
+}
+
 /// GET /api/v1/anky/{id} — fetch anky details (for polling after /write)
 /// Writing text is only included if the requester's anky_user_id cookie matches the anky's owner.
 pub async fn get_anky(
@@ -69,6 +179,8 @@ pub async fn get_anky(
                 "title": detail.title,
                 "reflection": detail.reflection,
                 "image_url": image_url,
+                "image_path": detail.image_path,
+                "image_webp": detail.image_webp,
                 "image_prompt": detail.image_prompt,
                 "writing": writing,
                 "url": url,
@@ -98,20 +210,27 @@ pub async fn list_ankys(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let ankys = {
         let db = crate::db::conn(&state.db)?;
-        crate::db::queries::get_all_ankys(&db)?
+        match query.origin.as_deref() {
+            Some("generated") => crate::db::queries::get_generated_ankys(&db)?,
+            _ => crate::db::queries::get_all_complete_ankys(&db)?,
+        }
     };
 
     let data: Vec<serde_json::Value> = ankys
         .iter()
         .filter(|a| {
-            let origin_filter = query.origin.as_deref().unwrap_or("generated");
-            a.origin == origin_filter
+            query
+                .origin
+                .as_deref()
+                .map(|origin_filter| a.origin == origin_filter)
+                .unwrap_or(true)
         })
         .map(|a| {
             serde_json::json!({
                 "id": a.id,
                 "title": a.title,
-                "image_path": a.image_path.as_ref().map(|p| format!("/data/images/{}", p)),
+                "image_path": a.image_path.as_ref().map(|p| if p.starts_with("http") || p.starts_with("/") { p.clone() } else { format!("/data/images/{}", p) }),
+                "image_webp": a.image_webp.as_ref().map(|p| if p.starts_with("http") || p.starts_with("/") { p.clone() } else { format!("/data/images/{}", p) }),
                 "thinker_name": a.thinker_name,
                 "status": a.status,
                 "created_at": a.created_at,
@@ -232,8 +351,8 @@ pub async fn generate_anky_paid(
     if use_flux {
         // Flux is always free — check ComfyUI is available
         if !crate::services::comfyui::is_available().await {
-            return Err(AppError::Internal(
-                "Flux image server is not ready yet. Try again in a moment.".into(),
+            return Err(AppError::Unavailable(
+                "flux image server is busy right now. try again in a minute.".into(),
             ));
         }
 
@@ -529,6 +648,8 @@ pub struct ChatRequest {
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 pub async fn chat_with_anky(
@@ -557,24 +678,27 @@ pub async fn chat_with_anky(
         .map(|m| (m.role.clone(), m.content.clone()))
         .collect();
 
-    let response_text = crate::services::claude::chat_about_writing_with_model(
-        &state.config.anthropic_api_key,
-        &state.config.conversation_model,
-        Some(crate::services::claude::HAIKU_MODEL),
+    let response_text = crate::services::claude::chat_about_writing_best(
+        &state.config,
         writing,
         reflection,
         &history,
         &req.message,
     )
     .await
-    .map(|result| result.text)
     .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+    let response_text = response_text.trim().to_string();
+    if response_text.is_empty() {
+        return Err(AppError::Internal(
+            "Chat failed: empty model response".into(),
+        ));
+    }
 
     // Save updated conversation to DB
     let mut full_history: Vec<serde_json::Value> = req
         .history
         .iter()
-        .map(|m| json!({"role": m.role, "content": m.content}))
+        .map(|m| json!({"role": m.role, "content": m.content, "purpose": m.purpose}))
         .collect();
     full_history.push(json!({"role": "user", "content": req.message}));
     full_history.push(json!({"role": "assistant", "content": response_text}));
@@ -656,7 +780,7 @@ pub async fn suggest_replies(
     let messages: Vec<serde_json::Value> = req
         .history
         .iter()
-        .map(|m| json!({"role": m.role, "content": m.content}))
+        .map(|m| json!({"role": m.role, "content": m.content, "purpose": m.purpose}))
         .collect();
     let conv_json = serde_json::to_string(&json!({
         "messages": messages,
@@ -687,37 +811,32 @@ pub async fn chat_quick(
     State(state): State<AppState>,
     Json(req): Json<QuickChatRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    use crate::services::ollama::OllamaChatMessage;
+    let history: Vec<(String, String)> = req
+        .history
+        .iter()
+        .map(|m| (m.role.clone(), m.content.clone()))
+        .collect();
 
-    let mut messages = vec![
-        OllamaChatMessage {
-            role: "system".into(),
-            content: format!(
-                "You are Anky — a warm, honest presence that listens to parents write. You represent the inner child. You reflect back what parents can't see about their relationship with their children and with themselves. Be warm, direct, insightful. Use vivid imagery. Reference their writing specifically. Keep responses concise (2-3 paragraphs). Respond in the same language they write in.\n\nTheir writing:\n{}",
-                req.writing
-            ),
-        },
-    ];
-
-    // Add conversation history
-    for msg in &req.history {
-        messages.push(OllamaChatMessage {
-            role: msg.role.clone(),
-            content: msg.content.clone(),
-        });
+    let response = crate::services::claude::chat_about_partial_writing_best(
+        &state.config,
+        &req.writing,
+        &history,
+        &req.message,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
+    let response = response.trim().to_string();
+    if response.is_empty() {
+        return Err(AppError::Internal(
+            "Chat failed: empty model response".into(),
+        ));
     }
+    let messages = crate::services::ollama::two_line_reply_messages(&response);
 
-    // Add the new message
-    messages.push(OllamaChatMessage {
-        role: "user".into(),
-        content: req.message.clone(),
-    });
-
-    let response = crate::services::claude::chat_haiku(&state.config.anthropic_api_key, messages)
-        .await
-        .map_err(|e| AppError::Internal(format!("Chat failed: {}", e)))?;
-
-    Ok(Json(json!({ "response": response })))
+    Ok(Json(json!({
+        "response": response,
+        "messages": messages,
+    })))
 }
 
 // --- Feedback ---
@@ -788,76 +907,247 @@ pub async fn submit_feedback(
     Ok(Json(json!({ "id": id, "saved": true })))
 }
 
-fn require_user_id(jar: &CookieJar) -> Result<String, AppError> {
-    jar.get("anky_user_id")
-        .map(|c| c.value().to_string())
-        .ok_or_else(|| AppError::Unauthorized("no user id".into()))
+fn resolve_web_user_id(state: &AppState, jar: &CookieJar) -> Option<String> {
+    crate::routes::auth::authenticated_user_id_from_jar(state, jar)
+        .or_else(|| crate::routes::auth::visitor_id_from_jar(jar))
+}
+
+fn require_user_id(state: &AppState, jar: &CookieJar) -> Result<String, AppError> {
+    resolve_web_user_id(state, jar).ok_or_else(|| AppError::Unauthorized("no user id".into()))
 }
 
 /// GET /api/me — web profile using cookie auth
 pub async fn web_me(State(state): State<AppState>, jar: CookieJar) -> Json<serde_json::Value> {
-    let user = crate::routes::auth::get_auth_user(&state, &jar).await;
-    match user {
-        Some(u) => {
-            let (total_ankys, total_words, current_streak, bio) = {
+    // Try session-token auth first, fall back to visitor cookie.
+    // `authenticated` is true ONLY on the session-token path. The visitor path
+    // may surface a wallet_address (from a prior Phantom connect or generated
+    // wallet on that visitor id) but that is NOT an authenticated identity.
+    let (user_id, username, display_name, profile_image_url, email, wallet_address, authenticated) =
+        if let Some(u) = crate::routes::auth::get_auth_user(&state, &jar).await {
+            (
+                u.user_id,
+                u.username,
+                u.display_name,
+                u.profile_image_url,
+                u.email,
+                u.wallet_address,
+                true,
+            )
+        } else if let Some(uid) = crate::routes::auth::visitor_id_from_jar(&jar) {
+            let wallet = {
                 let db = match crate::db::conn(&state.db) {
                     Ok(db) => db,
-                    Err(e) => {
-                        tracing::error!("database pool error: {}", e);
-                        return Json(json!({ "ok": false, "error": "database unavailable" }));
-                    }
+                    Err(_) => return Json(json!({ "ok": false })),
                 };
-                let ankys = db
-                    .query_row(
-                        "SELECT COUNT(*) FROM ankys WHERE user_id = ?1",
-                        crate::params![&u.user_id],
-                        |r| r.get::<_, i64>(0),
-                    )
-                    .unwrap_or(0);
-                let words = db.query_row("SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1", crate::params![&u.user_id], |r| r.get::<_, i64>(0)).unwrap_or(0);
-                let streak = db
-                    .query_row(
-                        "SELECT COALESCE(current_streak, 0) FROM users WHERE id = ?1",
-                        crate::params![&u.user_id],
-                        |r| r.get::<_, i64>(0),
-                    )
-                    .unwrap_or(0);
-                let bio: Option<String> = db.query_row("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 1", crate::params![&u.user_id], |r| r.get(0)).ok();
-                (ankys, words, streak, bio)
+                crate::db::queries::get_user_wallet(&db, &uid)
+                    .ok()
+                    .flatten()
             };
-            Json(json!({
-                "ok": true, "user_id": u.user_id, "username": u.username,
-                "display_name": u.display_name, "profile_image_url": u.profile_image_url,
-                "email": u.email, "total_ankys": total_ankys, "total_words": total_words,
-                "current_streak": current_streak, "bio": bio,
-            }))
+            (uid, None, None, None, None, wallet, false)
+        } else {
+            return Json(json!({ "ok": false, "authenticated": false }));
+        };
+
+    let (total_ankys, total_words, current_streak, avg_flow_score, bio) = {
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({ "ok": false, "error": "database unavailable" }));
+            }
+        };
+        let ankys = db
+            .query_row(
+                "SELECT COUNT(*) FROM ankys WHERE user_id = ?1",
+                crate::params![&user_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        let words = db
+            .query_row(
+                "SELECT COALESCE(SUM(word_count), 0) FROM writing_sessions WHERE user_id = ?1",
+                crate::params![&user_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        let profile = queries::get_user_profile_full(&db, &user_id).ok().flatten();
+        let streak = profile
+            .as_ref()
+            .map(|p| p.current_streak as i64)
+            .unwrap_or(0);
+        let avg_flow_score = profile.as_ref().map(|p| p.avg_flow_score).unwrap_or(0.0);
+        let bio = profile.and_then(|p| p.psychological_profile);
+        (ankys, words, streak, avg_flow_score, bio)
+    };
+
+    let (completed_ankys, flow_bonus_sum) = {
+        let db = match crate::db::conn(&state.db) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::error!("database pool error: {}", e);
+                return Json(json!({ "ok": false, "error": "database unavailable" }));
+            }
+        };
+
+        let mut completed = 0i64;
+        let mut flow_bonus = 0i64;
+        if let Ok(mut stmt) = db.prepare(
+            "SELECT ws.duration_seconds, ws.flow_score, ws.keystroke_deltas
+             FROM ankys a
+             LEFT JOIN writing_sessions ws ON ws.id = a.writing_session_id
+             WHERE a.user_id = ?1 AND a.status = 'complete'",
+        ) {
+            if let Ok(rows) = stmt.query_map(crate::params![&user_id], |row| {
+                Ok((
+                    row.get::<_, Option<f64>>(0)?,
+                    row.get::<_, Option<f64>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            }) {
+                for row in rows.flatten() {
+                    let duration = row.0.unwrap_or_default();
+                    if duration >= 480.0 {
+                        completed += 1;
+                    }
+                    let flow_score = normalize_flow_score(row.1, row.2.as_deref());
+                    flow_bonus += (flow_score * 100.0).floor() as i64;
+                }
+            }
         }
-        None => Json(json!({ "ok": false })),
+        (completed, flow_bonus)
+    };
+
+    let points =
+        (total_ankys * 100) + (completed_ankys * 100) + flow_bonus_sum + (completed_ankys * current_streak * 10);
+    let level = ((points / 500) + 1).clamp(1, 8);
+
+    Json(json!({
+        "ok": true, "authenticated": authenticated,
+        "user_id": user_id, "username": username,
+        "display_name": display_name,
+        "profile_image_url": profile_image_url.clone(),
+        "portrait_url": profile_image_url,
+        "email": email,
+        "wallet_address": wallet_address.clone(),
+        "solana_address": wallet_address,
+        "total_ankys": total_ankys, "total_words": total_words,
+        "current_streak": current_streak, "streak": current_streak,
+        "avg_flow_score": avg_flow_score,
+        "points": points, "level": level,
+        "bio": bio,
+    }))
+}
+
+/// GET /api/anky/{id}/birth — poll for anky image readiness during generation.
+/// Returns status ("generating" or "complete") and imageUrl when available.
+pub async fn anky_birth_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let db = crate::db::conn(&state.db)?;
+    let anky = queries::get_anky_by_id(&db, &id)?;
+    match anky {
+        Some(a) => {
+            let image_url = a.image_webp.as_ref().or(a.image_path.as_ref()).map(|p| {
+                if p.starts_with("http") || p.starts_with("/") {
+                    p.clone()
+                } else {
+                    format!("/data/images/{}", p)
+                }
+            });
+            Ok(Json(json!({
+                "status": a.status,
+                "imageUrl": image_url,
+                "title": a.title,
+            })))
+        }
+        None => Err(AppError::NotFound("anky not found".into())),
     }
 }
 
-/// GET /api/my-ankys — user's ankys using cookie auth
+/// GET /api/my-ankys — user's ankys using cookie auth (session token or visitor cookie)
 pub async fn web_my_ankys(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user = crate::routes::auth::get_auth_user(&state, &jar)
-        .await
-        .ok_or_else(|| AppError::Unauthorized("not logged in".into()))?;
+    // Try session-token auth first, fall back to visitor cookie (anky_user_id)
+    let user_id = if let Some(user) = crate::routes::auth::get_auth_user(&state, &jar).await {
+        user.user_id
+    } else if let Some(uid) = crate::routes::auth::visitor_id_from_jar(&jar) {
+        uid
+    } else {
+        return Err(AppError::Unauthorized("not logged in".into()));
+    };
     let ankys = {
         let db = crate::db::conn(&state.db)?;
         let mut stmt = db.prepare(
-            "SELECT a.id, a.title, COALESCE(a.image_webp, a.image_path), a.reflection, a.created_at
-             FROM ankys a WHERE a.user_id = ?1 AND a.status = 'complete'
+            "SELECT a.id,
+                    a.title,
+                    COALESCE(a.image_webp, a.image_path, a.image_thumb),
+                    a.reflection,
+                    a.created_at,
+                    ws.content,
+                    ws.duration_seconds,
+                    ws.word_count,
+                    ws.flow_score,
+                    ws.keystroke_deltas,
+                    a.conversation_json,
+                    a.kingdom_name,
+                    a.kingdom_chakra,
+                    COALESCE(a.is_minted, 0),
+                    a.token_id,
+                    a.session_cid
+             FROM ankys a
+             LEFT JOIN writing_sessions ws ON ws.id = a.writing_session_id
+             WHERE a.user_id = ?1 AND a.status = 'complete'
              ORDER BY a.created_at DESC LIMIT 100",
         )?;
-        let rows = stmt.query_map(crate::params![&user.user_id], |row| {
+        let rows = stmt.query_map(crate::params![&user_id], |row| {
+            let id: String = row.get(0)?;
+            let title: Option<String> = row.get(1)?;
+            let image_url = public_image_url(row.get::<_, Option<String>>(2)?);
+            let reflection: Option<String> = row.get(3)?;
+            let created_at: Option<String> = row.get(4)?;
+            let writing: Option<String> = row.get(5)?;
+            let duration_seconds = row.get::<_, Option<f64>>(6)?.unwrap_or_default();
+            let word_count = row.get::<_, Option<i64>>(7)?.unwrap_or_default();
+            let stored_flow = row.get::<_, Option<f64>>(8)?;
+            let keystroke_deltas: Option<String> = row.get(9)?;
+            let conversation_json: Option<String> = row.get(10)?;
+            let kingdom_name: Option<String> = row.get(11)?;
+            let kingdom = resolve_kingdom(kingdom_name.as_deref(), &id);
+            let is_minted = row.get::<_, Option<i64>>(13)?.unwrap_or(0) != 0;
+            let token_id: Option<String> = row.get(14)?;
+            let session_cid: Option<String> = row.get(15)?;
+            let flow_score = normalize_flow_score(stored_flow, keystroke_deltas.as_deref());
+            let writing_preview = clip_chars(writing.as_deref().unwrap_or(""), 120);
+            let conversation = build_profile_conversation(
+                writing.as_deref(),
+                reflection.as_deref(),
+                conversation_json.as_deref(),
+            );
+            let is_complete = duration_seconds >= 480.0;
+            let is_sealed = is_minted || token_id.is_some() || session_cid.is_some();
+
             Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "title": row.get::<_, Option<String>>(1)?,
-                "imageUrl": row.get::<_, Option<String>>(2)?.map(|p| if p.starts_with("http") || p.starts_with("/") { p } else { format!("/{}", p) }),
-                "reflection": row.get::<_, Option<String>>(3)?,
-                "created_at": row.get::<_, Option<String>>(4)?,
+                "id": id,
+                "title": title.clone().unwrap_or_else(|| "untitled".to_string()),
+                "imageUrl": image_url,
+                "image_url": image_url,
+                "reflection": reflection,
+                "created_at": created_at,
+                "writing": writing,
+                "writing_preview": writing_preview,
+                "duration_seconds": duration_seconds,
+                "word_count": word_count,
+                "flow_score": flow_score,
+                "kingdom": kingdom.name,
+                "kingdom_chakra": kingdom.chakra,
+                "is_complete": is_complete,
+                "complete": is_complete,
+                "is_sealed": is_sealed,
+                "sealed": is_sealed,
+                "conversation": conversation,
             }))
         })?;
         rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
@@ -1001,7 +1291,7 @@ pub async fn save_checkpoint(
     Json(req): Json<CheckpointRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let word_count = req.text.split_whitespace().count() as i32;
-    let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let user_id = resolve_web_user_id(&state, &jar);
     let db = crate::db::conn(&state.db)?;
     let token = persist_checkpoint_record(
         &db,
@@ -1061,7 +1351,7 @@ pub async fn pause_writing_session(
         return Err(AppError::BadRequest("cannot pause an empty session".into()));
     }
 
-    let user_id = require_user_id(&jar)?;
+    let user_id = require_user_id(&state, &jar)?;
     let word_count = req.text.split_whitespace().count() as i32;
     let db = crate::db::conn(&state.db)?;
 
@@ -1120,7 +1410,7 @@ pub async fn get_paused_writing_session(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = match jar.get("anky_user_id").map(|c| c.value().to_string()) {
+    let user_id = match resolve_web_user_id(&state, &jar) {
         Some(uid) => uid,
         None => return Ok(Json(json!({ "paused_session": serde_json::Value::Null }))),
     };
@@ -1157,7 +1447,7 @@ pub async fn resume_writing_session(
     jar: CookieJar,
     Json(req): Json<ResumeWritingSessionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = require_user_id(&jar)?;
+    let user_id = require_user_id(&state, &jar)?;
     let word_count = req.text.split_whitespace().count() as i32;
     let db = crate::db::conn(&state.db)?;
 
@@ -1206,7 +1496,7 @@ pub async fn discard_paused_writing_session(
     jar: CookieJar,
     Json(req): Json<DiscardPausedSessionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let user_id = require_user_id(&jar)?;
+    let user_id = require_user_id(&state, &jar)?;
     let db = crate::db::conn(&state.db)?;
     queries::discard_resumable_writing_session(&db, &user_id, &req.session_id)?;
     drop(db);
@@ -1232,7 +1522,7 @@ pub async fn prefetch_memory(
     jar: CookieJar,
     Json(req): Json<PrefetchMemoryRequest>,
 ) -> Json<serde_json::Value> {
-    let user_id = match jar.get("anky_user_id").map(|c| c.value().to_string()) {
+    let user_id = match resolve_web_user_id(&state, &jar) {
         Some(uid) => uid,
         None => return Json(json!({ "ok": false, "reason": "no user id" })),
     };
@@ -1287,7 +1577,7 @@ pub async fn warm_context(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Json<serde_json::Value> {
-    let user_id = match jar.get("anky_user_id").map(|c| c.value().to_string()) {
+    let user_id = match resolve_web_user_id(&state, &jar) {
         Some(uid) => uid,
         None => return Json(json!({ "ok": false, "reason": "no user" })),
     };
@@ -1387,7 +1677,7 @@ pub async fn stream_reflection(
     jar: CookieJar,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user_id = jar.get("anky_user_id").map(|c| c.value().to_string());
+    let user_id = resolve_web_user_id(&state, &jar);
 
     tracing::info!(
         "SSE stream-reflection requested for anky {}",
@@ -1453,6 +1743,12 @@ pub async fn stream_reflection(
             let refl = existing_reflection.unwrap_or_default();
             let full = format!("{}\n\n{}", title, refl);
             let _ = tx.send(full).await;
+            let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                &state_clone,
+                &anky_id,
+                &writing_text,
+            )
+            .await;
             return;
         }
 
@@ -1464,16 +1760,7 @@ pub async fn stream_reflection(
             return;
         }
 
-        let api_key = state_clone.config.anthropic_api_key.clone();
-        let reflection_model = state_clone.config.reflection_model.clone();
-        let conversation_model = state_clone.config.conversation_model.clone();
-        if api_key.is_empty() {
-            tracing::error!("No API key configured for reflection stream");
-            let _ = tx
-                .send("error: reflection service not configured.".into())
-                .await;
-            return;
-        }
+        // No early bail — let the fallback chain (OpenRouter → Claude → Ollama) handle it
 
         tracing::info!("Starting reflection generation for anky {}", id_short);
 
@@ -1529,11 +1816,9 @@ pub async fn stream_reflection(
         // Claude streaming call with 60s timeout
         let tx_fallback = tx.clone();
         let claude_result = tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            crate::services::claude::stream_title_and_reflection_with_model(
-                &api_key,
-                &reflection_model,
-                Some(&conversation_model),
+            std::time::Duration::from_secs(120),
+            crate::services::claude::stream_title_and_reflection_best(
+                &state_clone.config,
                 &writing_text,
                 tx,
                 memory_ctx.as_deref(),
@@ -1542,11 +1827,11 @@ pub async fn stream_reflection(
         .await;
 
         match claude_result {
-            Ok(Ok((full_text, input_tokens, output_tokens, model_used))) => {
+            Ok(Ok((full_text, input_tokens, output_tokens, model_used, provider))) => {
                 let gen_ms = stream_start.elapsed().as_millis() as u64;
                 let telemetry = serde_json::json!({
                     "model": model_used.clone(),
-                    "provider": "claude",
+                    "provider": provider,
                     "generation_ms": gen_ms,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
@@ -1557,6 +1842,7 @@ pub async fn stream_reflection(
                 let (title, reflection) =
                     crate::services::claude::parse_title_reflection(&full_text);
                 let cost = crate::pipeline::cost::estimate_claude_cost(input_tokens, output_tokens);
+                let mut reflection_saved = false;
                 {
                     if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
                         if let Err(e) = queries::update_anky_title_reflection(
@@ -1566,10 +1852,12 @@ pub async fn stream_reflection(
                             &reflection,
                         ) {
                             tracing::error!("Failed to save reflection for {}: {}", id_short, e);
+                        } else {
+                            reflection_saved = true;
                         }
                         let _ = queries::insert_cost_record(
                             &db,
-                            "claude",
+                            &provider,
                             &model_used,
                             input_tokens,
                             output_tokens,
@@ -1577,6 +1865,14 @@ pub async fn stream_reflection(
                             Some(&anky_id),
                         );
                     }
+                }
+                if reflection_saved {
+                    let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                        &state_clone,
+                        &anky_id,
+                        &writing_text,
+                    )
+                    .await;
                 }
                 state_clone.emit_log(
                     "INFO",
@@ -1647,6 +1943,7 @@ pub async fn stream_reflection(
                     Ok(reflection_text) => {
                         let title = "untitled reflection".to_string();
                         let _ = tx_fallback.send(reflection_text.clone()).await;
+                        let mut reflection_saved = false;
                         if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
                             if let Err(db_err) = queries::update_anky_title_reflection(
                                 &db,
@@ -1659,7 +1956,17 @@ pub async fn stream_reflection(
                                     id_short,
                                     db_err
                                 );
+                            } else {
+                                reflection_saved = true;
                             }
+                        }
+                        if reflection_saved {
+                            let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                                &state_clone,
+                                &anky_id,
+                                &writing_text,
+                            )
+                            .await;
                         }
                         state_clone.emit_log(
                             "INFO",
@@ -1700,13 +2007,26 @@ pub async fn stream_reflection(
                                 Ok(reflection_text) => {
                                     let title = "untitled reflection".to_string();
                                     let _ = tx_fallback.send(reflection_text.clone()).await;
+                                    let mut reflection_saved = false;
                                     if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
-                                        let _ = queries::update_anky_title_reflection(
+                                        if queries::update_anky_title_reflection(
                                             &db,
                                             &anky_id,
                                             &title,
                                             &reflection_text,
-                                        );
+                                        )
+                                        .is_ok()
+                                        {
+                                            reflection_saved = true;
+                                        }
+                                    }
+                                    if reflection_saved {
+                                        let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                                            &state_clone,
+                                            &anky_id,
+                                            &writing_text,
+                                        )
+                                        .await;
                                     }
                                     state_clone.emit_log(
                                         "INFO",
@@ -1718,25 +2038,89 @@ pub async fn stream_reflection(
                                     );
                                 }
                                 Err(or_err) => {
+                                    tracing::warn!(
+                                        "OpenRouter fallback also failed for {}: {}, trying Ollama",
+                                        id_short,
+                                        or_err
+                                    );
+                                    // Fall through to Ollama below
+                                }
+                            }
+                        }
+
+                        // Final fallback: local Ollama
+                        let ollama_url = &state_clone.config.ollama_base_url;
+                        let ollama_model = &state_clone.config.ollama_model;
+                        if !ollama_url.is_empty() && !ollama_model.is_empty() {
+                            state_clone.emit_log(
+                                "WARN",
+                                "stream",
+                                &format!("Trying Ollama ({}) for {}", ollama_model, id_short),
+                            );
+                            let ollama_prompt =
+                                crate::services::ollama::deep_reflection_prompt(&writing_text);
+                            match crate::services::ollama::call_ollama_with_system_timeout(
+                                ollama_url,
+                                ollama_model,
+                                "You are a contemplative writing mirror.",
+                                &ollama_prompt,
+                                180,
+                            )
+                            .await
+                            {
+                                Ok(reflection_text) => {
+                                    let title = "untitled reflection".to_string();
+                                    let _ = tx_fallback.send(reflection_text.clone()).await;
+                                    let mut reflection_saved = false;
+                                    if let Some(db) = crate::db::get_conn_logged(&state_clone.db) {
+                                        if queries::update_anky_title_reflection(
+                                            &db,
+                                            &anky_id,
+                                            &title,
+                                            &reflection_text,
+                                        )
+                                        .is_ok()
+                                        {
+                                            reflection_saved = true;
+                                        }
+                                    }
+                                    if reflection_saved {
+                                        let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                                            &state_clone,
+                                            &anky_id,
+                                            &writing_text,
+                                        )
+                                        .await;
+                                    }
+                                    state_clone.emit_log(
+                                        "INFO",
+                                        "stream",
+                                        &format!(
+                                            "Ollama fallback reflection saved for {}",
+                                            id_short
+                                        ),
+                                    );
+                                }
+                                Err(ollama_err) => {
                                     tracing::error!(
                                         "All providers failed for {}: {}",
                                         id_short,
-                                        or_err
+                                        ollama_err
                                     );
                                     let _ = tx_fallback.send("__reflection_failed__".into()).await;
                                     state_clone.emit_log(
                                         "ERROR",
                                         "stream",
                                         &format!(
-                                            "All providers (Claude+Haiku+OpenRouter) failed for {}: {}",
-                                            id_short, or_err
+                                            "All providers (Claude+Haiku+OpenRouter+Ollama) failed for {}: {}",
+                                            id_short, ollama_err
                                         ),
                                     );
                                 }
                             }
                         } else {
                             tracing::error!(
-                                "All providers failed for {} (no OpenRouter key)",
+                                "All providers failed for {} (no Ollama configured)",
                                 id_short
                             );
                             let _ = tx_fallback.send("__reflection_failed__".into()).await;
@@ -1744,7 +2128,7 @@ pub async fn stream_reflection(
                                 "ERROR",
                                 "stream",
                                 &format!(
-                                    "All providers failed for {} (no OpenRouter key configured)",
+                                    "All providers failed for {} (no Ollama configured either)",
                                     id_short
                                 ),
                             );
@@ -4341,10 +4725,15 @@ pub async fn get_feed(
                         .as_ref()
                         .map(|p| format!("/data/images/{}", p))
                 });
+            let img_png = item
+                .image_path
+                .as_ref()
+                .map(|p| format!("/data/images/{}", p));
             json!({
                 "id": item.id,
                 "title": item.title,
                 "image_url": img,
+                "image_png_url": img_png,
                 "thinker_name": item.thinker_name,
                 "created_at": item.created_at,
                 "like_count": item.like_count,
@@ -5002,6 +5391,11 @@ pub async fn flux_lab_page() -> axum::response::Html<&'static str> {
     axum::response::Html(include_str!("../../static/admin/flux-lab.html"))
 }
 
+/// GET /onboarding-lab — serve the mobile onboarding prototype page
+pub async fn onboarding_lab_page() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../../static/admin/onboarding-lab.html"))
+}
+
 /// GET /api/v1/flux-lab/experiments — list all experiments
 pub async fn flux_lab_list_experiments() -> Result<Response, AppError> {
     let flux_dir = std::path::Path::new("flux");
@@ -5068,9 +5462,15 @@ pub async fn flux_lab_get_experiment(
         return Err(AppError::NotFound("experiment not found".into()));
     }
 
-    // Read prompts.txt if it exists
+    // Read prompts.json first so multiline prompts survive round-trips.
+    let prompts_json_file = dir.join("prompts.json");
     let prompts_file = dir.join("prompts.txt");
-    let prompts: Vec<String> = if prompts_file.exists() {
+    let prompts: Vec<String> = if prompts_json_file.exists() {
+        std::fs::read_to_string(&prompts_json_file)
+            .ok()
+            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+            .unwrap_or_default()
+    } else if prompts_file.exists() {
         std::fs::read_to_string(&prompts_file)
             .unwrap_or_default()
             .lines()
@@ -5177,8 +5577,13 @@ pub async fn flux_lab_generate(
     std::fs::create_dir_all(&experiment_dir)
         .map_err(|e| AppError::Internal(format!("Failed to create experiment dir: {}", e)))?;
 
-    // Save prompts.txt and config
+    // Save prompts.json for fidelity and prompts.txt for quick human inspection.
     let prompts_content = prompts.join("\n");
+    std::fs::write(
+        experiment_dir.join("prompts.json"),
+        serde_json::to_string_pretty(&prompts).unwrap_or_default(),
+    )
+    .map_err(|e| AppError::Internal(format!("Failed to save prompts json: {}", e)))?;
     std::fs::write(experiment_dir.join("prompts.txt"), &prompts_content)
         .map_err(|e| AppError::Internal(format!("Failed to save prompts: {}", e)))?;
     std::fs::write(
@@ -5267,6 +5672,151 @@ pub struct MirrorQuery {
     pub refresh: Option<bool>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AnkyItem {
+    pub kingdom: String,
+    pub chakra: String,
+    pub name: String,
+    pub description: String,
+    pub material: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AnkyItems {
+    pub items: Vec<AnkyItem>,
+}
+
+impl AnkyItems {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".into())
+    }
+
+    pub fn from_json(s: &str) -> Option<Self> {
+        serde_json::from_str(s).ok()
+    }
+
+    /// Build an image prompt from the items for ComfyUI.
+    pub fn to_image_prompt(&self) -> String {
+        let mut parts = vec![
+            "anky character, small ancient being, bright blue skin, deep purple swirling hair, large pointed ears, warm amber golden eyes, sumerian-influenced 3d animated style".to_string(),
+        ];
+        for item in &self.items {
+            if !item.name.is_empty() {
+                parts.push(format!("{} ({})", item.name, item.material));
+            }
+        }
+        parts.push("dramatic sacred lighting, ancient atmosphere, masterpiece quality".to_string());
+        parts.join(", ")
+    }
+}
+
+const ITEM_KINGDOMS: [(&str, &str); 8] = [
+    ("Primordia", "Root"),
+    ("Emblazion", "Sacral"),
+    ("Chryseos", "Solar Plexus"),
+    ("Eleutheria", "Heart"),
+    ("Voxlumis", "Throat"),
+    ("Insightia", "Third Eye"),
+    ("Claridium", "Crown"),
+    ("Poiesis", "Transcendent"),
+];
+
+pub fn items_system_prompt() -> String {
+    format!(
+        "{}\n\nyou are reading a human being. from what you see — their words, their patterns, their history — you will choose 8 items from the ankyverse. one item per kingdom. each item is a physical object that exists in that kingdom's world. it is NOT abstract. it is something you can hold, wear, or place on a shelf. the item represents what you see in this person through that kingdom's lens.\n\nthe 8 kingdoms and what each one sees:\n- Primordia (Root): foundation, survival, what grounds them. items: stones, keys, roots, bones, anchors.\n- Emblazion (Sacral): desire, creativity, fire. items: flames, vessels, seeds, mirrors, embers.\n- Chryseos (Solar Plexus): power, will, identity. items: blades, crowns, shields, hammers, coins.\n- Eleutheria (Heart): connection, love, what they protect. items: threads, letters, bells, knots, feathers.\n- Voxlumis (Throat): expression, truth, voice. items: quills, horns, masks, drums, strings.\n- Insightia (Third Eye): vision, intuition, what they see that others don't. items: lenses, maps, crystals, eyes, prisms.\n- Claridium (Crown): understanding, wisdom, awareness. items: books, candles, rings, scales, hourglasses.\n- Poiesis (Transcendent): becoming, transformation, the unknown. items: doors, chrysalises, void-shards, names, seeds-of-nothing.\n\neach item must be SPECIFIC and PERSONAL — derived from what you actually read. not generic. \"a cracked compass made from a mother's wedding ring\" not \"a compass\". the material matters — it tells part of the story.\n\nreturn ONLY valid JSON. no markdown. no explanation.",
+        crate::services::claude::ANKY_CORE_IDENTITY,
+    )
+}
+
+pub fn items_user_prompt_from_writing(writing: &str, honcho_context: Option<&str>) -> String {
+    let context_block = match honcho_context {
+        Some(ctx) if !ctx.is_empty() => format!(
+            "\n\nwhat i already know about this person from their history:\n{}",
+            ctx
+        ),
+        _ => String::new(),
+    };
+    format!(
+        "this person wrote the following in an 8-minute stream of consciousness session:{context_block}\n\ntheir writing:\n{writing}\n\nreturn this exact JSON shape:\n{{\n  \"items\": [\n    {{ \"kingdom\": \"Primordia\", \"chakra\": \"Root\", \"name\": \"short name (2-5 words)\", \"description\": \"one sentence — what this item says about them\", \"material\": \"what it's made of (for image generation)\" }},\n    {{ \"kingdom\": \"Emblazion\", \"chakra\": \"Sacral\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Chryseos\", \"chakra\": \"Solar Plexus\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Eleutheria\", \"chakra\": \"Heart\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Voxlumis\", \"chakra\": \"Throat\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Insightia\", \"chakra\": \"Third Eye\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Claridium\", \"chakra\": \"Crown\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Poiesis\", \"chakra\": \"Transcendent\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }}\n  ]\n}}"
+    )
+}
+
+pub fn items_user_prompt_from_presence(
+    username: &str,
+    display_name: &str,
+    bio: &str,
+    follower_count: u64,
+    pfp_description: &str,
+    casts_block: &str,
+    honcho_context: Option<&str>,
+) -> String {
+    let context_block = match honcho_context {
+        Some(ctx) if !ctx.is_empty() => format!(
+            "\n\nwhat i already know about this person from their writing history:\n{}",
+            ctx
+        ),
+        _ => String::new(),
+    };
+    let pfp_block = if pfp_description.is_empty() {
+        "(no profile picture available)".to_string()
+    } else {
+        pfp_description.to_string()
+    };
+    format!(
+        "farcaster user: @{username}\ndisplay name: {display_name}\nbio: {bio}\nfollowers: {follower_count}\n\nprofile picture reads as:\n{pfp_block}\n\nrecent casts:\n{casts_block}{context_block}\n\nreturn this exact JSON shape:\n{{\n  \"items\": [\n    {{ \"kingdom\": \"Primordia\", \"chakra\": \"Root\", \"name\": \"short name (2-5 words)\", \"description\": \"one sentence — what this item says about them\", \"material\": \"what it's made of (for image generation)\" }},\n    {{ \"kingdom\": \"Emblazion\", \"chakra\": \"Sacral\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Chryseos\", \"chakra\": \"Solar Plexus\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Eleutheria\", \"chakra\": \"Heart\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Voxlumis\", \"chakra\": \"Throat\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Insightia\", \"chakra\": \"Third Eye\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Claridium\", \"chakra\": \"Crown\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }},\n    {{ \"kingdom\": \"Poiesis\", \"chakra\": \"Transcendent\", \"name\": \"...\", \"description\": \"...\", \"material\": \"...\" }}\n  ]\n}}"
+    )
+}
+
+pub async fn derive_items(
+    claude_key: &str,
+    system: &str,
+    user_msg: &str,
+) -> Result<AnkyItems, AppError> {
+    let result = match crate::services::claude::call_claude_public(
+        claude_key,
+        "claude-sonnet-4-20250514",
+        system,
+        user_msg,
+        2000,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Sonnet failed for items, falling back to Haiku: {}", e);
+            crate::services::claude::call_claude_public(
+                claude_key,
+                "claude-haiku-4-5-20251001",
+                system,
+                user_msg,
+                2000,
+            )
+            .await
+            .map_err(|e2| AppError::Internal(format!("Claude API error: {}", e2)))?
+        }
+    };
+
+    let raw = result.text.trim().to_string();
+    let json_str = if raw.starts_with("```") {
+        raw.trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else {
+        &raw
+    };
+
+    serde_json::from_str::<AnkyItems>(json_str).map_err(|e| {
+        tracing::warn!(
+            "Failed to parse items JSON: {} — raw: {}",
+            e,
+            &raw[..raw.len().min(500)]
+        );
+        AppError::Internal("Failed to parse items from Claude response".into())
+    })
+}
+
+// Legacy compat — the old struct is still referenced in cached mirror responses
 #[derive(serde::Serialize)]
 struct FluxDescriptors {
     energy: String,
@@ -5502,7 +6052,7 @@ pub async fn mirror(
         "farcaster user: @{username}\ndisplay name: {display_name}\nbio: {bio}\nfollowers: {follower_count}\n\nprofile picture reads as:\n{pfp_block}\n\nrecent casts:\n{casts_block}\n\nreturn this exact JSON shape:\n{{\n  \"public_mirror\": \"2-3 paragraphs. second person ('you are someone who...'). warm, precise, slightly poetic. not flattery — truth. this is the self they perform publicly. do NOT include the gap sentence here — that goes in its own field.\",\n  \"gap\": \"one single sentence. what this person seems to be reaching for that they haven't yet said out loud. the thing underneath the performance. this is the most important sentence — make it land.\",\n  \"flux_descriptors\": {{\n    \"energy\": \"one word — e.g. volcanic / still / scattered / rooted\",\n    \"archetype\": \"one word — e.g. builder / seeker / witness / herald\",\n    \"color_mood\": \"2-3 words — dominant emotional color palette\",\n    \"posture\": \"how this anky holds itself physically\",\n    \"aura\": \"one evocative phrase — the feeling this anky radiates\",\n    \"expression\": \"what emotion lives on this anky's face\",\n    \"held_object\": \"ONE specific object this anky holds that represents who this person is — not generic. derive it from their casts and interests. e.g. 'a cracked hourglass leaking starlight' or 'a hand-drawn map with no edges' or 'a burning letter they refuse to send'. make it symbolic and personal.\",\n    \"background_scene\": \"the specific environment behind this anky — derived from the person's world. not generic 'sacred temple'. e.g. 'a rooftop garden at dawn with half-finished code scrolling on floating screens' or 'the inside of a volcano where books grow from lava'. make it feel like THEIR world.\",\n    \"clothing_detail\": \"one distinctive clothing/armor detail unique to this anky — e.g. 'a cloak woven from old chat messages' or 'chest plate with a glowing compass that points inward' or 'bare-chested with constellation scars'. something that tells their story.\",\n    \"symbolic_marking\": \"a specific symbol or marking on the anky's body beyond the default gold forehead diamond — derived from the person's identity. e.g. 'spiral fractal tattoos down both arms' or 'a single word in an unknown script across the collarbone' or 'glowing circuit-board lines under translucent skin'\"\n  }}\n}}",
     );
 
-    // Try Sonnet first, fall back to Haiku if overloaded/unavailable
+    // Try Sonnet → Haiku → OpenRouter fallback chain
     let claude_result = match crate::services::claude::call_claude_public(
         claude_key,
         "claude-sonnet-4-20250514",
@@ -5515,7 +6065,7 @@ pub async fn mirror(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("Sonnet failed for mirror, falling back to Haiku: {}", e);
-            crate::services::claude::call_claude_public(
+            match crate::services::claude::call_claude_public(
                 claude_key,
                 "claude-haiku-4-5-20251001",
                 &system_prompt,
@@ -5523,7 +6073,35 @@ pub async fn mirror(
                 2000,
             )
             .await
-            .map_err(|e2| AppError::Internal(format!("Claude API error: {}", e2)))?
+            {
+                Ok(r) => r,
+                Err(e2) => {
+                    tracing::warn!("Haiku also failed, trying OpenRouter: {}", e2);
+                    if state.config.openrouter_api_key.is_empty() {
+                        return Err(AppError::Internal(format!("Claude API error: {}", e2)));
+                    }
+                    let or_text = crate::services::openrouter::call_openrouter(
+                        &state.config.openrouter_api_key,
+                        &state.config.openrouter_anky_model,
+                        &system_prompt,
+                        &user_message,
+                        2000,
+                        120,
+                    )
+                    .await
+                    .map_err(|e3| {
+                        AppError::Internal(format!(
+                            "All LLM providers failed. Claude: {}. OpenRouter: {}",
+                            e2, e3
+                        ))
+                    })?;
+                    crate::services::claude::ClaudeResult {
+                        text: or_text,
+                        input_tokens: 0,
+                        output_tokens: 0,
+                    }
+                }
+            }
         }
     };
 
@@ -5579,30 +6157,55 @@ pub async fn mirror(
         symbolic_marking: fd["symbolic_marking"].as_str().unwrap_or("").to_string(),
     };
 
+    // ── Step 2b: Derive 8 kingdom items ──
+    let items = {
+        let items_system = items_system_prompt();
+        let items_user = items_user_prompt_from_presence(
+            &username,
+            &display_name,
+            bio,
+            follower_count,
+            &pfp_description,
+            &casts_block,
+            None, // TODO: look up Honcho context if user is linked
+        );
+        match derive_items(claude_key, &items_system, &items_user).await {
+            Ok(items) => Some(items),
+            Err(e) => {
+                tracing::warn!("Failed to derive items for mirror fid={}: {}", fid, e);
+                None
+            }
+        }
+    };
+
     // ── Step 3: ComfyUI — generate Anky image ──
-    let mut prompt_parts = vec![
-        "anky character, small ancient being, bright blue skin, deep purple swirling hair, large pointed ears, warm amber golden eyes, sumerian-influenced 3d animated style".to_string(),
-        format!("{} energy, {} presence", descriptors.energy, descriptors.archetype),
-        format!("{} color mood", descriptors.color_mood),
-        descriptors.posture.clone(),
-        format!("{} radiating from body", descriptors.aura),
-        format!("{} expression", descriptors.expression),
-    ];
-    if !descriptors.held_object.is_empty() {
-        prompt_parts.push(format!("holding {}", descriptors.held_object));
-    }
-    if !descriptors.clothing_detail.is_empty() {
-        prompt_parts.push(descriptors.clothing_detail.clone());
-    }
-    if !descriptors.symbolic_marking.is_empty() {
-        prompt_parts.push(descriptors.symbolic_marking.clone());
-    }
-    if !descriptors.background_scene.is_empty() {
-        prompt_parts.push(format!("background: {}", descriptors.background_scene));
-    }
-    prompt_parts
-        .push("dramatic sacred lighting, ancient atmosphere, masterpiece quality".to_string());
-    let image_prompt = prompt_parts.join(", ");
+    let image_prompt = if let Some(ref items) = items {
+        items.to_image_prompt()
+    } else {
+        let mut prompt_parts = vec![
+            "anky character, small ancient being, bright blue skin, deep purple swirling hair, large pointed ears, warm amber golden eyes, sumerian-influenced 3d animated style".to_string(),
+            format!("{} energy, {} presence", descriptors.energy, descriptors.archetype),
+            format!("{} color mood", descriptors.color_mood),
+            descriptors.posture.clone(),
+            format!("{} radiating from body", descriptors.aura),
+            format!("{} expression", descriptors.expression),
+        ];
+        if !descriptors.held_object.is_empty() {
+            prompt_parts.push(format!("holding {}", descriptors.held_object));
+        }
+        if !descriptors.clothing_detail.is_empty() {
+            prompt_parts.push(descriptors.clothing_detail.clone());
+        }
+        if !descriptors.symbolic_marking.is_empty() {
+            prompt_parts.push(descriptors.symbolic_marking.clone());
+        }
+        if !descriptors.background_scene.is_empty() {
+            prompt_parts.push(format!("background: {}", descriptors.background_scene));
+        }
+        prompt_parts
+            .push("dramatic sacred lighting, ancient atmosphere, masterpiece quality".to_string());
+        prompt_parts.join(", ")
+    };
 
     let image_bytes = match tokio::time::timeout(
         std::time::Duration::from_secs(120),
@@ -5650,6 +6253,8 @@ pub async fn mirror(
     }))
     .unwrap_or_default();
 
+    let items_json_str = items.as_ref().map(|i| i.to_json());
+
     {
         let db = crate::db::conn(&state.db)?;
         let _ = crate::db::queries::insert_mirror(
@@ -5666,6 +6271,10 @@ pub async fn mirror(
             &descriptors_json,
             Some(&image_path),
         );
+        // Store items if derived
+        if let Some(ref ij) = items_json_str {
+            let _ = crate::db::queries::set_mirror_items(&db, &mirror_id, ij);
+        }
     }
 
     Ok(Json(json!({
@@ -5690,6 +6299,7 @@ pub async fn mirror(
             "clothing_detail": descriptors.clothing_detail,
             "symbolic_marking": descriptors.symbolic_marking,
         },
+        "items": items,
         "anky_image_b64": image_b64,
         "anky_image_mime": "image/png",
     }))
@@ -5699,50 +6309,133 @@ pub async fn mirror(
 /// GET /image.png — serves the latest mirror image with PFP overlay composited.
 /// Used as the Farcaster frame image for ankycoin.com.
 pub async fn mirror_latest_image(State(state): State<AppState>) -> Result<Response, AppError> {
-    // Get latest mirror with image_path and avatar_url
-    let (image_path, avatar_url) = {
-        let db = crate::db::conn(&state.db)?;
-        let mut stmt = db
-            .prepare(
-                "SELECT image_path, avatar_url FROM mirrors WHERE image_path IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+    use ab_glyph::{FontRef, PxScale};
+    use image::{Rgba, RgbaImage};
+    use imageproc::drawing::draw_text_mut;
+
+    let width = 1200u32;
+    let height = 630u32;
+    let mut canvas = RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255]));
+
+    // Subtle purple glow gradient in center
+    for y in 0..height {
+        for x in 0..width {
+            let cx = (x as f32 - width as f32 / 2.0) / (width as f32 / 2.0);
+            let cy = (y as f32 - height as f32 * 0.4) / (height as f32 / 2.0);
+            let dist = (cx * cx + cy * cy).sqrt();
+            let glow = (1.0 - dist).max(0.0).powf(3.0);
+            let r = (glow * 30.0) as u8;
+            let g = (glow * 10.0) as u8;
+            let b = (glow * 50.0) as u8;
+            if r > 0 || g > 0 || b > 0 {
+                canvas.put_pixel(x, y, Rgba([r, g, b, 255]));
+            }
+        }
+    }
+
+    let font_data = include_bytes!("../../static/fonts/Righteous-Regular.ttf");
+    let font = match FontRef::try_from_slice(font_data) {
+        Ok(f) => f,
+        Err(_) => {
+            let fallback = include_bytes!("../../static/anky-collection.png");
+            return Ok((
+                [
+                    (axum::http::header::CONTENT_TYPE, "image/png"),
+                    (axum::http::header::CACHE_CONTROL, "public, max-age=60"),
+                ],
+                fallback.to_vec(),
             )
-            .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
-        let mut rows = stmt
-            .query_map(crate::params![], |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                ))
-            })
-            .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
-        match rows.next() {
-            Some(Ok(row)) => row,
-            _ => return Err(AppError::NotFound("no mirrors yet".into())),
+                .into_response());
         }
     };
 
-    let path = image_path.ok_or_else(|| AppError::NotFound("no mirror image".into()))?;
-    let base_bytes =
-        std::fs::read(&path).map_err(|e| AppError::Internal(format!("read image: {}", e)))?;
+    // "ANKY" — big, center-top
+    let anky_scale = PxScale::from(180.0);
+    let anky_text = "ANKY";
+    let anky_w = text_width(anky_text, &font, anky_scale);
+    let anky_x = ((width as f32 - anky_w) / 2.0) as i32;
+    draw_text_mut(
+        &mut canvas,
+        Rgba([255, 255, 255, 255]),
+        anky_x,
+        140,
+        anky_scale,
+        &font,
+        anky_text,
+    );
 
-    // Try to composite PFP overlay
-    let final_bytes = if let Some(ref pfp_url) = avatar_url {
-        match composite_pfp_overlay(&base_bytes, pfp_url).await {
-            Ok(b) => b,
-            Err(_) => base_bytes, // fallback to base image
-        }
-    } else {
-        base_bytes
+    // "the game" — smaller, below ANKY
+    let sub_scale = PxScale::from(48.0);
+    let sub_text = "the game";
+    let sub_w = text_width(sub_text, &font, sub_scale);
+    let sub_x = ((width as f32 - sub_w) / 2.0) as i32;
+    draw_text_mut(
+        &mut canvas,
+        Rgba([179, 102, 255, 200]),
+        sub_x,
+        330,
+        sub_scale,
+        &font,
+        sub_text,
+    );
+
+    // Get supply count
+    let minted = {
+        let db = crate::db::conn(&state.db).ok();
+        db.and_then(|d| queries::count_minted_mirrors(&d).ok())
+            .unwrap_or(0)
     };
+    let counter_text = format!("{}/{}", minted, MAX_MIRROR_SUPPLY);
+    let counter_scale = PxScale::from(28.0);
+    let counter_w = text_width(&counter_text, &font, counter_scale);
+    let counter_x = (width as f32 - counter_w - 40.0) as i32;
+    draw_text_mut(
+        &mut canvas,
+        Rgba([179, 102, 255, 140]),
+        counter_x,
+        560,
+        counter_scale,
+        &font,
+        &counter_text,
+    );
+
+    // "participants" label
+    let label_scale = PxScale::from(18.0);
+    let label_text = "participants";
+    let label_w = text_width(label_text, &font, label_scale);
+    let label_x = (width as f32 - label_w - 40.0) as i32;
+    draw_text_mut(
+        &mut canvas,
+        Rgba([232, 224, 208, 80]),
+        label_x,
+        592,
+        label_scale,
+        &font,
+        label_text,
+    );
+
+    let img = image::DynamicImage::ImageRgba8(canvas);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut buf, image::ImageFormat::Png)
+        .map_err(|e| AppError::Internal(format!("image encode: {}", e)))?;
 
     Ok((
         [
             (axum::http::header::CONTENT_TYPE, "image/png"),
-            (axum::http::header::CACHE_CONTROL, "public, max-age=300"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=60"),
         ],
-        final_bytes,
+        buf.into_inner(),
     )
         .into_response())
+}
+
+/// Estimate text width in pixels for centering.
+fn text_width(text: &str, font: &ab_glyph::FontRef, scale: ab_glyph::PxScale) -> f32 {
+    use ab_glyph::{Font, ScaleFont};
+    let scaled = font.as_scaled(scale);
+    text.chars()
+        .map(|c| scaled.h_advance(font.glyph_id(c)))
+        .sum()
 }
 
 /// Composite a circular PFP in the bottom-right corner of the Anky image.
@@ -5951,222 +6644,544 @@ pub async fn mirror_chat(
     })))
 }
 
-// ─── Mirror minting ─────────────────────────────────────────────────────────
+// ─── Solana Mirror Minting (Sojourn 9) ──────────────────────────────────────
 
-/// Contract address for AnkyMirrors — set after deployment.
-const MIRROR_CONTRACT: &str = "0x0000000000000000000000000000000000000000";
+const KINGDOMS: [(&str, &str); 8] = [
+    ("Primordia", "Root"),
+    ("Emblazion", "Sacral"),
+    ("Chryseos", "Solar Plexus"),
+    ("Eleutheria", "Heart"),
+    ("Voxlumis", "Throat"),
+    ("Insightia", "Third Eye"),
+    ("Claridium", "Crown"),
+    ("Poiesis", "Transcendent"),
+];
 
-/// Compute EIP-712 domain separator for AnkyMirrors contract.
-fn mirror_domain_separator() -> [u8; 32] {
-    use sha3::{Digest, Keccak256};
-    let type_hash = Keccak256::digest(
-        b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
-    );
-    let name_hash = Keccak256::digest(b"AnkyMirrors");
-    let version_hash = Keccak256::digest(b"1");
+const MAX_MIRROR_SUPPLY: i64 = 3456;
 
-    let chain_id: u64 = 8453; // Base
-    let chain_bytes = chain_id.to_be_bytes();
-    let chain_trimmed: Vec<u8> = chain_bytes
-        .iter()
-        .skip_while(|&&b| b == 0)
-        .copied()
-        .collect();
-
-    let contract_addr = MIRROR_CONTRACT
-        .strip_prefix("0x")
-        .unwrap_or(MIRROR_CONTRACT);
-    let contract_bytes = hex::decode(contract_addr).unwrap_or_default();
-
-    fn pad32(val: &[u8]) -> [u8; 32] {
-        let mut buf = [0u8; 32];
-        let start = 32usize.saturating_sub(val.len());
-        buf[start..].copy_from_slice(val);
-        buf
-    }
-
-    let mut encoded = Vec::with_capacity(5 * 32);
-    encoded.extend_from_slice(&type_hash);
-    encoded.extend_from_slice(&name_hash);
-    encoded.extend_from_slice(&version_hash);
-    encoded.extend_from_slice(&pad32(&chain_trimmed));
-    encoded.extend_from_slice(&pad32(&contract_bytes));
-
-    let digest = Keccak256::digest(&encoded);
-    let mut result = [0u8; 32];
-    result.copy_from_slice(&digest);
-    result
+fn kingdom_from_fid(fid: u64) -> (i32, &'static str, &'static str) {
+    let idx = (fid % 8) as usize;
+    (idx as i32, KINGDOMS[idx].0, KINGDOMS[idx].1)
 }
 
-/// Compute MirrorMint struct hash.
-fn mirror_mint_struct_hash(minter: &str, fid: u64, mirror_id: &str, deadline: u64) -> [u8; 32] {
-    use sha3::{Digest, Keccak256};
-    let type_hash = Keccak256::digest(
-        b"MirrorMint(address minter,uint256 fid,string mirrorId,uint256 deadline)",
-    );
-    let mirror_id_hash = Keccak256::digest(mirror_id.as_bytes());
-
-    fn pad32(val: &[u8]) -> [u8; 32] {
-        let mut buf = [0u8; 32];
-        let start = 32usize.saturating_sub(val.len());
-        buf[start..].copy_from_slice(val);
-        buf
-    }
-    fn addr32(addr: &str) -> [u8; 32] {
-        let without = addr.strip_prefix("0x").unwrap_or(addr);
-        let bytes = hex::decode(without).unwrap_or_default();
-        pad32(&bytes)
-    }
-    fn u64_bytes(v: u64) -> Vec<u8> {
-        let bytes = v.to_be_bytes();
-        let start = bytes.iter().position(|&b| b != 0).unwrap_or(7);
-        bytes[start..].to_vec()
-    }
-
-    let mut encoded = Vec::with_capacity(5 * 32);
-    encoded.extend_from_slice(&type_hash);
-    encoded.extend_from_slice(&addr32(minter));
-    encoded.extend_from_slice(&pad32(&u64_bytes(fid)));
-    encoded.extend_from_slice(&mirror_id_hash);
-    encoded.extend_from_slice(&pad32(&u64_bytes(deadline)));
-
-    let digest = Keccak256::digest(&encoded);
-    let mut result = [0u8; 32];
-    result.copy_from_slice(&digest);
-    result
+fn kingdom_from_address(address: &str) -> (i32, &'static str, &'static str) {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(address.as_bytes());
+    let val = u64::from_le_bytes(hash[..8].try_into().unwrap());
+    let idx = (val % 8) as usize;
+    (idx as i32, KINGDOMS[idx].0, KINGDOMS[idx].1)
 }
 
-/// POST /api/mirror/mint-sig — get an EIP-712 signature to mint a mirror NFT.
-/// Body: { "mirror_id": "uuid", "minter": "0x..." }
-pub async fn mirror_mint_sig(
+/// POST /api/mirror/solana-mint — mint a mirror cNFT on Solana via Bubblegum.
+/// Body: { "mirror_id": "uuid", "recipient": "solana-pubkey" }
+pub async fn solana_mint_mirror(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let mirror_id = body["mirror_id"]
         .as_str()
         .ok_or_else(|| AppError::BadRequest("mirror_id required".into()))?;
-    let minter = body["minter"]
+    let recipient = body["recipient"]
         .as_str()
-        .ok_or_else(|| AppError::BadRequest("minter address required".into()))?;
+        .ok_or_else(|| AppError::BadRequest("recipient address required".into()))?;
 
-    if state.config.anky_wallet_private_key.is_empty() {
-        return Err(AppError::Internal("signing key not configured".into()));
+    if state.config.solana_mint_worker_url.is_empty() {
+        return Err(AppError::Internal(
+            "solana mint worker not configured".into(),
+        ));
     }
 
-    // Look up mirror to get FID
-    let fid = {
+    // Look up mirror and validate
+    let (fid, username) = {
         let db = crate::db::conn(&state.db)?;
         let mut stmt = db
-            .prepare("SELECT fid FROM mirrors WHERE id = ?1")
+            .prepare("SELECT fid, username, solana_mint_tx FROM mirrors WHERE id = ?1")
             .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
-        let mut rows = stmt
-            .query_map(crate::params![mirror_id], |row| row.get::<_, i64>(0))
-            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
-        rows.next()
-            .and_then(|r| r.ok())
-            .ok_or_else(|| AppError::NotFound("mirror not found".into()))? as u64
+        let row = stmt
+            .query_row(crate::params![mirror_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .map_err(|_| AppError::NotFound("mirror not found".into()))?;
+
+        if row.2.is_some() {
+            return Err(AppError::BadRequest("mirror already minted".into()));
+        }
+        (row.0 as u64, row.1)
     };
 
-    // Deadline: 1 hour from now
-    let deadline = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        + 3600;
+    // Check duplicates and supply
+    {
+        let db = crate::db::conn(&state.db)?;
+        if queries::has_fid_minted(&db, fid)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        {
+            return Err(AppError::BadRequest("this fid already has a mirror".into()));
+        }
+        if queries::has_solana_address_minted(&db, recipient)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        {
+            return Err(AppError::BadRequest(
+                "this address already has a mirror".into(),
+            ));
+        }
+        let minted = queries::count_minted_mirrors(&db)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        if minted >= MAX_MIRROR_SUPPLY {
+            return Err(AppError::BadRequest(
+                "all 3456 mirrors have been claimed".into(),
+            ));
+        }
+    }
 
-    let domain = mirror_domain_separator();
-    let struct_hash = mirror_mint_struct_hash(minter, fid, mirror_id, deadline);
-
-    // EIP-712 digest
-    let mut data = Vec::with_capacity(66);
-    data.push(0x19);
-    data.push(0x01);
-    data.extend_from_slice(&domain);
-    data.extend_from_slice(&struct_hash);
-    let digest = {
-        use sha3::{Digest, Keccak256};
-        let d = Keccak256::digest(&data);
-        let mut r = [0u8; 32];
-        r.copy_from_slice(&d);
-        r
+    let (kingdom_id, kingdom_name, _chakra) = kingdom_from_fid(fid);
+    let metadata_uri = format!("https://ankycoin.com/api/mirror/metadata/{}", mirror_id);
+    let name = if username.is_empty() {
+        format!("Anky Mirror #{}", fid)
+    } else {
+        format!("Anky Mirror — @{}", username)
     };
 
-    // Sign
-    let key_hex = &state.config.anky_wallet_private_key;
-    let key_bytes = hex::decode(key_hex.strip_prefix("0x").unwrap_or(key_hex))
-        .map_err(|_| AppError::Internal("invalid signing key".into()))?;
-    let secret_key = secp256k1::SecretKey::from_slice(&key_bytes)
-        .map_err(|_| AppError::Internal("invalid signing key".into()))?;
-    let message = secp256k1::Message::from_digest_slice(&digest)
-        .map_err(|_| AppError::Internal("invalid digest".into()))?;
-    let secp = secp256k1::Secp256k1::new();
-    let sig = secp.sign_ecdsa_recoverable(&message, &secret_key);
-    let (recovery_id, compact) = sig.serialize_compact();
-    let mut sig_bytes = [0u8; 65];
-    sig_bytes[..64].copy_from_slice(&compact);
-    sig_bytes[64] = recovery_id.to_i32() as u8 + 27;
+    // Call Cloudflare Worker to mint
+    let client = reqwest::Client::new();
+    let worker_resp = client
+        .post(format!("{}/mint", state.config.solana_mint_worker_url))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.solana_mint_worker_secret),
+        )
+        .json(&json!({
+            "mirror_id": mirror_id,
+            "recipient": recipient,
+            "name": name,
+            "uri": metadata_uri,
+            "kingdom": kingdom_id,
+            "symbol": "ANKY",
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker request failed: {}", e)))?;
+
+    if !worker_resp.status().is_success() {
+        let err_text = worker_resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "mint worker error: {}",
+            err_text
+        )));
+    }
+
+    let mint_result: serde_json::Value = worker_resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker response parse: {}", e)))?;
+
+    let tx_signature = mint_result["signature"].as_str().unwrap_or("");
+
+    // Update DB
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::set_mirror_minted(
+            &db,
+            mirror_id,
+            tx_signature,
+            recipient,
+            mint_result["asset_id"].as_str(),
+            kingdom_id,
+            kingdom_name,
+        )
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    }
 
     Ok(Json(json!({
-        "signature": format!("0x{}", hex::encode(sig_bytes)),
-        "fid": fid,
+        "success": true,
+        "kingdom": kingdom_name,
+        "kingdom_chakra": _chakra,
+        "kingdom_id": kingdom_id,
+        "tx_signature": tx_signature,
         "mirror_id": mirror_id,
-        "minter": minter,
-        "deadline": deadline,
-        "contract": MIRROR_CONTRACT,
-        "chain_id": 8453,
     })))
 }
 
-/// GET /api/mirror/metadata/{id} — ERC-721 metadata JSON for a minted mirror.
+/// POST /api/mirror/raw-mint — mint a mirror from a writing session (iOS app path).
+/// Body: { "writing_session_id": "uuid", "recipient": "solana-pubkey" }
+/// The writing must be a real anky (8+ minutes). Items are derived from the writing + Honcho context.
+pub async fn raw_mint_mirror(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let writing_session_id = body["writing_session_id"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("writing_session_id required".into()))?;
+    let recipient = body["recipient"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("recipient solana address required".into()))?;
+
+    if state.config.solana_mint_worker_url.is_empty() {
+        return Err(AppError::Internal(
+            "solana mint worker not configured".into(),
+        ));
+    }
+
+    // Auth: require bearer session
+    let user_id = crate::routes::swift::bearer_auth(&state, &headers).await?;
+
+    // Validate writing session is a real anky
+    let writing_content = {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db
+            .prepare("SELECT content, is_anky, user_id FROM writing_sessions WHERE id = ?1")
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        let row = stmt
+            .query_row(crate::params![writing_session_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i32>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|_| AppError::NotFound("writing session not found".into()))?;
+
+        if row.1 == 0 {
+            return Err(AppError::BadRequest(
+                "only real ankys (8+ minutes) can be minted".into(),
+            ));
+        }
+        if row.2 != user_id {
+            return Err(AppError::BadRequest(
+                "this writing session belongs to another user".into(),
+            ));
+        }
+        row.0
+    };
+
+    // Check supply + address uniqueness
+    {
+        let db = crate::db::conn(&state.db)?;
+        if queries::has_solana_address_minted(&db, recipient)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        {
+            return Err(AppError::BadRequest(
+                "this address already has a mirror".into(),
+            ));
+        }
+        let minted = queries::count_minted_mirrors(&db)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        if minted >= MAX_MIRROR_SUPPLY {
+            return Err(AppError::BadRequest(
+                "all 3456 mirrors have been claimed".into(),
+            ));
+        }
+        // Check if user already has a minted mirror
+        if queries::has_user_minted(&db, &user_id)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        {
+            return Err(AppError::BadRequest(
+                "you already have a minted mirror".into(),
+            ));
+        }
+    }
+
+    // Get Honcho context for this user
+    let honcho_context = if crate::services::honcho::is_configured(&state.config) {
+        crate::services::honcho::get_peer_context(
+            &state.config.honcho_api_key,
+            &state.config.honcho_workspace_id,
+            &user_id,
+        )
+        .await
+        .unwrap_or(None)
+    } else {
+        None
+    };
+
+    // Derive 8 kingdom items from writing + Honcho context
+    let items_system = items_system_prompt();
+    let items_user = items_user_prompt_from_writing(&writing_content, honcho_context.as_deref());
+    let items = derive_items(&state.config.anthropic_api_key, &items_system, &items_user)
+        .await
+        .map_err(|e| AppError::Internal(format!("Item derivation failed: {}", e)))?;
+
+    // Generate image from items
+    let image_prompt = items.to_image_prompt();
+    let image_bytes = match tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        crate::services::comfyui::generate_image(&image_prompt),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(e)) => {
+            return Err(AppError::Internal(format!(
+                "Image generation failed: {}",
+                e
+            )));
+        }
+        Err(_) => {
+            return Err(AppError::Internal("Image generation timed out".into()));
+        }
+    };
+
+    // Persist mirror + image
+    let mirror_id = uuid::Uuid::new_v4().to_string();
+    let image_dir = "data/mirrors";
+    let _ = std::fs::create_dir_all(image_dir);
+    let image_path = format!("{}/{}.png", image_dir, mirror_id);
+    let _ = std::fs::write(&image_path, &image_bytes);
+
+    let (kingdom_id, kingdom_name, _chakra) = kingdom_from_address(recipient);
+
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::insert_raw_mirror(&db, &mirror_id, &user_id, recipient)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        let _ = queries::set_mirror_items(&db, &mirror_id, &items.to_json());
+        let _ = db.execute(
+            "UPDATE mirrors SET image_path = ?1 WHERE id = ?2",
+            crate::params![image_path, mirror_id],
+        );
+    }
+
+    // Call Cloudflare Worker to mint
+    let metadata_uri = format!("https://ankycoin.com/api/mirror/metadata/{}", mirror_id);
+    let name = format!("Anky Mirror — raw");
+
+    let client = reqwest::Client::new();
+    let worker_resp = client
+        .post(format!("{}/mint", state.config.solana_mint_worker_url))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.solana_mint_worker_secret),
+        )
+        .json(&json!({
+            "mirror_id": mirror_id,
+            "recipient": recipient,
+            "name": name,
+            "uri": metadata_uri,
+            "kingdom": kingdom_id,
+            "symbol": "ANKY",
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker request failed: {}", e)))?;
+
+    if !worker_resp.status().is_success() {
+        let err_text = worker_resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "mint worker error: {}",
+            err_text
+        )));
+    }
+
+    let mint_result: serde_json::Value = worker_resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker response parse: {}", e)))?;
+
+    let tx_signature = mint_result["signature"].as_str().unwrap_or("");
+
+    // Update DB with mint result
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::set_mirror_minted(
+            &db,
+            &mirror_id,
+            tx_signature,
+            recipient,
+            mint_result["asset_id"].as_str(),
+            kingdom_id,
+            kingdom_name,
+        )
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    }
+
+    Ok(Json(json!({
+        "success": true,
+        "mirror_id": mirror_id,
+        "kingdom": kingdom_name,
+        "kingdom_chakra": _chakra,
+        "kingdom_id": kingdom_id,
+        "tx_signature": tx_signature,
+        "items": items,
+        "image_url": format!("/{}", image_path),
+    })))
+}
+
+/// GET /api/mirror/supply — current mint count.
+pub async fn mirror_supply(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let db = crate::db::conn(&state.db)?;
+    let minted =
+        queries::count_minted_mirrors(&db).map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    Ok(Json(json!({
+        "minted": minted,
+        "max_supply": MAX_MIRROR_SUPPLY,
+        "remaining": MAX_MIRROR_SUPPLY - minted,
+    })))
+}
+
+/// GET /api/mirror/collection-metadata — Metaplex-compatible collection JSON.
+pub async fn mirror_collection_metadata(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let authority = &state.config.solana_authority_pubkey;
+    Json(json!({
+        "name": "Anky Sojourn 9",
+        "symbol": "ANKY",
+        "description": "3,456 mirrors for the 9th sojourn. each one reflects a human who showed up to write. the cost is presence.",
+        "image": "https://ankycoin.com/static/anky-collection.png",
+        "external_url": "https://ankycoin.com",
+        "seller_fee_basis_points": 0,
+        "properties": {
+            "category": "image",
+            "creators": [{
+                "address": authority,
+                "verified": true,
+                "share": 100
+            }]
+        }
+    }))
+}
+
+/// GET /api/mirror/metadata/{id} — Metaplex-compatible metadata JSON for a mirror cNFT.
 pub async fn mirror_metadata(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let db = crate::db::conn(&state.db)?;
-    let mut stmt = db
-        .prepare(
-            "SELECT fid, username, display_name, public_mirror, flux_descriptors_json, image_path, avatar_url
-             FROM mirrors WHERE id = ?1",
-        )
-        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
-    let row = stmt
-        .query_row(crate::params![id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, Option<String>>(6)?,
-            ))
+    let mirror = queries::get_mirror_full(&db, &id)
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        .ok_or_else(|| AppError::NotFound("mirror not found".into()))?;
+
+    let (
+        _id,
+        fid,
+        username,
+        _display_name,
+        _avatar_url,
+        _follower_count,
+        _bio,
+        public_mirror,
+        _gap,
+        _descriptors_json,
+        image_path,
+        _created_at,
+        _solana_mint_tx,
+        _solana_recipient,
+        kingdom,
+        kingdom_name,
+        mirror_type,
+        _user_id,
+    ) = mirror;
+
+    let is_raw = mirror_type == "raw";
+
+    let image_url = image_path
+        .as_deref()
+        .map(|p| {
+            if p.starts_with("http") {
+                p.to_string()
+            } else {
+                format!("https://ankycoin.com/{}", p)
+            }
         })
-        .map_err(|_| AppError::NotFound("mirror not found".into()))?;
+        .unwrap_or_else(|| "https://ankycoin.com/static/anky-default.png".to_string());
 
-    let (fid, username, display_name, public_mirror, descriptors_json, image_path, _avatar_url) =
-        row;
-    let descriptors: serde_json::Value =
-        serde_json::from_str(&descriptors_json).unwrap_or(json!({}));
+    // Load items from DB
+    let items_json_str = queries::get_mirror_items(&db, &id)
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    let items: Option<AnkyItems> = items_json_str.as_deref().and_then(AnkyItems::from_json);
 
-    let image_url = image_path.map(|p| format!("https://ankycoin.com/{}", p));
+    let description = if is_raw && items.is_none() {
+        "this mirror has not yet reflected".to_string()
+    } else if is_raw {
+        "a mirror born from writing. the cost was presence.".to_string()
+    } else {
+        public_mirror
+    };
+
+    let name = if is_raw {
+        "Anky Mirror — raw".to_string()
+    } else if username.is_empty() {
+        format!("Anky Mirror #{}", fid)
+    } else {
+        format!("Anky Mirror — @{}", username)
+    };
+
+    let mut attributes = vec![json!({
+        "trait_type": "Mirror Type",
+        "value": if is_raw { "Raw" } else { "Public" },
+    })];
+
+    if let Some(kn) = &kingdom_name {
+        attributes.push(json!({ "trait_type": "Kingdom", "value": kn }));
+    }
+    if let Some(ki) = kingdom {
+        if ki < 8 {
+            attributes.push(json!({ "trait_type": "Chakra", "value": KINGDOMS[ki as usize].1 }));
+        }
+    }
+
+    attributes.push(json!({ "trait_type": "Sojourn", "value": 9 }));
+
+    if is_raw {
+        if let Some(ref recipient) = _solana_recipient {
+            attributes.push(json!({ "trait_type": "Writer", "value": recipient }));
+        }
+    } else {
+        attributes.push(json!({ "trait_type": "FID", "value": fid }));
+        if !username.is_empty() {
+            attributes.push(json!({ "trait_type": "Username", "value": username }));
+        }
+    }
+
+    // Add kingdom items as attributes
+    if let Some(ref items) = items {
+        for item in &items.items {
+            attributes.push(json!({
+                "trait_type": format!("{} Item", item.kingdom),
+                "value": item.name,
+            }));
+        }
+    }
+
+    // Add sealed session hash if one exists for this writing-born mirror
+    if is_raw {
+        if let Some(ref uid) = _user_id {
+            if let Some(hash) = super::sealed::get_latest_session_hash_by_user(&db, uid) {
+                attributes.push(json!({ "trait_type": "session_hash", "value": hash }));
+            }
+        }
+    }
+
+    let external_url = if is_raw {
+        "https://anky.app".to_string()
+    } else {
+        format!("https://ankycoin.com/?fid={}", fid)
+    };
 
     Ok(Json(json!({
-        "name": format!("Anky Mirror #{} — @{}", fid, username),
-        "description": public_mirror,
+        "name": name,
+        "symbol": "ANKY",
+        "description": description,
         "image": image_url,
-        "external_url": format!("https://ankycoin.com/?fid={}", fid),
-        "attributes": [
-            { "trait_type": "FID", "value": fid },
-            { "trait_type": "Username", "value": username },
-            { "trait_type": "Display Name", "value": display_name },
-            { "trait_type": "Energy", "value": descriptors["energy"] },
-            { "trait_type": "Archetype", "value": descriptors["archetype"] },
-            { "trait_type": "Color Mood", "value": descriptors["color_mood"] },
-            { "trait_type": "Aura", "value": descriptors["aura"] },
-            { "trait_type": "Expression", "value": descriptors["expression"] },
-            { "trait_type": "Held Object", "value": descriptors["held_object"] },
-            { "trait_type": "Background", "value": descriptors["background_scene"] },
-        ],
+        "external_url": external_url,
+        "seller_fee_basis_points": 0,
+        "attributes": attributes,
+        "properties": {
+            "category": "image",
+            "files": [{
+                "uri": image_url,
+                "type": "image/png",
+            }],
+            "creators": [{
+                "address": state.config.solana_authority_pubkey,
+                "verified": true,
+                "share": 100,
+            }],
+        },
     })))
 }
 
@@ -6351,4 +7366,630 @@ pub async fn generate_class(
         "url": format!("https://anky.app/classes/{}", class_number),
     }))
     .into_response()
+}
+
+// ── Farcaster miniapp notification tokens ──────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct SaveNotificationTokenRequest {
+    pub fid: i64,
+    pub token: String,
+    pub url: String,
+}
+
+/// POST /api/miniapp/notifications — store a Farcaster miniapp notification token
+/// and kick off the onboarding pipeline (fetch profile, Honcho, generate prompt, notify).
+pub async fn save_notification_token(
+    State(state): State<AppState>,
+    Json(body): Json<SaveNotificationTokenRequest>,
+) -> Result<Response, AppError> {
+    let fid = body.fid;
+    let token = body.token.clone();
+    let url = body.url.clone();
+
+    sqlx::query(
+        "INSERT INTO farcaster_notification_tokens (fid, token, url)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (fid) DO UPDATE SET token = $2, url = $3, updated_at = NOW()",
+    )
+    .bind(fid)
+    .bind(&token)
+    .bind(&url)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(format!("DB error: {}", e)))?;
+
+    tracing::info!("stored notification token for fid {}", fid);
+
+    // Fire-and-forget: onboard user + send welcome notification with prompt
+    let s = state.clone();
+    let t = token.clone();
+    let u = url.clone();
+    tokio::spawn(async move {
+        if let Err(e) = onboard_farcaster_user(s, fid, &t, &u).await {
+            tracing::error!("onboard_farcaster_user fid={} error: {}", fid, e);
+        }
+    });
+
+    Ok(Json(serde_json::json!({"ok": true})).into_response())
+}
+
+/// Onboard a Farcaster user: fetch profile, seed Honcho, generate prompt, send notification.
+async fn onboard_farcaster_user(
+    state: AppState,
+    fid: i64,
+    notif_token: &str,
+    notif_url: &str,
+) -> anyhow::Result<()> {
+    let api_key = &state.config.neynar_api_key;
+    if api_key.is_empty() {
+        anyhow::bail!("NEYNAR_API_KEY not set");
+    }
+
+    // 1. Fetch Farcaster profile + recent casts
+    let client = reqwest::Client::new();
+    let profile_resp = client
+        .get("https://api.neynar.com/v2/farcaster/user/bulk")
+        .query(&[("fids", fid.to_string())])
+        .header("x-api-key", api_key)
+        .header("accept", "application/json")
+        .send()
+        .await?;
+
+    if !profile_resp.status().is_success() {
+        anyhow::bail!("neynar profile fetch failed: {}", profile_resp.status());
+    }
+    let profile_data: serde_json::Value = profile_resp.json().await?;
+    let user = profile_data["users"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .ok_or_else(|| anyhow::anyhow!("FID not found in neynar response"))?;
+
+    let username = user["username"].as_str().unwrap_or("anon");
+    let display_name = user["display_name"].as_str().unwrap_or("");
+    let bio = user
+        .get("profile")
+        .and_then(|p| p.get("bio"))
+        .and_then(|b| b.get("text"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("");
+
+    let casts_resp = client
+        .get("https://api.neynar.com/v2/farcaster/feed/user/casts")
+        .query(&[("fid", &fid.to_string()), ("limit", &"25".to_string())])
+        .header("x-api-key", api_key)
+        .header("accept", "application/json")
+        .send()
+        .await?;
+
+    let cast_texts: Vec<String> = if casts_resp.status().is_success() {
+        let casts_data: serde_json::Value = casts_resp.json().await?;
+        casts_data["casts"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter(|c| c["parent_hash"].is_null())
+                    .filter_map(|c| {
+                        let text = c["text"].as_str().unwrap_or("").to_string();
+                        if text.is_empty() {
+                            None
+                        } else {
+                            Some(text)
+                        }
+                    })
+                    .take(15)
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    tracing::info!(
+        "onboarding fid={} @{} — {} casts fetched",
+        fid,
+        username,
+        cast_texts.len()
+    );
+
+    // 2. Seed Honcho with this user's context
+    let peer_id = format!("farcaster-{}", fid);
+    if crate::services::honcho::is_configured(&state.config) {
+        let context = format!(
+            "farcaster user @{} ({}). bio: {}. recent casts:\n{}",
+            username,
+            display_name,
+            bio,
+            cast_texts.join("\n---\n")
+        );
+        if let Err(e) = crate::services::honcho::send_writing(
+            &state.config.honcho_api_key,
+            &state.config.honcho_workspace_id,
+            &format!("onboard-{}", fid),
+            &peer_id,
+            &context,
+        )
+        .await
+        {
+            tracing::warn!("honcho seed for fid {} failed: {}", fid, e);
+        }
+    }
+
+    // 3. Generate a personalized writing prompt from their profile
+    let cast_sample = cast_texts
+        .iter()
+        .take(8)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt_request = format!(
+        "you are anky, a writing companion that helps humans access deeper layers of self through stream-of-consciousness writing.\n\n\
+        a new user just joined from farcaster. here is what you know about them:\n\
+        username: @{}\n\
+        display name: {}\n\
+        bio: {}\n\
+        recent casts:\n{}\n\n\
+        generate a single, personal writing prompt for this human. \
+        the prompt should be 1-2 sentences. it should feel like it was written specifically for them — \
+        touching something real you noticed in their public presence. \
+        it should invite them to write freely for 8 minutes without stopping. \
+        do not use their name. do not use quotation marks. lowercase only. \
+        respond with ONLY the prompt, nothing else.",
+        username,
+        display_name,
+        bio,
+        cast_sample
+    );
+
+    let prompt = crate::services::claude::call_haiku_with_system(
+        &state.config.anthropic_api_key,
+        "you generate deeply personal writing prompts. you are lowercase, intimate, direct. no fluff.",
+        &prompt_request,
+    )
+    .await
+    .unwrap_or_else(|_| {
+        "close your eyes. take three breaths. then write whatever wants to come through. don't stop for 8 minutes.".to_string()
+    });
+
+    tracing::info!(
+        "generated prompt for fid {}: {}",
+        fid,
+        &prompt[..prompt.len().min(80)]
+    );
+
+    // 4. Store the prompt in the DB for retrieval when user opens miniapp
+    sqlx::query(
+        "INSERT INTO farcaster_notification_tokens (fid, token, url)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (fid) DO UPDATE SET updated_at = NOW()",
+    )
+    .bind(fid)
+    .bind(notif_token)
+    .bind(notif_url)
+    .execute(&state.db)
+    .await
+    .ok();
+
+    // Store the prompt keyed by fid
+    sqlx::query(
+        "INSERT INTO farcaster_prompts (fid, prompt_text)
+         VALUES ($1, $2)
+         ON CONFLICT (fid) DO UPDATE SET prompt_text = $2, created_at = NOW()",
+    )
+    .bind(fid)
+    .bind(&prompt)
+    .execute(&state.db)
+    .await
+    .ok();
+
+    // 5. Send the notification
+    send_farcaster_notification(
+        notif_token,
+        notif_url,
+        "anky has a question for you",
+        &prompt,
+        &format!("https://anky.app?prompt=1&fid={}", fid),
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// GET /api/miniapp/prompt?fid=123 — get the stored prompt for a fid
+pub async fn get_farcaster_prompt(
+    State(state): State<AppState>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let fid: i64 = q.get("fid").and_then(|f| f.parse().ok()).unwrap_or(0);
+    if fid == 0 {
+        return (axum::http::StatusCode::BAD_REQUEST, "missing fid").into_response();
+    }
+
+    match sqlx::query_as::<_, (String,)>("SELECT prompt_text FROM farcaster_prompts WHERE fid = $1")
+        .bind(fid)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some((prompt,))) => {
+            Json(serde_json::json!({"prompt": prompt})).into_response()
+        }
+        Ok(None) => {
+            Json(serde_json::json!({
+                "prompt": "close your eyes. take three breaths. then write whatever wants to come through. don't stop for 8 minutes."
+            })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("get prompt for fid {}: {}", fid, e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
+    }
+}
+
+/// Send a Farcaster miniapp notification.
+async fn send_farcaster_notification(
+    token: &str,
+    url: &str,
+    title: &str,
+    body: &str,
+    target_url: &str,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "notificationId": uuid::Uuid::new_v4().to_string(),
+        "title": title,
+        "body": body,
+        "targetUrl": target_url,
+        "tokens": [token],
+    });
+
+    let resp = client.post(url).json(&payload).send().await?;
+
+    if resp.status().is_success() {
+        tracing::info!("notification sent to {}", url);
+        Ok(())
+    } else {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("notification failed ({}): {}", status, text);
+        anyhow::bail!("notification failed: {} {}", status, text)
+    }
+}
+
+/// POST /api/webhook — Farcaster miniapp webhook (frame added/removed events)
+pub async fn farcaster_miniapp_webhook(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    tracing::info!(
+        "miniapp webhook: {}",
+        serde_json::to_string_pretty(&body).unwrap_or_default()
+    );
+
+    let event = body.get("event").and_then(|e| e.as_str()).unwrap_or("");
+    match event {
+        "frame_added" => {
+            if let (Some(fid), Some(details)) = (
+                body.get("fid").and_then(|f| f.as_i64()),
+                body.get("notificationDetails"),
+            ) {
+                let token = details
+                    .get("token")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let url = details
+                    .get("url")
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !token.is_empty() && !url.is_empty() {
+                    let _ = sqlx::query(
+                        "INSERT INTO farcaster_notification_tokens (fid, token, url)
+                         VALUES ($1, $2, $3)
+                         ON CONFLICT (fid) DO UPDATE SET token = $2, url = $3, updated_at = NOW()",
+                    )
+                    .bind(fid)
+                    .bind(&token)
+                    .bind(&url)
+                    .execute(&state.db)
+                    .await;
+                    tracing::info!("frame_added: stored token for fid {}", fid);
+                    let s = state.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = onboard_farcaster_user(s, fid, &token, &url).await {
+                            tracing::error!("onboard from webhook fid={}: {}", fid, e);
+                        }
+                    });
+                }
+            }
+        }
+        "frame_removed" => {
+            if let Some(fid) = body.get("fid").and_then(|f| f.as_i64()) {
+                let _ = sqlx::query("DELETE FROM farcaster_notification_tokens WHERE fid = $1")
+                    .bind(fid)
+                    .execute(&state.db)
+                    .await;
+                tracing::info!("frame_removed: deleted token for fid {}", fid);
+            }
+        }
+        "notifications_enabled" => {
+            if let (Some(fid), Some(details)) = (
+                body.get("fid").and_then(|f| f.as_i64()),
+                body.get("notificationDetails"),
+            ) {
+                let token = details.get("token").and_then(|t| t.as_str()).unwrap_or("");
+                let url = details.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                if !token.is_empty() && !url.is_empty() {
+                    let _ = sqlx::query(
+                        "INSERT INTO farcaster_notification_tokens (fid, token, url)
+                         VALUES ($1, $2, $3)
+                         ON CONFLICT (fid) DO UPDATE SET token = $2, url = $3, updated_at = NOW()",
+                    )
+                    .bind(fid)
+                    .bind(token)
+                    .bind(url)
+                    .execute(&state.db)
+                    .await;
+                    tracing::info!("notifications_enabled: stored token for fid {}", fid);
+                }
+            }
+        }
+        "notifications_disabled" => {
+            if let Some(fid) = body.get("fid").and_then(|f| f.as_i64()) {
+                let _ = sqlx::query("DELETE FROM farcaster_notification_tokens WHERE fid = $1")
+                    .bind(fid)
+                    .execute(&state.db)
+                    .await;
+                tracing::info!("notifications_disabled: deleted token for fid {}", fid);
+            }
+        }
+        _ => {
+            tracing::warn!("unknown miniapp webhook event: {}", event);
+        }
+    }
+
+    (axum::http::StatusCode::OK, "ok").into_response()
+}
+
+// ── Farcaster miniapp onboarding: hosted wallets ───────────────────────────
+
+/// GET /api/miniapp/onboarding?fid=123 — check onboarding status
+pub async fn miniapp_onboarding_status(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let fid: i64 = match params.get("fid").and_then(|f| f.parse().ok()) {
+        Some(f) => f,
+        None => return Json(json!({"error": "missing fid"})).into_response(),
+    };
+
+    let row = sqlx::query_as::<_, (String, Option<i32>, Option<String>, bool, Option<String>)>(
+        "SELECT solana_address, kingdom_id, kingdom_name, onboarded, mint_tx FROM farcaster_wallets WHERE fid = $1"
+    )
+    .bind(fid)
+    .fetch_optional(&state.db)
+    .await;
+
+    match row {
+        Ok(Some((address, kingdom_id, kingdom_name, onboarded, mint_tx))) => Json(json!({
+            "exists": true,
+            "solana_address": address,
+            "kingdom_id": kingdom_id,
+            "kingdom_name": kingdom_name,
+            "onboarded": onboarded,
+            "mint_tx": mint_tx,
+        }))
+        .into_response(),
+        Ok(None) => Json(json!({"exists": false, "onboarded": false})).into_response(),
+        Err(e) => {
+            tracing::error!("onboarding status error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "db error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /api/miniapp/onboard — generate wallet + pick kingdom
+/// Body: {"fid": 12345, "kingdom_id": 3}
+pub async fn miniapp_onboard(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let fid = match body.get("fid").and_then(|f| f.as_i64()) {
+        Some(f) => f,
+        None => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"error": "missing fid"})),
+            )
+                .into_response()
+        }
+    };
+    let kingdom_id = match body.get("kingdom_id").and_then(|k| k.as_i64()) {
+        Some(k) if (0..8).contains(&k) => k as i32,
+        _ => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"error": "invalid kingdom_id (0-7)"})),
+            )
+                .into_response()
+        }
+    };
+
+    // Check if already onboarded
+    let existing = sqlx::query_as::<_, (String, bool)>(
+        "SELECT solana_address, onboarded FROM farcaster_wallets WHERE fid = $1",
+    )
+    .bind(fid)
+    .fetch_optional(&state.db)
+    .await;
+
+    if let Ok(Some((address, true))) = existing {
+        return Json(json!({
+            "already_onboarded": true,
+            "solana_address": address,
+        }))
+        .into_response();
+    }
+
+    // Generate Ed25519 keypair
+    use ed25519_dalek::SigningKey;
+
+    use rand::RngCore;
+    let mut secret_bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut secret_bytes);
+    let signing_key = SigningKey::from_bytes(&secret_bytes);
+    let verifying_key = signing_key.verifying_key();
+    let solana_address = bs58::encode(verifying_key.as_bytes()).into_string();
+
+    // Store keypair bytes (secret key 32 bytes)
+    let keypair_bytes = signing_key.to_bytes().to_vec();
+
+    let kingdoms = [
+        "Primordia",
+        "Emblazion",
+        "Chryseos",
+        "Eleutheria",
+        "Voxlumis",
+        "Insightia",
+        "Claridium",
+        "Poiesis",
+    ];
+    let kingdom_name = kingdoms[kingdom_id as usize];
+
+    let result = sqlx::query(
+        "INSERT INTO farcaster_wallets (fid, solana_address, encrypted_keypair, kingdom_id, kingdom_name, onboarded, onboarded_at)
+         VALUES ($1, $2, $3, $4, $5, true, NOW())
+         ON CONFLICT (fid) DO UPDATE SET kingdom_id = $4, kingdom_name = $5, onboarded = true, onboarded_at = NOW()"
+    )
+    .bind(fid)
+    .bind(&solana_address)
+    .bind(&keypair_bytes)
+    .bind(kingdom_id)
+    .bind(kingdom_name)
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            tracing::info!(
+                "miniapp onboard: fid={} wallet={} kingdom={}",
+                fid,
+                solana_address,
+                kingdom_name
+            );
+            Json(json!({
+                "success": true,
+                "solana_address": solana_address,
+                "kingdom_id": kingdom_id,
+                "kingdom_name": kingdom_name,
+            }))
+            .into_response()
+        }
+        Err(e) => {
+            tracing::error!("miniapp onboard error: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to create wallet"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/miniapp/images — return a list of anky image URLs for the slideshow
+pub async fn miniapp_image_list() -> impl IntoResponse {
+    let image_dir = std::path::Path::new("data/images");
+    let mut images: Vec<String> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(image_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".png")
+                && !name.contains("video")
+                && !name.contains("create-")
+                && !name.contains("_thumb")
+            {
+                images.push(format!("/data/images/{}", name));
+            }
+        }
+    }
+
+    use rand::seq::SliceRandom;
+    images.shuffle(&mut rand::thread_rng());
+    images.truncate(20);
+
+    Json(json!({"images": images}))
+}
+
+/// GET /api/miniapp/stickers — return ankys with images for the sticker wall
+pub async fn miniapp_sticker_list(State(state): State<AppState>) -> impl IntoResponse {
+    let db = match crate::db::conn(&state.db) {
+        Ok(d) => d,
+        Err(_) => return Json(json!({"stickers": []})).into_response(),
+    };
+
+    let stickers = db
+        .prepare(
+            "SELECT a.id, a.title, a.image_path, a.image_webp, a.kingdom_name,
+                    u.wallet_address, u.username
+             FROM ankys a
+             JOIN users u ON u.id = a.user_id
+             WHERE a.status = 'complete'
+               AND a.image_path IS NOT NULL
+               AND a.title IS NOT NULL
+             ORDER BY a.created_at DESC
+             LIMIT 60",
+        )
+        .and_then(|mut stmt| {
+            stmt.query_map(crate::params![], |row| {
+                let id: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let image_path: String = row.get(2)?;
+                let image_webp: Option<String> = row.get(3)?;
+                let kingdom_name: Option<String> = row.get(4)?;
+                let wallet: Option<String> = row.get(5)?;
+                let username: Option<String> = row.get(6)?;
+
+                let image_url = if let Some(ref webp) = image_webp.filter(|w| !w.is_empty()) {
+                    if webp.starts_with("http") || webp.starts_with("/") {
+                        webp.clone()
+                    } else {
+                        format!("/data/images/{}", webp)
+                    }
+                } else if image_path.starts_with("http") || image_path.starts_with("/") {
+                    image_path.clone()
+                } else {
+                    format!("/data/images/{}", image_path)
+                };
+
+                let display_name = username
+                    .filter(|u| !u.is_empty())
+                    .or_else(|| {
+                        wallet.as_ref().filter(|w| !w.is_empty()).map(|w| {
+                            if w.len() > 8 {
+                                format!("{}..{}", &w[..4], &w[w.len() - 4..])
+                            } else {
+                                w.clone()
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| "anon".to_string());
+
+                Ok(json!({
+                    "id": id,
+                    "title": title,
+                    "image_url": image_url,
+                    "kingdom": kingdom_name,
+                    "author": display_name,
+                }))
+            })
+            .map(|rows| rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        })
+        .unwrap_or_default();
+
+    Json(json!({"stickers": stickers})).into_response()
 }

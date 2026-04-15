@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::db::Connection;
+use anyhow::Result;
 
 const EMBEDDING_DIM: usize = 768;
 

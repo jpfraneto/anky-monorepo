@@ -1,0 +1,10 @@
+{
+  "network": "devnet",
+  "authority": "ApTZwa8M1Rako93TQ57cLczGr5hjeGEvZdszKb92tXNS",
+  "merkleTree": "3SgBFS5gFmeMUNZQqQk1xGsoZAZewXVAiMVkzjeJBSd6",
+  "collectionMint": "5AbvPKw84mXhYWNBo3iTCH1Nkpc7EZPHHk4q1ECz4rVW",
+  "maxDepth": 10,
+  "maxBufferSize": 8,
+  "capacity": 1024,
+  "purpose": "ankys — stories written during sojourn 9"
+}

@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::db::Connection;
+use anyhow::Result;
 
 // --- Users ---
 pub fn ensure_user(conn: &Connection, user_id: &str) -> Result<()> {
@@ -51,7 +51,9 @@ pub fn create_user_with_wallet(
 
 pub fn get_user_wallet(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT wallet_address FROM users WHERE id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -66,20 +68,6 @@ pub fn set_privy_did(conn: &Connection, user_id: &str, privy_did: &str) -> Resul
     conn.execute(
         "UPDATE users SET privy_did = ?2 WHERE id = ?1",
         crate::params![user_id, privy_did],
-    )?;
-    Ok(())
-}
-
-pub fn create_user_with_wallet_and_privy(
-    conn: &Connection,
-    user_id: &str,
-    wallet_address: &str,
-    privy_did: &str,
-) -> Result<()> {
-    let addr_lower = normalize_wallet_address(wallet_address);
-    conn.execute(
-        "INSERT OR IGNORE INTO users (id, wallet_address, privy_did) VALUES (?1, ?2, ?3)",
-        crate::params![user_id, addr_lower, privy_did],
     )?;
     Ok(())
 }
@@ -205,7 +193,10 @@ pub fn get_child_profile_by_id_and_parent_wallet(
          LIMIT 1",
         CHILD_PROFILE_COLS
     ))?;
-    let mut rows = stmt.query_map(crate::params![id, parent_wallet_address], row_to_child_profile)?;
+    let mut rows = stmt.query_map(
+        crate::params![id, parent_wallet_address],
+        row_to_child_profile,
+    )?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
@@ -231,13 +222,6 @@ pub fn get_child_profile_by_derived_wallet_and_parent_wallet(
 }
 
 // --- Email ---
-pub fn get_user_by_email(conn: &Connection, email: &str) -> Result<Option<String>> {
-    let email_lower = email.to_lowercase();
-    let mut stmt = conn.prepare("SELECT id FROM users WHERE email = ?1")?;
-    let mut rows = stmt.query_map(crate::params![email_lower], |row| row.get::<_, String>(0))?;
-    Ok(rows.next().and_then(|r| r.ok()))
-}
-
 pub fn set_email(conn: &Connection, user_id: &str, email: &str) -> Result<()> {
     let email_lower = email.to_lowercase();
     conn.execute(
@@ -249,22 +233,10 @@ pub fn set_email(conn: &Connection, user_id: &str, email: &str) -> Result<()> {
 
 pub fn get_user_email(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT email FROM users WHERE id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
-}
-
-pub fn create_user_with_email_and_privy(
-    conn: &Connection,
-    user_id: &str,
-    email: &str,
-    privy_did: &str,
-) -> Result<()> {
-    let email_lower = email.to_lowercase();
-    conn.execute(
-        "INSERT OR IGNORE INTO users (id, email, privy_did) VALUES (?1, ?2, ?3)",
-        crate::params![user_id, email_lower, privy_did],
-    )?;
-    Ok(())
 }
 
 // --- Farcaster ---
@@ -334,7 +306,9 @@ pub fn check_username_available(
 
 pub fn get_user_username(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT username FROM users WHERE id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -581,7 +555,7 @@ pub fn upsert_completed_writing_session_with_flow(
             keystroke_deltas, flow_score, status, pause_used, session_token
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7,
-            ?8, ?9, 'completed', 0, ?10
+            ?8, ?9::double precision, 'completed', 0, ?10
          )
          ON CONFLICT(id) DO UPDATE SET
             user_id = excluded.user_id,
@@ -1098,7 +1072,18 @@ pub fn update_anky_title_reflection(
     reflection: &str,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE ankys SET title = ?2, reflection = ?3 WHERE id = ?1",
+        "UPDATE ankys
+         SET title = ?2,
+             reflection = ?3,
+             reflection_status = CASE
+                 WHEN session_hash IS NOT NULL THEN 'complete'
+                 ELSE COALESCE(reflection_status, 'pending')
+             END,
+             reflection_completed_at = CASE
+                 WHEN session_hash IS NOT NULL THEN COALESCE(reflection_completed_at, datetime('now'))
+                 ELSE reflection_completed_at
+             END
+         WHERE id = ?1",
         crate::params![id, title, reflection],
     )?;
     Ok(())
@@ -2139,7 +2124,9 @@ pub fn set_anky_kingdom(
 
 pub fn get_user_farcaster_fid(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT farcaster_fid FROM users WHERE id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -2570,7 +2557,10 @@ pub fn get_auth_session(
 }
 
 pub fn delete_auth_session(conn: &Connection, token: &str) -> Result<()> {
-    conn.execute("DELETE FROM auth_sessions WHERE token = ?1", crate::params![token])?;
+    conn.execute(
+        "DELETE FROM auth_sessions WHERE token = ?1",
+        crate::params![token],
+    )?;
     Ok(())
 }
 
@@ -2653,7 +2643,10 @@ pub fn get_and_delete_oauth_state(
     })?;
     let result = rows.next().and_then(|r| r.ok());
     if result.is_some() {
-        conn.execute("DELETE FROM oauth_states WHERE state = ?1", crate::params![state])?;
+        conn.execute(
+            "DELETE FROM oauth_states WHERE state = ?1",
+            crate::params![state],
+        )?;
     }
     Ok(result)
 }
@@ -3411,7 +3404,9 @@ pub fn get_user_context_for_interview(
     // Get username
     let username: Option<String> = conn
         .prepare("SELECT username FROM users WHERE id = ?1")?
-        .query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?
+        .query_map(crate::params![user_id], |row| {
+            row.get::<_, Option<String>>(0)
+        })?
         .next()
         .and_then(|r| r.ok())
         .flatten();
@@ -3716,7 +3711,8 @@ pub fn get_ready_cuentacuentos(
              LIMIT 1",
             CUENTACUENTOS_COLS
         ))?;
-        let mut rows = stmt.query_map(crate::params![parent_wallet_address], row_to_cuentacuentos)?;
+        let mut rows =
+            stmt.query_map(crate::params![parent_wallet_address], row_to_cuentacuentos)?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 }
@@ -3767,7 +3763,10 @@ pub fn get_cuentacuentos_by_id_and_parent_wallet(
          LIMIT 1",
         CUENTACUENTOS_COLS
     ))?;
-    let mut rows = stmt.query_map(crate::params![id, parent_wallet_address], row_to_cuentacuentos)?;
+    let mut rows = stmt.query_map(
+        crate::params![id, parent_wallet_address],
+        row_to_cuentacuentos,
+    )?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
@@ -4299,7 +4298,9 @@ pub fn get_anky_for_mint_confirm(
            AND a.is_minted = 0
          ORDER BY a.rowid DESC LIMIT 1",
     )?;
-    let mut rows = stmt.query_map(crate::params![session_id, user_id], |row| row.get::<_, String>(0))?;
+    let mut rows = stmt.query_map(crate::params![session_id, user_id], |row| {
+        row.get::<_, String>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()))
 }
 
@@ -4441,6 +4442,212 @@ pub fn list_mirrors(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+// --- Solana Mirror Minting (Sojourn 9) ---
+
+/// Check if a Farcaster FID has already minted a mirror cNFT.
+pub fn has_fid_minted(conn: &Connection, fid: u64) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM mirrors WHERE fid = ?1 AND solana_mint_tx IS NOT NULL",
+        crate::params![fid as i64],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Check if a user_id (iOS path) has already minted a mirror cNFT.
+pub fn has_user_minted(conn: &Connection, user_id: &str) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM mirrors WHERE user_id = ?1 AND solana_mint_tx IS NOT NULL",
+        crate::params![user_id],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Check if a Solana address has already received a mirror cNFT.
+pub fn has_solana_address_minted(conn: &Connection, address: &str) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM mirrors WHERE solana_recipient = ?1 AND solana_mint_tx IS NOT NULL",
+        crate::params![address],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Get existing mint info for a user (for "already minted" responses).
+pub fn get_user_existing_mint(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<(String, String, Option<i32>, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT solana_mint_tx, id, kingdom, kingdom_name FROM mirrors WHERE user_id = ?1 AND solana_mint_tx IS NOT NULL LIMIT 1",
+    )?;
+    match stmt.query_row(crate::params![user_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<i32>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+        ))
+    }) {
+        Ok(row) => Ok(Some(row)),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("no rows") || msg.contains("RowNotFound") {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Count total minted mirrors across both surfaces.
+pub fn count_minted_mirrors(conn: &Connection) -> Result<i64> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mirrors WHERE solana_mint_tx IS NOT NULL",
+        crate::params![],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+/// Mark a mirror as minted with Solana transaction details.
+pub fn set_mirror_minted(
+    conn: &Connection,
+    mirror_id: &str,
+    tx: &str,
+    recipient: &str,
+    asset_id: Option<&str>,
+    kingdom: i32,
+    kingdom_name: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE mirrors SET solana_mint_tx = ?1, solana_recipient = ?2, solana_asset_id = ?3, solana_minted_at = NOW(), kingdom = ?4, kingdom_name = ?5 WHERE id = ?6",
+        crate::params![tx, recipient, asset_id, kingdom, kingdom_name, mirror_id],
+    )?;
+    Ok(())
+}
+
+/// Insert a raw mirror (iOS path — no Farcaster data).
+pub fn insert_raw_mirror(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    solana_address: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO mirrors (id, fid, username, display_name, bio, public_mirror, flux_descriptors_json, gap, mirror_type, user_id, solana_recipient)
+         VALUES (?1, 0, '', '', '', 'this mirror has not yet reflected', '{}', '', 'raw', ?2, ?3)",
+        crate::params![id, user_id, solana_address],
+    )?;
+    Ok(())
+}
+
+/// Insert a raw mirror linked to a specific writing session (per-anky minting).
+pub fn insert_raw_mirror_for_session(
+    conn: &Connection,
+    id: &str,
+    user_id: &str,
+    solana_address: &str,
+    writing_session_id: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO mirrors (id, fid, username, display_name, bio, public_mirror, flux_descriptors_json, gap, mirror_type, user_id, solana_recipient, writing_session_id)
+         VALUES (?1, 0, '', '', '', 'this mirror has not yet reflected', '{}', '', 'raw', ?2, ?3, ?4)",
+        crate::params![id, user_id, solana_address, writing_session_id],
+    )?;
+    Ok(())
+}
+
+/// Store items JSON on a mirror.
+pub fn set_mirror_items(conn: &Connection, mirror_id: &str, items_json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE mirrors SET items_json = ?1 WHERE id = ?2",
+        crate::params![items_json, mirror_id],
+    )?;
+    Ok(())
+}
+
+/// Get items JSON for a mirror.
+pub fn get_mirror_items(conn: &Connection, mirror_id: &str) -> Result<Option<String>> {
+    let result: Option<String> = conn
+        .query_row(
+            "SELECT items_json FROM mirrors WHERE id = ?1",
+            crate::params![mirror_id],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(result)
+}
+
+/// Get a user's mirror items (for the living items endpoint).
+pub fn get_user_mirror_items(conn: &Connection, user_id: &str) -> Result<Option<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, items_json FROM mirrors WHERE user_id = ?1 AND items_json IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+/// Get full mirror data including Solana fields (for metadata endpoint).
+pub fn get_mirror_full(
+    conn: &Connection,
+    id: &str,
+) -> Result<
+    Option<(
+        String,         // id
+        i64,            // fid
+        String,         // username
+        String,         // display_name
+        Option<String>, // avatar_url
+        i64,            // follower_count
+        String,         // bio
+        String,         // public_mirror
+        String,         // gap
+        String,         // flux_descriptors_json
+        Option<String>, // image_path
+        String,         // created_at
+        Option<String>, // solana_mint_tx
+        Option<String>, // solana_recipient
+        Option<i32>,    // kingdom
+        Option<String>, // kingdom_name
+        String,         // mirror_type
+        Option<String>, // user_id
+    )>,
+> {
+    let mut stmt = conn.prepare(
+        "SELECT id, fid, username, display_name, avatar_url, follower_count, bio, public_mirror, gap, flux_descriptors_json, image_path, created_at,
+                solana_mint_tx, solana_recipient, kingdom, kingdom_name, mirror_type, user_id
+         FROM mirrors WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query_map(crate::params![id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i64>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
+            row.get::<_, String>(8)?,
+            row.get::<_, String>(9)?,
+            row.get::<_, Option<String>>(10)?,
+            row.get::<_, String>(11)?,
+            row.get::<_, Option<String>>(12)?,
+            row.get::<_, Option<String>>(13)?,
+            row.get::<_, Option<i32>>(14)?,
+            row.get::<_, Option<String>>(15)?,
+            row.get::<_, String>(16)?,
+            row.get::<_, Option<String>>(17)?,
+        ))
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
 // --- AnkyStory persistence ---
 
 pub fn save_anky_story(conn: &Connection, anky_id: &str, story: &str) -> Result<()> {
@@ -4453,7 +4660,9 @@ pub fn save_anky_story(conn: &Connection, anky_id: &str, story: &str) -> Result<
 
 pub fn get_anky_story(conn: &Connection, anky_id: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT anky_story FROM ankys WHERE id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![anky_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![anky_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 
@@ -4497,4 +4706,191 @@ pub fn next_class_number(conn: &Connection) -> Result<i64> {
         |row| row.get(0),
     )?;
     Ok(n)
+}
+
+// ── Anky Now ────────────────────────────────────────────────────────────
+
+pub struct NowRecord {
+    pub id: String,
+    pub slug: String,
+    pub prompt: String,
+    pub prompt_image_path: Option<String>,
+    pub prompt_image_status: String,
+    pub creator_id: Option<String>,
+    pub mode: String,
+    pub duration_seconds: i32,
+    pub starts_at: Option<String>,
+    pub started: bool,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub created_at: String,
+}
+
+pub fn insert_now(
+    conn: &Connection,
+    id: &str,
+    slug: &str,
+    prompt: &str,
+    creator_id: Option<&str>,
+    mode: &str,
+    duration_seconds: i32,
+    starts_at: Option<&str>,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO nows (id, slug, prompt, creator_id, mode, duration_seconds, starts_at, latitude, longitude)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        crate::params![id, slug, prompt, creator_id, mode, duration_seconds, starts_at, latitude, longitude],
+    )?;
+    Ok(())
+}
+
+pub fn get_now_by_slug(conn: &Connection, slug: &str) -> Result<Option<NowRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, slug, prompt, prompt_image_path, prompt_image_status, creator_id,
+                mode, duration_seconds, starts_at, started, latitude, longitude, created_at
+         FROM nows WHERE slug = ?1",
+    )?;
+    let mut rows = stmt.query_map(crate::params![slug], |row| {
+        Ok(NowRecord {
+            id: row.get(0)?,
+            slug: row.get(1)?,
+            prompt: row.get(2)?,
+            prompt_image_path: row.get(3)?,
+            prompt_image_status: row.get(4)?,
+            creator_id: row.get(5)?,
+            mode: row.get(6)?,
+            duration_seconds: row.get(7)?,
+            starts_at: row.get(8)?,
+            started: row.get(9)?,
+            latitude: row.get(10)?,
+            longitude: row.get(11)?,
+            created_at: row.get(12)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn get_now_by_id(conn: &Connection, id: &str) -> Result<Option<NowRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, slug, prompt, prompt_image_path, prompt_image_status, creator_id,
+                mode, duration_seconds, starts_at, started, latitude, longitude, created_at
+         FROM nows WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query_map(crate::params![id], |row| {
+        Ok(NowRecord {
+            id: row.get(0)?,
+            slug: row.get(1)?,
+            prompt: row.get(2)?,
+            prompt_image_path: row.get(3)?,
+            prompt_image_status: row.get(4)?,
+            creator_id: row.get(5)?,
+            mode: row.get(6)?,
+            duration_seconds: row.get(7)?,
+            starts_at: row.get(8)?,
+            started: row.get(9)?,
+            latitude: row.get(10)?,
+            longitude: row.get(11)?,
+            created_at: row.get(12)?,
+        })
+    })?;
+    Ok(rows.next().and_then(|r| r.ok()))
+}
+
+pub fn update_now_image(
+    conn: &Connection,
+    now_id: &str,
+    status: &str,
+    image_path: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE nows SET prompt_image_status = ?2, prompt_image_path = COALESCE(?3, prompt_image_path)
+         WHERE id = ?1",
+        crate::params![now_id, status, image_path],
+    )?;
+    Ok(())
+}
+
+pub fn mark_now_started(conn: &Connection, now_id: &str, starts_at: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE nows SET started = 1, starts_at = ?2 WHERE id = ?1",
+        crate::params![now_id, starts_at],
+    )?;
+    Ok(())
+}
+
+pub fn insert_now_session(
+    conn: &Connection,
+    now_id: &str,
+    writing_session_id: &str,
+) -> Result<i32> {
+    let seq: i32 = conn.query_row(
+        "INSERT INTO now_sessions (now_id, writing_session_id, sequence)
+         VALUES (?1, ?2, COALESCE((SELECT MAX(sequence) FROM now_sessions WHERE now_id = ?1), 0) + 1)
+         RETURNING sequence",
+        crate::params![now_id, writing_session_id],
+        |row| row.get(0),
+    )?;
+    Ok(seq)
+}
+
+pub fn get_now_sessions(conn: &Connection, now_id: &str) -> Result<Vec<(String, i32, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT writing_session_id, sequence, created_at
+         FROM now_sessions WHERE now_id = ?1 ORDER BY sequence ASC",
+    )?;
+    let rows = stmt.query_map(crate::params![now_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i32>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn upsert_now_presence(
+    conn: &Connection,
+    now_id: &str,
+    user_id: &str,
+    display_name: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO now_presence (now_id, user_id, display_name)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(now_id, user_id) DO UPDATE SET
+            display_name = excluded.display_name,
+            last_seen_at = anky_now()",
+        crate::params![now_id, user_id, display_name],
+    )?;
+    Ok(())
+}
+
+pub fn heartbeat_now_presence(conn: &Connection, now_id: &str, user_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE now_presence SET last_seen_at = anky_now() WHERE now_id = ?1 AND user_id = ?2",
+        crate::params![now_id, user_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_now_active_presence(
+    conn: &Connection,
+    now_id: &str,
+    cutoff: &str,
+) -> Result<Vec<(String, String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT user_id, display_name, joined_at
+         FROM now_presence WHERE now_id = ?1 AND last_seen_at >= ?2
+         ORDER BY joined_at ASC",
+    )?;
+    let rows = stmt.query_map(crate::params![now_id, cutoff], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }

@@ -3,6 +3,7 @@ mod config;
 mod create_videos;
 mod db;
 mod error;
+mod i18n;
 pub mod kingdoms;
 mod memory;
 mod middleware;
@@ -30,6 +31,18 @@ async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), Ap
             user_id,
             writing,
         } => {
+            if crate::routes::writing::resume_protocol_anky_job(
+                state,
+                anky_id,
+                session_id,
+                user_id,
+                writing,
+            )
+            .await?
+            {
+                return Ok(());
+            }
+
             let fid: Option<u64> = {
                 let conn = crate::db::conn(&state.db)?;
                 crate::db::queries::get_user_farcaster_fid(&conn, user_id)
@@ -76,6 +89,54 @@ async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), Ap
         state::GpuJob::CuentacuentosAudio { cuentacuentos_id } => {
             pipeline::guidance_gen::generate_cuentacuentos_audio(state, cuentacuentos_id).await?;
         }
+        state::GpuJob::AnkyImageFromPrompt {
+            anky_id,
+            session_id,
+            user_id,
+            image_prompt,
+        } => {
+            // Sealed write path: enclave already produced the image prompt.
+            // Assign kingdom, then generate image directly from the prompt.
+            let fid: Option<u64> = {
+                let conn = crate::db::conn(&state.db)?;
+                crate::db::queries::get_user_farcaster_fid(&conn, user_id)
+                    .ok()
+                    .flatten()
+                    .and_then(|f| f.parse::<u64>().ok())
+            };
+            let kingdom = if let Some(fid) = fid {
+                crate::kingdoms::kingdom_for_fid(fid)
+            } else {
+                crate::kingdoms::kingdom_for_session(session_id)
+            };
+            {
+                let conn = crate::db::conn(&state.db)?;
+                let _ = crate::db::queries::set_anky_kingdom(
+                    &conn,
+                    anky_id,
+                    kingdom.id,
+                    kingdom.name,
+                    kingdom.chakra,
+                );
+            }
+
+            state.emit_log(
+                "INFO",
+                "gpu_queue",
+                &format!(
+                    "Sealed anky {} generating image (kingdom {} {})",
+                    &anky_id[..8.min(anky_id.len())],
+                    kingdom.name,
+                    kingdom.chakra
+                ),
+            );
+
+            // Generate image from enclave-provided prompt (no plaintext writing needed)
+            pipeline::image_gen::generate_image_from_prompt(state, anky_id, image_prompt).await?;
+        }
+        state::GpuJob::NowPromptImage { now_id, prompt } => {
+            pipeline::image_gen::generate_now_prompt_image(state, now_id, prompt).await?;
+        }
     }
 
     Ok(())
@@ -113,6 +174,12 @@ async fn gpu_job_worker(state: AppState) {
             if let state::GpuJob::AnkyImage { anky_id, .. } = &job.job {
                 if let Ok(conn) = crate::db::conn(&state.db) {
                     let _ = db::queries::mark_anky_failed(&conn, anky_id);
+                }
+            }
+
+            if let state::GpuJob::NowPromptImage { now_id, .. } = &job.job {
+                if let Ok(conn) = crate::db::conn(&state.db) {
+                    let _ = db::queries::update_now_image(&conn, now_id, "failed", None);
                 }
             }
 
@@ -169,8 +236,16 @@ async fn main() -> anyhow::Result<()> {
     let db_pool = db::create_pool(&config.database_url).await?;
     tracing::info!("Database initialized");
 
+    // Load translations first — Tera needs the closure before handlers render
+    let i18n = std::sync::Arc::new(i18n::I18n::load_from_dir("locales")?);
+    tracing::info!(
+        "i18n loaded with {} language(s)",
+        ["en", "es"].iter().filter(|l| i18n.has_language(l)).count()
+    );
+
     // Load templates
-    let tera = tera::Tera::new("templates/**/*.html")?;
+    let mut tera = tera::Tera::new("templates/**/*.html")?;
+    i18n::register_tera_function(&mut tera, i18n.clone());
     tracing::info!(
         "Templates loaded: {:?}",
         tera.get_template_names().collect::<Vec<_>>()
@@ -193,6 +268,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db: db_pool,
         tera: Arc::new(tera),
+        i18n: i18n.clone(),
         config: Arc::new(config),
         gpu_status: Arc::new(RwLock::new(GpuStatus::Idle)),
         log_tx,

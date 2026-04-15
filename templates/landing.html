@@ -1,8 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang | default(value='en') }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <script>
+    window.__LANG__ = {{ lang | default(value='en') | json_encode() | safe }};
+    {% if i18n_js %}window.__I18N__ = {{ i18n_js | json_encode() | safe }};{% else %}window.__I18N__ = {};{% endif %}
+    window.t = function(k){return (window.__I18N__ && window.__I18N__[k]) || k;};
+  </script>
   <title>Anky</title>
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -258,34 +263,52 @@
 
     /* ── WRITING OVERLAY ── */
     .writing-overlay {
-      position: fixed; top: 0; left: 0; right: 0; height: 100dvh;
+      position: fixed;
       z-index: 50; background: #0a0a0a;
       display: flex; flex-direction: column;
-      max-width: 640px; margin: 0 auto;
+      overflow: hidden;
     }
-    .idle-bar-wrap { flex-shrink: 0; height: 3px; width: 100%; }
+    .writing-overlay.morph-ready {
+      top: 0; left: 50%; transform: translateX(-50%);
+      width: min(640px, 100%); height: 100dvh;
+      border-radius: 0; opacity: 1;
+    }
+    .idle-bar-wrap {
+      flex-shrink: 0;
+      height: 3px;
+      width: 100%;
+      display: block;
+      background: rgba(255,255,255,0.05);
+    }
     .idle-bar-fill {
-      height: 100%; width: 0%; background: #ff4444;
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #ff9a3d 0%, #ff4444 100%);
       transition: width 0.1s linear; opacity: 0; margin-left: auto;
     }
-    .idle-bar-fill.warning { opacity: 1; }
+    .idle-bar-fill.warning {
+      opacity: 1;
+      box-shadow: 0 0 12px rgba(255, 92, 68, 0.35);
+    }
     .writing-top-bar {
-      position: absolute; top: 0; right: 0;
-      padding: 12px 12px 0; z-index: 2;
+      position: absolute; bottom: max(8px, env(safe-area-inset-bottom));
+      right: 12px; z-index: 2;
     }
     .writing-back {
-      background: none; border: none; color: rgba(255,255,255,0.25);
-      font-size: 22px; cursor: pointer; padding: 4px 8px;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.3);
+      color: rgba(255,68,68,0.8); font-size: 20px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: opacity 0.6s ease;
-      -webkit-tap-highlight-color: transparent; transition: color 0.2s;
+      -webkit-tap-highlight-color: transparent;
     }
-    .writing-back:hover { color: rgba(255,255,255,0.7); }
+    .writing-back:hover { background: rgba(255,68,68,0.25); color: #ff4444; }
     .writing-prompt {
       padding: 12px 16px 0; font-size: 17px; line-height: 1.6;
       color: #b366ff; font-style: italic; flex-shrink: 0;
-      transition: color 0.6s, opacity 0.6s;
+      transition: color 0.6s, opacity 1.5s ease;
     }
     .writing-prompt.faded { color: rgba(179,102,255,0.35); }
+    .writing-prompt.gone { opacity: 0; }
     .writing-textarea {
       flex: 1; min-height: 0; margin: 12px 16px 0; padding: 0;
       background: transparent; border: none; outline: none; resize: none;
@@ -293,8 +316,16 @@
       font-family: system-ui, -apple-system, sans-serif;
       word-wrap: break-word; overflow-wrap: break-word;
       caret-color: #7b2ff7; overflow-y: auto;
+      transition: caret-color 0.3s;
     }
-    .writing-textarea::placeholder { color: rgba(255,255,255,0.15); }
+    .writing-textarea::placeholder {
+      color: rgba(255,255,255,0.15);
+      animation: placeholderBreathe 4s ease-in-out infinite;
+    }
+    @keyframes placeholderBreathe {
+      0%, 100% { opacity: 0.1; }
+      50% { opacity: 0.22; }
+    }
     .writing-textarea::-webkit-scrollbar { width: 0; }
     .writing-bottom {
       flex-shrink: 0; padding: 8px 16px;
@@ -309,8 +340,9 @@
     .writing-timer {
       font-family: 'SF Mono','Fira Code',monospace; font-size: 18px;
       color: #666; font-variant-numeric: tabular-nums;
+      transition: opacity 1s ease;
     }
-    .writing-timer.past-zero { color: #c4a0ff; }
+    .writing-timer.past-zero { color: #c4a0ff; opacity: 1 !important; }
     /* ── TIMER OVERLAY ── */
     .timer-overlay {
       position: fixed; top: 0; left: 0; right: 0; height: 100dvh;
@@ -343,6 +375,7 @@
     }
 
 
+
     .copy-btn {
       align-self: flex-end; background: none;
       border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.35);
@@ -363,7 +396,7 @@
 <div class="app" id="app">
   <!-- Top nav -->
   <nav class="top-nav">
-    <button class="nav-hamburger" id="navHamburger"><span></span><span></span><span></span></button>
+    <button class="nav-hamburger" id="navHamburger" aria-label="you" title="you"><span></span><span></span><span></span></button>
     <div class="nav-spacer"></div>
   </nav>
 
@@ -375,7 +408,7 @@
       <img class="drawer-pfp" src="{{ profile_image_url | default(value='/static/icon-192.png') }}" alt="">
       <div class="drawer-user-info">
         <div class="drawer-username" id="drawerUsername">{{ username | default(value="anon") }}</div>
-        <div class="drawer-subtitle">sealed</div>
+        <div class="drawer-subtitle">{{ t(key="nav.logged_in", lang=lang) }}</div>
         {% if wallet_address | default(value="") != "" %}
         <div class="drawer-wallet" title="{{ wallet_address }}">{{ wallet_address }}</div>
         {% endif %}
@@ -383,17 +416,17 @@
       {% else %}
       <img class="drawer-pfp" src="/static/icon-192.png" alt="">
       <div class="drawer-user-info">
-        <div class="drawer-username" id="drawerUsername">guest</div>
-        <div class="drawer-subtitle">not sealed</div>
+        <div class="drawer-username" id="drawerUsername">{{ t(key="nav.guest", lang=lang) }}</div>
+        <div class="drawer-subtitle">{{ t(key="nav.not_logged_in", lang=lang) }}</div>
       </div>
       {% endif %}
     </div>
     {% if not logged_in | default(value=false) %}
-    <a class="drawer-seal-btn" id="drawerSealBtn">seal from your phone</a>
+    <button type="button" class="drawer-seal-btn" id="drawerSealBtn">{{ t(key="nav.login_cta", lang=lang) }}</button>
     {% endif %}
-    <div class="drawer-section-label">your ankys</div>
+    <div class="drawer-section-label">{{ t(key="nav.your_ankys", lang=lang) }}</div>
     <div class="drawer-ankys" id="drawerAnkys">
-      <div class="drawer-empty">loading...</div>
+      <div class="drawer-empty">{{ t(key="nav.loading", lang=lang) }}</div>
     </div>
   </div>
 
@@ -402,13 +435,13 @@
 
   <!-- Bottom bar: bell | input | anky -->
   <div class="bottom-bar" id="bottomBar">
-    <button class="bell-btn" id="bellBtn" title="8 minute timer">
+    <button class="bell-btn" id="bellBtn" title="{{ t(key='chat.bell_tooltip', lang=lang) }}">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
     </button>
     <div class="chat-input-wrap">
-      <textarea class="chat-input" id="chatInput" rows="1" placeholder="message anky..." autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+      <textarea class="chat-input" id="chatInput" rows="1" placeholder="{{ t(key='chat.input_placeholder', lang=lang) }}" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
     </div>
-    <button class="anky-btn" id="ankyBtn" title="write an anky">
+    <button class="anky-btn" id="ankyBtn" title="{{ t(key='chat.anky_btn_tooltip', lang=lang) }}">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
     </button>
   </div>
@@ -417,11 +450,11 @@
 <!-- Writing overlay -->
 <div class="writing-overlay" id="writingOverlay" style="display:none;">
   <div class="writing-top-bar">
-    <button class="writing-back" id="writingBack" title="back to chat">&times;</button>
+    <button class="writing-back" id="writingBack" title="{{ t(key='writing.back_to_chat', lang=lang) }}">&times;</button>
   </div>
   <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
-  <div class="writing-prompt" id="writingPrompt">what is alive in you right now?</div>
-  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start writing..."></textarea>
+  <div class="writing-prompt" id="writingPrompt">{{ t(key='writing.default_prompt', lang=lang) }}</div>
+  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="{{ t(key='writing.placeholder', lang=lang) }}"></textarea>
   <div class="writing-bottom">
     <div class="chakra-bar"><div class="chakra-fill" id="chakraFill"></div></div>
     <div class="bottom-row">
@@ -434,8 +467,8 @@
 <div class="timer-overlay" id="timerOverlay" style="display:none;">
   <div class="timer-display" id="timerDisplay">8:00</div>
   <div class="timer-chakra-bar"><div class="timer-chakra-fill" id="timerChakraFill"></div></div>
-  <div class="timer-done-msg" id="timerDoneMsg">time's up. write what came.</div>
-  <button class="timer-cancel" id="timerCancel">close</button>
+  <div class="timer-done-msg" id="timerDoneMsg">{{ t(key='timer.done_msg', lang=lang) }}</div>
+  <button class="timer-cancel" id="timerCancel">{{ t(key='timer.close', lang=lang) }}</button>
 </div>
 
 <script>
@@ -543,7 +576,7 @@ function addThinkingBubble() {
   var bubble = document.createElement('div');
   bubble.className = 'chat-bubble anky';
   bubble.id = 'currentThinking';
-  bubble.innerHTML = '<div class="thinking-dots" id="thinkingDots"><span></span><span></span><span></span><span class="thinking-label">anky is reading...</span></div><div class="msg-content" id="streamTarget"></div>';
+  bubble.innerHTML = '<div class="thinking-dots" id="thinkingDots"><span></span><span></span><span></span><span class="thinking-label">' + window.t('chat.anky_thinking') + '</span></div><div class="msg-content" id="streamTarget"></div>';
   chatArea.appendChild(bubble);
   scrollChat();
   return bubble;
@@ -591,9 +624,11 @@ function assistantMessagesFromData(data) {
 function renderAssistantMessages(messages) {
   var thinking = document.getElementById('currentThinking');
   if (thinking) thinking.remove();
-  messages.forEach(function(message) {
-    chatHistory.push({ role: 'assistant', content: message.content, purpose: message.purpose || null });
-    addChatBubble('anky', message.content);
+  messages.forEach(function(message, idx) {
+    setTimeout(function() {
+      chatHistory.push({ role: 'assistant', content: message.content, purpose: message.purpose || null });
+      addChatBubble('anky', message.content);
+    }, idx * 800);
   });
 }
 
@@ -612,17 +647,30 @@ function closeDrawer() {
   drawerBackdrop.classList.remove('open');
 }
 
-document.getElementById('navHamburger').addEventListener('click', openDrawer);
+document.getElementById('navHamburger').addEventListener('click', function() {
+  window.location.href = '/you';
+});
 drawerBackdrop.addEventListener('click', closeDrawer);
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
 });
 
-// Seal button for guests
+// Seal button for guests — close drawer, then open the QR auth panel
 var sealBtn = document.getElementById('drawerSealBtn');
 if (sealBtn) {
-  sealBtn.addEventListener('click', function() {
-    window.location.href = '/login';
+  sealBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeDrawer();
+    // Defer opening the auth panel until after the drawer-close click cycle finishes,
+    // otherwise the same click bubbles to document/backdrop handlers and closes the panel immediately.
+    setTimeout(function() {
+      if (window.ankyAuth && typeof window.ankyAuth.login === 'function') {
+        window.ankyAuth.login();
+      } else {
+        window.location.href = '/login';
+      }
+    }, 50);
   });
 }
 
@@ -660,12 +708,12 @@ if (isLoggedIn) {
     return r.json();
   }).then(function(ankys) {
     if (!ankys || ankys.length === 0) {
-      drawerAnkys.innerHTML = '<div class="drawer-empty">no ankys yet. write your first one.</div>';
+      drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_no_ankys') + '</div>';
       return;
     }
     renderDrawerAnkyList(ankys);
   }).catch(function() {
-    drawerAnkys.innerHTML = '<div class="drawer-empty">write an anky to see it here.</div>';
+    drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_write_here') + '</div>';
   });
 } else {
   // Guest: show locally stored writings
@@ -676,10 +724,10 @@ if (isLoggedIn) {
         return { id: w.id || '', title: w.title || 'untitled', created_at: w.created_at, imageUrl: '', href: w.id ? '/anky/' + w.id : '#' };
       }));
     } else {
-      drawerAnkys.innerHTML = '<div class="drawer-empty">your writings will appear here.</div>';
+      drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_writings_will_appear') + '</div>';
     }
   } catch(e) {
-    drawerAnkys.innerHTML = '<div class="drawer-empty">your writings will appear here.</div>';
+    drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_writings_will_appear') + '</div>';
   }
 }
 
@@ -738,7 +786,7 @@ fetch('/api/chat-history').then(function(r){return r.json();}).then(function(dat
     // Next prompt
     var prompt = nextPrompt || randomPrompt();
     var div = document.createElement('div');
-    div.className = 'session-divider'; div.innerHTML = '<span>now</span>';
+    div.className = 'session-divider'; div.innerHTML = '<span>' + window.t('chat.session_divider_now') + '</span>';
     chatArea.appendChild(div);
     addChatBubble('anky', '*' + prompt + '*');
     document.getElementById('writingPrompt').textContent = prompt;
@@ -909,36 +957,180 @@ async function sendChatMessage() {
     history.replaceState(null, '', url);
   }
 
-  function openWriting() {
-    overlay.style.display = 'flex';
+  var ankyBtn = document.getElementById('ankyBtn');
+  var isAnimating = false;
+  var timerFadeTimeout = null;
+  var promptFadeTimeout = null;
+  var timerHidden = false;
+
+  function resetOverlayState() {
     writingArea.value = '';
-    writingArea.focus();
-    setTimeout(function() { writingArea.focus(); }, 100);
-    setTimeout(function() { writingArea.focus(); }, 300);
-    setAnkyModeParam(true);
     state = 'ready';
     activeTime = 0;
     pausedAtActive = 0;
     writingTimer.textContent = '8:00';
     writingTimer.classList.remove('past-zero');
+    writingTimer.style.opacity = '';
+    timerHidden = false;
     chakraFill.style.width = '0%';
     idleBarFill.style.width = '0%';
     idleBarFill.classList.remove('warning');
     writingBackBtn.style.opacity = '1';
     writingBackBtn.style.pointerEvents = '';
     writingPrompt.classList.remove('faded');
+    writingPrompt.classList.remove('gone');
+    writingPrompt.style.opacity = '';
+    writingArea.style.caretColor = '#7b2ff7';
+    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
+    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
     sessionId = genId();
     sessionToken = null;
     keystrokeDeltas = [];
     lastKeystrokeAt = null;
   }
 
-  function closeWriting() {
-    overlay.style.display = 'none';
+  function openWriting(skipAnimation) {
+    if (isAnimating) return;
+    setAnkyModeParam(true);
+    resetOverlayState();
+
+    // Hide children during morph
+    var children = overlay.children;
+    for (var i = 0; i < children.length; i++) children[i].style.opacity = skipAnimation ? '' : '0';
+
+    if (skipAnimation) {
+      overlay.style.display = 'flex';
+      overlay.className = 'writing-overlay morph-ready';
+      overlay.style.cssText = 'display:flex;';
+      overlay.className = 'writing-overlay morph-ready';
+      writingArea.focus();
+      setTimeout(function() { writingArea.focus(); }, 100);
+      return;
+    }
+
+    // Get button position
+    var btnRect = ankyBtn.getBoundingClientRect();
+    overlay.style.display = 'flex';
+    overlay.classList.remove('morph-ready');
+    overlay.style.top = btnRect.top + 'px';
+    overlay.style.left = btnRect.left + 'px';
+    overlay.style.width = btnRect.width + 'px';
+    overlay.style.height = btnRect.height + 'px';
+    overlay.style.borderRadius = '50%';
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'none';
+    overlay.style.transform = 'none';
+
+    isAnimating = true;
+
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        // Target: full screen, centered like morph-ready
+        var targetW = Math.min(640, window.innerWidth);
+        var targetL = (window.innerWidth - targetW) / 2;
+        var targetH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+        overlay.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+        overlay.style.top = '0px';
+        overlay.style.left = targetL + 'px';
+        overlay.style.width = targetW + 'px';
+        overlay.style.height = targetH + 'px';
+        overlay.style.borderRadius = '0';
+        overlay.style.opacity = '1';
+
+        function onDone() {
+          overlay.removeEventListener('transitionend', onDone);
+          isAnimating = false;
+          // Clean up inline styles → let morph-ready class take over
+          overlay.style.cssText = 'display:flex;';
+          overlay.className = 'writing-overlay morph-ready';
+          // Fade children in
+          for (var i = 0; i < children.length; i++) {
+            children[i].style.transition = 'opacity 0.2s ease';
+            children[i].style.opacity = '';
+          }
+          setTimeout(function() {
+            for (var i = 0; i < children.length; i++) children[i].style.transition = '';
+          }, 250);
+          writingArea.focus();
+          setTimeout(function() { writingArea.focus(); }, 100);
+        }
+        overlay.addEventListener('transitionend', onDone);
+        // Safety fallback
+        setTimeout(function() { if (isAnimating) onDone(); }, 500);
+      });
+    });
+  }
+
+  function closeWriting(skipAnimation, cb) {
     setAnkyModeParam(false);
     if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
     if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
-    state = 'ready';
+    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
+    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
+
+    if (skipAnimation || isAnimating) {
+      overlay.style.display = 'none';
+      overlay.style.cssText = 'display:none;';
+      overlay.classList.remove('morph-ready');
+      state = 'ready';
+      if (cb) cb();
+      return;
+    }
+
+    isAnimating = true;
+
+    // Fade out children first
+    var children = overlay.children;
+    for (var i = 0; i < children.length; i++) {
+      children[i].style.transition = 'opacity 0.15s ease';
+      children[i].style.opacity = '0';
+    }
+
+    setTimeout(function() {
+      // Get current overlay rect and button rect
+      var btnRect = ankyBtn.getBoundingClientRect();
+      var overlayRect = overlay.getBoundingClientRect();
+
+      // Pin overlay at current position with inline styles
+      overlay.classList.remove('morph-ready');
+      overlay.style.top = overlayRect.top + 'px';
+      overlay.style.left = overlayRect.left + 'px';
+      overlay.style.width = overlayRect.width + 'px';
+      overlay.style.height = overlayRect.height + 'px';
+      overlay.style.borderRadius = '0';
+      overlay.style.opacity = '1';
+      overlay.style.transform = 'none';
+      overlay.style.transition = 'none';
+
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          overlay.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+          overlay.style.top = btnRect.top + 'px';
+          overlay.style.left = btnRect.left + 'px';
+          overlay.style.width = btnRect.width + 'px';
+          overlay.style.height = btnRect.height + 'px';
+          overlay.style.borderRadius = '50%';
+          overlay.style.opacity = '0';
+
+          function onDone() {
+            overlay.removeEventListener('transitionend', onDone);
+            overlay.style.display = 'none';
+            overlay.style.cssText = 'display:none;';
+            overlay.classList.remove('morph-ready');
+            for (var i = 0; i < children.length; i++) {
+              children[i].style.transition = '';
+              children[i].style.opacity = '';
+            }
+            isAnimating = false;
+            state = 'ready';
+            if (cb) cb();
+          }
+          overlay.addEventListener('transitionend', onDone);
+          setTimeout(function() { if (isAnimating) onDone(); }, 600);
+        });
+      });
+    }, 150);
   }
 
   function beginSession() {
@@ -951,6 +1143,21 @@ async function sendChatMessage() {
     writingBackBtn.style.pointerEvents = 'none';
     tickInterval = setInterval(tick, 100);
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
+
+    // Timer fades out after 30s of writing
+    timerFadeTimeout = setTimeout(function() {
+      if (state === 'writing' && !timerHidden) {
+        writingTimer.style.opacity = '0';
+        timerHidden = true;
+      }
+    }, 30000);
+
+    // Prompt fully disappears after 60s
+    promptFadeTimeout = setTimeout(function() {
+      if (state === 'writing') {
+        writingPrompt.classList.add('gone');
+      }
+    }, 60000);
   }
 
   writingArea.addEventListener('keydown', function(e) {
@@ -964,8 +1171,7 @@ async function sendChatMessage() {
       lastInputAt = now;
       if (lastKeystrokeAt) keystrokeDeltas.push(now - lastKeystrokeAt);
       lastKeystrokeAt = now;
-      idleBarFill.style.width = '0%';
-      idleBarFill.classList.remove('warning');
+      writingArea.style.caretColor = '#7b2ff7';
     }
   });
 
@@ -985,15 +1191,24 @@ async function sendChatMessage() {
     var now = Date.now();
     activeTime = (now - sessionStarted) / 1000;
     var idleElapsed = (now - lastInputAt) / 1000;
+
+    // Caret color: interpolate purple → red as idle goes from 3s to 8s
     if (idleElapsed > IDLE_VISIBLE_AFTER && writingArea.value.length > 0) {
       var p = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
-      idleBarFill.style.width = (p * 100) + '%';
-      idleBarFill.classList.add('warning');
-    } else {
-      idleBarFill.style.width = '0%';
-      idleBarFill.classList.remove('warning');
+      var r = Math.round(123 + (255 - 123) * p);
+      var g = Math.round(47 + (68 - 47) * p);
+      var b = Math.round(247 + (68 - 247) * p);
+      writingArea.style.caretColor = 'rgb(' + r + ',' + g + ',' + b + ')';
     }
+
     if (idleElapsed >= IDLE_TIMEOUT && writingArea.value.length > 0) { doSend(); return; }
+
+    // Timer reappears when past 8 minutes
+    if (timerHidden && activeTime >= SESSION_DURATION) {
+      writingTimer.style.opacity = '1';
+      timerHidden = false;
+    }
+
     updateTimerDisplay();
     updateChakra();
   }
@@ -1037,17 +1252,38 @@ async function sendChatMessage() {
     var text = writingArea.value;
     currentWritingText = text;
 
-    // Close writing overlay, go back to chat
-    closeWriting();
+    // Stop timers
+    if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+    if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
+    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
+    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
+    setAnkyModeParam(false);
 
-    // Show writing as a normal user bubble
-    addChatBubble('user', text);
-    scrollChat(true);
+    // Fade overlay out
+    overlay.style.transition = 'opacity 0.6s ease';
+    overlay.style.opacity = '0';
 
-    addThinkingBubble();
+    function onFadeDone() {
+      overlay.removeEventListener('transitionend', onFadeDone);
+      overlay.style.display = 'none';
+      overlay.style.cssText = 'display:none;';
+      overlay.classList.remove('morph-ready');
+      overlay.style.opacity = '';
+      isAnimating = false;
+      state = 'ready';
+    }
+    overlay.addEventListener('transitionend', onFadeDone);
+    setTimeout(function() { if (overlay.style.opacity === '0') onFadeDone(); }, 700);
 
-    // Send to server
-    sendToAnky(text);
+    // Wait for fade, then show bubble and send
+    setTimeout(function() {
+      addChatBubble('user', text);
+      scrollChat(true);
+      setTimeout(function() {
+        addThinkingBubble();
+        sendToAnky(text);
+      }, 400);
+    }, 600);
   }
 
   async function sendToAnky(text) {
@@ -1088,10 +1324,12 @@ async function sendChatMessage() {
         var messages = assistantMessagesFromData(data);
         finishAnkyBubble(messages[0].content);
         chatHistory.push({ role: 'assistant', content: messages[0].content, purpose: messages[0].purpose || null });
-        for (var i = 1; i < messages.length; i++) {
-          chatHistory.push({ role: 'assistant', content: messages[i].content, purpose: messages[i].purpose || null });
-          addChatBubble('anky', messages[i].content);
-        }
+        messages.slice(1).forEach(function(msg, idx) {
+          setTimeout(function() {
+            chatHistory.push({ role: 'assistant', content: msg.content, purpose: msg.purpose || null });
+            addChatBubble('anky', msg.content);
+          }, (idx + 1) * 800);
+        });
       }
     } catch(e) {
       finishAnkyBubble('something went wrong. your writing is saved.');
@@ -1160,7 +1398,7 @@ async function sendChatMessage() {
         progressTimers.forEach(clearTimeout);
         removeThinking();
       }
-      rawText += e.data + '\n';
+      rawText += e.data;
       if (streamTarget) {
         streamTarget.innerHTML = renderMarkdown(rawText) + '<span class="stream-cursor"></span>';
       }
@@ -1200,17 +1438,17 @@ async function sendChatMessage() {
     };
   }
 
-  document.getElementById('ankyBtn').addEventListener('click', openWriting);
+  document.getElementById('ankyBtn').addEventListener('click', function() { openWriting(false); });
   document.getElementById('writingBack').addEventListener('click', function() {
-    if (state === 'ready') closeWriting();
+    if (state === 'ready') closeWriting(false);
   });
 
   // Auto-open anky mode: default is true (path of least resistance)
   var urlParams = new URLSearchParams(window.location.search);
   var ankyModeParam = urlParams.get('ankymode');
-  // Open if param is absent (default) or explicitly 'true'
+  // Open if param is absent (default) or explicitly 'true' — skip animation on load
   if (ankyModeParam === null || ankyModeParam === 'true') {
-    openWriting();
+    openWriting(true);
   }
 
   // Viewport sync for writing overlay

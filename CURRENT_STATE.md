@@ -1,5 +1,68 @@
 # Anky Backend — Current State
-Last updated: 2026-03-29 (session 17)
+Last updated: 2026-04-12 (session 20 — i18n phase 1: automatic device-language detection across main flow)
+
+## Session 20 (2026-04-12) — i18n infrastructure + 9 languages
+
+### What shipped
+- **New module `src/i18n.rs`**: JSON-file locale loader, Tera `t(key=..., lang=lang)` function, request-language resolver (query → cookie → Accept-Language → en), client-side JSON bundle builder.
+- **9 locale files** in `locales/`: `en, es, fr, pt, de, it, ja, ko, zh` (44 keys each).
+- **AppState gained `i18n: Arc<I18n>`**. `main.rs` loads locales at startup, registers the Tera function, passes the Arc into state.
+- **Automatic detection**: the `Accept-Language` HTTP header is the primary signal. No picker, no URL param required. `?lang=xx` is also supported and persists to an `anky_lang` cookie (1-year).
+- **Templates converted**: `landing.html` (the main chat/writing/timer flow), `you.html` (profile), `anky.html` (detail page + reply UI). Each template now emits `<html lang>` correctly and inlines a `window.__LANG__` + `window.__I18N__` bridge so inline JS strings (e.g., "anky is reading…", drawer empty states, session-divider "now") translate via `window.t(key)`.
+- **Page handlers updated**: `home`, `write_page`, `you_page`, `anky_detail` in `src/routes/pages.rs` now call `i18n::inject_into_context(…)` before rendering. `you_page` and `anky_detail` return `(CookieJar, Html<String>)` so `?lang=` can set the cookie.
+
+### Chat-bubble CSS fix (same session)
+- Desktop anky reflection bubble was shrink-wrapping to ~15 chars wide. Fixed in `static/style.css:612` by giving `.chat-bubble.anky` a `min-width: min(100%, 520px)` and swapping `word-break: break-word` for `overflow-wrap: break-word`.
+- SSE reflection sometimes cut off at the tail. After `done`/`error`, client now re-fetches `/api/v1/anky/{id}` and replaces the bubble with the longer DB-saved reflection (`templates/prompt.html:567,584`).
+
+### Not in this pass (deliberately — "simplicity wins")
+- No language picker UI. Automatic from device.
+- No extraction from legacy templates: `home.html` (the `/write` page), miniapp React app, iOS app — all still English-only.
+- Translations are LLM-generated best-effort; Anky's contemplative voice (e.g., "what is alive in you right now") would benefit from a native-speaker pass per language before polishing.
+- Reflection output language already mirrors the writer's language via the LLM prompt ("Respond in their language") — unchanged.
+
+### How to add another language
+Drop a new file `locales/<code>.json` with the same keys as `en.json` and restart. The loader picks it up at startup; `resolve_request_lang` will match it from `Accept-Language` automatically.
+
+
+
+## Solana Hackathon Ship (Colosseum, deadline Mon Apr 7)
+
+### Architecture decisions (2026-04-05)
+- **Everything is Solana.** User identity = Solana wallet. iOS app generates BIP39 mnemonic, derives Ed25519 keypair (m/44'/501'/0'/0'), produces base58 Solana pubkey.
+- **Two NFT collections on devnet:**
+  - **Mirrors** (sojourn membership): 3,456 cap, depth-12 tree `ArmTPWNskwUsiZErvN1HKbqrupeiavkxVgS1ciLRQK6B`, collection `CXYtYYgnXx5Lbn5MmePHSePynjJwGyTSWnzhDBbbn4Dt`. One per user. The gate.
+  - **Ankys** (per-writing artifacts): depth-10 tree `3SgBFS5gFmeMUNZQqQk1xGsoZAZewXVAiMVkzjeJBSd6`, collection `5AbvPKw84mXhYWNBo3iTCH1Nkpc7EZPHHk4q1ECz4rVW`, 1,024 capacity. Auto-minted at write-time for participants.
+- **Farcaster miniapp now mints.** The miniapp generates a mirror from the user's Farcaster presence, then mints a Mirror cNFT. It's a full onboarding surface.
+- **Per-anky minting is live.** Every real anky (8+ min, 300+ words) written by a sojourn participant auto-mints a cNFT on the Ankys tree. Happens at write-time, not after image generation.
+- **AWS Nitro Enclave is live** at `3.83.84.211:5555`. `GET /api/anky/public-key` proxies to the enclave. Sealed sessions stored via `POST /api/sessions/seal`. Backend never sees plaintext from authenticated users.
+- **Anonymous users see ephemeral writing** — no persistence, just copy-to-platform buttons (X, Warpcast, Claude, ChatGPT) after writing.
+- **No explicit sequence counter.** Bubblegum tree assigns leaf indices automatically.
+
+### Solana infrastructure status
+- **Devnet tree created**: `solana/setup/tree-devnet.json` — tree `ArmTPWNskwUsiZErvN1HKbqrupeiavkxVgS1ciLRQK6B`, collection `CXYtYYgnXx5Lbn5MmePHSePynjJwGyTSWnzhDBbbn4Dt`, maxDepth=12, 4,096 capacity.
+- **Mainnet tree**: NOT YET CREATED. Run `cd solana/setup && SOLANA_NETWORK=mainnet-beta HELIUS_API_KEY=xxx npm start`. Authority needs ~2-3 SOL.
+- **Cloudflare Worker** (`solana/worker/`): Code complete (234 lines, Umi + mpl-bubblegum v4.3.1). `POST /mint` accepts `{mirror_id, recipient, name, uri, kingdom, symbol}` and mints cNFT with `leafOwner = recipient`. NOT YET DEPLOYED. Deploy: `cd solana/worker && wrangler deploy`, then set secrets.
+- **Env vars needed on poiesis**: `SOLANA_MINT_WORKER_URL`, `SOLANA_MINT_WORKER_SECRET`, `SOLANA_MERKLE_TREE`, `SOLANA_COLLECTION_MINT`, `SOLANA_AUTHORITY_PUBKEY`, `HELIUS_API_KEY`.
+
+### Code changes (this session)
+- **Metadata creator address**: Both `GET /api/mirror/collection-metadata` and `GET /api/mirror/metadata/{id}` now read `SOLANA_AUTHORITY_PUBKEY` from config instead of empty string.
+- **Collection image**: `static/anky-collection.png` added so collection metadata image URL resolves.
+- **Farcaster miniapp**: Removed mint button, mint JS, mint CSS. After mirror generation, shows CTA: "this is your surface. anky saw your public presence. want to show it what's inside?" → link to iOS App Store. Share button always enabled after mirror loads.
+- **iOS mint endpoint refactored**: `POST /swift/v2/mint-mirror` now requires `{solana_address, writing_session_id}`. Validates base58 (rejects 0x-prefixed ETH addresses). Validates writing session is real anky (8+ min) owned by the user. Handles already-minted gracefully: returns `{alreadyMinted: true, existingTxSignature, ...}` instead of an error. Added `get_user_existing_mint` DB query.
+- **Metadata attributes**: Raw mirrors now include `Writer` (Solana pubkey) and `Sojourn` (9) attributes.
+- **Config**: Added `solana_authority_pubkey` field + `SOLANA_AUTHORITY_PUBKEY` env var.
+
+### Blocking items for Monday ship
+1. Create mainnet merkle tree (fund authority, run setup script)
+2. Deploy Cloudflare Worker + set 5 secrets
+3. Set env vars on poiesis
+4. iOS app: replace EVM crypto with Solana Ed25519 derivation (BIP39 → m/44'/501'/0'/0')
+5. iOS app: call `POST /swift/v2/mint-mirror` with `{solana_address, writing_session_id}` on first seal
+
+### EVM paths (dormant, not deleted)
+- `POST /swift/v2/writing/{sessionId}/prepare-mint` and `/confirm-mint` still exist for Base ERC1155.
+- Not used by current iOS flow. May be useful later.
 
 ## What's working
 - `cargo check` passes on the current tree, and the mobile seed-signature unit test passes via `cargo test verifies_seed_auth_signatures`.
@@ -113,9 +176,13 @@ All sadhana, meditation, breathwork, and facilitator code has been deleted from 
 - `GET /swift/v2/next-prompt` | auth: bearer | Precomputed personalized writing prompt (defaults to generic if none yet).
 - `GET /swift/v2/you` | auth: bearer | Full user profile with Honcho peer context for the You tab.
 - `POST /swift/v2/device-token` | auth: bearer | Register APNs device token for silent push.
-- `POST /swift/v2/writing/{sessionId}/prepare-mint` | auth: bearer | EIP-712 sign + gas fund for birthSoul mint.
-- `POST /swift/v2/writing/{sessionId}/confirm-mint` | auth: bearer | Verify mint tx receipt, parse token ID.
+- `POST /swift/v2/mint-mirror` | auth: bearer | Mint Sojourn 9 cNFT from writing session. Body: `{solana_address, writing_session_id}`. Returns `{alreadyMinted, tx_signature, kingdom, ...}`.
+- `POST /swift/v2/writing/{sessionId}/prepare-mint` | auth: bearer | EIP-712 sign + gas fund for birthSoul mint (EVM, dormant).
+- `POST /swift/v2/writing/{sessionId}/confirm-mint` | auth: bearer | Verify mint tx receipt, parse token ID (EVM, dormant).
 - `GET /api/v1/anky/{id}/metadata` | public | ERC1155-compliant metadata JSON.
+- `GET /api/mirror/metadata/{id}` | public | Metaplex-compatible cNFT metadata (Sojourn 9).
+- `GET /api/mirror/collection-metadata` | public | Metaplex collection metadata.
+- `GET /api/mirror/supply` | public | Mint count and remaining supply.
 - `POST /swift/v1/admin/premium` | auth: bearer (not admin-scoped) | Toggle premium.
 
 ## Retry and background workers
@@ -127,15 +194,14 @@ All sadhana, meditation, breathwork, and facilitator code has been deleted from 
 - X filtered-stream reconnect loop: continuous with exponential backoff.
 - System summary worker: every 30 minutes.
 
-## Web seed auth (2026-03-19)
-- Web login page (`/login`) now uses 12-word BIP39 seed identity instead of Privy.
-- Three flows: generate new identity, import existing recovery phrase, unlock stored vault.
-- Private key encrypted client-side with PBKDF2 (600k iterations) + AES-GCM, stored in localStorage as `anky_seed_vault`.
-- `POST /auth/seed/verify` sets `anky_session` and `anky_user_id` cookies (same auth as mobile `/swift/v2/auth/verify`).
-- `POST /auth/seed/logout` clears cookies and invalidates session.
-- `auth_seed_verify_inner()` in `swift.rs` is the shared core verification function used by both mobile and web.
-- Privy endpoints remain alive but the web login no longer links to them.
-- iOS specs updated: 24-word references changed to 12-word.
+## Web Auth Bridge (2026-04-03)
+- Web login page (`/login`) is a phone-seal bridge.
+- Browser creates a QR challenge via `POST /api/auth/qr`, waits, and wakes up when the iPhone app seals.
+- Phone remains the authority for the wallet and swipe; the web only receives the resulting browser session.
+- Live QR challenges now return the real TestFlight fallback via `ANKY_IOS_APP_URL=https://testflight.apple.com/join/WcRYyCm5`.
+- QR seals now verify the iPhone's Ed25519 signature against the stored challenge token before minting the browser session.
+- Browser logout is now a single `POST /auth/logout`.
+- Old web-only Privy and seed auth routes were removed from the browser surface. Mobile auth endpoints remain unchanged.
 
 ## Next priorities
 - Pass the real mobile `user_id` into `generate_anky_from_writing()` so fallback reflection + memory extraction operate on the correct user.

@@ -205,3 +205,150 @@ pub async fn verify_base_transaction(
         block_number: Some(receipt_block),
     })
 }
+
+/// Verify a USDC transfer to treasury without checking expected amount.
+/// Returns the actual transferred amount in the result.
+pub async fn verify_altar_burn(
+    rpc_url: &str,
+    tx_hash_hex: &str,
+    expected_recipient: &str,
+    token_address: &str,
+) -> Result<VerificationResult> {
+    let client = reqwest::Client::new();
+
+    let receipt = rpc_call(
+        &client,
+        rpc_url,
+        "eth_getTransactionReceipt",
+        serde_json::json!([tx_hash_hex]),
+    )
+    .await?;
+
+    let status = receipt
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("0x0");
+
+    if status != "0x1" {
+        return Ok(VerificationResult {
+            valid: false,
+            reason: Some("Transaction failed on-chain".into()),
+            actual_amount: None,
+            from: None,
+            block_number: None,
+        });
+    }
+
+    let receipt_block_hex = receipt
+        .get("blockNumber")
+        .and_then(|b| b.as_str())
+        .unwrap_or("0x0");
+    let receipt_block =
+        u64::from_str_radix(receipt_block_hex.trim_start_matches("0x"), 16).unwrap_or(0);
+
+    let current_block_hex =
+        rpc_call(&client, rpc_url, "eth_blockNumber", serde_json::json!([])).await?;
+    let current_block_str = current_block_hex.as_str().unwrap_or("0x0");
+    let current_block =
+        u64::from_str_radix(current_block_str.trim_start_matches("0x"), 16).unwrap_or(0);
+
+    if current_block.saturating_sub(receipt_block) < 2 {
+        return Ok(VerificationResult {
+            valid: false,
+            reason: Some("Insufficient block confirmations (need >= 2)".into()),
+            actual_amount: None,
+            from: None,
+            block_number: None,
+        });
+    }
+
+    let logs = receipt
+        .get("logs")
+        .and_then(|l| l.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let token_addr_lower = token_address.to_lowercase();
+    let expected_addr_lower = expected_recipient.to_lowercase();
+
+    let matching_log = logs.iter().find(|log| {
+        let addr = log
+            .get("address")
+            .and_then(|a| a.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let topics = log
+            .get("topics")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        if addr != token_addr_lower {
+            return false;
+        }
+
+        let topic0 = topics
+            .first()
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if topic0 != TRANSFER_TOPIC {
+            return false;
+        }
+
+        if let Some(topic2) = topics.get(2).and_then(|t| t.as_str()) {
+            let to_addr = format!("0x{}", &topic2[26..]);
+            to_addr.to_lowercase() == expected_addr_lower
+        } else {
+            false
+        }
+    });
+
+    let Some(log) = matching_log else {
+        return Ok(VerificationResult {
+            valid: false,
+            reason: Some("No USDC transfer to treasury address found".into()),
+            actual_amount: None,
+            from: None,
+            block_number: None,
+        });
+    };
+
+    let data_hex = log.get("data").and_then(|d| d.as_str()).unwrap_or("0x0");
+    let amount_hex = data_hex.trim_start_matches("0x");
+    let actual_amount = u128::from_str_radix(amount_hex, 16).unwrap_or(0);
+
+    if actual_amount == 0 {
+        return Ok(VerificationResult {
+            valid: false,
+            reason: Some("Transfer amount is zero".into()),
+            actual_amount: Some("0".to_string()),
+            from: None,
+            block_number: None,
+        });
+    }
+
+    let topics = log
+        .get("topics")
+        .and_then(|t| t.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let from = topics
+        .get(1)
+        .and_then(|t| t.as_str())
+        .map(|t| format!("0x{}", &t[26..]));
+
+    tracing::info!(
+        "Altar burn verified: {}... amount={}",
+        &tx_hash_hex[..std::cmp::min(10, tx_hash_hex.len())],
+        actual_amount
+    );
+
+    Ok(VerificationResult {
+        valid: true,
+        reason: None,
+        actual_amount: Some(actual_amount.to_string()),
+        from,
+        block_number: Some(receipt_block),
+    })
+}

@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anky — Onboarding Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #050506;
+    --panel: rgba(17, 14, 12, 0.88);
+    --border: rgba(227, 173, 92, 0.18);
+    --text: #f1e6d6;
+    --muted: rgba(241, 230, 214, 0.58);
+    --gold: #ddb16f;
+    --ember: #ff8f3c;
+    --ember-soft: rgba(255, 143, 60, 0.18);
+    --shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+    --phone-w: min(390px, 100vw - 32px);
+    --phone-h: calc(var(--phone-w) * 16 / 9);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background:
+      radial-gradient(circle at top, rgba(255, 143, 60, 0.08), transparent 42%),
+      radial-gradient(circle at bottom right, rgba(221, 177, 111, 0.06), transparent 35%),
+      #050506;
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+  }
+
+  body { min-height: 100vh; padding: 24px; }
+
+  .page {
+    display: grid;
+    grid-template-columns: minmax(320px, 460px) minmax(340px, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .lab-panel,
+  .viewer-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow);
+  }
+
+  .lab-panel {
+    padding: 22px 20px 24px;
+    position: sticky;
+    top: 24px;
+  }
+
+  .viewer-panel {
+    padding: 24px;
+    min-height: calc(100vh - 48px);
+  }
+
+  .eyebrow,
+  .label,
+  .chip,
+  .control-btn,
+  .status,
+  .scene-btn,
+  .scene-note,
+  .mini,
+  .cta-btn,
+  textarea,
+  select {
+    font-family: 'Space Mono', monospace;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+
+  h1, h2, h3, p { margin: 0; }
+
+  .title {
+    font-size: 38px;
+    line-height: 0.96;
+    margin-bottom: 10px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    line-height: 1.45;
+    font-size: 18px;
+    margin-bottom: 22px;
+  }
+
+  .section {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .direction-grid,
+  .scene-tabs,
+  .action-row,
+  .library-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chip,
+  .control-btn,
+  .scene-btn,
+  .cta-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  }
+
+  .chip,
+  .scene-btn {
+    padding: 10px 14px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .chip.active,
+  .scene-btn.active {
+    background: var(--ember-soft);
+    border-color: rgba(255, 143, 60, 0.55);
+    color: #ffd4ac;
+  }
+
+  .control-btn,
+  .cta-btn {
+    padding: 11px 16px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .control-btn.primary,
+  .cta-btn.primary {
+    background: linear-gradient(180deg, rgba(255, 143, 60, 0.95), rgba(203, 104, 28, 0.95));
+    color: #140c06;
+    border-color: rgba(255, 170, 84, 0.7);
+  }
+
+  .chip:hover,
+  .control-btn:hover,
+  .scene-btn:hover,
+  .cta-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 143, 60, 0.45);
+  }
+
+  .help {
+    margin-top: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+    font-size: 15px;
+  }
+
+  textarea,
+  select {
+    width: 100%;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.24);
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.55;
+    resize: vertical;
+    outline: none;
+  }
+
+  textarea:focus,
+  select:focus {
+    border-color: rgba(255, 143, 60, 0.4);
+  }
+
+  .prompt-grid {
+    display: grid;
+    gap: 14px;
+  }
+
+  .prompt-card {
+    padding: 12px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .prompt-card textarea { min-height: 92px; }
+
+  .status {
+    min-height: 18px;
+    margin-top: 12px;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .status.error { color: #ff8f9c; }
+  .status.success { color: #94efb6; }
+
+  .viewer-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+
+  .viewer-title {
+    font-size: 34px;
+    line-height: 1;
+  }
+
+  .viewer-subtitle {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 17px;
+    line-height: 1.35;
+  }
+
+  .phone-stage {
+    display: grid;
+    grid-template-columns: var(--phone-w) minmax(240px, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  .phone-shell {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    border-radius: 42px;
+    background: linear-gradient(180deg, #171314, #0d0a0a);
+    padding: 12px;
+    box-shadow: 0 30px 100px rgba(0,0,0,0.55);
+    position: relative;
+  }
+
+  .phone-shell::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 108px;
+    height: 24px;
+    border-radius: 0 0 16px 16px;
+    background: #080808;
+    transform: translateX(-50%);
+    z-index: 4;
+  }
+
+  .phone-screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 32px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 38%, rgba(255, 144, 61, 0.24), transparent 18%),
+      radial-gradient(circle at 50% 52%, rgba(255, 145, 60, 0.08), transparent 38%),
+      #060606;
+  }
+
+  .bg-layer,
+  .fx-layer {
+    position: absolute;
+    inset: 0;
+  }
+
+  .bg-layer {
+    background:
+      radial-gradient(circle at 50% 38%, rgba(255, 144, 61, 0.32), transparent 16%),
+      radial-gradient(circle at 50% 78%, rgba(255,255,255,0.03), transparent 36%),
+      linear-gradient(180deg, rgba(14, 10, 10, 0.6), rgba(4,4,5,0.88));
+    background-size: cover;
+    background-position: center;
+    transition: opacity 0.35s ease, transform 0.5s ease, filter 0.35s ease;
+  }
+
+  .fx-layer {
+    background:
+      radial-gradient(circle at 50% 35%, rgba(255, 149, 80, 0.18), transparent 18%),
+      radial-gradient(circle at 20% 10%, rgba(255, 196, 120, 0.05), transparent 22%),
+      radial-gradient(circle at 80% 16%, rgba(255, 149, 80, 0.05), transparent 22%);
+    mix-blend-mode: screen;
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  .phone-screen.playing .bg-layer { transform: scale(1.02); }
+
+  .dust {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  .dust span {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 213, 160, 0.68);
+    box-shadow: 0 0 12px rgba(255, 173, 102, 0.3);
+    animation: drift linear infinite;
+  }
+
+  @keyframes drift {
+    0% { transform: translate3d(0, 0, 0) scale(0.8); opacity: 0; }
+    20% { opacity: 0.7; }
+    100% { transform: translate3d(12px, -120px, 0) scale(1.15); opacity: 0; }
+  }
+
+  .ember-core {
+    position: absolute;
+    top: 33%;
+    left: 50%;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background:
+      radial-gradient(circle at 52% 42%, rgba(255, 231, 187, 0.9), rgba(255, 159, 63, 0.8) 34%, rgba(211, 82, 20, 0.5) 62%, transparent 72%);
+    filter: blur(1px);
+    box-shadow:
+      0 0 50px rgba(255, 124, 41, 0.58),
+      0 0 120px rgba(255, 124, 41, 0.18);
+    animation: pulse 3.8s ease-in-out infinite;
+    opacity: 0.95;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.76; }
+    50% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+  }
+
+  .top-hud {
+    position: absolute;
+    top: 26px;
+    left: 18px;
+    right: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.24s ease, transform 0.24s ease;
+    z-index: 3;
+  }
+
+  .phone-screen.scene-writing .top-hud,
+  .phone-screen.scene-arrival .top-hud,
+  .phone-screen.scene-unlock .top-hud {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .hud-lives {
+    display: flex;
+    gap: 6px;
+  }
+
+  .hud-life {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #ffd59f, #ff8935 58%, rgba(135, 43, 0, 0.7));
+    box-shadow: 0 0 12px rgba(255, 132, 48, 0.38);
+  }
+
+  .hud-life.lost {
+    background: rgba(255,255,255,0.1);
+    box-shadow: none;
+    opacity: 0.45;
+  }
+
+  .hud-timer {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    background: rgba(0,0,0,0.36);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .writing-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.24s ease;
+  }
+
+  .phone-screen.scene-writing .writing-center { opacity: 1; }
+
+  .writing-word {
+    font-size: clamp(42px, 9vw, 62px);
+    line-height: 0.92;
+    text-align: center;
+    max-width: 75%;
+  }
+
+  .writing-ribbon {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 144px;
+    opacity: 0;
+    transition: opacity 0.24s ease;
+    font-size: 13px;
+    color: rgba(241, 230, 214, 0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    z-index: 2;
+  }
+
+  .phone-screen.scene-writing .writing-ribbon { opacity: 1; }
+
+  .dialogue {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 3;
+    border-radius: 26px;
+    border: 1px solid rgba(221, 177, 111, 0.18);
+    background: linear-gradient(180deg, rgba(18, 13, 12, 0.94), rgba(10, 8, 8, 0.98));
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    padding: 16px 16px 14px;
+  }
+
+  .dialogue-kicker {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 184, 116, 0.68);
+    margin-bottom: 10px;
+  }
+
+  .dialogue-lines { min-height: 92px; }
+
+  .dialogue-line {
+    font-size: 28px;
+    line-height: 0.98;
+    margin-top: 6px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  .dialogue-line.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .dialogue-line.small { font-size: 22px; }
+
+  .dialogue-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    margin-top: 14px;
+  }
+
+  .mini {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .reflection-card,
+  .unlock-card {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: 108px;
+    z-index: 3;
+    padding: 16px 16px 14px;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(14, 11, 10, 0.82);
+    backdrop-filter: blur(18px);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.28s ease, transform 0.28s ease;
+  }
+
+  .phone-screen.scene-arrival .reflection-card,
+  .phone-screen.scene-unlock .unlock-card {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .reflection-card h3,
+  .unlock-card h3 {
+    font-size: 14px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    color: rgba(255, 184, 116, 0.7);
+  }
+
+  .reflection-card p,
+  .unlock-card p {
+    font-size: 20px;
+    line-height: 1.1;
+  }
+
+  .unlock-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .unlock-pill {
+    padding: 10px 12px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(241, 230, 214, 0.86);
+  }
+
+  .scene-meta {
+    display: grid;
+    gap: 12px;
+  }
+
+  .meta-card {
+    padding: 16px;
+    border-radius: 22px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .meta-card h3 {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 184, 116, 0.66);
+    margin-bottom: 10px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .meta-card p,
+  .meta-card li {
+    font-size: 17px;
+    color: rgba(241, 230, 214, 0.88);
+    line-height: 1.3;
+  }
+
+  .meta-card ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .scene-note {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  @media (max-width: 1100px) {
+    .page { grid-template-columns: 1fr; }
+    .lab-panel { position: static; }
+    .viewer-panel { min-height: 0; }
+    .phone-stage { grid-template-columns: 1fr; justify-items: center; }
+  }
+
+  @media (max-width: 540px) {
+    body { padding: 14px; }
+    .lab-panel,
+    .viewer-panel { border-radius: 22px; }
+    .viewer-panel { padding: 18px 14px 20px; }
+    .title,
+    .viewer-title { font-size: 30px; }
+    .dialogue-line { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <aside class="lab-panel">
+      <div class="eyebrow">Anky Lab</div>
+      <h1 class="title">mobile onboarding<br>prototype</h1>
+      <p class="subtitle">One page to test the rite, the copy, and the art. Generate four 9:16 scene plates with Flux, then play the onboarding flow in the browser.</p>
+
+      <div class="section">
+        <label class="label">Visual Direction</label>
+        <div class="direction-grid" id="directionGrid"></div>
+        <p class="help" id="directionHelp"></p>
+      </div>
+
+      <div class="section">
+        <div class="action-row">
+          <button class="control-btn primary" id="generateBtn">generate 4 scenes</button>
+          <button class="control-btn" id="latestBtn">load latest experiment</button>
+          <button class="control-btn" id="playBtn">play flow</button>
+        </div>
+        <div class="status" id="statusMsg"></div>
+      </div>
+
+      <div class="section">
+        <label class="label" for="experimentSelect">Experiment</label>
+        <div class="library-row">
+          <select id="experimentSelect"></select>
+          <button class="control-btn" id="loadExperimentBtn">load</button>
+        </div>
+        <div class="scene-note" id="experimentMeta">No experiment loaded yet.</div>
+      </div>
+
+      <div class="section">
+        <label class="label">Scene Prompts</label>
+        <div class="prompt-grid" id="promptGrid"></div>
+      </div>
+    </aside>
+
+    <section class="viewer-panel">
+      <div class="viewer-head">
+        <div>
+          <div class="eyebrow">Browser Preview</div>
+          <h2 class="viewer-title">one character. one world.<br>one mission.</h2>
+          <p class="viewer-subtitle">Use this to react to pacing, copy, layout, and the feeling of the image plates before the Swift build hardens.</p>
+        </div>
+      </div>
+
+      <div class="scene-tabs" id="sceneTabs"></div>
+
+      <div class="phone-stage">
+        <div class="phone-shell">
+          <div class="phone-screen scene-ember" id="phoneScreen">
+            <div class="bg-layer" id="bgLayer"></div>
+            <div class="fx-layer"></div>
+            <div class="dust" id="dustLayer"></div>
+            <div class="ember-core"></div>
+
+            <div class="top-hud">
+              <div class="hud-lives">
+                <span class="hud-life"></span>
+                <span class="hud-life lost"></span>
+              </div>
+              <div class="hud-timer">08:00</div>
+            </div>
+
+            <div class="writing-center">
+              <div class="writing-word">now.</div>
+            </div>
+            <div class="writing-ribbon">the words move below you like a ribbon of breath and memory and fire</div>
+
+            <div class="reflection-card">
+              <h3>first reflection</h3>
+              <p>hey, thanks for being who you are. my thoughts:</p>
+            </div>
+
+            <div class="unlock-card">
+              <h3>the shell opens</h3>
+              <p>your first anky is alive.</p>
+              <div class="unlock-grid">
+                <div class="unlock-pill">profile</div>
+                <div class="unlock-pill">ankys</div>
+                <div class="unlock-pill">reflection</div>
+                <div class="unlock-pill">conversation</div>
+              </div>
+            </div>
+
+            <div class="dialogue">
+              <div class="dialogue-kicker" id="dialogueKicker">the ember</div>
+              <div class="dialogue-lines" id="dialogueLines"></div>
+              <div class="dialogue-actions">
+                <div class="mini" id="dialogueMeta">tap anywhere to continue</div>
+                <button class="cta-btn primary" id="dialogueCta">continue</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scene-meta">
+          <div class="meta-card">
+            <h3>Scene Intent</h3>
+            <p id="sceneIntent"></p>
+          </div>
+          <div class="meta-card">
+            <h3>Why It Exists</h3>
+            <p id="sceneWhy"></p>
+          </div>
+          <div class="meta-card">
+            <h3>Notes</h3>
+            <ul id="sceneNotes"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+const DIRECTIONS = {
+  'dialogue-game': {
+    label: 'Dialogue Game',
+    help: 'Best first pass. Clear 2D narrative-game language, one companion, one world, strong readability.',
+    prompts: [
+      'A 2D narrative game scene with Anky as a small ember companion in a dark hand-painted world, centered and readable, strong simple silhouette, warm orange core glow against charcoal darkness, inviting not scary, clean lower area for a dialogue box, premium vertical mobile composition.',
+      'A quiet visual novel scene where Anky, still a small ember companion, leans slightly forward as if speaking directly to the player, same dark hand-painted world, warmer edge light, intimate and premium, clear lower third for dialogue UI, vertical 9:16 composition.',
+      'The same 2D narrative game world responding to writing, Anky glowing brighter as warm light spills into the environment, subtle floating glyph-like particles, restrained edge bloom, readable center focus, clean lower area for a writing HUD, premium vertical mobile composition.',
+      'A small luminous Anky fully awakened in the same 2D narrative game world, calm and present, warm background gradients, clear iconic silhouette, gentle triumph and emotional clarity, no spectacle, clean space for overlay UI, vertical mobile composition.'
+    ]
+  },
+  'ember-shrine': {
+    label: 'Ember Shrine',
+    help: 'More mythic and emotional. Storybook ritual energy, quieter and more sacred.',
+    prompts: [
+      'A tiny living ember version of Anky floating in a black void, soft orange glow, faint dust motes, intimate and sacred, hand-painted digital illustration, minimal composition, lots of negative space, premium mobile vertical format, clean lower area for dialogue.',
+      'The ember brightens and starts to feel like a small presence speaking directly to the viewer, same sacred dark world, slightly warmer, hand-painted storybook illustration, intimate and kind, centered character, dialogue-box-friendly lower area, vertical 9:16 composition.',
+      'The void warms into a living chamber as if the world is responding to the user writing, soft gradients and flowing light, subtle word-like particles at the edges, Anky brighter and clearly affecting the world, painterly mobile vertical scene, room for writing HUD.',
+      'The ember has awakened into a small companion presence, calm and luminous, same world gently alive with warm edges and soft drift, tender and victorious without spectacle, hand-painted storybook tone, clean lower space for UI, vertical 9:16 composition.'
+    ]
+  },
+  'minimal-ritual': {
+    label: 'Minimal Ritual',
+    help: 'Most restrained and premium. Beautiful, but less obviously game-like.',
+    prompts: [
+      'A single ember version of Anky suspended in near-black space, refined and minimal, subtle radial glow, premium and quiet, high-end atmospheric illustration, large negative space, vertical mobile composition, clean lower area for dialogue UI.',
+      'The ember expands into a soft halo that suggests a presence speaking, minimal abstract darkness with controlled glow, premium atmospheric digital illustration, calm and intimate, one focal point, bottom-safe space for dialogue, vertical 9:16 composition.',
+      'Black space opening into layered warm gradients and faint luminous currents, as if thought is becoming visible while Anky grows stronger in the center, minimalist atmospheric illustration, elegant negative space, vertical mobile composition for writing HUD.',
+      'A completed luminous Anky form emerging from the ember, still minimal but clearly alive, subtle gold accents, quiet victory, premium atmospheric illustration, centered and restrained, clean space for overlay UI, vertical mobile composition.'
+    ]
+  }
+};
+
+const SCENES = [
+  { id: 'ember', label: 'the ember', kicker: 'the ember', lines: ["i've been waiting for you."], meta: 'tap anywhere to continue', cta: 'continue', intent: 'Open like a story, not an app.', why: 'The user should meet presence before they meet instructions.', notes: ['No chrome.', 'No account language.', '2 to 3 seconds max before moving on.'] },
+  { id: 'invitation', label: 'the invitation', kicker: 'the invitation', lines: ['write for 8 minutes.', "don't stop for 8 seconds.", 'reach the end and i wake up.'], meta: 'one clear mission', cta: 'begin', intent: 'State the mission with almost no cognitive load.', why: 'This replaces the tutorial stack. The rules are introduced in one breath.', notes: ['Bottom dialogue box like a narrative game.', 'One CTA only.', 'No lore dump.'] },
+  { id: 'writing', label: 'the trial', kicker: 'the trial', lines: ['now.'], meta: 'typing begins the rite', cta: 'keep going', intent: 'Let the invitation dissolve directly into the real writing engine.', why: 'The rules should be learned through play and consequence, not slides.', notes: ['Timer visible.', 'Delete blocked.', 'Idle drain after 3 seconds.', 'First typed character must never be dropped.'] },
+  { id: 'arrival', label: 'the arrival', kicker: 'the arrival', lines: ['you found me.'], meta: 'then the reflection begins', cta: 'listen', intent: 'Make the bond feel earned when the first real anky lands.', why: 'This is the moment when the ember becomes a being, not a mascot.', notes: ['Scene 4 art plate.', 'Short pause only.', 'Hand off immediately into the reflection flow.'] },
+  { id: 'unlock', label: 'the unlock', kicker: 'the shell opens', lines: ['your first anky is alive.'], meta: 'only now does the app fully open', cta: 'enter', intent: 'The rest of the app is earned through the first complete rite.', why: 'No dashboard before devotion. The shell opens only after the first persisted anky.', notes: ['Re-use bonded art plate.', 'Show profile + ankys only.', 'Conversation surfaces appear only after unlock.'] }
+];
+
+const PROMPT_SCENE_LABELS = ['scene 1 — dormant ember', 'scene 2 — invitation', 'scene 3 — awakened writing world', 'scene 4 — bonded anky'];
+
+const directionGrid = document.getElementById('directionGrid');
+const directionHelp = document.getElementById('directionHelp');
+const promptGrid = document.getElementById('promptGrid');
+const sceneTabs = document.getElementById('sceneTabs');
+const dialogueLines = document.getElementById('dialogueLines');
+const dialogueKicker = document.getElementById('dialogueKicker');
+const dialogueMeta = document.getElementById('dialogueMeta');
+const dialogueCta = document.getElementById('dialogueCta');
+const phoneScreen = document.getElementById('phoneScreen');
+const bgLayer = document.getElementById('bgLayer');
+const statusMsg = document.getElementById('statusMsg');
+const experimentSelect = document.getElementById('experimentSelect');
+const experimentMeta = document.getElementById('experimentMeta');
+const sceneIntent = document.getElementById('sceneIntent');
+const sceneWhy = document.getElementById('sceneWhy');
+const sceneNotes = document.getElementById('sceneNotes');
+const generateBtn = document.getElementById('generateBtn');
+const latestBtn = document.getElementById('latestBtn');
+const playBtn = document.getElementById('playBtn');
+const loadExperimentBtn = document.getElementById('loadExperimentBtn');
+const dustLayer = document.getElementById('dustLayer');
+
+const state = {
+  direction: localStorage.getItem('onboarding_lab_direction') || 'dialogue-game',
+  sceneIndex: Number(localStorage.getItem('onboarding_lab_scene') || 0),
+  experiment: localStorage.getItem('onboarding_lab_experiment') || '',
+  images: [],
+  experiments: [],
+  autoplayTimer: null,
+  expectedCount: 4
+};
+
+function setStatus(msg, type) {
+  statusMsg.textContent = msg || '';
+  statusMsg.className = 'status' + (type ? ' ' + type : '');
+}
+
+function escapeHtml(text) {
+  return text.replace(/[&<>\"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
+
+function saveState() {
+  localStorage.setItem('onboarding_lab_direction', state.direction);
+  localStorage.setItem('onboarding_lab_scene', String(state.sceneIndex));
+  if (state.experiment) localStorage.setItem('onboarding_lab_experiment', state.experiment);
+}
+
+function renderDirections() {
+  directionGrid.innerHTML = '';
+  Object.entries(DIRECTIONS).forEach(function(entry) {
+    const id = entry[0];
+    const config = entry[1];
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (state.direction === id ? ' active' : '');
+    btn.textContent = config.label;
+    btn.onclick = function() {
+      state.direction = id;
+      renderDirections();
+      hydratePromptEditors();
+      saveState();
+    };
+    directionGrid.appendChild(btn);
+  });
+  directionHelp.textContent = DIRECTIONS[state.direction].help;
+}
+
+function hydratePromptEditors() {
+  promptGrid.innerHTML = '';
+  DIRECTIONS[state.direction].prompts.forEach(function(prompt, index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'prompt-card';
+    const label = document.createElement('label');
+    label.className = 'label';
+    label.textContent = PROMPT_SCENE_LABELS[index];
+    const textarea = document.createElement('textarea');
+    textarea.setAttribute('data-scene-index', String(index));
+    textarea.value = prompt;
+    wrapper.appendChild(label);
+    wrapper.appendChild(textarea);
+    promptGrid.appendChild(wrapper);
+  });
+}
+
+function getPromptValues() {
+  return Array.from(promptGrid.querySelectorAll('textarea')).map(function(el) {
+    return el.value.trim();
+  }).filter(Boolean);
+}
+
+function renderSceneTabs() {
+  sceneTabs.innerHTML = '';
+  SCENES.forEach(function(scene, index) {
+    const btn = document.createElement('button');
+    btn.className = 'scene-btn' + (index === state.sceneIndex ? ' active' : '');
+    btn.textContent = scene.label;
+    btn.onclick = function() {
+      stopAutoplay();
+      state.sceneIndex = index;
+      renderScene();
+      saveState();
+    };
+    sceneTabs.appendChild(btn);
+  });
+}
+
+function renderDialogueLines(lines) {
+  dialogueLines.innerHTML = '';
+  lines.forEach(function(line, index) {
+    const div = document.createElement('div');
+    div.className = 'dialogue-line' + (line.length <= 12 ? ' small' : '');
+    div.textContent = line;
+    dialogueLines.appendChild(div);
+    setTimeout(function() { div.classList.add('visible'); }, index * 220);
+  });
+}
+
+function renderScene() {
+  renderSceneTabs();
+  const scene = SCENES[state.sceneIndex];
+  dialogueKicker.textContent = scene.kicker;
+  dialogueMeta.textContent = scene.meta;
+  dialogueCta.textContent = scene.cta;
+  renderDialogueLines(scene.lines);
+  sceneIntent.textContent = scene.intent;
+  sceneWhy.textContent = scene.why;
+  sceneNotes.innerHTML = scene.notes.map(function(note) { return '<li>' + escapeHtml(note) + '</li>'; }).join('');
+
+  phoneScreen.className = 'phone-screen scene-' + scene.id + (state.autoplayTimer ? ' playing' : '');
+  const imageIndex = state.sceneIndex <= 2 ? state.sceneIndex : 3;
+  const image = state.images[imageIndex];
+  if (image) {
+    bgLayer.style.backgroundImage = 'linear-gradient(180deg, rgba(10,7,7,0.14), rgba(5,5,5,0.82)), url("' + image.url + '")';
+    bgLayer.style.filter = scene.id === 'unlock' ? 'saturate(0.95) blur(0.4px)' : 'none';
+  } else {
+    bgLayer.style.backgroundImage = '';
+    bgLayer.style.filter = 'none';
+  }
+}
+
+function stopAutoplay() {
+  if (state.autoplayTimer) {
+    clearInterval(state.autoplayTimer);
+    state.autoplayTimer = null;
+  }
+  phoneScreen.classList.remove('playing');
+  playBtn.textContent = 'play flow';
+}
+
+function startAutoplay() {
+  stopAutoplay();
+  state.sceneIndex = 0;
+  renderScene();
+  phoneScreen.classList.add('playing');
+  playBtn.textContent = 'stop';
+  state.autoplayTimer = setInterval(function() {
+    state.sceneIndex += 1;
+    if (state.sceneIndex >= SCENES.length) {
+      stopAutoplay();
+      state.sceneIndex = SCENES.length - 1;
+    }
+    renderScene();
+    saveState();
+  }, 3400);
+}
+
+function seedDust() {
+  dustLayer.innerHTML = '';
+  for (let i = 0; i < 15; i += 1) {
+    const dot = document.createElement('span');
+    dot.style.left = (8 + Math.random() * 84) + '%';
+    dot.style.top = (30 + Math.random() * 58) + '%';
+    dot.style.animationDuration = (5 + Math.random() * 6) + 's';
+    dot.style.animationDelay = (Math.random() * 5) + 's';
+    dot.style.opacity = String(0.2 + Math.random() * 0.5);
+    dustLayer.appendChild(dot);
+  }
+}
+
+async function loadExperiments(selectLatest) {
+  try {
+    const resp = await fetch('/api/v1/flux-lab/experiments');
+    const data = await resp.json();
+    state.experiments = data.experiments || [];
+    experimentSelect.innerHTML = '';
+    if (!state.experiments.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'no experiments yet';
+      experimentSelect.appendChild(opt);
+      experimentMeta.textContent = 'No experiment loaded yet.';
+      return;
+    }
+    state.experiments.forEach(function(exp) {
+      const opt = document.createElement('option');
+      opt.value = exp.name;
+      opt.textContent = exp.name + ' · ' + exp.image_count + ' img';
+      experimentSelect.appendChild(opt);
+    });
+    if (selectLatest) {
+      state.experiment = state.experiments[0].name;
+    } else if (!state.experiment || !state.experiments.some(function(exp) { return exp.name === state.experiment; })) {
+      state.experiment = state.experiments[0].name;
+    }
+    experimentSelect.value = state.experiment;
+    experimentMeta.textContent = state.experiment ? ('Selected ' + state.experiment + '.') : 'No experiment loaded yet.';
+  } catch (err) {
+    setStatus('failed to load experiments', 'error');
+  }
+}
+
+async function loadExperiment(name) {
+  if (!name) return;
+  setStatus('loading ' + name + '...', '');
+  try {
+    const resp = await fetch('/api/v1/flux-lab/experiments/' + encodeURIComponent(name));
+    const data = await resp.json();
+    state.experiment = name;
+    state.images = data.images || [];
+    state.expectedCount = (data.prompts || []).length || 4;
+    experimentSelect.value = name;
+    experimentMeta.textContent = name + ' · ' + state.images.length + '/' + state.expectedCount + ' images ready';
+    setStatus('loaded ' + name, 'success');
+    renderScene();
+    saveState();
+  } catch (err) {
+    setStatus('failed to load experiment', 'error');
+  }
+}
+
+async function pollExperimentUntilReady(name, total) {
+  let attempts = 0;
+  const timer = setInterval(async function() {
+    attempts += 1;
+    try {
+      await loadExperiments(false);
+      const resp = await fetch('/api/v1/flux-lab/experiments/' + encodeURIComponent(name));
+      if (!resp.ok) return;
+      const data = await resp.json();
+      state.images = data.images || [];
+      state.expectedCount = total;
+      experimentMeta.textContent = name + ' · ' + state.images.length + '/' + total + ' images ready';
+      renderScene();
+      if (state.images.length >= total) {
+        clearInterval(timer);
+        setStatus(name + ' complete', 'success');
+      } else {
+        setStatus('generating ' + state.images.length + '/' + total + ' scenes...', '');
+      }
+    } catch (err) {}
+    if (attempts > 90) {
+      clearInterval(timer);
+      setStatus('generation is still running. reload the experiment in a minute.', 'error');
+    }
+  }, 5000);
+}
+
+async function generateScenes() {
+  const prompts = getPromptValues();
+  if (prompts.length !== 4) {
+    setStatus('need exactly 4 scene prompts', 'error');
+    return;
+  }
+  generateBtn.disabled = true;
+  setStatus('sending 4 prompts to flux...', '');
+  try {
+    const resp = await fetch('/api/v1/flux-lab/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts: prompts, aspect_ratio: '9:16' })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.experiment) {
+      throw new Error(data.error || 'generation failed');
+    }
+    state.experiment = data.experiment;
+    state.images = [];
+    experimentMeta.textContent = data.experiment + ' · queued 0/' + prompts.length;
+    setStatus('queued ' + data.experiment + '. polling now...', '');
+    await loadExperiments(false);
+    experimentSelect.value = data.experiment;
+    saveState();
+    pollExperimentUntilReady(data.experiment, prompts.length);
+  } catch (err) {
+    setStatus(err.message || 'generation failed', 'error');
+  } finally {
+    generateBtn.disabled = false;
+  }
+}
+
+generateBtn.addEventListener('click', generateScenes);
+latestBtn.addEventListener('click', async function() {
+  stopAutoplay();
+  await loadExperiments(true);
+  if (state.experiment) loadExperiment(state.experiment);
+});
+playBtn.addEventListener('click', function() {
+  if (state.autoplayTimer) stopAutoplay();
+  else startAutoplay();
+});
+loadExperimentBtn.addEventListener('click', function() {
+  stopAutoplay();
+  loadExperiment(experimentSelect.value);
+});
+experimentSelect.addEventListener('change', function() {
+  state.experiment = experimentSelect.value;
+  saveState();
+});
+dialogueCta.addEventListener('click', function(event) {
+  event.stopPropagation();
+  stopAutoplay();
+  state.sceneIndex = Math.min(state.sceneIndex + 1, SCENES.length - 1);
+  renderScene();
+  saveState();
+});
+phoneScreen.addEventListener('click', function() {
+  stopAutoplay();
+  state.sceneIndex = Math.min(state.sceneIndex + 1, SCENES.length - 1);
+  renderScene();
+  saveState();
+});
+
+renderDirections();
+hydratePromptEditors();
+seedDust();
+loadExperiments(false).then(function() {
+  if (state.experiment) loadExperiment(state.experiment);
+  else renderScene();
+});
+renderScene();
+</script>
+</body>
+</html>

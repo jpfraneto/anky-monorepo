@@ -76,7 +76,7 @@ pub async fn upload_bytes(
 }
 
 /// Upload image bytes to R2 as WebP, returning the full CDN URL.
-/// Converts PNG/JPEG to WebP at quality 85, stores under stories/{anky_id}/page-{page_index}.webp.
+/// Converts PNG/JPEG to WebP at quality 95, stores under stories/{anky_id}/page-{page_index}.webp.
 pub async fn upload_image_to_r2(
     config: &Config,
     image_bytes: &[u8],
@@ -90,7 +90,7 @@ pub async fn upload_image_to_r2(
             .map_err(|e| anyhow::anyhow!("failed to decode image: {}", e))?;
         let encoder = webp::Encoder::from_image(&img)
             .map_err(|e| anyhow::anyhow!("webp encoder error: {}", e))?;
-        let mem = encoder.encode(85.0);
+        let mem = encoder.encode(95.0);
         Ok(mem.to_vec())
     })
     .await
@@ -128,7 +128,7 @@ pub async fn upload_class_slide(
             .map_err(|e| anyhow::anyhow!("failed to decode image: {}", e))?;
         let encoder = webp::Encoder::from_image(&img)
             .map_err(|e| anyhow::anyhow!("webp encoder error: {}", e))?;
-        let mem = encoder.encode(85.0);
+        let mem = encoder.encode(95.0);
         Ok(mem.to_vec())
     })
     .await

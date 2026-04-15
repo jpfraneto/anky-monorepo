@@ -52,7 +52,7 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com https://cdn.privy.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://auth.privy.io https://esm.sh https://*.privy.io wss://*.privy.io https://fonts.googleapis.com https://fonts.gstatic.com https://static.cloudflareinsights.com; frame-src https://auth.privy.io https://*.privy.io; worker-src 'self' blob:; frame-ancestors https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://esm.sh https://fonts.googleapis.com https://fonts.gstatic.com https://static.cloudflareinsights.com; frame-src 'self'; worker-src 'self' blob:; frame-ancestors https://farcaster.xyz https://*.farcaster.xyz https://warpcast.com https://*.warpcast.com",
         ),
     );
 

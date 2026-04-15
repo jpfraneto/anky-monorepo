@@ -1,0 +1,10 @@
+{
+  "network": "devnet",
+  "authority": "ApTZwa8M1Rako93TQ57cLczGr5hjeGEvZdszKb92tXNS",
+  "merkleTree": "ArmTPWNskwUsiZErvN1HKbqrupeiavkxVgS1ciLRQK6B",
+  "collectionMint": "CXYtYYgnXx5Lbn5MmePHSePynjJwGyTSWnzhDBbbn4Dt",
+  "maxDepth": 12,
+  "maxBufferSize": 32,
+  "capacity": 4096,
+  "targetSupply": 3456
+}

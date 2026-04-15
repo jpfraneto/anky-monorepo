@@ -17,6 +17,7 @@ pub struct Config {
     pub ollama_light_model: String,
     pub openrouter_api_key: String,
     pub openrouter_light_model: String,
+    pub openrouter_anky_model: String,
     pub anthropic_api_key: String,
     pub gemini_api_key: String,
     pub base_rpc_url: String,
@@ -78,6 +79,12 @@ pub struct Config {
     pub pinata_jwt: String,
     // Anky mint wallet (EIP-712 signer for birthSoul)
     pub anky_wallet_private_key: String,
+    // Solana Bubblegum minting (Sojourn 9)
+    pub solana_mint_worker_url: String,
+    pub solana_mint_worker_secret: String,
+    pub solana_merkle_tree: String,
+    pub solana_collection_mint: String,
+    pub solana_authority_pubkey: String,
     // Mind (local llama-server inference)
     pub mind_url: String,
     // Redis/Valkey (job persistence)
@@ -91,6 +98,12 @@ pub struct Config {
     pub apns_team_id: String,
     pub apns_bundle_id: String,
     pub apns_environment: String, // "production" or "sandbox"
+    // Stripe (web payments for altar)
+    pub stripe_secret_key: String,
+    pub stripe_publishable_key: String,
+    pub ios_app_url: String,
+    // Anky Soul Enclave (AWS Nitro)
+    pub enclave_url: String,
 }
 
 impl Config {
@@ -102,9 +115,8 @@ impl Config {
                 .unwrap_or_else(|_| "8889".into())
                 .parse()
                 .context("PORT must be a number")?,
-            database_url: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-                "postgres://postgres:postgres@127.0.0.1:5432/anky".into()
-            }),
+            database_url: std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/anky".into()),
             run_mode: match std::env::var("ANKY_MODE")
                 .unwrap_or_else(|_| "full".into())
                 .to_ascii_lowercase()
@@ -123,6 +135,8 @@ impl Config {
             openrouter_api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
             openrouter_light_model: std::env::var("OPENROUTER_LIGHT_MODEL")
                 .unwrap_or_else(|_| "meta-llama/llama-4-scout:free".into()),
+            openrouter_anky_model: std::env::var("OPENROUTER_ANKY_MODEL")
+                .unwrap_or_else(|_| "anthropic/claude-opus-4.6".into()),
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             gemini_api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             base_rpc_url: std::env::var("BASE_RPC_URL")
@@ -196,6 +210,16 @@ impl Config {
             conversation_model: std::env::var("ANKY_CONVERSATION_MODEL")
                 .unwrap_or_else(|_| "claude-sonnet-4-20250514".into()),
             anky_wallet_private_key: std::env::var("ANKY_WALLET_PRIVATE_KEY").unwrap_or_default(),
+            solana_mint_worker_url: std::env::var("SOLANA_MINT_WORKER_URL").unwrap_or_default(),
+            solana_mint_worker_secret: std::env::var("SOLANA_MINT_WORKER_SECRET")
+                .unwrap_or_default(),
+            solana_merkle_tree: std::env::var("SOLANA_MERKLE_TREE").unwrap_or_default(),
+            solana_collection_mint: std::env::var("SOLANA_COLLECTION_MINT").unwrap_or_default(),
+            solana_authority_pubkey: std::env::var("SOLANA_AUTHORITY_PUBKEY").unwrap_or_default(),
+            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").unwrap_or_default(),
+            stripe_publishable_key: std::env::var("STRIPE_PUBLISHABLE_KEY").unwrap_or_default(),
+            ios_app_url: std::env::var("ANKY_IOS_APP_URL").unwrap_or_else(|_| "/mobile".into()),
+            enclave_url: std::env::var("ANKY_ENCLAVE_URL").unwrap_or_default(),
         })
     }
 }

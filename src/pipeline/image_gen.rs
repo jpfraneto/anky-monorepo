@@ -39,9 +39,9 @@ fn convert_to_webp(png_path: &str) -> Result<String> {
     let webp_filename = png_path.replace(".png", ".webp");
     let full_webp = format!("data/images/{}", webp_filename);
 
-    // Try cwebp first, fall back to ffmpeg
+    // Try cwebp first, fall back to ffmpeg — quality 95 to preserve detail
     let output = Command::new("cwebp")
-        .args(["-q", "85", &full_png, "-o", &full_webp])
+        .args(["-q", "95", &full_png, "-o", &full_webp])
         .output();
 
     let success = match output {
@@ -49,7 +49,7 @@ fn convert_to_webp(png_path: &str) -> Result<String> {
         _ => {
             // Fallback to ffmpeg
             let ffmpeg = Command::new("ffmpeg")
-                .args(["-y", "-i", &full_png, "-quality", "85", &full_webp])
+                .args(["-y", "-i", &full_png, "-quality", "95", &full_webp])
                 .output();
             matches!(ffmpeg, Ok(o) if o.status.success())
         }
@@ -791,6 +791,231 @@ pub async fn generate_image_only_flux(
         "INFO",
         "flux",
         &format!("Flux pipeline complete for {}", &anky_id[..8]),
+    );
+
+    Ok(())
+}
+
+/// Generate an anky image from an enclave-provided prompt.
+/// Used by the sealed write path where the enclave already produced the image prompt
+/// from the decrypted writing. The backend never sees the writing text.
+pub async fn generate_image_from_prompt(
+    state: &AppState,
+    anky_id: &str,
+    image_prompt: &str,
+) -> Result<()> {
+    state.emit_log(
+        "INFO",
+        "image_gen",
+        &format!(
+            "Sealed image generation for {}",
+            &anky_id[..8.min(anky_id.len())]
+        ),
+    );
+
+    // Use the existing image-only path with the enclave's prompt as pre_prompt
+    generate_image_only(state, anky_id, image_prompt, Some(image_prompt)).await
+}
+
+/// Log a writing session on-chain via spl-memo.
+/// Stores the session hash as an immutable on-chain record — proof of practice
+/// without revealing writing content. Costs ~0.000005 SOL per log.
+pub async fn log_session_onchain(
+    state: &AppState,
+    anky_id: &str,
+    writing_session_id: &str,
+    user_id: &str,
+    session_hash: &str,
+    duration_seconds: i64,
+    word_count: i32,
+) -> Result<()> {
+    if state.config.solana_mint_worker_url.is_empty() {
+        return Ok(());
+    }
+
+    // Check if already logged
+    {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db.prepare(
+            "SELECT solana_mint_tx FROM ankys WHERE id = ?1 AND solana_mint_tx IS NOT NULL",
+        )?;
+        if stmt.query_row(crate::params![anky_id], |_| Ok(())).is_ok() {
+            return Ok(()); // already logged
+        }
+    }
+
+    // Get user's Solana wallet (optional — session is logged regardless)
+    let wallet = {
+        let db = crate::db::conn(&state.db)?;
+        queries::get_user_wallet(&db, user_id)?.unwrap_or_default()
+    };
+
+    // Derive kingdom from the ankyverse calendar
+    let kingdom_id = {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db.prepare("SELECT kingdom_id FROM ankys WHERE id = ?1")?;
+        stmt.query_row(crate::params![anky_id], |row| row.get::<_, Option<i32>>(0))
+            .ok()
+            .flatten()
+            .unwrap_or(0)
+    };
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/log-session",
+            state.config.solana_mint_worker_url
+        ))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.solana_mint_worker_secret),
+        )
+        .json(&serde_json::json!({
+            "session_hash": session_hash,
+            "user_wallet": wallet,
+            "session_id": writing_session_id,
+            "duration_seconds": duration_seconds,
+            "word_count": word_count,
+            "kingdom_id": kingdom_id,
+            "sojourn": 9,
+        }))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        anyhow::bail!("log worker error: {}", err);
+    }
+
+    let result: serde_json::Value = resp.json().await?;
+    let tx_sig = result["signature"].as_str().unwrap_or("");
+
+    // Store the tx signature on the anky record (reuse solana_mint_tx column)
+    if !tx_sig.is_empty() {
+        let db = crate::db::conn(&state.db)?;
+        db.execute(
+            "UPDATE ankys SET solana_mint_tx = ?1 WHERE id = ?2",
+            crate::params![tx_sig, anky_id],
+        )?;
+        tracing::info!(
+            "session logged on-chain: {} → tx {}",
+            &anky_id[..8.min(anky_id.len())],
+            &tx_sig[..16.min(tx_sig.len())]
+        );
+    }
+
+    Ok(())
+}
+
+/// Generate the prompt image for an Anky Now.
+/// Uses the same Gemini → ComfyUI fallback as anky images.
+pub async fn generate_now_prompt_image(state: &AppState, now_id: &str, prompt: &str) -> Result<()> {
+    let gemini_key = &state.config.gemini_api_key;
+
+    state.emit_log(
+        "INFO",
+        "now_image",
+        &format!(
+            "Generating prompt image for now {}",
+            &now_id[..8.min(now_id.len())]
+        ),
+    );
+
+    // Mark as generating
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::update_now_image(&db, now_id, "generating", None)?;
+    }
+
+    // Build an image prompt from the writing prompt via Mind → Haiku fallback
+    let image_prompt = {
+        let mind_url = &state.config.mind_url;
+        let system = format!(
+            "You are an image prompt generator. Given a writing prompt, create a vivid visual scene \
+             featuring Anky — a small blue character with big curious eyes — that captures the essence \
+             of the prompt. Output ONLY the image description, no explanation.\n\n\
+             ALWAYS INCLUDE:\n\
+             - Rich color palette (blues, purples, golds, oranges)\n\
+             - Anky as the main character\n\
+             - Symbolic or metaphorical visual elements\n\
+             - Atmospheric lighting and mood"
+        );
+        let derived = if !mind_url.is_empty() {
+            match crate::services::mind::call(mind_url, &system, prompt, 300, 0.7).await {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    state.emit_log("WARN", "now_image", &format!("Mind failed: {e}"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        derived
+            .or_else(|| {
+                let api_key = &state.config.anthropic_api_key;
+                if !api_key.is_empty() {
+                    // We can't block on async in or_else, so we skip Haiku fallback here
+                    None
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("anky, a small blue character, contemplating: {}", prompt))
+    };
+
+    // Generate image: Gemini → ComfyUI fallback
+    let image_path = if !gemini_key.is_empty() {
+        let references = gemini::load_references(std::path::Path::new("src/public"));
+        match gemini::generate_image(gemini_key, &image_prompt, &references)
+            .await
+            .and_then(|r| gemini::save_image(&r.base64, &format!("now_{}", now_id)))
+        {
+            Ok(p) => {
+                state.emit_log("INFO", "now_image", &format!("Gemini image saved: {}", p));
+                p
+            }
+            Err(e) => {
+                state.emit_log(
+                    "WARN",
+                    "now_image",
+                    &format!("Gemini failed ({}), falling back to Flux...", e),
+                );
+                let image_bytes = comfyui::generate_image(&image_prompt).await?;
+                let p = comfyui::save_image(&image_bytes, &format!("now_{}", now_id))?;
+                state.emit_log("INFO", "now_image", &format!("Flux image saved: {}", p));
+                p
+            }
+        }
+    } else {
+        let image_bytes = comfyui::generate_image(&image_prompt).await?;
+        let p = comfyui::save_image(&image_bytes, &format!("now_{}", now_id))?;
+        state.emit_log("INFO", "now_image", &format!("Flux image saved: {}", p));
+        p
+    };
+
+    // WebP + thumbnail (non-fatal)
+    if let Ok(webp) = convert_to_webp(&image_path) {
+        state.emit_log("INFO", "now_image", &format!("WebP: {}", webp));
+    }
+    if let Ok(thumb) = generate_thumbnail(&image_path) {
+        state.emit_log("INFO", "now_image", &format!("Thumb: {}", thumb));
+    }
+
+    // Mark ready
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::update_now_image(&db, now_id, "ready", Some(&image_path))?;
+    }
+
+    state.emit_log(
+        "INFO",
+        "now_image",
+        &format!(
+            "Now {} prompt image complete: {}",
+            &now_id[..8.min(now_id.len())],
+            image_path
+        ),
     );
 
     Ok(())

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>anky</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: #0a0a0a; color: #e0e0e0; font-family: monospace; overflow: hidden; }
+
+#container {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+#start {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#start button {
+  background: none;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  padding: 16px 32px;
+  font-size: 18px;
+  font-family: monospace;
+  cursor: pointer;
+  border-radius: 4px;
+}
+#start button:hover { border-color: #666; }
+
+#writing {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+textarea {
+  flex: 1;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.6;
+  font-family: monospace;
+  padding: 24px 16px;
+  width: 100%;
+}
+
+#progress-wrap {
+  height: 3px;
+  background: #1a1a1a;
+  flex-shrink: 0;
+}
+#progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #4a9eff;
+  transition: width 1s linear;
+}
+
+#idle-bar {
+  height: 3px;
+  background: transparent;
+  flex-shrink: 0;
+}
+#idle-fill {
+  height: 100%;
+  width: 0%;
+  background: #ff4444;
+}
+
+#done {
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+#done a { color: #4a9eff; }
+#done .status { color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div id="container">
+
+  <div id="start">
+    <button onclick="begin()">write</button>
+  </div>
+
+  <div id="writing">
+    <div id="idle-bar"><div id="idle-fill"></div></div>
+    <textarea id="area" autofocus placeholder=""></textarea>
+    <div id="progress-wrap"><div id="progress-fill"></div></div>
+  </div>
+
+  <div id="done">
+    <div id="done-msg"></div>
+    <div id="done-links"></div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+<script src="/static/anky-protocol.js"></script>
+<script>
+const EIGHT_MINUTES = 480000;
+const IDLE_TIMEOUT = 8000;
+
+let session;
+let idleTimer;
+let progressInterval;
+
+function begin() {
+  session = createSessionBuilder();
+
+  document.getElementById("start").style.display = "none";
+  document.getElementById("writing").style.display = "flex";
+
+  const area = document.getElementById("area");
+  area.focus();
+
+  // progress bar
+  progressInterval = setInterval(() => {
+    const pct = Math.min(100, (session.elapsed() / EIGHT_MINUTES) * 100);
+    document.getElementById("progress-fill").style.width = pct + "%";
+
+    // change color when past 8 minutes
+    if (pct >= 100) {
+      document.getElementById("progress-fill").style.background = "#4aff6a";
+    }
+  }, 500);
+
+  // keystroke capture
+  area.addEventListener("keydown", (e) => {
+    // block backspace and delete
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      return;
+    }
+  });
+
+  area.addEventListener("beforeinput", (e) => {
+    if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
+      e.preventDefault();
+      return;
+    }
+
+    // get the character being inserted
+    const char = e.data;
+    if (char !== null && char !== undefined) {
+      for (const c of char) {
+        session.keystroke(c);
+      }
+    }
+
+    resetIdle();
+  });
+
+  // handle Enter separately
+  area.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      // newline is captured as a new line in the session (delta-only line)
+      session.keystroke("");
+      resetIdle();
+    }
+  });
+
+  resetIdle();
+}
+
+function resetIdle() {
+  const fill = document.getElementById("idle-fill");
+  fill.style.transition = "none";
+  fill.style.width = "0%";
+
+  clearTimeout(idleTimer);
+
+  // animate idle bar over 8 seconds
+  requestAnimationFrame(() => {
+    fill.style.transition = "width 8s linear";
+    fill.style.width = "100%";
+  });
+
+  idleTimer = setTimeout(() => {
+    finish();
+  }, IDLE_TIMEOUT);
+}
+
+async function finish() {
+  clearTimeout(idleTimer);
+  clearInterval(progressInterval);
+
+  const sessionString = session.end();
+  const elapsed = session.elapsed();
+  const isAnky = elapsed >= EIGHT_MINUTES;
+
+  document.getElementById("writing").style.display = "none";
+  document.getElementById("done").style.display = "flex";
+
+  const msg = document.getElementById("done-msg");
+  const links = document.getElementById("done-links");
+
+  if (!isAnky) {
+    msg.textContent = Math.floor(elapsed / 1000) + "s — not yet an anky. 8 minutes to anchor.";
+    return;
+  }
+
+  msg.innerHTML = '<div class="status">anchoring to solana...</div>';
+
+  try {
+    // for now, use a generated keypair (later: user's wallet)
+    // the relayer will handle everything
+    const result = await anchorSession(sessionString, FEE_PAYER_PUBKEY);
+
+    msg.textContent = "anchored.";
+    links.innerHTML =
+      '<div class="status">hash: ' + result.hash + '</div>' +
+      '<a href="' + result.explorer_url + '" target="_blank">solana</a> · ' +
+      '<a href="' + result.arweave_url + '" target="_blank">arweave</a>';
+  } catch (e) {
+    msg.textContent = "session saved locally.";
+    links.innerHTML = '<div class="status">' + e.message + '</div>';
+    // store locally as fallback
+    localStorage.setItem("anky_pending_" + Date.now(), sessionString);
+  }
+}
+</script>
+</body>
+</html>

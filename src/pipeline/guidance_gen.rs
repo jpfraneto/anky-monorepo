@@ -681,7 +681,7 @@ pub async fn generate_anky_response(
     };
 
     match crate::services::claude::generate_writing_response(
-        &state.config.anthropic_api_key,
+        &state.config,
         writing,
         duration,
         word_count,

@@ -3,7 +3,8 @@
 /// Auth: Bearer token in `Authorization: Bearer <session_token>` header.
 /// Session tokens are the same as web sessions (auth_sessions table).
 /// Mobile auth via Privy SDK: POST /swift/v1/auth/privy → returns session_token as JSON.
-/// Seed-phrase identity auth on Base/EVM: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
+/// Seed-phrase identity auth: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
+/// Supports both Solana Ed25519 (base58 pubkey) and legacy EVM secp256k1 (0x address).
 use crate::db::queries;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -18,12 +19,13 @@ use secp256k1::{
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use sha3::{Digest, Keccak256};
+use sqlx::Row as SqlxRow;
 use std::collections::HashMap;
 
 // ===== Auth helpers =====
 
 /// Extract user_id from `Authorization: Bearer <token>` header.
-async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, AppError> {
+pub async fn bearer_auth(state: &AppState, headers: &HeaderMap) -> Result<String, AppError> {
     let token = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
@@ -45,8 +47,22 @@ async fn bearer_wallet_auth(state: &AppState, headers: &HeaderMap) -> Result<Str
     normalize_seed_wallet_address(&wallet_address)
 }
 
+/// Returns true if the wallet address looks like a Solana base58 pubkey (not 0x-prefixed).
+fn is_solana_address(wallet_address: &str) -> bool {
+    let trimmed = wallet_address.trim();
+    !trimmed.starts_with("0x") && !trimmed.starts_with("0X") && trimmed.len() >= 32
+}
+
+/// Normalize a wallet address. Accepts both Solana (base58) and EVM (0x-prefixed).
+/// Solana addresses are returned as-is (base58). EVM addresses are lowercased.
 fn normalize_seed_wallet_address(wallet_address: &str) -> Result<String, AppError> {
     let trimmed = wallet_address.trim();
+
+    if is_solana_address(trimmed) {
+        return crate::services::wallet::normalize_solana_address(trimmed);
+    }
+
+    // Legacy EVM path
     let without_prefix = trimmed
         .strip_prefix("0x")
         .or_else(|| trimmed.strip_prefix("0X"))
@@ -54,7 +70,7 @@ fn normalize_seed_wallet_address(wallet_address: &str) -> Result<String, AppErro
 
     if without_prefix.len() != 40 || !without_prefix.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(AppError::BadRequest(
-            "wallet_address must be a 0x-prefixed EVM address".into(),
+            "wallet_address must be a solana base58 pubkey or 0x-prefixed EVM address".into(),
         ));
     }
 
@@ -68,10 +84,17 @@ fn evm_address_from_public_key(public_key: &PublicKey) -> String {
 }
 
 fn build_seed_auth_message(wallet_address: &str, challenge_id: &str, nonce: &str) -> String {
-    format!(
-        "anky.app base identity sign in\n\naddress: {}\nchallenge id: {}\nnonce: {}\nchain id: 8453\n\nsign this only inside the anky app.",
-        wallet_address, challenge_id, nonce
-    )
+    if is_solana_address(wallet_address) {
+        format!(
+            "anky.app sign in\n\naddress: {}\nchallenge: {}\nnonce: {}\n\nsign this only inside the anky app.",
+            wallet_address, challenge_id, nonce
+        )
+    } else {
+        format!(
+            "anky.app base identity sign in\n\naddress: {}\nchallenge id: {}\nnonce: {}\nchain id: 8453\n\nsign this only inside the anky app.",
+            wallet_address, challenge_id, nonce
+        )
+    }
 }
 
 fn ethereum_personal_sign_hash(message: &str) -> [u8; 32] {
@@ -107,15 +130,34 @@ fn parse_recovery_id(recovery_byte: u8) -> Result<RecoveryId, AppError> {
         .map_err(|_| AppError::BadRequest("invalid signature recovery id".into()))
 }
 
+/// Verify an Ed25519 signature (Solana path).
+/// Signature: base58-encoded 64 bytes. Pubkey: base58-encoded 32 bytes.
+/// The message is signed directly (raw bytes, no wrapping).
+fn verify_solana_signature(
+    wallet_address: &str,
+    message: &str,
+    signature_b58: &str,
+) -> Result<(), AppError> {
+    crate::services::wallet::verify_solana_signature(wallet_address, message, signature_b58)
+}
+
+/// Verify a signature from a seed-derived keypair.
+/// Dispatches to Ed25519 (Solana) or ECDSA (EVM) based on wallet address format.
 fn verify_seed_auth_signature(
     wallet_address: &str,
     message: &str,
-    signature_hex: &str,
+    signature: &str,
 ) -> Result<(), AppError> {
     let normalized_wallet = normalize_seed_wallet_address(wallet_address)?;
-    let signature = parse_evm_signature(signature_hex)?;
-    let recovery_id = parse_recovery_id(signature[64])?;
-    let recoverable_signature = RecoverableSignature::from_compact(&signature[..64], recovery_id)
+
+    if is_solana_address(&normalized_wallet) {
+        return verify_solana_signature(&normalized_wallet, message, signature);
+    }
+
+    // Legacy EVM path
+    let sig_bytes = parse_evm_signature(signature)?;
+    let recovery_id = parse_recovery_id(sig_bytes[64])?;
+    let recoverable_signature = RecoverableSignature::from_compact(&sig_bytes[..64], recovery_id)
         .map_err(|_| AppError::BadRequest("invalid signature".into()))?;
     let digest = ethereum_personal_sign_hash(message);
     let message = Message::from_digest_slice(&digest)
@@ -476,6 +518,7 @@ pub struct MeResponse {
     pub wallet_address: Option<String>,
     pub total_writings: i32,
     pub total_ankys: i32,
+    pub is_premium: bool,
     pub preferred_language: String,
 }
 
@@ -517,16 +560,27 @@ pub async fn get_me(
     let total_writings = writings.len() as i32;
     let total_ankys = writings.iter().filter(|w| w.is_anky).count() as i32;
     let settings = queries::get_user_settings(&db, &user_id)?;
+    let is_premium = queries::is_user_premium(&db, &user_id).unwrap_or(false);
+
+    // If no profile image from X, use latest anky image
+    let effective_profile_image = profile_image_url.or_else(|| {
+        let mut stmt = db.prepare(
+            "SELECT COALESCE(image_webp, image_path) FROM ankys WHERE user_id = ?1 AND status = 'complete' AND image_path IS NOT NULL ORDER BY created_at DESC LIMIT 1"
+        ).ok()?;
+        let path: Option<String> = stmt.query_row(crate::params![user_id], |row| row.get(0)).ok()?;
+        path.map(|p| if p.starts_with("http") { p } else { format!("https://anky.app/data/images/{}", p) })
+    });
 
     Ok(Json(MeResponse {
         user_id,
         username,
         display_name,
-        profile_image_url,
+        profile_image_url: effective_profile_image,
         email,
         wallet_address: wallet,
         total_writings,
         total_ankys,
+        is_premium,
         preferred_language: settings.preferred_language,
     }))
 }
@@ -548,6 +602,9 @@ pub struct WritingItem {
     pub anky_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anky_image_path: Option<String>,
+    /// The processed anky reflection (from ankys table), distinct from session-level `response`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anky_reflection: Option<String>,
     pub created_at: String,
 }
 
@@ -561,17 +618,28 @@ pub async fn list_writings(
     let writings = queries::get_user_writings_with_ankys(&db, &user_id)?;
     let items = writings
         .into_iter()
-        .map(|w| WritingItem {
-            id: w.id,
-            content: w.content,
-            duration_seconds: w.duration_seconds,
-            word_count: w.word_count,
-            is_anky: w.is_anky,
-            response: w.response,
-            anky_id: w.anky_id,
-            anky_title: w.anky_title,
-            anky_image_path: w.anky_image_path,
-            created_at: w.created_at,
+        .map(|w| {
+            // Prefer anky reflection over session-level response for backwards compat
+            let response = w.response.or_else(|| w.anky_reflection.clone());
+            WritingItem {
+                id: w.id,
+                content: w.content,
+                duration_seconds: w.duration_seconds,
+                word_count: w.word_count,
+                is_anky: w.is_anky,
+                response,
+                anky_id: w.anky_id,
+                anky_title: w.anky_title,
+                anky_image_path: w.anky_image_path.map(|p| {
+                    if p.starts_with("http") {
+                        p
+                    } else {
+                        format!("https://anky.app/data/images/{}", p)
+                    }
+                }),
+                anky_reflection: w.anky_reflection,
+                created_at: w.created_at,
+            }
         })
         .collect();
     Ok(Json(items))
@@ -980,6 +1048,38 @@ pub async fn submit_writing_unified(
 
     // === Everything below is fire-and-forget — the response is already built ===
 
+    // Log writing session on-chain via spl-memo
+    {
+        let log_state = state.clone();
+        let log_aid = anky_id.clone();
+        let log_sid = session_id.clone();
+        let log_uid = user_id.clone();
+        let log_text = req.text.clone();
+        let log_duration = req.duration as i64;
+        let log_words = word_count;
+        tokio::spawn(async move {
+            use sha2::{Digest, Sha256};
+            let session_hash = format!("{:x}", Sha256::digest(log_text.as_bytes()));
+            if let Err(e) = crate::pipeline::image_gen::log_session_onchain(
+                &log_state,
+                &log_aid,
+                &log_sid,
+                &log_uid,
+                &session_hash,
+                log_duration,
+                log_words,
+            )
+            .await
+            {
+                tracing::warn!(
+                    "session on-chain log failed for {}: {}",
+                    &log_aid[..8.min(log_aid.len())],
+                    e
+                );
+            }
+        });
+    }
+
     // Archive to file if seed user
     if let Some(ref wa) = wallet_address {
         let wa_clone = wa.clone();
@@ -1151,13 +1251,82 @@ pub struct CuentacuentosStatusInfo {
     pub images_done: i32,
 }
 
+async fn get_local_first_writing_status(
+    state: &AppState,
+    user_id: &str,
+    session_hash: &str,
+) -> Result<Option<WritingStatusResponse>, AppError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            ws.duration_seconds,
+            ws.word_count,
+            ws.anky_response,
+            ws.anky_next_prompt,
+            ws.anky_mood,
+            a.id,
+            a.title,
+            a.reflection,
+            a.image_path,
+            COALESCE(a.image_status, 'pending'),
+            COALESCE(a.solana_status, 'pending'),
+            a.done_at
+        FROM ankys a
+        JOIN writing_sessions ws ON ws.id = a.writing_session_id
+        WHERE a.user_id = $1
+          AND a.session_hash = $2
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id)
+    .bind(session_hash)
+    .fetch_optional(&state.db)
+    .await?;
+
+    Ok(row.map(|row| {
+        let image_status: String = row.get(9);
+        let solana_status: String = row.get(10);
+        let done_at: Option<String> = row.get(11);
+        let status = if done_at.is_some()
+            || (image_status == "complete" && matches!(solana_status.as_str(), "complete" | "skipped"))
+        {
+            "complete".to_string()
+        } else {
+            "generating".to_string()
+        };
+
+        WritingStatusResponse {
+            session_id: session_hash.to_string(),
+            is_anky: true,
+            duration_seconds: row.get(0),
+            word_count: row.get(1),
+            anky: Some(AnkyStatusInfo {
+                id: row.get(5),
+                status,
+                image_url: row.get(8),
+                title: row.get(6),
+                reflection: row.get(7),
+            }),
+            cuentacuentos: None,
+            anky_response: row.get(2),
+            next_prompt: row.get(3),
+            mood: row.get(4),
+        }
+    }))
+}
+
 /// GET /swift/v2/writing/{sessionId}/status
 pub async fn get_writing_status(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> Result<Json<WritingStatusResponse>, AppError> {
-    let _user_id = bearer_auth(&state, &headers).await?;
+    let user_id = bearer_auth(&state, &headers).await?;
+
+    if let Some(status) = get_local_first_writing_status(&state, &user_id, &session_id).await? {
+        return Ok(Json(status));
+    }
+
     let db = crate::db::conn(&state.db)?;
 
     // Get the writing session
@@ -1245,6 +1414,134 @@ pub async fn get_writing_status(
         next_prompt: next_prompt_text,
         mood,
     }))
+}
+
+// ===== Retry Reflection =====
+
+/// POST /swift/v2/writing/{sessionId}/retry-reflection
+/// Re-triggers the anky response + reflection generation for a session that failed.
+/// Returns immediately; the phone polls /status to pick up the result.
+pub async fn retry_reflection(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = bearer_auth(&state, &headers).await?;
+
+    // Verify the session exists and belongs to this user
+    let (writing_text, is_anky, anky_id) = {
+        let db = crate::db::conn(&state.db)?;
+        // Check ownership
+        let owner: String = db
+            .query_row(
+                "SELECT user_id FROM writing_sessions WHERE id = ?1",
+                crate::params![&session_id],
+                |row| row.get(0),
+            )
+            .map_err(|_| AppError::NotFound("writing session not found".into()))?;
+        if owner != user_id {
+            return Err(AppError::Forbidden("not your session".into()));
+        }
+        let ws = queries::get_writing_session(&db, &session_id)
+            .ok()
+            .flatten()
+            .ok_or_else(|| AppError::NotFound("writing session not found".into()))?;
+        let anky_id: Option<String> = db
+            .query_row(
+                "SELECT id FROM ankys WHERE writing_session_id = ?1 LIMIT 1",
+                crate::params![&session_id],
+                |row| row.get(0),
+            )
+            .ok();
+        (ws.content, ws.is_anky, anky_id)
+    };
+
+    // Check if there's already a good anky_response
+    {
+        let db = crate::db::conn(&state.db)?;
+        let existing: Option<String> = db
+            .query_row(
+                "SELECT anky_response FROM writing_sessions WHERE id = ?1",
+                crate::params![&session_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+        if let Some(ref resp) = existing {
+            if !resp.is_empty() {
+                return Ok(Json(serde_json::json!({
+                    "ok": true,
+                    "status": "already_exists",
+                    "message": "reflection already exists"
+                })));
+            }
+        }
+    }
+
+    // Spawn anky response generation in background
+    let bg_state = state.clone();
+    let bg_session = session_id.clone();
+    let bg_user = user_id.clone();
+    let bg_writing = writing_text.clone();
+    tokio::spawn(async move {
+        crate::pipeline::guidance_gen::generate_anky_response(
+            &bg_state,
+            &bg_user,
+            &bg_session,
+            &bg_writing,
+        )
+        .await;
+    });
+
+    // If there's an anky record, also retry the title+reflection (the deeper one)
+    if let Some(aid) = anky_id {
+        let bg_state2 = state.clone();
+        let bg_writing2 = writing_text;
+        let bg_aid = aid;
+        tokio::spawn(async move {
+            let (tx, _rx) = tokio::sync::mpsc::channel::<String>(64);
+            match crate::services::claude::stream_title_and_reflection_best(
+                &bg_state2.config,
+                &bg_writing2,
+                tx,
+                None,
+            )
+            .await
+            {
+                Ok((full_text, _input_tokens, _output_tokens, model, provider)) => {
+                    let (title, reflection) =
+                        crate::services::claude::parse_title_reflection(&full_text);
+                    if let Some(db) = crate::db::get_conn_logged(&bg_state2.db) {
+                        let _ = queries::update_anky_title_reflection(
+                            &db,
+                            &bg_aid,
+                            &title,
+                            &reflection,
+                        );
+                    }
+                    tracing::info!(
+                        "Retry reflection saved for {} via {}/{}",
+                        &bg_aid[..8.min(bg_aid.len())],
+                        provider,
+                        model
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Retry reflection failed for {}: {}",
+                        &bg_aid[..8.min(bg_aid.len())],
+                        e
+                    );
+                }
+            }
+        });
+    }
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "status": "retrying",
+        "message": "reflection generation restarted — poll status for result"
+    })))
 }
 
 // ===== Children =====
@@ -1678,7 +1975,7 @@ mod tests {
     use secp256k1::{Secp256k1, SecretKey};
 
     #[test]
-    fn verifies_seed_auth_signatures() {
+    fn verifies_evm_seed_auth_signatures() {
         let secp = Secp256k1::new();
         let mut rng = secp256k1::rand::rngs::OsRng;
         let secret_key = SecretKey::new(&mut rng);
@@ -1700,6 +1997,49 @@ mod tests {
             &signature_hex,
         );
         assert!(verified.is_ok());
+    }
+
+    #[test]
+    fn verifies_solana_ed25519_signatures() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let mut rng = rand::thread_rng();
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+        let signing_key = SigningKey::from_bytes(&seed);
+        let verifying_key = signing_key.verifying_key();
+        let wallet_address = bs58::encode(verifying_key.as_bytes()).into_string();
+
+        let message = build_seed_auth_message(&wallet_address, "challenge-1", "nonce-1");
+        let signature = signing_key.sign(message.as_bytes());
+        let signature_b58 = bs58::encode(signature.to_bytes()).into_string();
+
+        let verified = verify_seed_auth_signature(&wallet_address, &message, &signature_b58);
+        assert!(verified.is_ok(), "ed25519 signature should verify");
+    }
+
+    #[test]
+    fn rejects_wrong_solana_signature() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let mut rng = rand::thread_rng();
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+        let signing_key = SigningKey::from_bytes(&seed);
+        let verifying_key = signing_key.verifying_key();
+        let wallet_address = bs58::encode(verifying_key.as_bytes()).into_string();
+
+        // Sign with a DIFFERENT key
+        let mut other_seed = [0u8; 32];
+        rng.fill_bytes(&mut other_seed);
+        let other_key = SigningKey::from_bytes(&other_seed);
+
+        let message = build_seed_auth_message(&wallet_address, "challenge-1", "nonce-1");
+        let bad_sig = other_key.sign(message.as_bytes());
+        let bad_sig_b58 = bs58::encode(bad_sig.to_bytes()).into_string();
+
+        let result = verify_seed_auth_signature(&wallet_address, &message, &bad_sig_b58);
+        assert!(result.is_err(), "wrong key should fail verification");
     }
 }
 
@@ -1946,6 +2286,7 @@ pub struct YouAnkyItem {
     pub id: String,
     pub title: Option<String>,
     pub image_url: Option<String>,
+    pub image_png_url: Option<String>,
     pub reflection: Option<String>,
     pub created_at: String,
 }
@@ -1966,17 +2307,24 @@ pub async fn get_you_ankys(
     let items: Vec<YouAnkyItem> = ankys
         .into_iter()
         .map(|a| {
-            let image_url = a.image_webp.or(a.image_path).map(|p| {
+            let make_url = |p: &str| -> String {
                 if p.starts_with("http") {
-                    p
+                    p.to_string()
                 } else {
                     format!("/static/{}", p.trim_start_matches("static/"))
                 }
-            });
+            };
+            let image_url = a
+                .image_webp
+                .as_deref()
+                .map(make_url)
+                .or_else(|| a.image_path.as_deref().map(make_url));
+            let image_png_url = a.image_path.as_deref().map(make_url);
             YouAnkyItem {
                 id: a.id,
                 title: a.title,
                 image_url,
+                image_png_url,
                 reflection: a.reflection,
                 created_at: a.created_at,
             }
@@ -1984,6 +2332,113 @@ pub async fn get_you_ankys(
         .collect();
 
     Ok(Json(items))
+}
+
+// ===== You: Items =====
+
+/// GET /swift/v2/you/items
+/// Returns the user's current 8 kingdom items — the living interpretation from Honcho context.
+/// If the user has a minted mirror, returns those frozen items.
+/// Otherwise, derives fresh items from their latest Honcho context.
+pub async fn get_you_items(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = bearer_auth(&state, &headers).await?;
+
+    // Check if user has items from a minted mirror
+    let existing = {
+        let db = crate::db::conn(&state.db)?;
+        queries::get_user_mirror_items(&db, &user_id)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+    };
+
+    if let Some((mirror_id, items_json)) = existing {
+        if let Some(items) = crate::routes::api::AnkyItems::from_json(&items_json) {
+            return Ok(Json(serde_json::json!({
+                "mirror_id": mirror_id,
+                "items": items.items,
+                "source": "mirror",
+            })));
+        }
+    }
+
+    // No mirror items — try to derive from Honcho context + latest writing
+    let honcho_context = if crate::services::honcho::is_configured(&state.config) {
+        crate::services::honcho::get_peer_context(
+            &state.config.honcho_api_key,
+            &state.config.honcho_workspace_id,
+            &user_id,
+        )
+        .await
+        .unwrap_or(None)
+    } else {
+        None
+    };
+
+    if honcho_context.is_none() {
+        return Ok(Json(serde_json::json!({
+            "items": null,
+            "source": "none",
+            "message": "write your first anky to discover your items",
+        })));
+    }
+
+    // Get latest writing for context
+    let latest_writing = {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db.prepare(
+            "SELECT content FROM writing_sessions WHERE user_id = ?1 AND is_anky = 1 ORDER BY created_at DESC LIMIT 1"
+        ).map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        let mut rows = stmt
+            .query_map(crate::params![user_id], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        rows.next().and_then(|r| r.ok())
+    };
+
+    let writing_text = latest_writing.unwrap_or_default();
+    if writing_text.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "items": null,
+            "source": "none",
+            "message": "write your first anky to discover your items",
+        })));
+    }
+
+    let items_system = crate::routes::api::items_system_prompt();
+    let items_user = crate::routes::api::items_user_prompt_from_writing(
+        &writing_text,
+        honcho_context.as_deref(),
+    );
+    match crate::routes::api::derive_items(
+        &state.config.anthropic_api_key,
+        &items_system,
+        &items_user,
+    )
+    .await
+    {
+        Ok(items) => Ok(Json(serde_json::json!({
+            "items": items.items,
+            "source": "derived",
+        }))),
+        Err(e) => {
+            tracing::warn!("Failed to derive items for user {}: {}", &user_id, e);
+            Ok(Json(serde_json::json!({
+                "items": null,
+                "source": "error",
+                "message": "could not derive items right now",
+            })))
+        }
+    }
+}
+
+/// POST /swift/v2/mirror/mint — iOS app mirror mint (delegates to the Solana mint handler).
+pub async fn swift_mirror_mint(
+    state: State<AppState>,
+    headers: HeaderMap,
+    body: Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    mint_raw_mirror(state, headers, body).await
 }
 
 // ===== Device Token =====
@@ -3007,6 +3462,284 @@ pub async fn confirm_mint(
     }))
 }
 
+// ─── Solana Mirror Minting (Sojourn 9, iOS raw path) ────────────────────────
+
+const KINGDOMS: [(&str, &str); 8] = [
+    ("Primordia", "Root"),
+    ("Emblazion", "Sacral"),
+    ("Chryseos", "Solar Plexus"),
+    ("Eleutheria", "Heart"),
+    ("Voxlumis", "Throat"),
+    ("Insightia", "Third Eye"),
+    ("Claridium", "Crown"),
+    ("Poiesis", "Transcendent"),
+];
+
+fn kingdom_from_address(address: &str) -> (i32, &'static str, &'static str) {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(address.as_bytes());
+    let val = u64::from_le_bytes(hash[..8].try_into().unwrap());
+    let idx = (val % 8) as usize;
+    (idx as i32, KINGDOMS[idx].0, KINGDOMS[idx].1)
+}
+
+/// POST /swift/v2/mint-mirror (also aliased as /mirror/mint) — mint a raw mirror cNFT from a writing session.
+/// Body: { "recipient": "base58-pubkey", "writing_session_id": "uuid" }
+///   Also accepts "solana_address" as an alias for "recipient".
+/// First seal = mint. Subsequent seals return existing mint info (not an error).
+pub async fn mint_raw_mirror(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = bearer_auth(&state, &headers).await?;
+
+    let solana_address = body["recipient"]
+        .as_str()
+        .or_else(|| body["solana_address"].as_str())
+        .ok_or_else(|| AppError::BadRequest("recipient (solana base58 pubkey) required".into()))?
+        .trim();
+
+    let writing_session_id = body["writing_session_id"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("writing_session_id required".into()))?;
+
+    // Validate base58 Solana pubkey (32 bytes when decoded, 32-44 chars as base58)
+    if solana_address.len() < 32 || solana_address.len() > 44 {
+        return Err(AppError::BadRequest("invalid solana address length".into()));
+    }
+    if solana_address.starts_with("0x") {
+        return Err(AppError::BadRequest(
+            "this looks like an Ethereum address — send a Solana pubkey (base58)".into(),
+        ));
+    }
+    // Verify all chars are valid base58
+    if !solana_address
+        .chars()
+        .all(|c| matches!(c, '1'..='9' | 'A'..='H' | 'J'..='N' | 'P'..='Z' | 'a'..='k' | 'm'..='z'))
+    {
+        return Err(AppError::BadRequest(
+            "invalid base58 characters in solana address".into(),
+        ));
+    }
+
+    if state.config.solana_mint_worker_url.is_empty() {
+        return Err(AppError::Internal(
+            "solana mint worker not configured".into(),
+        ));
+    }
+
+    // Validate writing session: must be a real anky (8+ min) owned by this user
+    {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db
+            .prepare("SELECT is_anky, user_id FROM writing_sessions WHERE id = ?1")
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        let row = stmt
+            .query_row(crate::params![writing_session_id], |row| {
+                Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|_| AppError::NotFound("writing session not found".into()))?;
+
+        if row.0 == 0 {
+            return Err(AppError::BadRequest(
+                "only real ankys (8+ minutes) can be minted".into(),
+            ));
+        }
+        if row.1 != user_id {
+            return Err(AppError::BadRequest(
+                "this writing session belongs to another user".into(),
+            ));
+        }
+    }
+
+    // Check if THIS writing session was already minted — idempotent return
+    {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db
+            .prepare(
+                "SELECT m.solana_mint_tx, m.id, m.kingdom, m.kingdom_name, a.image_path, a.image_webp
+                 FROM mirrors m
+                 LEFT JOIN ankys a ON a.writing_session_id = m.writing_session_id
+                 WHERE m.writing_session_id = ?1 AND m.solana_mint_tx IS NOT NULL
+                 LIMIT 1",
+            )
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        let existing = stmt
+            .query_row(crate::params![writing_session_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i32>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            })
+            .ok();
+        if let Some((tx, mid, kingdom, kingdom_name, img_path, img_webp)) = existing {
+            let (kid, kname, kchakra) = kingdom_from_address(solana_address);
+            let image_url = img_webp.or(img_path).map(|p| {
+                if p.starts_with("http") {
+                    p
+                } else {
+                    format!("https://anky.app/data/images/{}", p)
+                }
+            });
+            return Ok(Json(serde_json::json!({
+                "success": true,
+                "already_minted": true,
+                "mirror_id": mid,
+                "kingdom": kingdom_name.unwrap_or_else(|| kname.to_string()),
+                "kingdom_chakra": kchakra,
+                "kingdom_id": kingdom.unwrap_or(kid),
+                "tx_signature": tx,
+                "image_url": image_url,
+                "error": null,
+            })));
+        }
+    }
+
+    // Check if user already has ANY mint — one cNFT per wallet, ever
+    {
+        let db = crate::db::conn(&state.db)?;
+        if let Some((tx, mirror_id, kingdom, kingdom_name)) =
+            queries::get_user_existing_mint(&db, &user_id)
+                .map_err(|e| AppError::Internal(format!("DB: {}", e)))?
+        {
+            let (_, _, kchakra) = kingdom_from_address(solana_address);
+            return Ok(Json(serde_json::json!({
+                "success": true,
+                "already_minted": true,
+                "mirror_id": mirror_id,
+                "kingdom": kingdom_name.unwrap_or_default(),
+                "kingdom_chakra": kchakra,
+                "kingdom_id": kingdom.unwrap_or(0),
+                "tx_signature": tx,
+                "image_url": null,
+                "error": null,
+            })));
+        }
+    }
+
+    // Check supply cap
+    {
+        let db = crate::db::conn(&state.db)?;
+        let minted = queries::count_minted_mirrors(&db)
+            .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+        if minted >= 3456 {
+            return Err(AppError::BadRequest(
+                "all 3456 mirrors have been claimed".into(),
+            ));
+        }
+    }
+
+    let (kingdom_id, kingdom_name, chakra) = kingdom_from_address(solana_address);
+    let mirror_id = uuid::Uuid::new_v4().to_string();
+
+    // Get anky image URL for the response
+    let anky_image_url = {
+        let db = crate::db::conn(&state.db)?;
+        let mut stmt = db
+            .prepare("SELECT image_path, image_webp FROM ankys WHERE writing_session_id = ?1 AND status = 'complete' LIMIT 1")
+            .ok();
+        stmt.and_then(|mut s| {
+            s.query_row(crate::params![writing_session_id], |row| {
+                let path: Option<String> = row.get(0)?;
+                let webp: Option<String> = row.get(1)?;
+                Ok(webp.or(path))
+            })
+            .ok()
+        })
+        .flatten()
+        .map(|p| {
+            if p.starts_with("http") {
+                p
+            } else {
+                format!("https://anky.app/data/images/{}", p)
+            }
+        })
+    };
+
+    // Insert raw mirror record linked to this writing session
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::insert_raw_mirror_for_session(
+            &db,
+            &mirror_id,
+            &user_id,
+            solana_address,
+            writing_session_id,
+        )
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    }
+
+    let metadata_uri = format!("https://anky.app/api/mirror/metadata/{}", mirror_id);
+    let name = "Anky Mirror — raw".to_string();
+
+    // Call Cloudflare Worker to mint
+    let client = reqwest::Client::new();
+    let worker_resp = client
+        .post(format!("{}/mint", state.config.solana_mint_worker_url))
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.config.solana_mint_worker_secret),
+        )
+        .json(&serde_json::json!({
+            "mirror_id": mirror_id,
+            "recipient": solana_address,
+            "name": name,
+            "uri": metadata_uri,
+            "kingdom": kingdom_id,
+            "symbol": "ANKY",
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker request failed: {}", e)))?;
+
+    if !worker_resp.status().is_success() {
+        let err_text = worker_resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "mint worker error: {}",
+            err_text
+        )));
+    }
+
+    let mint_result: serde_json::Value = worker_resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mint worker response parse: {}", e)))?;
+
+    let tx_signature = mint_result["signature"].as_str().unwrap_or("");
+
+    // Update DB with Solana tx details
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::set_mirror_minted(
+            &db,
+            &mirror_id,
+            tx_signature,
+            solana_address,
+            mint_result["asset_id"].as_str(),
+            kingdom_id,
+            kingdom_name,
+        )
+        .map_err(|e| AppError::Internal(format!("DB: {}", e)))?;
+    }
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "already_minted": false,
+        "mirror_id": mirror_id,
+        "kingdom": kingdom_name,
+        "kingdom_chakra": chakra,
+        "kingdom_id": kingdom_id,
+        "tx_signature": tx_signature,
+        "image_url": anky_image_url,
+        "error": null,
+    })))
+}
+
 /// GET /api/v1/anky/{id}/metadata — public ERC1155-compliant metadata
 pub async fn anky_metadata(
     State(state): State<AppState>,
@@ -3029,27 +3762,38 @@ pub async fn anky_metadata(
         })
         .unwrap_or_default();
 
-    // Get writing session for word count and duration
-    let (duration_seconds, word_count, flow_score) =
+    // Get writing session for word count, duration, and session hash
+    let (duration_seconds, word_count, session_hash) =
         if let Some(ref ws_id) = anky.writing_session_id {
             let ws = queries::get_writing_session(&db, ws_id)?;
+            let hash = crate::routes::sealed::get_session_hash_by_session_id(&db, ws_id);
             match ws {
-                Some(w) => (w.duration_seconds, w.word_count as f64, 0.0),
-                None => (0.0, 0.0, 0.0),
+                Some(w) => (w.duration_seconds, w.word_count as f64, hash),
+                None => (0.0, 0.0, hash),
             }
         } else {
-            (0.0, 0.0, 0.0)
+            (0.0, 0.0, None)
         };
+
+    let kingdom = anky.kingdom_name.as_deref().unwrap_or("Unknown");
+    let chakra = anky.kingdom_chakra.as_deref().unwrap_or("Unknown");
+
+    let mut attributes = vec![
+        serde_json::json!({ "trait_type": "Sojourn", "value": 9 }),
+        serde_json::json!({ "trait_type": "Kingdom", "value": kingdom }),
+        serde_json::json!({ "trait_type": "Chakra", "value": chakra }),
+        serde_json::json!({ "trait_type": "Duration", "value": format!("{:.0}s", duration_seconds) }),
+        serde_json::json!({ "trait_type": "Word Count", "value": format!("{:.0}", word_count) }),
+    ];
+    if let Some(ref hash) = session_hash {
+        attributes.push(serde_json::json!({ "trait_type": "Session Hash", "value": hash }));
+    }
 
     Ok(Json(serde_json::json!({
         "name": anky.title.unwrap_or_else(|| "Anky".to_string()),
         "description": anky.reflection.unwrap_or_else(|| "A writing born from 8 minutes of uninterrupted flow.".to_string()),
         "image": image_url,
         "external_url": format!("https://anky.app/anky/{}", id),
-        "attributes": [
-            { "trait_type": "Duration", "value": format!("{:.0}", duration_seconds) },
-            { "trait_type": "Word Count", "value": format!("{:.0}", word_count) },
-            { "trait_type": "Flow Score", "value": format!("{:.2}", flow_score) },
-        ]
+        "attributes": attributes,
     })))
 }

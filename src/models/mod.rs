@@ -7,6 +7,10 @@ pub struct WriteRequest {
     pub text: String,
     pub duration: f64,
     #[serde(default)]
+    pub session_hash: Option<String>,
+    #[serde(default)]
+    pub wallet_signature: Option<String>,
+    #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
     pub session_token: Option<String>,
@@ -16,6 +20,17 @@ pub struct WriteRequest {
     pub inquiry_id: Option<String>,
     #[serde(default)]
     pub prompt_id: Option<String>,
+    #[serde(default)]
+    pub now_slug: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatReplyMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +70,9 @@ pub struct WriteResponse {
     /// Total tokens used (input + output) if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens_used: Option<i64>,
+    /// Structured assistant messages for non-anky replies
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages: Option<Vec<ChatReplyMessage>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

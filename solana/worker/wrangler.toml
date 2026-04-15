@@ -1,0 +1,11 @@
+name = "anky-mint"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets (set via `wrangler secret put <NAME>`):
+#   MINT_SECRET        — shared auth secret with Axum backend
+#   AUTHORITY_KEYPAIR  — base58-encoded tree authority secret key
+#   HELIUS_API_KEY     — Helius RPC key
+#   MERKLE_TREE        — Merkle Tree public key
+#   COLLECTION_MINT    — Collection NFT mint public key

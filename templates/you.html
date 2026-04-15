@@ -1,171 +1,1634 @@
-{% extends "base.html" %}
-{% block title %}anky — you{% endblock %}
-{% block content %}
-<div class="you-page">
+<!DOCTYPE html>
+<html lang="{{ lang | default(value='en') }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>anky — you</title>
+  <meta name="theme-color" content="#08080e">
+  <link rel="icon" href="/static/icon-192.png">
+  <style>
+    :root {
+      --bg: #08080e;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-strong: rgba(255, 255, 255, 0.08);
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.12);
+      --text: #e8e0d0;
+      --text-strong: #eee;
+      --muted: #888;
+      --dim: #555;
+      --quiet: #333;
+      --ghost: #2a2a2a;
+      --card: #0c0c16;
+      --field: #14141f;
+      --shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+    }
 
-  {% if logged_in | default(value=false) %}
-  <div class="you-profile">
-    <img class="you-pfp" id="you-pfp" src="{{ profile_image_url | default(value='/static/icon-192.png') }}" alt="pfp">
-    <div class="you-profile-info">
-      <h1 class="you-name" id="you-name">{{ display_name | default(value="anon") }}</h1>
-      <p class="you-username" id="you-username">@{{ username | default(value="anon") }}</p>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    body.sheet-open {
+      overflow: hidden;
+    }
+
+    button,
+    textarea,
+    input {
+      font: inherit;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .you-app {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100dvh;
+      background:
+        radial-gradient(circle at top, rgba(167, 139, 250, 0.08), transparent 32rem),
+        radial-gradient(circle at bottom right, rgba(247, 37, 133, 0.04), transparent 24rem),
+        var(--bg);
+      overflow: hidden;
+    }
+
+    .you-app::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      mix-blend-mode: screen;
+      z-index: 0;
+    }
+
+    .you-shell {
+      position: relative;
+      z-index: 1;
+      width: min(100%, 430px);
+      margin: 0 auto;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding:
+        calc(env(safe-area-inset-top) + 18px)
+        16px
+        calc(env(safe-area-inset-bottom) + 100px);
+    }
+
+    .hero {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-height: 82px;
+    }
+
+    .hero-settings {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 36px;
+      height: 36px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      color: var(--quiet);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .hero-settings:hover,
+    .hero-settings:active {
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+
+    .hero-avatar-ring {
+      width: 72px;
+      height: 72px;
+      padding: 2.5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: conic-gradient(from 180deg, var(--ring-color) 0deg, rgba(255, 255, 255, 0.06) 120deg, var(--ring-color) 240deg, rgba(255, 255, 255, 0.06) 360deg);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    }
+
+    .hero-avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid #151520;
+      background: radial-gradient(circle at 40% 35%, #1a1030, #08080e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .hero-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .hero-copy {
+      min-width: 0;
+      padding-right: 44px;
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--text-strong);
+    }
+
+    .hero-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .hero-meta span {
+      color: #555;
+    }
+
+    .stat-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .stat-button {
+      min-width: 0;
+      padding: 16px 6px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }
+
+    .stat-button:hover,
+    .stat-button:active {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .stat-button.is-active {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 200;
+      color: #555;
+      transition: color 0.15s ease;
+    }
+
+    .stat-button.is-active .stat-value {
+      color: #fff;
+    }
+
+    .stat-label {
+      font-size: 8px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--quiet);
+      text-align: center;
+      transition: color 0.15s ease;
+    }
+
+    .stat-button.is-active .stat-label {
+      color: var(--muted);
+    }
+
+    .content {
+      margin-top: 16px;
+    }
+
+    .section-empty {
+      padding: 48px 8px 0;
+      text-align: center;
+      color: var(--dim);
+      line-height: 1.7;
+      font-size: 13px;
+    }
+
+    .anky-card {
+      display: flex;
+      gap: 14px;
+      padding: 16px 0;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+
+    .anky-card:hover,
+    .anky-card:active {
+      opacity: 0.82;
+    }
+
+    .anky-thumb {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.24);
+    }
+
+    .anky-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .anky-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .anky-placeholder::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.18) 0%, transparent 65%);
+    }
+
+    .anky-placeholder span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .anky-unsealed {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.24);
+      background: transparent;
+    }
+
+    .anky-body {
+      flex: 1;
+      min-width: 0;
+      padding-top: 1px;
+    }
+
+    .anky-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .anky-title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 500;
+      color: #ddd;
+    }
+
+    .anky-date {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: #3a3a3a;
+      text-transform: lowercase;
+    }
+
+    .anky-preview {
+      margin-top: 6px;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #4a4a4a;
+    }
+
+    .anky-divider {
+      height: 1px;
+      margin-left: 78px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .calendar-heading {
+      margin-bottom: 16px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      color: #555;
+      text-transform: lowercase;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .calendar-label {
+      padding: 6px 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: #333;
+      text-transform: lowercase;
+    }
+
+    .calendar-blank {
+      aspect-ratio: 1 / 1;
+    }
+
+    .calendar-day {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      border: 1.5px solid transparent;
+      color: #2a2a2a;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .calendar-day.is-interactive {
+      cursor: pointer;
+    }
+
+    .calendar-day.is-today {
+      border-color: #555;
+    }
+
+    .calendar-day-number {
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .calendar-day.has-session .calendar-day-number {
+      color: #ccc;
+      font-weight: 500;
+    }
+
+    .calendar-day.is-selected .calendar-day-number {
+      color: #fff;
+    }
+
+    .calendar-day-dot {
+      position: absolute;
+      bottom: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+    }
+
+    .calendar-results {
+      margin-top: 16px;
+    }
+
+    .words-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-bottom: 24px;
+    }
+
+    .words-stat {
+      padding: 10px 0;
+      text-align: center;
+    }
+
+    .words-stat + .words-stat {
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .words-value {
+      font-size: 18px;
+      font-weight: 300;
+      color: #999;
+    }
+
+    .words-label {
+      margin-top: 5px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #3a3a3a;
+    }
+
+    .territories-label {
+      margin-bottom: 12px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #3a3a3a;
+    }
+
+    .territory {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .territory:hover,
+    .territory:active {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .territory-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .territory-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .territory-emoji {
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .territory-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #aaa;
+    }
+
+    .territory-name.is-dim {
+      color: #2a2a2a;
+      font-weight: 400;
+    }
+
+    .territory-chakra {
+      font-size: 9px;
+      letter-spacing: 0.06em;
+      color: #2a2a2a;
+      text-transform: lowercase;
+    }
+
+    .territory-count {
+      font-size: 13px;
+      font-weight: 300;
+      color: #666;
+      flex-shrink: 0;
+    }
+
+    .territory-count.is-dim {
+      color: #1a1a1a;
+    }
+
+    .territory-bar {
+      height: 3px;
+      border-radius: 2px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .territory-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0;
+      transition: width 0.4s ease;
+    }
+
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.87);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+      z-index: 30;
+    }
+
+    .sheet-backdrop.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sheet {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      width: min(100vw, 430px);
+      max-height: 88vh;
+      max-height: 88dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--card);
+      border-radius: 22px 22px 0 0;
+      transform: translate(-50%, 100%);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 31;
+      box-shadow: var(--shadow);
+    }
+
+    .sheet.is-open {
+      opacity: 1;
+      pointer-events: auto;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .sheet-handle {
+      padding-top: 10px;
+      flex-shrink: 0;
+    }
+
+    .sheet-grip {
+      width: 32px;
+      height: 4px;
+      margin: 0 auto 12px;
+      border-radius: 999px;
+      background: #333;
+    }
+
+    .conversation-head {
+      padding: 0 20px 12px;
+      flex-shrink: 0;
+    }
+
+    .conversation-head-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .conversation-head-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .conversation-head-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .conversation-head-copy {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .conversation-head-title {
+      font-size: 15px;
+      font-weight: 500;
+      color: #e8e0d0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .conversation-head-meta {
+      margin-top: 2px;
+      font-size: 11px;
+      color: #4a4a4a;
+      text-transform: lowercase;
+    }
+
+    .conversation-head-state {
+      flex-shrink: 0;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: lowercase;
+    }
+
+    .conversation-divider {
+      height: 1px;
+      margin-top: 12px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .conversation-thread {
+      flex: 1;
+      overflow: auto;
+      padding: 12px 20px 6px;
+    }
+
+    .bubble-wrap {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 12px;
+    }
+
+    .bubble-wrap.is-user {
+      align-items: flex-end;
+    }
+
+    .bubble-wrap.is-anky {
+      align-items: flex-start;
+    }
+
+    .bubble-label {
+      margin-bottom: 4px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .bubble {
+      max-width: 88%;
+      padding: 11px 14px;
+      border: 1px solid transparent;
+      font-size: 13px;
+      line-height: 1.7;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .bubble.is-user {
+      border-radius: 14px 14px 4px 14px;
+      background: var(--field);
+      border-color: #1c1c2a;
+      color: #777;
+      font-family: "Courier New", Courier, monospace;
+    }
+
+    .bubble.is-anky {
+      border-radius: 14px 14px 14px 4px;
+      color: #8a8078;
+      font-family: Georgia, "Times New Roman", serif;
+      font-style: italic;
+    }
+
+    .typing {
+      padding: 11px 18px;
+      border-radius: 14px 14px 14px 4px;
+      font-size: 18px;
+      letter-spacing: 4px;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .conversation-input {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 8px 20px 20px;
+      flex-shrink: 0;
+    }
+
+    .conversation-textarea {
+      flex: 1;
+      resize: none;
+      max-height: 100px;
+      min-height: 44px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid #1c1c2a;
+      background: var(--field);
+      color: #ccc;
+      outline: none;
+      line-height: 1.5;
+      transition: border-color 0.15s ease;
+    }
+
+    .conversation-textarea::placeholder {
+      color: #555;
+    }
+
+    .conversation-send {
+      width: 40px;
+      height: 40px;
+      border: 1px solid #1c1c2a;
+      border-radius: 12px;
+      background: var(--field);
+      color: #2a2a2a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      cursor: default;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .conversation-send.is-active {
+      cursor: pointer;
+    }
+
+    .kingdom-sheet {
+      max-height: 75vh;
+      max-height: 75dvh;
+      overflow: auto;
+    }
+
+    .kingdom-body {
+      padding: 0 24px 28px;
+    }
+
+    .kingdom-top {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .kingdom-emoji-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .kingdom-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .kingdom-subtitle {
+      margin-top: 2px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .kingdom-description {
+      margin-bottom: 18px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #888;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .kingdom-lesson {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+    }
+
+    .kingdom-lesson-label {
+      margin-bottom: 4px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .kingdom-lesson-copy {
+      font-size: 12px;
+      line-height: 1.6;
+      color: #7a7068;
+      font-style: italic;
+    }
+
+    .loading {
+      padding-top: 54px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translate(-50%, 100%);
+      }
+      to {
+        transform: translate(-50%, 0);
+      }
+    }
+
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: 0.3;
+      }
+      50% {
+        opacity: 0.8;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .hero-title {
+        font-size: 20px;
+      }
+
+      .stat-value {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="you-app">
+    <div class="you-shell">
+      <section class="hero" id="hero"></section>
+      <section class="stat-buttons" id="statButtons"></section>
+      <section class="content" id="content"></section>
     </div>
-  </div>
+  </main>
 
-  <a href="/settings" class="you-settings-link">settings</a>
-  <p class="you-bio" id="you-bio">loading...</p>
+  <div id="conversationLayer"></div>
+  <div id="kingdomLayer"></div>
 
-  <div class="you-stats-row" id="you-stats-row"></div>
+  <script>
+    (function() {
+      var INITIAL_PROFILE = {
+        displayName: {{ display_name | default(value="YOU") | json_encode() | safe }},
+        profileImageUrl: {{ profile_image_url | default(value="") | json_encode() | safe }}
+      };
 
-  <div class="you-view-toggle">
-    <button class="you-toggle-btn active" id="btn-grid" aria-label="grid view">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="6.75" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="12.5" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="1" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="6.75" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="12.5" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="1" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="6.75" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="12.5" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/></svg>
-    </button>
-    <button class="you-toggle-btn" id="btn-list" aria-label="list view">
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="1" width="16" height="4" rx="1" fill="currentColor"/><rect x="1" y="7" width="16" height="4" rx="1" fill="currentColor"/><rect x="1" y="13" width="16" height="4" rx="1" fill="currentColor"/></svg>
-    </button>
-  </div>
+      var KINGDOM_ORDER = ["Primordia", "Emblazion", "Chryseos", "Eleasis", "Voxlumis", "Insightia", "Claridium", "Poiesis"];
+      var KINGDOMS = {
+        Primordia: { color: "#e63946", chakra: "root", emoji: "🔥", lesson: "Survival is not weakness — it's the foundation everything else stands on.", description: "Kingdom of survival, grounding, and primal energy. Root chakra. When writing lands here, the user is processing fear, safety, money, the body. Sessions tend to be urgent and close to the bone." },
+        Emblazion: { color: "#ff6b35", chakra: "sacral", emoji: "🌊", lesson: "Desire isn't the enemy. Repression is.", description: "Kingdom of desire, emotion, and creative fire. Sacral chakra. Processing pleasure, passion, guilt, longing. Sessions are fluid, sometimes chaotic, always honest about appetite." },
+        Chryseos: { color: "#ffd166", chakra: "solar", emoji: "⚡", lesson: "Your power isn't in the outcome. It's in the choice to act.", description: "Kingdom of willpower, identity, and personal agency. Solar plexus. Processing confidence, ambition, shame, control. Sessions involve decisions and the friction of becoming." },
+        Eleasis: { color: "#2ec4b6", chakra: "heart", emoji: "💚", lesson: "The heart doesn't need permission to open.", description: "Kingdom of love, compassion, and connection. Heart chakra. Processing relationships, forgiveness, tenderness, grief. Sessions are the most open and unguarded." },
+        Voxlumis: { color: "#a78bfa", chakra: "throat", emoji: "✦", lesson: "Say the thing you're afraid to say — that's the one that matters.", description: "Kingdom of voice, truth, and expression. Throat chakra. Processing what needs to be said, what's been held back. Sessions circle around conversations not yet had." },
+        Insightia: { color: "#4361ee", chakra: "third eye", emoji: "👁", lesson: "What you see when you stop looking is the truth.", description: "Kingdom of intuition, perception, and inner sight. Third eye. Processing clarity, patterns, knowing before proving. Sessions tend to be quieter, almost meditative." },
+        Claridium: { color: "#7b2ff7", chakra: "crown", emoji: "∞", lesson: "You are not the river. You are not the bank. You are the flowing.", description: "Kingdom of transcendence, meaning, and the infinite. Crown chakra. Processing purpose, spirituality, existential questions. Sessions feel like downloads." },
+        Poiesis: { color: "#f72585", chakra: "creation", emoji: "◈", lesson: "Creation is the only proof you were here.", description: "Kingdom of pure creation. Beyond the seven chakras. Not processing — building. Thinking about craft, the work, the act of making itself. Meta-aware sessions." }
+      };
 
-  <div class="you-ankys-grid" id="you-ankys"></div>
+      var state = {
+        profile: null,
+        sessions: [],
+        activeSection: "ankys",
+        selectedDayKey: null,
+        selectedSessionId: null,
+        selectedKingdom: null,
+        messagesBySession: {},
+        chatInput: "",
+        isSending: false,
+        loading: true
+      };
 
-  {% else %}
+      var heroEl = document.getElementById("hero");
+      var statButtonsEl = document.getElementById("statButtons");
+      var contentEl = document.getElementById("content");
+      var conversationLayerEl = document.getElementById("conversationLayer");
+      var kingdomLayerEl = document.getElementById("kingdomLayer");
 
-  <!-- Farcaster miniapp profile — shown via JS when inside Warpcast -->
-  <div class="you-miniapp-profile" id="miniapp-profile" style="display:none;">
-    <img class="you-pfp" id="miniapp-pfp" src="/static/icon-192.png" alt="pfp">
-    <div class="you-profile-info">
-      <h1 class="you-name" id="miniapp-name">anon</h1>
-      <p class="you-username" id="miniapp-username">@anon</p>
-    </div>
-    <p style="color:rgba(255,255,255,0.5);font-size:14px;margin:24px 0 16px;">you're inside the miniapp. get the full anky experience on mobile.</p>
-    <a href="https://apps.apple.com/app/anky/id6744770108" target="_blank" rel="noopener" style="display:inline-block;background:#7b2ff7;color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:15px;text-decoration:none;cursor:pointer;">download anky for ios</a>
-    <a href="/" style="display:inline-block;color:rgba(255,255,255,0.4);font-size:14px;margin-top:16px;text-decoration:none;">back to writing</a>
-  </div>
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
 
-  <!-- Default login prompt — hidden when miniapp detected -->
-  <div class="you-login-prompt" id="login-prompt">
-    <img src="/static/icon-192.png" alt="anky" style="width:80px;height:80px;border-radius:50%;margin-bottom:24px;opacity:0.6;">
-    <p style="color:rgba(255,255,255,0.5);font-size:15px;margin-bottom:24px;">log in to see your profile and writing history.</p>
-    <button id="loginBtn" style="background:#7b2ff7;color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:15px;cursor:pointer;">log in with email</button>
-  </div>
+      function parseCreatedAt(raw) {
+        if (!raw) return new Date();
+        if (raw.indexOf("T") >= 0) {
+          var isoDate = new Date(raw);
+          if (!isNaN(isoDate.getTime())) return isoDate;
+        }
 
-  {% endif %}
-</div>
+        var match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+        if (match) {
+          return new Date(Date.UTC(
+            Number(match[1]),
+            Number(match[2]) - 1,
+            Number(match[3]),
+            Number(match[4]),
+            Number(match[5]),
+            Number(match[6] || "0")
+          ));
+        }
 
-<script>
-(function() {
-  var loggedIn = {% if logged_in | default(value=false) %}true{% else %}false{% endif %};
-  var privyAppId = '{{ privy_app_id | default(value="") }}';
+        var fallback = new Date(raw);
+        if (!isNaN(fallback.getTime())) return fallback;
+        return new Date();
+      }
 
-  // Check for Farcaster miniapp context — base.html sets window.farcasterContext
-  var loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    // Wait briefly for the miniapp SDK to resolve (it loads async in base.html)
-    setTimeout(function() {
-      var ctx = window.farcasterContext;
-      if (ctx && ctx.user) {
-        // Inside miniapp — show Farcaster profile
-        var user = ctx.user;
-        document.getElementById('login-prompt').style.display = 'none';
-        var mp = document.getElementById('miniapp-profile');
-        mp.style.display = '';
-        if (user.pfpUrl) document.getElementById('miniapp-pfp').src = user.pfpUrl;
-        if (user.displayName) document.getElementById('miniapp-name').textContent = user.displayName;
-        if (user.username) document.getElementById('miniapp-username').textContent = '@' + user.username;
-      } else {
-        // Not in miniapp — wire up login button
-        loginBtn.addEventListener('click', function() {
-          if (!privyAppId) { window.location.href = '/login'; return; }
-          var script = document.createElement('script');
-          script.src = 'https://cdn.privy.io/js-sdk/v1/privy.min.js';
-          script.onload = function() {
-            try {
-              var privy = new window.Privy({
-                appId: privyAppId,
-                config: { loginMethods: ['email', 'apple'], appearance: { theme: 'dark', accentColor: '#7b2ff7' } },
-              });
-              privy.login().then(function(result) {
-                if (result && result.authToken) {
-                  fetch('/auth/privy/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ auth_token: result.authToken }),
-                  }).then(function(r) { return r.json(); }).then(function(data) {
-                    if (data.ok) window.location.reload();
-                  });
-                }
-              }).catch(function() {});
-            } catch(e) { window.location.href = '/login'; }
+      function formatDateLabel(date) {
+        return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date).toLowerCase();
+      }
+
+      function formatTimeLabel(date) {
+        return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date).toLowerCase();
+      }
+
+      function formatMonthLabel(date) {
+        return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(date).toLowerCase();
+      }
+
+      function formatNumber(value) {
+        return Number(value || 0).toLocaleString();
+      }
+
+      function formatDuration(seconds) {
+        var total = Math.max(0, Math.round(Number(seconds || 0)));
+        var minutes = Math.floor(total / 60);
+        var remainder = String(total % 60).padStart(2, "0");
+        return minutes + ":" + remainder;
+      }
+
+      function clipText(value, maxChars) {
+        var text = String(value || "").trim();
+        if (!text) return "";
+        if (text.length <= maxChars) return text;
+        return text.slice(0, maxChars).trimEnd() + "...";
+      }
+
+      function fallbackPoints(sessions, streak) {
+        var completedSessions = sessions.filter(function(session) { return session.isComplete; }).length;
+        var flowBonus = sessions.reduce(function(sum, session) {
+          return sum + Math.floor((session.flowScore || 0) * 100);
+        }, 0);
+        return (sessions.length * 100) + (completedSessions * 100) + flowBonus + (completedSessions * Number(streak || 0) * 10);
+      }
+
+      function dominantKingdomName() {
+        if (!state.sessions.length) return "Poiesis";
+        var counts = {};
+        state.sessions.forEach(function(session) {
+          counts[session.kingdom] = (counts[session.kingdom] || 0) + 1;
+        });
+        return KINGDOM_ORDER.slice().sort(function(a, b) {
+          return (counts[b] || 0) - (counts[a] || 0);
+        })[0] || "Poiesis";
+      }
+
+      function currentProfile() {
+        var sessions = state.sessions;
+        var totalWords = sessions.reduce(function(sum, session) { return sum + session.wordCount; }, 0);
+        var fallbackStreak = Number(state.profile && (state.profile.streak || state.profile.current_streak) || 0);
+        var points = Number(state.profile && state.profile.points || fallbackPoints(sessions, fallbackStreak));
+        var level = Number(state.profile && state.profile.level || Math.min(8, Math.floor(points / 500) + 1));
+
+        return {
+          displayName: "YOU",
+          portraitUrl: state.profile && (state.profile.portrait_url || state.profile.profile_image_url) || INITIAL_PROFILE.profileImageUrl || "",
+          streak: fallbackStreak,
+          totalWords: Number(state.profile && state.profile.total_words || totalWords || 0),
+          points: points,
+          level: Math.min(8, Math.max(1, level))
+        };
+      }
+
+      function normalizeSession(rawSession) {
+        var createdDate = parseCreatedAt(rawSession.created_at);
+        var kingdomName = KINGDOMS[rawSession.kingdom] ? rawSession.kingdom : "Poiesis";
+        var kingdom = KINGDOMS[kingdomName];
+        var imageUrl = rawSession.image_url || rawSession.imageUrl || "";
+        return {
+          id: String(rawSession.id || ""),
+          title: rawSession.title || "untitled",
+          imageUrl: imageUrl,
+          createdAt: rawSession.created_at || "",
+          createdDate: createdDate,
+          dateLabel: formatDateLabel(createdDate),
+          timeLabel: formatTimeLabel(createdDate),
+          durationSeconds: Number(rawSession.duration_seconds || 0),
+          durationLabel: formatDuration(rawSession.duration_seconds || 0),
+          wordCount: Number(rawSession.word_count || 0),
+          flowScore: Number(rawSession.flow_score || 0),
+          isComplete: Boolean(rawSession.is_complete || rawSession.complete),
+          isSealed: Boolean(rawSession.is_sealed || rawSession.sealed),
+          writing: rawSession.writing || "",
+          writingPreview: rawSession.writing_preview || clipText(rawSession.writing || "", 120),
+          reflection: rawSession.reflection || "",
+          conversation: Array.isArray(rawSession.conversation) ? rawSession.conversation.map(function(message) {
+            return {
+              role: message.role === "assistant" ? "anky" : message.role,
+              text: message.text || message.content || ""
+            };
+          }).filter(function(message) {
+            return message.role && message.text;
+          }) : [],
+          kingdom: kingdomName,
+          kingdomMeta: kingdom
+        };
+      }
+
+      function sessionById(sessionId) {
+        for (var i = 0; i < state.sessions.length; i += 1) {
+          if (state.sessions[i].id === sessionId) {
+            return state.sessions[i];
+          }
+        }
+        return null;
+      }
+
+      function sessionMessages(session) {
+        if (!session) return [];
+        if (!state.messagesBySession[session.id]) {
+          state.messagesBySession[session.id] = session.conversation.slice();
+        }
+        return state.messagesBySession[session.id];
+      }
+
+      function apiHistoryMessages(session, messages) {
+        var skippedWriting = false;
+        var skippedReflection = false;
+        var sessionWriting = String(session.writing || "").trim();
+        var sessionReflection = String(session.reflection || "").trim();
+
+        return messages.filter(function(item) {
+          if (!skippedWriting && item.role === "user" && sessionWriting && item.text === sessionWriting) {
+            skippedWriting = true;
+            return false;
+          }
+          if (!skippedReflection && item.role === "anky" && sessionReflection && item.text === sessionReflection) {
+            skippedReflection = true;
+            return false;
+          }
+          return true;
+        }).map(function(item) {
+          return {
+            role: item.role === "anky" ? "assistant" : "user",
+            content: item.text
           };
-          script.onerror = function() { window.location.href = '/login'; };
-          document.head.appendChild(script);
         });
       }
-    }, 500);
-    return;
-  }
 
-  // Logged-in flow: fetch profile and ankys via web endpoints
-  var ankysData = [];
-
-  fetch('/api/me')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.ok) return;
-      var parts = [];
-      if (data.total_ankys > 0) parts.push(data.total_ankys + ' ankys');
-      if (data.current_streak > 0) parts.push(data.current_streak + ' day streak');
-      if (data.total_words > 0) parts.push(Math.round(data.total_words / 1000) + 'k words');
-      document.getElementById('you-stats-row').textContent = parts.join(' · ') || 'no sessions yet';
-      document.getElementById('you-bio').textContent = data.bio || 'write your first anky and anky will tell you who you are.';
-      if (data.display_name) document.getElementById('you-name').textContent = data.display_name;
-      if (data.username) document.getElementById('you-username').textContent = '@' + data.username;
-      if (data.profile_image_url) document.getElementById('you-pfp').src = data.profile_image_url;
-    });
-
-  fetch('/api/my-ankys')
-    .then(function(r) { return r.ok ? r.json() : []; })
-    .then(function(data) {
-      if (!data || data.length === 0) {
-        document.getElementById('you-ankys').innerHTML = '<div class="you-empty-ankys">write your first 8-minute anky at <a href="/" style="color:rgba(255,255,255,0.5);">anky.app</a></div>';
-        return;
+      function ankyGradient(session) {
+        var kingdom = session.kingdomMeta || KINGDOMS.Poiesis;
+        var numericId = Number(String(session.id).replace(/\D/g, "").slice(-6) || "0");
+        var hueOffset = (numericId * 37) % 60 - 30;
+        return "linear-gradient(" + (120 + hueOffset) + "deg, " + kingdom.color + "88, " + kingdom.color + "22 40%, #0a0a1299 80%)";
       }
-      ankysData = data;
-      renderGrid();
-    });
 
-  function renderGrid() {
-    var el = document.getElementById('you-ankys');
-    el.className = 'you-ankys-grid';
-    el.innerHTML = ankysData.map(function(a) {
-      var img = a.imageUrl || '/static/icon-192.png';
-      return '<a class="you-anky-cell" href="/anky/' + a.id + '"><img src="' + img + '" alt="" loading="lazy"></a>';
-    }).join('');
-  }
+      function thumbMarkup(session, sizeClass) {
+        var ringColor = session.kingdomMeta.color;
+        if (session.imageUrl) {
+          return '<div class="' + sizeClass + '"><img src="' + escapeHtml(session.imageUrl) + '" alt="' + escapeHtml(session.title) + '"></div>';
+        }
+        return (
+          '<div class="' + sizeClass + '" style="background:' + escapeHtml(ankyGradient(session)) + '; box-shadow:0 2px 12px ' + escapeHtml(ringColor + "22") + ';">' +
+            '<div class="anky-placeholder"><span>' + escapeHtml(session.kingdomMeta.emoji) + '</span></div>' +
+            (session.isComplete ? '' : '<div class="anky-unsealed"></div>') +
+          '</div>'
+        );
+      }
 
-  function renderList() {
-    var el = document.getElementById('you-ankys');
-    el.className = 'you-ankys-list';
-    el.innerHTML = ankysData.map(function(a) {
-      var img = a.imageUrl || '/static/icon-192.png';
-      var title = a.title || 'untitled';
-      var reflection = a.reflection || '';
-      if (reflection.length > 180) reflection = reflection.substring(0, 180) + '...';
-      return '<a class="you-anky-row" href="/anky/' + a.id + '"><img src="' + img + '" alt="" loading="lazy"><div class="you-anky-row-text"><div class="you-anky-row-title">' + title + '</div><div class="you-anky-row-reflection">' + reflection + '</div></div></a>';
-    }).join('');
-  }
+      function renderHero() {
+        var profile = currentProfile();
+        var dominant = KINGDOMS[dominantKingdomName()] || KINGDOMS.Poiesis;
+        var avatarMarkup = profile.portraitUrl
+          ? '<img src="' + escapeHtml(profile.portraitUrl) + '" alt="you">'
+          : '<span aria-hidden="true">👽</span>';
 
-  document.getElementById('btn-grid').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('btn-list').classList.remove('active');
-    renderGrid();
-  });
+        heroEl.innerHTML =
+          '<div class="hero-avatar-ring" style="--ring-color:' + escapeHtml(dominant.color + "55") + ';">' +
+            '<div class="hero-avatar">' + avatarMarkup + '</div>' +
+          '</div>' +
+          '<div class="hero-copy">' +
+            '<div class="hero-title">YOU</div>' +
+            '<div class="hero-meta">' + escapeHtml(formatNumber(profile.points)) + ' points · <span>level ' + escapeHtml(profile.level) + '</span></div>' +
+          '</div>' +
+          '<a class="hero-settings" href="/settings" aria-label="settings">' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+              '<circle cx="12" cy="12" r="3"></circle>' +
+              '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
+            '</svg>' +
+          '</a>';
+      }
 
-  document.getElementById('btn-list').addEventListener('click', function() {
-    this.classList.add('active');
-    document.getElementById('btn-grid').classList.remove('active');
-    renderList();
-  });
-})();
-</script>
-{% endblock %}
+      function renderStatButtons() {
+        var profile = currentProfile();
+        var totalWords = state.sessions.reduce(function(sum, session) { return sum + session.wordCount; }, 0);
+        var buttons = [
+          { key: "ankys", value: state.sessions.length, label: "ANKYS WRITTEN" },
+          { key: "streak", value: profile.streak, label: "DAY STREAK" },
+          { key: "words", value: formatNumber(totalWords), label: "WORDS WRITTEN" }
+        ];
+
+        statButtonsEl.innerHTML = buttons.map(function(button) {
+          var activeClass = state.activeSection === button.key ? " is-active" : "";
+          return (
+            '<button class="stat-button' + activeClass + '" type="button" data-action="set-tab" data-tab="' + escapeHtml(button.key) + '">' +
+              '<div class="stat-value">' + escapeHtml(button.value) + '</div>' +
+              '<div class="stat-label">' + escapeHtml(button.label) + '</div>' +
+            '</button>'
+          );
+        }).join("");
+      }
+
+      function renderAnkyCards(sessions) {
+        if (!sessions.length) {
+          return '<div class="section-empty">write your first anky and the map starts to take shape.</div>';
+        }
+
+        return sessions.map(function(session, index) {
+          return (
+            '<div>' +
+              '<div class="anky-card" data-action="open-session" data-session-id="' + escapeHtml(session.id) + '">' +
+                thumbMarkup(session, "anky-thumb") +
+                '<div class="anky-body">' +
+                  '<div class="anky-row">' +
+                    '<div class="anky-title">' + escapeHtml(session.title) + '</div>' +
+                    '<div class="anky-date">' + escapeHtml(session.dateLabel) + '</div>' +
+                  '</div>' +
+                  '<div class="anky-preview">' + escapeHtml(session.writingPreview) + '</div>' +
+                '</div>' +
+              '</div>' +
+              (index < sessions.length - 1 ? '<div class="anky-divider"></div>' : '') +
+            '</div>'
+          );
+        }).join("");
+      }
+
+      function calendarData() {
+        var reference = state.sessions[0] ? state.sessions[0].createdDate : new Date();
+        var year = reference.getFullYear();
+        var month = reference.getMonth();
+        var firstDay = new Date(year, month, 1);
+        var leadingBlanks = (firstDay.getDay() + 6) % 7;
+        var daysInMonth = new Date(year, month + 1, 0).getDate();
+        var today = new Date();
+        var labels = ["m", "t", "w", "t", "f", "s", "s"];
+        var byDay = {};
+
+        state.sessions.forEach(function(session) {
+          if (session.createdDate.getFullYear() !== year || session.createdDate.getMonth() !== month) {
+            return;
+          }
+          var key = String(session.createdDate.getDate());
+          if (!byDay[key]) byDay[key] = [];
+          byDay[key].push(session);
+        });
+
+        return {
+          year: year,
+          month: month,
+          labels: labels,
+          leadingBlanks: leadingBlanks,
+          daysInMonth: daysInMonth,
+          byDay: byDay,
+          monthLabel: formatMonthLabel(reference),
+          todayKey: today.getFullYear() === year && today.getMonth() === month ? String(today.getDate()) : null
+        };
+      }
+
+      function renderCalendar() {
+        if (!state.sessions.length) {
+          return '<div class="section-empty">day streaks appear once there is something to return to.</div>';
+        }
+
+        var data = calendarData();
+        var html = '<div class="calendar-heading">' + escapeHtml(data.monthLabel) + '</div><div class="calendar-grid">';
+
+        html += data.labels.map(function(label) {
+          return '<div class="calendar-label">' + escapeHtml(label) + '</div>';
+        }).join("");
+
+        for (var i = 0; i < data.leadingBlanks; i += 1) {
+          html += '<div class="calendar-blank"></div>';
+        }
+
+        for (var day = 1; day <= data.daysInMonth; day += 1) {
+          var key = String(day);
+          var daySessions = data.byDay[key] || [];
+          var primarySession = daySessions[0];
+          var isSelected = state.selectedDayKey === key;
+          var hasSession = daySessions.length > 0;
+          var dayStyle = "";
+          var dayClasses = ["calendar-day"];
+
+          if (hasSession) {
+            dayClasses.push("has-session", "is-interactive");
+            dayStyle += "background:" + primarySession.kingdomMeta.color + (isSelected ? "25" : "15") + ";";
+          }
+          if (isSelected) {
+            dayClasses.push("is-selected");
+            dayStyle += "border-color:" + primarySession.kingdomMeta.color + "55;";
+          } else if (data.todayKey === key) {
+            dayClasses.push("is-today");
+          }
+
+          html += '<div class="' + dayClasses.join(" ") + '" style="' + dayStyle + '"' + (hasSession ? ' data-action="toggle-day" data-day-key="' + escapeHtml(key) + '"' : '') + '>';
+          html += '<span class="calendar-day-number">' + escapeHtml(day) + '</span>';
+          if (hasSession && primarySession.isComplete && !isSelected) {
+            html += '<div class="calendar-day-dot" style="background:' + escapeHtml(primarySession.kingdomMeta.color + "aa") + ';"></div>';
+          }
+          html += '</div>';
+        }
+
+        html += "</div>";
+
+        if (state.selectedDayKey && data.byDay[state.selectedDayKey]) {
+          html += '<div class="calendar-results">' + renderAnkyCards(data.byDay[state.selectedDayKey]) + '</div>';
+        }
+
+        return html;
+      }
+
+      function renderWords() {
+        if (!state.sessions.length) {
+          return '<div class="section-empty">territories stay dim until the writing starts mapping them.</div>';
+        }
+
+        var averageFlow = state.sessions.reduce(function(sum, session) { return sum + session.flowScore; }, 0) / Math.max(1, state.sessions.length);
+        var counts = {};
+        state.sessions.forEach(function(session) {
+          counts[session.kingdom] = (counts[session.kingdom] || 0) + 1;
+        });
+
+        var html = '';
+        html += '<div class="words-summary">';
+        html += '<div class="words-stat"><div class="words-value">' + escapeHtml(Math.round(averageFlow * 100) + "%") + '</div><div class="words-label">avg flow score</div></div>';
+        html += '<div class="words-stat"><div class="words-value">' + escapeHtml(state.sessions.length) + '</div><div class="words-label">total sessions</div></div>';
+        html += '</div>';
+        html += '<div class="territories-label">territories</div>';
+
+        html += KINGDOM_ORDER.map(function(name) {
+          var meta = KINGDOMS[name];
+          var count = counts[name] || 0;
+          var visited = count > 0;
+          var width = state.sessions.length ? ((count / state.sessions.length) * 100) : 0;
+          return (
+            '<div class="territory" data-action="open-kingdom" data-kingdom="' + escapeHtml(name) + '">' +
+              '<div class="territory-row">' +
+                '<div class="territory-main">' +
+                  '<span class="territory-emoji" style="opacity:' + (visited ? '1' : '0.3') + ';">' + escapeHtml(meta.emoji) + '</span>' +
+                  '<span class="territory-name' + (visited ? '' : ' is-dim') + '">' + escapeHtml(name) + '</span>' +
+                  '<span class="territory-chakra">' + escapeHtml(meta.chakra) + '</span>' +
+                '</div>' +
+                '<span class="territory-count' + (visited ? '' : ' is-dim') + '">' + escapeHtml(count) + '</span>' +
+              '</div>' +
+              '<div class="territory-bar">' +
+                '<div class="territory-bar-fill" style="width:' + escapeHtml(width.toFixed(2)) + '%; background:' + (visited ? escapeHtml(meta.color + "77") : 'transparent') + ';"></div>' +
+              '</div>' +
+            '</div>'
+          );
+        }).join("");
+
+        return html;
+      }
+
+      function renderContent() {
+        if (state.loading) {
+          contentEl.innerHTML = '<div class="loading">loading profile</div>';
+          return;
+        }
+
+        if (state.activeSection === "ankys") {
+          contentEl.innerHTML = renderAnkyCards(state.sessions);
+          return;
+        }
+        if (state.activeSection === "streak") {
+          contentEl.innerHTML = renderCalendar();
+          return;
+        }
+        contentEl.innerHTML = renderWords();
+      }
+
+      function renderConversationSheet() {
+        var session = sessionById(state.selectedSessionId);
+        var isOpen = !!session;
+        document.body.classList.toggle("sheet-open", isOpen || !!state.selectedKingdom);
+
+        if (!session) {
+          conversationLayerEl.innerHTML = "";
+          return;
+        }
+
+        var messages = sessionMessages(session);
+        var sendActive = state.chatInput.trim() && !state.isSending;
+        var headThumb = session.imageUrl
+          ? '<div class="conversation-head-thumb"><img src="' + escapeHtml(session.imageUrl) + '" alt="' + escapeHtml(session.title) + '"></div>'
+          : '<div class="conversation-head-thumb" style="background:' + escapeHtml(ankyGradient(session)) + ';"><div class="anky-placeholder"><span>' + escapeHtml(session.kingdomMeta.emoji) + '</span></div></div>';
+
+        var threadHtml = messages.map(function(message) {
+          var isUser = message.role === "user";
+          var wrapClass = isUser ? "bubble-wrap is-user" : "bubble-wrap is-anky";
+          var bubbleClass = isUser ? "bubble is-user" : "bubble is-anky";
+          var labelColor = isUser ? "#2a2a2a" : (session.kingdomMeta.color + "55");
+          var bubbleStyle = isUser ? "" : ' style="background:' + escapeHtml(session.kingdomMeta.color + "09") + '; border-color:' + escapeHtml(session.kingdomMeta.color + "10") + ';"';
+          return (
+            '<div class="' + wrapClass + '">' +
+              '<div class="bubble-label" style="color:' + escapeHtml(labelColor) + ';">' + (isUser ? "you" : "anky") + '</div>' +
+              '<div class="' + bubbleClass + '"' + bubbleStyle + '>' + escapeHtml(message.text) + '</div>' +
+            '</div>'
+          );
+        }).join("");
+
+        if (state.isSending) {
+          threadHtml += (
+            '<div class="bubble-wrap is-anky">' +
+              '<div class="bubble-label" style="color:' + escapeHtml(session.kingdomMeta.color + "55") + ';">anky</div>' +
+              '<div class="typing" style="background:' + escapeHtml(session.kingdomMeta.color + "09") + '; border:1px solid ' + escapeHtml(session.kingdomMeta.color + "10") + '; color:' + escapeHtml(session.kingdomMeta.color + "44") + ';">···</div>' +
+            '</div>'
+          );
+        }
+
+        conversationLayerEl.innerHTML =
+          '<div class="sheet-backdrop is-open" data-action="close-conversation"></div>' +
+          '<section class="sheet is-open" style="border-top:1px solid ' + escapeHtml(session.kingdomMeta.color + "33") + '; box-shadow:0 -4px 40px ' + escapeHtml(session.kingdomMeta.color + "11") + ';" aria-modal="true" role="dialog">' +
+            '<div class="sheet-handle"><div class="sheet-grip"></div></div>' +
+            '<div class="conversation-head">' +
+              '<div class="conversation-head-row">' +
+                headThumb +
+                '<div class="conversation-head-copy">' +
+                  '<div class="conversation-head-title">' + escapeHtml(session.title) + '</div>' +
+                  '<div class="conversation-head-meta">' + escapeHtml(session.dateLabel) + ' · ' + escapeHtml(session.timeLabel) + ' · ' + escapeHtml(session.wordCount) + 'w</div>' +
+                '</div>' +
+                '<div class="conversation-head-state" style="color:' + escapeHtml((session.isSealed ? session.kingdomMeta.color + "aa" : "#3a3a3a")) + ';">' + escapeHtml(session.isSealed ? "✦ sealed" : "○ unsealed") + '</div>' +
+              '</div>' +
+              '<div class="conversation-divider"></div>' +
+            '</div>' +
+            '<div class="conversation-thread" id="conversationThread">' + threadHtml + '</div>' +
+            '<div class="conversation-input">' +
+              '<textarea id="conversationInput" class="conversation-textarea" rows="1" placeholder="say something...">' + escapeHtml(state.chatInput) + '</textarea>' +
+              '<button id="conversationSend" class="conversation-send' + (sendActive ? ' is-active' : '') + '" type="button" data-action="send-chat" style="background:' + escapeHtml(sendActive ? session.kingdomMeta.color + "22" : "#14141f") + '; border-color:' + escapeHtml(sendActive ? session.kingdomMeta.color + "44" : "#1c1c2a") + '; color:' + escapeHtml(sendActive ? session.kingdomMeta.color : "#2a2a2a") + ';">↑</button>' +
+            '</div>' +
+          '</section>';
+      }
+
+      function renderKingdomSheet() {
+        var meta = state.selectedKingdom ? KINGDOMS[state.selectedKingdom] : null;
+        document.body.classList.toggle("sheet-open", !!state.selectedSessionId || !!state.selectedKingdom);
+
+        if (!meta) {
+          kingdomLayerEl.innerHTML = "";
+          return;
+        }
+
+        kingdomLayerEl.innerHTML =
+          '<div class="sheet-backdrop is-open" data-action="close-kingdom"></div>' +
+          '<section class="sheet kingdom-sheet is-open" style="border-top:1px solid ' + escapeHtml(meta.color + "33") + '; box-shadow:0 -4px 40px ' + escapeHtml(meta.color + "11") + ';" aria-modal="true" role="dialog">' +
+            '<div class="sheet-handle"><div class="sheet-grip"></div></div>' +
+            '<div class="kingdom-body">' +
+              '<div class="kingdom-top">' +
+                '<div class="kingdom-emoji-box" style="background:' + escapeHtml(meta.color + "18") + '; border:1px solid ' + escapeHtml(meta.color + "33") + ';">' + escapeHtml(meta.emoji) + '</div>' +
+                '<div>' +
+                  '<div class="kingdom-title">' + escapeHtml(state.selectedKingdom) + '</div>' +
+                  '<div class="kingdom-subtitle" style="color:' + escapeHtml(meta.color + "aa") + ';">' + escapeHtml(meta.chakra) + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="kingdom-description">' + escapeHtml(meta.description) + '</div>' +
+              '<div class="kingdom-lesson" style="background:' + escapeHtml(meta.color + "0a") + '; border-color:' + escapeHtml(meta.color + "15") + ';">' +
+                '<div class="kingdom-lesson-label" style="color:' + escapeHtml(meta.color + "66") + ';">lesson</div>' +
+                '<div class="kingdom-lesson-copy">"' + escapeHtml(meta.lesson) + '"</div>' +
+              '</div>' +
+            '</div>' +
+          '</section>';
+      }
+
+      function afterRender() {
+        var textarea = document.getElementById("conversationInput");
+        if (textarea) {
+          textarea.style.borderColor = state.chatInput.trim() && state.selectedSessionId ? sessionById(state.selectedSessionId).kingdomMeta.color + "33" : "#1c1c2a";
+          syncTextareaHeight(textarea);
+          textarea.focus();
+          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+          requestAnimationFrame(scrollConversationToBottom);
+        }
+      }
+
+      function render() {
+        renderHero();
+        renderStatButtons();
+        renderContent();
+        renderConversationSheet();
+        renderKingdomSheet();
+        afterRender();
+      }
+
+      function syncTextareaHeight(textarea) {
+        if (!textarea) return;
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, 100) + "px";
+      }
+
+      function scrollConversationToBottom() {
+        var thread = document.getElementById("conversationThread");
+        if (!thread) return;
+        thread.scrollTop = thread.scrollHeight;
+      }
+
+      function closeConversation() {
+        state.selectedSessionId = null;
+        state.chatInput = "";
+        state.isSending = false;
+        render();
+      }
+
+      function closeKingdom() {
+        state.selectedKingdom = null;
+        render();
+      }
+
+      function sendChat() {
+        var session = sessionById(state.selectedSessionId);
+        var message = state.chatInput.trim();
+        if (!session || !message || state.isSending) return;
+
+        var localMessages = sessionMessages(session).slice();
+        localMessages.push({ role: "user", text: message });
+        state.messagesBySession[session.id] = localMessages;
+        state.chatInput = "";
+        state.isSending = true;
+        render();
+
+        var history = apiHistoryMessages(session, localMessages.slice(0, -1));
+
+        fetch("/api/chat", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            anky_id: session.id,
+            message: message,
+            history: history
+          })
+        })
+          .then(function(response) {
+            if (!response.ok) throw new Error("chat unavailable");
+            return response.json();
+          })
+          .then(function(payload) {
+            sessionMessages(session).push({
+              role: "anky",
+              text: payload.response || "anky couldn't answer right now."
+            });
+          })
+          .catch(function() {
+            sessionMessages(session).push({
+              role: "anky",
+              text: "anky couldn't answer right now."
+            });
+          })
+          .finally(function() {
+            state.isSending = false;
+            render();
+          });
+      }
+
+      function loadProfile() {
+        return Promise.all([
+          fetch("/api/me", { credentials: "include" }).then(function(response) {
+            return response.ok ? response.json() : { ok: false };
+          }).catch(function() {
+            return { ok: false };
+          }),
+          fetch("/api/my-ankys", { credentials: "include" }).then(function(response) {
+            return response.ok ? response.json() : [];
+          }).catch(function() {
+            return [];
+          })
+        ]).then(function(results) {
+          var profile = results[0];
+          var sessions = Array.isArray(results[1]) ? results[1] : [];
+          state.profile = profile && profile.ok ? profile : {
+            display_name: INITIAL_PROFILE.displayName,
+            profile_image_url: INITIAL_PROFILE.profileImageUrl
+          };
+          state.sessions = sessions.map(normalizeSession);
+          state.loading = false;
+          render();
+        });
+      }
+
+      document.addEventListener("click", function(event) {
+        var control = event.target.closest("[data-action]");
+        if (!control) return;
+
+        var action = control.getAttribute("data-action");
+        if (action === "set-tab") {
+          state.activeSection = control.getAttribute("data-tab") || "ankys";
+          if (state.activeSection !== "streak") {
+            state.selectedDayKey = null;
+          }
+          render();
+          return;
+        }
+
+        if (action === "open-session") {
+          state.selectedSessionId = control.getAttribute("data-session-id");
+          state.chatInput = "";
+          state.isSending = false;
+          render();
+          return;
+        }
+
+        if (action === "toggle-day") {
+          var dayKey = control.getAttribute("data-day-key");
+          state.selectedDayKey = state.selectedDayKey === dayKey ? null : dayKey;
+          render();
+          return;
+        }
+
+        if (action === "open-kingdom") {
+          state.selectedKingdom = control.getAttribute("data-kingdom");
+          render();
+          return;
+        }
+
+        if (action === "close-conversation") {
+          closeConversation();
+          return;
+        }
+
+        if (action === "close-kingdom") {
+          closeKingdom();
+          return;
+        }
+
+        if (action === "send-chat") {
+          sendChat();
+        }
+      });
+
+      document.addEventListener("input", function(event) {
+        if (event.target && event.target.id === "conversationInput") {
+          state.chatInput = event.target.value;
+          syncTextareaHeight(event.target);
+          var send = document.getElementById("conversationSend");
+          var session = sessionById(state.selectedSessionId);
+          if (send && session) {
+            var active = state.chatInput.trim() && !state.isSending;
+            send.classList.toggle("is-active", !!active);
+            send.style.background = active ? session.kingdomMeta.color + "22" : "#14141f";
+            send.style.borderColor = active ? session.kingdomMeta.color + "44" : "#1c1c2a";
+            send.style.color = active ? session.kingdomMeta.color : "#2a2a2a";
+            event.target.style.borderColor = active ? session.kingdomMeta.color + "33" : "#1c1c2a";
+          }
+        }
+      });
+
+      document.addEventListener("keydown", function(event) {
+        if (event.key === "Escape") {
+          if (state.selectedSessionId) {
+            closeConversation();
+            return;
+          }
+          if (state.selectedKingdom) {
+            closeKingdom();
+          }
+          return;
+        }
+
+        if (event.target && event.target.id === "conversationInput" && event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          sendChat();
+        }
+      });
+
+      render();
+      loadProfile();
+    })();
+  </script>
+</body>
+</html>

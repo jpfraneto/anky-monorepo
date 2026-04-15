@@ -1533,11 +1533,12 @@
       this is who the world sees. <a href="https://anky.app/write">write for 8 minutes</a> to meet who you actually are.
     </p>
     <div class="result-actions">
-      <button class="mint-btn" id="mintBtn">mint anky — 1 usdc</button>
+      <button class="mint-btn" id="mintBtn">mint your mirror — free</button>
       <button class="share-btn" id="shareBtn" disabled>share my anky</button>
       <button class="refresh-btn" id="refreshBtn">regenerate</button>
     </div>
-    <p class="mint-note" id="mintNote">mint to unlock sharing. 1 usdc. 4444 total. 1 per fid.</p>
+    <p class="mint-note" id="mintNote">free mint. 3456 total. 1 per fid. the cost is presence.</p>
+    <p class="supply-counter" id="supplyCounter" style="opacity:0.4; font-size:0.85rem; margin-top:0.5rem;"></p>
     <div class="mirror-chat" id="mirrorChat">
       <div class="chat-messages" id="chatMessages"></div>
       <div class="chat-input-row">
@@ -1591,21 +1592,10 @@
 </div>
 
 <script>
-// ---- DETECT MINIAPP vs WEBSITE ----
+// ---- ANKYCOIN.COM — always website mode (miniapp is at mirror.anky.app) ----
 (function() {
-  const isMiniApp = (
-    window.self !== window.top ||
-    navigator.userAgent.includes('Farcaster') ||
-    new URLSearchParams(window.location.search).has('dev')
-  );
-
-  if (isMiniApp) {
-    document.getElementById('miniapp').classList.add('active');
-    initMiniApp();
-  } else {
-    document.getElementById('website').classList.add('active');
-    initWebsite();
-  }
+  document.getElementById('website').classList.add('active');
+  initWebsite();
 })();
 
 // ---- WEBSITE INIT ----
@@ -1997,63 +1987,89 @@ function initMiniApp() {
       if (currentFid) runMirror(currentFid, true);
     });
 
-    // ── Mint gate ──
+    // ── Mint gate (Solana Bubblegum) ──
     const $mintBtn = document.getElementById('mintBtn');
     const $shareBtn = document.getElementById('shareBtn');
     const $mintNote = document.getElementById('mintNote');
+    const $supplyCounter = document.getElementById('supplyCounter');
     let isMinted = false;
+
+    async function updateSupply() {
+      try {
+        const resp = await fetch('/api/mirror/supply');
+        if (resp.ok) {
+          const data = await resp.json();
+          $supplyCounter.textContent = `${data.minted} / 3,456 mirrors claimed`;
+          if (data.remaining <= 0) {
+            $mintBtn.disabled = true;
+            $mintBtn.textContent = 'all 3456 mirrors claimed';
+            $mintBtn.classList.add('minted');
+          }
+        }
+      } catch (e) { console.error('supply fetch:', e); }
+    }
+    updateSupply();
 
     $mintBtn.addEventListener('click', async () => {
       if (isMinted || !currentMirrorId) return;
       $mintBtn.disabled = true;
-      $mintBtn.textContent = 'PREPARING MINT...';
+      $mintBtn.textContent = 'minting...';
 
       try {
-        // Get wallet from Farcaster context
-        let minterAddress = null;
+        // Try to get Solana address silently from Farcaster context
+        let recipientAddress = null;
         try {
           const ctx = await sdk.context;
-          minterAddress = ctx?.user?.connectedAddress || ctx?.user?.custodyAddress;
+          const solAddrs = ctx?.user?.verifiedAddresses?.solana;
+          if (solAddrs && solAddrs.length > 0) {
+            recipientAddress = solAddrs[0];
+          }
         } catch (e) {
-          console.error('no wallet from context:', e);
+          console.log('no solana address from context');
         }
 
-        if (!minterAddress) {
-          // Fallback: prompt
-          minterAddress = prompt('enter your wallet address (0x...)');
-          if (!minterAddress) throw new Error('no wallet');
+        if (!recipientAddress) {
+          recipientAddress = prompt('where should we send your mirror?\n\npaste the address from your Phantom or Solflare app.');
+          if (!recipientAddress || recipientAddress.trim().length < 32) throw new Error('no address');
+          recipientAddress = recipientAddress.trim();
         }
 
-        // Request mint signature from backend
-        const sigResp = await fetch('/api/mirror/mint-sig', {
+        const mintResp = await fetch('/api/mirror/solana-mint', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mirror_id: currentMirrorId, minter: minterAddress }),
+          body: JSON.stringify({ mirror_id: currentMirrorId, recipient: recipientAddress }),
         });
-        if (!sigResp.ok) {
-          const err = await sigResp.json().catch(() => ({}));
-          throw new Error(err.error || 'signature request failed');
+
+        const mintData = await mintResp.json();
+        if (!mintResp.ok) {
+          throw new Error(mintData.error || 'mint failed');
         }
-        const mintData = await sigResp.json();
 
-        // For now, show the mint data — actual on-chain tx requires ethers/viem
-        // which we'll integrate once the contract is deployed
-        console.log('Mint signature ready:', mintData);
-
-        // Mark as minted (will be replaced with actual tx confirmation)
         isMinted = true;
-        $mintBtn.textContent = 'MINTED';
+        $mintBtn.textContent = 'minted';
         $mintBtn.classList.add('minted');
         $mintBtn.disabled = true;
         $shareBtn.disabled = false;
-        $mintNote.textContent = 'minted. you can now share your anky.';
+
+        const kingdom = mintData.kingdom || 'unknown';
+        const chakra = mintData.kingdom_chakra || '';
+        $mintNote.innerHTML = `your mirror lives in <strong>${kingdom}</strong>${chakra ? ' (' + chakra + ')' : ''}. welcome home.`;
         $mintNote.style.color = '#3DD6FF';
-        $mintNote.style.opacity = '0.6';
+        $mintNote.style.opacity = '0.8';
+
+        updateSupply();
       } catch (e) {
         console.error('mint error:', e);
         $mintBtn.disabled = false;
-        $mintBtn.textContent = 'MINT ANKY \u2014 1 USDC';
-        $mintNote.textContent = 'mint failed. try again.';
+        $mintBtn.textContent = 'mint your mirror — free';
+        const msg = e.message || 'mint failed';
+        if (msg.includes('already has a mirror')) {
+          $mintNote.textContent = 'you already have a mirror.';
+        } else if (msg.includes('3456')) {
+          $mintNote.textContent = 'all 3456 mirrors have been claimed.';
+        } else {
+          $mintNote.textContent = msg + '. try again.';
+        }
         $mintNote.style.opacity = '0.5';
       }
     });

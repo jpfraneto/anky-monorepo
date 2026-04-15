@@ -14,7 +14,8 @@
 <meta name="twitter:image" content="https://anky.app/api/og/write?prompt={{ inquiry_question | urlencode }}">
 <style>
   .navbar, .drawer, .drawer-overlay, .bottom-live-bar,
-  .mobile-bottom-nav { display: none !important; }
+  .mobile-nav { display: none !important; }
+  body { padding-bottom: 0 !important; }
   html, body { margin: 0; padding: 0; background: #0a0a0a; height: 100%; overflow: hidden; }
 
   .writing-surface {
@@ -41,28 +42,32 @@
     flex-shrink: 0;
     height: 3px;
     width: 100%;
-    background: transparent;
+    background: rgba(255,255,255,0.05);
   }
   .idle-bar-fill {
     height: 100%;
     width: 0%;
-    background: #ff4444;
+    background: linear-gradient(90deg, #ff9a3d 0%, #ff4444 100%);
     transition: width 0.1s linear;
     opacity: 0;
+    margin-left: auto;
   }
-  .idle-bar-fill.warning { opacity: 1; }
+  .idle-bar-fill.warning {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(255, 92, 68, 0.35);
+  }
 
   /* ── PROMPT ── */
   .writing-prompt {
     padding: 16px 16px 0 16px;
     font-size: 17px;
     line-height: 1.6;
-    color: rgba(255,255,255,0.35);
+    color: #b366ff;
     font-style: italic;
     flex-shrink: 0;
-    transition: opacity 0.6s;
+    transition: opacity 0.6s, transform 0.4s, font-size 0.4s;
   }
-  .writing-prompt.faded { opacity: 0.15; }
+  .writing-prompt.faded { opacity: 0.5; transform: translateY(-4px); font-size: 13px; }
 
   /* ── TEXTAREA ── */
   .writing-textarea {
@@ -74,16 +79,17 @@
     border: none;
     outline: none;
     resize: none;
-    font-size: 16px;
-    line-height: 1.7;
-    color: #d0d0d0;
+    font-size: 18px;
+    line-height: 1.8;
+    color: #e8e0f0;
     font-family: system-ui, -apple-system, sans-serif;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    caret-color: #7b2ff7;
+    caret-color: #b366ff;
     overflow-y: auto;
+    letter-spacing: 0.01em;
   }
-  .writing-textarea::placeholder { color: rgba(255,255,255,0.15); }
+  .writing-textarea::placeholder { color: rgba(179,102,255,0.25); }
   .writing-textarea::-webkit-scrollbar { width: 0; }
 
   /* ── BOTTOM BAR: timer + chakra + send ── */
@@ -111,8 +117,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    min-height: 36px;
+    gap: 16px;
+    min-height: 44px;
   }
   .writing-timer {
     font-family: 'SF Mono', 'Fira Code', monospace;
@@ -123,18 +129,33 @@
   .writing-timer.past-zero { color: #c4a0ff; }
   .send-btn {
     display: none;
-    background: #fff;
-    color: #0a0a0a;
+    background: linear-gradient(135deg, #b366ff, #7b2ff7);
+    color: #fff;
     border: none;
-    border-radius: 8px;
-    padding: 8px 24px;
-    font-size: 14px;
+    border-radius: 24px;
+    padding: 14px 48px;
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.3s;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    box-shadow: 0 0 20px rgba(123, 47, 247, 0.3);
   }
-  .send-btn:hover { background: #e0e0e0; }
-  .send-btn.visible { display: block; }
+  .send-btn:hover {
+    background: linear-gradient(135deg, #c084ff, #9b5ff7);
+    box-shadow: 0 0 30px rgba(123, 47, 247, 0.5);
+    transform: translateY(-1px);
+  }
+  .send-btn:active { transform: translateY(0); }
+  .send-btn.visible {
+    display: block;
+    animation: sendPulse 2s ease-in-out infinite;
+  }
+  @keyframes sendPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(123, 47, 247, 0.3); }
+    50% { box-shadow: 0 0 35px rgba(179, 102, 255, 0.5); }
+  }
 
   /* ── AFTER SESSION: chat conversation ── */
   .session-result {
@@ -168,8 +189,6 @@
     border: 1px solid rgba(123, 47, 247, 0.15);
     border-bottom-right-radius: 4px;
     color: #c0c0c0;
-    max-height: 200px;
-    overflow-y: auto;
     white-space: pre-wrap;
   }
   .chat-bubble.user::-webkit-scrollbar { width: 3px; }
@@ -222,18 +241,27 @@
   /* ── Reply content (inside anky bubble) ── */
   .result-reply {
     font-size: 15px;
-    line-height: 1.8;
-    color: rgba(255,255,255,0.75);
+    line-height: 1.7;
+    color: rgba(255,255,255,0.82);
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
-  .result-reply p { margin: 0 0 12px 0; }
-  .result-reply h3 { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.85); margin: 20px 0 8px 0; }
-  .result-reply h4 { font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.8); margin: 16px 0 6px 0; }
-  .result-reply strong { color: rgba(255,255,255,0.9); }
-  .result-reply em { color: rgba(255,255,255,0.65); font-style: italic; }
-  .result-reply blockquote { border-left: 2px solid rgba(255,255,255,0.1); margin: 12px 0; padding: 4px 12px; color: rgba(255,255,255,0.5); }
-  .result-reply ul { padding-left: 20px; margin: 8px 0; }
-  .result-reply li { margin-bottom: 4px; }
-  .result-reply hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0; }
+  /* After stream completes, switch to rendered markdown */
+  .result-reply.rendered {
+    white-space: normal;
+  }
+  .result-reply.rendered p { margin: 0 0 12px 0; }
+  .result-reply.rendered h2, .result-reply.rendered h3 { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.85); margin: 20px 0 8px 0; }
+  .result-reply.rendered h4 { font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.8); margin: 16px 0 6px 0; }
+  .result-reply.rendered strong { color: rgba(255,255,255,0.9); }
+  .result-reply.rendered em { color: rgba(255,255,255,0.65); font-style: italic; }
+  .result-reply.rendered blockquote { border-left: 2px solid rgba(255,255,255,0.1); margin: 12px 0; padding: 4px 12px; color: rgba(255,255,255,0.5); }
+  .result-reply.rendered ul { padding-left: 20px; margin: 8px 0; }
+  .result-reply.rendered li { margin-bottom: 4px; }
+  .result-reply.rendered hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0; }
+  .result-reply.rendered code { background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+  .result-reply.rendered pre { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
+  .result-reply.rendered pre code { background: none; padding: 0; }
 
   .stream-cursor {
     display: inline-block;
@@ -267,10 +295,83 @@
     border-color: rgba(255,255,255,0.2);
     color: rgba(255,255,255,0.6);
   }
+  .retry-btn {
+    border-color: rgba(123, 47, 247, 0.4) !important;
+    color: rgba(123, 47, 247, 0.8) !important;
+  }
+  .retry-btn:hover {
+    border-color: rgba(123, 47, 247, 0.7) !important;
+    color: #7b2ff7 !important;
+    background: rgba(123, 47, 247, 0.08) !important;
+  }
+
+  /* Auth indicator (top-right) */
+  .auth-indicator {
+    position: fixed; top: 12px; right: 16px; z-index: 100;
+    display: flex; align-items: center; gap: 8px;
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+  .auth-pfp {
+    width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+    border: 1px solid rgba(179,102,255,0.3);
+  }
+  .auth-login-hint {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 12px; border-radius: 16px;
+    background: rgba(179,102,255,0.08); border: 1px solid rgba(179,102,255,0.15);
+    font-size: 11px; color: rgba(179,102,255,0.5); letter-spacing: 0.05em;
+    text-decoration: none; transition: all 0.2s;
+  }
+  .auth-login-hint:hover { background: rgba(179,102,255,0.12); }
+  .auth-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(179,102,255,0.5); animation: authPulse 2s ease-in-out infinite;
+  }
+  @keyframes authPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  /* Copy-to-platform buttons (anonymous post-write) */
+  .share-platforms {
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+    margin-top: 16px; align-self: center;
+  }
+  .platform-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.5); font-size: 13px; cursor: pointer;
+    text-decoration: none; transition: all 0.2s;
+  }
+  .platform-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+  .platform-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .share-label {
+    font-size: 11px; color: rgba(255,255,255,0.2); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-top: 20px; align-self: center;
+  }
+  .anon-writing-display {
+    font-size: 14px; line-height: 1.8; color: rgba(255,255,255,0.5);
+    white-space: pre-wrap; word-wrap: break-word; max-height: 200px;
+    overflow-y: auto; margin-bottom: 12px; padding: 16px;
+    background: rgba(255,255,255,0.02); border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Auth indicator -->
+{% if logged_in %}
+<div class="auth-indicator">
+  <img class="auth-pfp" src="{{ profile_image_url | default(value='/static/icon-192.png') }}" alt="">
+</div>
+{% else %}
+<div class="auth-indicator">
+  <a class="auth-login-hint" href="/login">
+    <span class="auth-dot"></span>
+    not logged in
+  </a>
+</div>
+{% endif %}
+
 <div class="writing-surface" id="writingSurface">
   <!-- TOP: idle countdown bar -->
   <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
@@ -307,8 +408,36 @@
       <a href="/write">write again</a>
     </div>
   </div>
+
+  <!-- Anonymous post-write: copy to platforms -->
+  <div id="anonResult" style="display:none">
+    <div class="anon-writing-display" id="anonWriting"></div>
+    <div class="share-label">take your writing somewhere</div>
+    <div class="share-platforms">
+      <button class="platform-btn" id="shareX" title="post on X">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        X
+      </button>
+      <button class="platform-btn" id="shareFarcaster" title="cast on Farcaster">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.233 3h13.534v2.4H22v1.8h-1.617v9.6c.893 0 1.617.806 1.617 1.8v1.2c0 .994-.724 1.8-1.617 1.8H3.617C2.724 21.6 2 20.794 2 19.8v-1.2c0-.994.724-1.8 1.617-1.8V7.2H2V5.4h3.233V3zm3.234 7.2c0-1.988 1.448-3.6 3.233-3.6h.6c1.785 0 3.233 1.612 3.233 3.6v6h-2.4v-6c0-.663-.373-1.2-.833-1.2h-.6c-.46 0-.833.537-.833 1.2v6h-2.4v-6z"/></svg>
+        Warpcast
+      </button>
+      <button class="platform-btn" id="shareClaude" title="chat with Claude">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-8v4h4l-5 8z"/></svg>
+        Claude
+      </button>
+      <button class="platform-btn" id="shareChatGPT" title="chat with ChatGPT">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 7v5l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        ChatGPT
+      </button>
+    </div>
+    <div style="margin-top:24px; text-align:center;">
+      <a href="/write" style="font-size:13px; color:rgba(255,255,255,0.25); text-decoration:none;">write again</a>
+    </div>
+  </div>
 </div>
 
+<script src="/static/anky-write-protocol.js"></script>
 <script>
 const CHAKRA_COLORS = ["#ff0000","#ff6600","#ffcc00","#33cc33","#3399ff","#6633cc","#9933ff","#ffffff"];
 const IDLE_TIMEOUT = 8.0;
@@ -327,6 +456,7 @@ const ankySession = (() => {
   let checkpointTimer = null;
   let sessionId = null;
   let sessionToken = null;
+  let protocolCapture = window.AnkyWriteProtocol.createCapture();
   const CHECKPOINT_INTERVAL = 30000;
 
   const writingArea = document.getElementById('writingArea');
@@ -373,10 +503,12 @@ const ankySession = (() => {
     pausedAtActive = 0;
     keystrokeDeltas = [];
     lastKeystrokeAt = null;
+    protocolCapture = window.AnkyWriteProtocol.createCapture();
     sessionId = generateSessionId();
     sessionToken = null;
     contextWarmed = false;
     state = 'writing';
+    document.body.className = 'home-writing';
     tickInterval = setInterval(tick, 100);
     checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
   }
@@ -386,6 +518,7 @@ const ankySession = (() => {
     lastInputAt = Date.now();
     sessionStarted = Date.now() - (pausedAtActive * 1000);
     state = 'writing';
+    document.body.className = 'home-writing';
     sendBtn.classList.remove('visible');
     idleBarFill.style.width = '0%';
     idleBarFill.classList.remove('warning');
@@ -394,13 +527,112 @@ const ankySession = (() => {
     writingArea.focus();
   }
 
-  // Keydown: start session, block backspace/delete/enter, track deltas
+  function keepCaretAtEnd() {
+    requestAnimationFrame(function() {
+      const end = writingArea.value.length;
+      writingArea.setSelectionRange(end, end);
+    });
+  }
+
+  function syncWritingAreaToProtocol() {
+    const text = window.AnkyWriteProtocol.reconstructText(protocolCapture.entries);
+    if (writingArea.value !== text) {
+      writingArea.value = text;
+    }
+    keepCaretAtEnd();
+    return text;
+  }
+
+  async function signSessionHashIfConnected(hash) {
+    const expectedWallet = '{{ wallet_address | default(value="") }}';
+    if (!expectedWallet) return null;
+
+    const provider =
+      (window.phantom && window.phantom.solana) ||
+      window.solana ||
+      null;
+    if (!provider || !provider.isConnected || !provider.publicKey || typeof provider.signMessage !== 'function') {
+      return null;
+    }
+
+    const providerWallet = provider.publicKey.toString();
+    if (providerWallet !== expectedWallet) {
+      return null;
+    }
+
+    try {
+      const signed = await provider.signMessage(new TextEncoder().encode(hash), 'utf8');
+      const signatureBytes = signed && signed.signature ? signed.signature : signed;
+      return window.AnkyWriteProtocol.base58Encode(signatureBytes);
+    } catch (error) {
+      console.warn('[anky] wallet signature skipped:', error);
+      return null;
+    }
+  }
+
+  async function finalizeProtocolSession() {
+    if (!protocolCapture.entries.length) {
+      window.AnkyWriteProtocol.showVisibleError('No accepted keystrokes were captured for this session.');
+      return null;
+    }
+
+    try {
+      const finalized = await window.AnkyWriteProtocol.buildFinalizedSession(protocolCapture.entries);
+      const verified = await window.AnkyWriteProtocol.verifyHash(finalized.content, finalized.hash);
+      if (!verified) {
+        throw new Error('SHA-256 verification failed before storage and download.');
+      }
+      await window.AnkyWriteProtocol.storeCompletedSession(finalized);
+      window.AnkyWriteProtocol.offerDownload(finalized);
+      return finalized;
+    } catch (error) {
+      window.AnkyWriteProtocol.showVisibleError(error && error.message ? error.message : 'Protocol verification failed.');
+      return null;
+    }
+  }
+
+  async function submitProtocolSession(protocolSession) {
+    const walletSignature = await signSessionHashIfConnected(protocolSession.hash);
+    const payload = {
+      session_hash: protocolSession.hash,
+      session: protocolSession.content,
+      duration_seconds: protocolSession.duration_seconds,
+      word_count: protocolSession.word_count,
+      kingdom: protocolSession.kingdom,
+      started_at: protocolSession.started_at,
+    };
+    if (walletSignature) {
+      payload.wallet_signature = walletSignature;
+    }
+
+    try {
+      const response = await fetch('/api/anky/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(function() { return {}; });
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'The protocol submit failed.');
+      }
+      await window.AnkyWriteProtocol.updateSubmitState(protocolSession.hash, 'submitted');
+      return data;
+    } catch (error) {
+      await window.AnkyWriteProtocol.updateSubmitState(protocolSession.hash, 'failed').catch(function() {});
+      throw error;
+    }
+  }
+
+  // Keydown: start session, block editing/navigation, and append protocol entries.
   writingArea.addEventListener('keydown', function(e) {
     if (state === 'sent') { e.preventDefault(); return; }
+    const rejected = window.AnkyWriteProtocol.isRejectedKeydown(e);
+    const atEnd =
+      writingArea.selectionStart === writingArea.value.length &&
+      writingArea.selectionEnd === writingArea.value.length;
 
     if (state === 'ready') {
-      // Only start session on printable characters — not Tab, arrows, meta keys
-      if (e.key.length === 1) {
+      if (!rejected) {
         beginSession();
         writingPrompt.classList.add('faded');
       }
@@ -410,51 +642,51 @@ const ankySession = (() => {
         doSend();
         return;
       }
-      if (e.key === 'Backspace' || e.key === 'Delete') {
-        e.preventDefault();
-        return;
-      }
-      // Resume on any printable key
-      if (e.key.length === 1) {
+      if (!rejected) {
         resumeFromPause();
       }
     }
 
-    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+    if (!atEnd) {
       e.preventDefault();
+      keepCaretAtEnd();
       return;
     }
 
-    if (state === 'writing' && e.key.length === 1) {
-      const now = Date.now();
-      lastInputAt = now;
-      if (lastKeystrokeAt) {
-        keystrokeDeltas.push(now - lastKeystrokeAt);
+    if (rejected) {
+      if (!['Shift', 'Meta', 'Alt', 'Control'].includes(e.key)) {
+        e.preventDefault();
       }
-      lastKeystrokeAt = now;
+      return;
+    }
+
+    if (state === 'writing') {
+      const captured = window.AnkyWriteProtocol.captureKeydown(protocolCapture, e, Date.now());
+      if (!captured.accepted) {
+        e.preventDefault();
+        return;
+      }
+      lastInputAt = captured.now;
+      if (!captured.first) {
+        keystrokeDeltas.push(captured.entry.ms);
+      }
+      lastKeystrokeAt = captured.now;
       idleBarFill.style.width = '0%';
       idleBarFill.classList.remove('warning');
+      requestAnimationFrame(syncWritingAreaToProtocol);
     }
   });
 
-  // Strip newlines (mobile autocomplete edge case)
   writingArea.addEventListener('input', function() {
-    if (state === 'paused') {
-      // Input event from mobile without keydown — resume
-      resumeFromPause();
-    }
-    if (writingArea.value.includes('\n')) {
-      const pos = writingArea.selectionStart;
-      writingArea.value = writingArea.value.replace(/\n/g, ' ');
-      writingArea.selectionStart = writingArea.selectionEnd = pos;
-    }
-    // Update lastInputAt for mobile (keydown doesn't always fire for soft keyboards)
+    syncWritingAreaToProtocol();
     if (state === 'writing') {
       lastInputAt = Date.now();
     }
   });
 
   writingArea.addEventListener('paste', function(e) { e.preventDefault(); });
+  writingArea.addEventListener('click', keepCaretAtEnd);
+  writingArea.addEventListener('focus', keepCaretAtEnd);
 
   // Send button
   sendBtn.addEventListener('click', function() {
@@ -496,6 +728,7 @@ const ankySession = (() => {
 
   function pauseSession() {
     state = 'paused';
+    document.body.className = 'home-paused';
     pausedAtActive = activeTime;
     clearInterval(tickInterval);
     tickInterval = null;
@@ -537,38 +770,77 @@ const ankySession = (() => {
     chakraFill.style.width = (progress * 100) + '%';
   }
 
-  function doSend() {
+  async function doSend() {
     state = 'sent';
-    const text = writingArea.value;
-    const words = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
-    const isAnky = activeTime >= 480 && words >= 300;
-    console.log('[anky] doSend: duration=' + activeTime.toFixed(0) + 's, words=' + words + ', isAnky=' + isAnky);
+    document.body.className = 'home-ended';
+    const protocolSession = await finalizeProtocolSession();
+    if (!protocolSession) {
+      state = 'paused';
+      document.body.className = 'home-paused';
+      sendBtn.classList.add('visible');
+      return;
+    }
 
-    // Hide writing UI, show chat conversation
+    const text = protocolSession.text;
+    const words = protocolSession.word_count;
+    const durationSeconds = protocolSession.duration_seconds;
+    const isAnky = durationSeconds >= 480 && words >= 300;
+    const isLoggedIn = {% if logged_in %}true{% else %}false{% endif %};
+    console.log('[anky] doSend: duration=' + durationSeconds + 's, words=' + words + ', isAnky=' + isAnky + ', loggedIn=' + isLoggedIn);
+
+    // Hide writing UI
     writingArea.style.display = 'none';
     writingPrompt.style.display = 'none';
     writingBottom.style.display = 'none';
     document.querySelector('.idle-bar-wrap').style.display = 'none';
-
-    // Show writing as chat bubble (truncated preview, scrollable)
-    resultWriting.textContent = text;
-    sessionResult.classList.add('visible');
-
-    // Show thinking dots in anky bubble
-    document.getElementById('thinkingDots').style.display = 'flex';
-
     document.getElementById('writingSurface').classList.add('scrollable');
     document.body.classList.add('scrollable');
 
-    // Scroll to show anky's thinking bubble
+    if (!isLoggedIn) {
+      // Anonymous: show writing + copy-to-platform buttons
+      document.getElementById('anonWriting').textContent = text;
+      document.getElementById('anonResult').style.display = 'block';
+
+      // Wire share buttons
+      document.getElementById('shareX').onclick = function() {
+        const truncated = text.length > 250 ? text.substring(0, 247) + '...' : text;
+        window.open('https://x.com/intent/tweet?text=' + encodeURIComponent(truncated), '_blank');
+      };
+      document.getElementById('shareFarcaster').onclick = function() {
+        const truncated = text.length > 900 ? text.substring(0, 897) + '...' : text;
+        window.open('https://warpcast.com/~/compose?text=' + encodeURIComponent(truncated), '_blank');
+      };
+      document.getElementById('shareClaude').onclick = function() {
+        navigator.clipboard.writeText(text).then(function() {
+          window.open('https://claude.ai/new', '_blank');
+        });
+      };
+      document.getElementById('shareChatGPT').onclick = function() {
+        navigator.clipboard.writeText(text).then(function() {
+          window.open('https://chatgpt.com/', '_blank');
+        });
+      };
+      submitProtocolSession(protocolSession).catch(function(error) {
+        window.AnkyWriteProtocol.showVisibleError(
+          error && error.message ? error.message : 'The protocol submit failed.'
+        );
+      });
+      return;
+    }
+
+    // Authenticated: show chat conversation + send to anky
+    resultWriting.textContent = text;
+    sessionResult.classList.add('visible');
+    document.getElementById('thinkingDots').style.display = 'flex';
+
     setTimeout(function() {
       document.getElementById('ankyBubble').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
 
-    sendToAnky(text);
+    sendToAnky(protocolSession);
   }
 
-  function calcFlowScore() {
+  function calcFlowScore(durationSeconds) {
     if (keystrokeDeltas.length < 5) return 0;
     const mean = keystrokeDeltas.reduce((a, b) => a + b, 0) / keystrokeDeltas.length;
     const variance = keystrokeDeltas.reduce((a, d) => a + (d - mean) ** 2, 0) / keystrokeDeltas.length;
@@ -576,27 +848,65 @@ const ankySession = (() => {
     const cv = mean > 0 ? std / mean : 1;
     const stability = Math.max(0, 1 - cv) * 0.45;
     const totalPause = keystrokeDeltas.filter(d => d > 2000).reduce((a, d) => a + d, 0) / 1000;
-    const continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
+    const continuity = Math.max(0, 1 - totalPause / Math.max(durationSeconds || 0, 1)) * 0.30;
     const density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
     return Math.min(1, Math.max(0, stability + continuity + density));
   }
 
-  function renderMarkdown(text) {
+  // Strip markdown syntax so streaming text reads clean
+  function cleanText(text) {
     return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/_(.+?)_/g, '<em>$1</em>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^---$/gm, '<hr>')
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-      .replace(/\n\n+/g, '</p><p>')
-      .replace(/\n/g, '<br>');
+      .replace(/^#{1,4}\s+/gm, '')
+      .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/__(.+?)__/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/_(.+?)_/g, '$1')
+      .replace(/^[-*]\s+/gm, '• ')
+      .replace(/^>\s?/gm, '')
+      .replace(/^---+$/gm, '')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  }
+
+  // Full markdown renderer — only used after streaming is complete
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = String(s == null ? '' : s);
+    return div.innerHTML;
+  }
+  function renderInline(text) {
+    var h = escapeHtml(text);
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    h = h.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    h = h.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    h = h.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+    return h;
+  }
+  function renderMarkdown(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var out = [], para = [], list = [], inCode = false, code = [];
+    function flushPara() { if (para.length) { out.push('<p>' + para.map(renderInline).join('<br>') + '</p>'); para = []; } }
+    function flushList() { if (list.length) { out.push('<ul>' + list.map(function(i){ return '<li>' + renderInline(i) + '</li>'; }).join('') + '</ul>'); list = []; } }
+    function flushCode() { if (code.length) { out.push('<pre><code>' + escapeHtml(code.join('\n')) + '</code></pre>'); code = []; } }
+    lines.forEach(function(line) {
+      if (line.trim().slice(0,3) === '```') { flushPara(); flushList(); if (inCode) { flushCode(); inCode = false; } else { inCode = true; } return; }
+      if (inCode) { code.push(line); return; }
+      if (!line.trim()) { flushPara(); flushList(); return; }
+      var hm = line.match(/^(#{1,4})\s+(.+)$/);
+      if (hm) { flushPara(); flushList(); var lvl = Math.min(hm[1].length+1,4); out.push('<h'+lvl+'>'+renderInline(hm[2])+'</h'+lvl+'>'); return; }
+      if (/^---+$/.test(line.trim())) { flushPara(); flushList(); out.push('<hr>'); return; }
+      var qm = line.match(/^>\s?(.*)$/);
+      if (qm) { flushPara(); flushList(); out.push('<blockquote>'+renderInline(qm[1])+'</blockquote>'); return; }
+      var bm = line.match(/^\s*[-*]\s+(.+)$/);
+      if (bm) { flushPara(); list.push(bm[1]); return; }
+      flushList(); para.push(line);
+    });
+    flushPara(); flushList(); flushCode();
+    return out.join('');
   }
 
   function setThinkingLabel(msg) {
@@ -605,29 +915,25 @@ const ankySession = (() => {
     console.log('[anky] status:', msg);
   }
 
-  async function sendToAnky(text) {
-    const flowScore = calcFlowScore();
-    const userToken = '{{ user_token | default(value="") }}';
-    console.log('[anky] sending writing...', { duration: activeTime, words: text.split(/\s+/).length, flowScore: flowScore });
+  async function sendToAnky(protocolSession) {
+    const text = protocolSession.text;
+    const flowScore = calcFlowScore(protocolSession.duration_seconds);
+    console.log('[anky] sending writing...', {
+      duration: protocolSession.duration_seconds,
+      words: protocolSession.word_count,
+      flowScore: flowScore,
+      sessionHash: protocolSession.hash,
+    });
 
     try {
       setThinkingLabel('sending your writing...');
-      const resp = await fetch('/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          duration: activeTime,
-          user_token: userToken,
-          flow_score: flowScore,
-          session_id: sessionId,
-          session_token: sessionToken,
-          keystroke_deltas: keystrokeDeltas,
-        }),
+      const data = await submitProtocolSession(protocolSession);
+      console.log('[anky] /api/anky/submit response:', {
+        isAnky: data.isAnky,
+        ankyId: data.ankyId,
+        has_response: !!data.response,
+        error: data.error,
       });
-      console.log('[anky] /write response status:', resp.status);
-      const data = await resp.json();
-      console.log('[anky] /write response:', { isAnky: data.isAnky, ankyId: data.ankyId, has_response: !!data.response, error: data.error });
       if (data.model || data.provider || data.generation_ms) {
         console.log('[anky] telemetry:', {
           provider: data.provider,
@@ -641,13 +947,17 @@ const ankySession = (() => {
       if (data.error) {
         console.error('[anky] server error:', data.error);
         document.getElementById('thinkingDots').style.display = 'none';
-        resultReply.innerHTML = '<p>' + data.error + '</p>';
-        resultActions.style.display = 'flex';
+        if (data.ankyId) {
+          showRetryUI(data.ankyId, data.error);
+        } else {
+          resultReply.innerHTML = '<p>' + data.error + '</p>';
+          resultActions.style.display = 'flex';
+        }
         return;
       }
 
       // Poll for ankyResponse + nextPrompt in background
-      pollForAnkyPrompt(sessionId);
+      pollForAnkyPrompt(protocolSession.hash);
 
       if (data.ankyId) {
         setThinkingLabel('anky is reflecting on your words...');
@@ -657,8 +967,7 @@ const ankySession = (() => {
         console.log('[anky] non-anky response received, length:', (data.response || '').length);
         document.getElementById('thinkingDots').style.display = 'none';
         if (data.response) {
-          var html = renderMarkdown(data.response);
-          resultReply.innerHTML = '<p>' + html + '</p>';
+          resultReply.textContent = cleanText(data.response);
         } else {
           resultReply.innerHTML = '<p>your writing is saved. anky is still thinking...</p>';
         }
@@ -667,6 +976,9 @@ const ankySession = (() => {
     } catch (e) {
       console.error('[anky] sendToAnky error:', e);
       document.getElementById('thinkingDots').style.display = 'none';
+      window.AnkyWriteProtocol.showVisibleError(
+        e && e.message ? e.message : 'The protocol submit failed.'
+      );
       resultReply.innerHTML = '<p>something went wrong. your writing is saved.</p>';
       resultActions.style.display = 'flex';
     }
@@ -695,6 +1007,30 @@ const ankySession = (() => {
         }
       } catch(e) {}
     }, 2000);
+  }
+
+  function showRetryUI(ankyId, message) {
+    resultReply.innerHTML = '<p>' + message + '</p>';
+    resultActions.innerHTML = '';
+    resultActions.style.display = 'flex';
+
+    var retryBtn = document.createElement('button');
+    retryBtn.textContent = 'retry reflection';
+    retryBtn.className = 'retry-btn';
+    retryBtn.onclick = function() {
+      resultReply.innerHTML = '';
+      resultActions.innerHTML = '';
+      resultActions.style.display = 'none';
+      document.getElementById('thinkingDots').style.display = 'flex';
+      setThinkingLabel('retrying...');
+      streamReflection(ankyId, 1);
+    };
+    resultActions.appendChild(retryBtn);
+
+    var link = document.createElement('a');
+    link.href = '/anky/' + ankyId;
+    link.textContent = 'view anky';
+    resultActions.appendChild(link);
   }
 
   function streamReflection(ankyId, attempt) {
@@ -739,12 +1075,7 @@ const ankySession = (() => {
         progressTimers.forEach(clearTimeout);
         es.close();
         document.getElementById('thinkingDots').style.display = 'none';
-        resultReply.innerHTML = '<p>anky is still processing your writing. it will be ready when you come back.</p>';
-        resultActions.style.display = 'flex';
-        var link = document.createElement('a');
-        link.href = '/anky/' + ankyId;
-        link.textContent = 'view anky';
-        resultActions.appendChild(link);
+        showRetryUI(ankyId, 'anky is taking too long. your writing is saved.');
       }
     }, 90000);
 
@@ -769,11 +1100,25 @@ const ankySession = (() => {
       var dots = document.getElementById('thinkingDots');
       if (dots.style.display !== 'none') dots.style.display = 'none';
 
-      rawText += e.data + '\n';
-      var html = renderMarkdown(rawText);
-      html = '<p>' + html + '</p>';
-      html = html.replace(/<p>\s*<\/p>/g, '');
-      resultReply.innerHTML = html + '<span class="stream-cursor"></span>';
+      // Detect error messages from the server
+      if (e.data.startsWith('error:') || e.data === '__reflection_failed__') {
+        streamDone = true;
+        progressTimers.forEach(clearTimeout);
+        clearTimeout(safetyTimeout);
+        es.close();
+        dots.style.display = 'none';
+        showRetryUI(ankyId, e.data === '__reflection_failed__'
+          ? 'all reflection providers failed. your writing is saved.'
+          : e.data.replace(/^error:\s*/, ''));
+        return;
+      }
+
+      rawText += e.data;
+      resultReply.textContent = cleanText(rawText);
+      // Re-append cursor after textContent wipe
+      if (!resultReply.querySelector('.stream-cursor')) {
+        resultReply.appendChild(document.createElement('span')).className = 'stream-cursor';
+      }
       window.scrollTo(0, document.body.scrollHeight);
     };
 
@@ -801,8 +1146,9 @@ const ankySession = (() => {
       es.close();
       var elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
       console.log('[anky] stream done. chunks: ' + chunkCount + ', total chars: ' + rawText.length + ', elapsed: ' + elapsed + 's');
-      var cursor = resultReply.querySelector('.stream-cursor');
-      if (cursor) cursor.remove();
+      // Render final markdown now that full text is available
+      resultReply.innerHTML = renderMarkdown(rawText);
+      resultReply.classList.add('rendered');
       resultActions.style.display = 'flex';
       var link = document.createElement('a');
       link.href = '/anky/' + ankyId;
@@ -830,17 +1176,17 @@ const ankySession = (() => {
       document.getElementById('thinkingDots').style.display = 'none';
       if (rawText) {
         console.log('[anky] SSE errored but we have partial text (' + rawText.length + ' chars), showing it');
-        var cursor = resultReply.querySelector('.stream-cursor');
-        if (cursor) cursor.remove();
+        resultReply.innerHTML = renderMarkdown(rawText);
+        resultReply.classList.add('rendered');
+        resultActions.style.display = 'flex';
+        var link = document.createElement('a');
+        link.href = '/anky/' + ankyId;
+        link.textContent = 'view anky';
+        resultActions.appendChild(link);
       } else {
         console.error('[anky] SSE failed with no data after ' + maxRetries + ' attempts');
-        resultReply.innerHTML = '<p>anky couldn\'t connect right now. your writing is saved — the reflection will be ready when you come back.</p>';
+        showRetryUI(ankyId, 'anky couldn\'t connect right now. your writing is saved.');
       }
-      resultActions.style.display = 'flex';
-      var link = document.createElement('a');
-      link.href = '/anky/' + ankyId;
-      link.textContent = 'view anky';
-      resultActions.appendChild(link);
     };
   }
 

@@ -3,5 +3,16 @@
     "header": "eyJmaWQiOjE2MDk4LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4YUIyMERlOGY1QTRmOGUxNDdCYWFDOUQxZjZlMjM2ODYxNDg1NTE2QSJ9",
     "payload": "eyJkb21haW4iOiJhbmt5LmFwcCJ9",
     "signature": "9Vir6YMUEvaiPmAJHAhiZvsR26j1mzGWYiFEAyDn9Ts6XRb9cqNAff4o1Ja5xY/C2dY9E4PeAZPHsLvtSHW6ehw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "anky",
+    "iconUrl": "https://anky.app/static/icon-192.png",
+    "homeUrl": "https://anky.app",
+    "imageUrl": "https://anky.app/image.png",
+    "buttonTitle": "open anky",
+    "splashImageUrl": "https://anky.app/splash.png",
+    "splashBackgroundColor": "#000000",
+    "webhookUrl": "https://anky.app/api/webhook"
   }
 }

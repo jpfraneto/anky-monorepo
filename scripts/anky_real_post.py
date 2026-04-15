@@ -159,12 +159,16 @@ if webp_data is None:
     print("⚠️  WebP conversion failed, using PNG")
     webp_data = png_data
 
-# Upload to R2
-r2_account_id = "5bb865f8b42a99f5d99df8d803744923"
-r2_bucket = "anky"
-r2_access_key = "6979875bc22813aaa450ca922cadb05a"
-r2_secret_key = "ad6bfc428a7e37b2c8d4e2576a0c46920fb4c69bd0b78c6bff259296296468b6"
-r2_public_url = "https://storage.anky.app"
+# Upload to R2 (credentials from environment)
+r2_account_id = os.environ.get("R2_ACCOUNT_ID", "")
+r2_bucket = os.environ.get("R2_BUCKET_NAME", "anky")
+r2_access_key = os.environ.get("R2_ACCESS_KEY_ID", "")
+r2_secret_key = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+r2_public_url = os.environ.get("R2_PUBLIC_URL", "https://storage.anky.app")
+
+if not r2_access_key or not r2_secret_key or not r2_account_id:
+    print("✗ Missing R2 credentials. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY env vars.")
+    sys.exit(1)
 
 s3_client = boto3.client(
     's3',
@@ -215,10 +219,14 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "requests_oauthlib", "-q"])
     from requests_oauthlib import OAuth1
 
-x_consumer_key = "3RKF0Bvbt759Utn9dbCneIdsi"
-x_consumer_secret = "rNxYOWhIHpq3rezmjmPm6JRfHCiwdZedGaw9CHbG4OKVBS7UMk"
-x_access_token = "2004712927971217408-OLTAY38GyUVec2D8fmSIvuK532y2Fv"
-x_access_token_secret = "5yJKr8K1JgOwv2u6WOPipYAAgUjLdNA1HZ1R3M2iPC9HL"
+x_consumer_key = os.environ.get("X_CONSUMER_KEY", "")
+x_consumer_secret = os.environ.get("X_CONSUMER_SECRET", "")
+x_access_token = os.environ.get("X_ACCESS_TOKEN", "")
+x_access_token_secret = os.environ.get("X_ACCESS_TOKEN_SECRET", "")
+
+if not all([x_consumer_key, x_consumer_secret, x_access_token, x_access_token_secret]):
+    print("✗ Missing X/Twitter credentials. Set X_CONSUMER_KEY, X_CONSUMER_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET env vars.")
+    sys.exit(1)
 
 auth = OAuth1(x_consumer_key, x_consumer_secret, x_access_token, x_access_token_secret)
 

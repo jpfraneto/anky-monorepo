@@ -180,6 +180,35 @@ var lastStreamedReflection = '';
     return bubble;
   }
 
+  function assistantMessagesFromData(data) {
+    if (Array.isArray(data.messages) && data.messages.length) {
+      var structured = data.messages
+        .map(function(m) {
+          return {
+            role: m && m.role ? m.role : 'assistant',
+            content: m && typeof m.content === 'string' ? m.content.trim() : '',
+            purpose: m && m.purpose ? m.purpose : null,
+          };
+        })
+        .filter(function(m) { return m.role === 'assistant' && m.content; });
+      if (structured.length) return structured;
+    }
+    var reply = typeof data.response === 'string' ? data.response.trim() : '';
+    if (!reply) throw new Error('anky returned an empty reply. try again.');
+    return [{ role: 'assistant', content: reply, purpose: null }];
+  }
+
+  function renderAssistantMessages(messages, thinking) {
+    if (thinking && thinking.parentNode) {
+      thinking.parentNode.removeChild(thinking);
+    }
+    messages.forEach(function(message) {
+      chatHistory.push({ role: 'assistant', content: message.content, purpose: message.purpose || null });
+      addChatBubble('anky', '<span class="anky-response-text">' + renderMarkdown(message.content) + '</span>');
+    });
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
   function showCheckpoint(msg) {
     sessionComments.textContent = msg;
     sessionComments.classList.add('visible');
@@ -329,51 +358,42 @@ var lastStreamedReflection = '';
     inputArea.id = 'chat-input-area';
     inputArea.className = 'chat-input-area';
     inputArea.innerHTML =
-      '<textarea id="chat-input" class="chat-input" placeholder="continue writing..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
+      '<textarea id="chat-input" class="chat-input" placeholder="message anky..." rows="1" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></textarea>' +
       '<button id="chat-send" class="chat-send-btn" disabled>send</button>';
     var writingMain = document.querySelector('.writing-main');
     writingMain.appendChild(inputArea);
 
     var input = document.getElementById('chat-input');
     var sendBtn = document.getElementById('chat-send');
-    var chatIdleTimer = null;
 
-    // Blocked keys — same rules as main writing area
-    input.addEventListener('keydown', function(e) {
-      var blocked = ['Backspace', 'Delete', 'Enter', 'Tab',
-        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-      if (blocked.indexOf(e.key) !== -1) {
-        e.preventDefault();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && 'axzy'.indexOf(e.key.toLowerCase()) !== -1) {
-        e.preventDefault();
-      }
-    });
+    function syncInputState() {
+      sendBtn.disabled = !input.value.trim();
+    }
 
-    function blockEvent(e) { e.preventDefault(); }
-    input.addEventListener('paste', blockEvent);
-    input.addEventListener('cut', blockEvent);
-    input.addEventListener('drop', blockEvent);
+    function submitMessage() {
+      if (!input.value.trim()) return;
+      sendMessageFn(input, sendBtn);
+    }
 
     input.addEventListener('input', function() {
-      input.selectionStart = input.selectionEnd = input.value.length;
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-      sendBtn.disabled = !input.value.trim();
-      if (chatIdleTimer) clearTimeout(chatIdleTimer);
-      chatIdleTimer = setTimeout(function() {
-        var text = input.value.trim();
-        if (text) submitNewWriting(text);
-      }, IDLE_TIMEOUT);
+      syncInputState();
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitMessage();
+      }
     });
 
     sendBtn.onclick = function() {
-      if (chatIdleTimer) clearTimeout(chatIdleTimer);
-      sendMessageFn(input, sendBtn);
+      submitMessage();
     };
 
-    input.focus();
+    input.focus({ preventScroll: true });
+    syncInputState();
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
@@ -397,18 +417,27 @@ var lastStreamedReflection = '';
           history: chatHistory,
         }),
       })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+        .then(function(r) {
+          return r.json().catch(function() { return {}; }).then(function(data) {
+            if (!r.ok || data.error) {
+              throw new Error(data.error || 'something went wrong. try again?');
+            }
+            return data;
+          });
         })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
+        .then(function(data) {
+          var messages = assistantMessagesFromData(data);
+          chatHistory.push({ role: 'user', content: msg });
+          renderAssistantMessages(messages, thinking);
           sendBtn.disabled = !input.value.trim();
+          input.focus({ preventScroll: true });
+        })
+        .catch(function(err) {
+          var message = err && err.message ? err.message : 'something went wrong. try again?';
+          thinking.innerHTML = '<span class="error">' + escapeHtml(message) + '</span>';
+          sendBtn.disabled = !input.value.trim();
+          input.focus({ preventScroll: true });
+          chatContainer.scrollTop = chatContainer.scrollHeight;
         });
     });
   }
@@ -433,18 +462,27 @@ var lastStreamedReflection = '';
           history: chatHistory,
         }),
       })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          chatHistory.push({ role: 'user', content: msg });
-          chatHistory.push({ role: 'assistant', content: data.response });
-          thinking.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
-          sendBtn.disabled = !input.value.trim();
-          input.focus();
-          chatContainer.scrollTop = chatContainer.scrollHeight;
+        .then(function(r) {
+          return r.json().catch(function() { return {}; }).then(function(data) {
+            if (!r.ok || data.error) {
+              throw new Error(data.error || 'something went wrong. try again?');
+            }
+            return data;
+          });
         })
-        .catch(function() {
-          thinking.innerHTML = '<span class="error">something went wrong. try again?</span>';
+        .then(function(data) {
+          var messages = assistantMessagesFromData(data);
+          chatHistory.push({ role: 'user', content: msg });
+          renderAssistantMessages(messages, thinking);
           sendBtn.disabled = !input.value.trim();
+          input.focus({ preventScroll: true });
+        })
+        .catch(function(err) {
+          var message = err && err.message ? err.message : 'something went wrong. try again?';
+          thinking.innerHTML = '<span class="error">' + escapeHtml(message) + '</span>';
+          sendBtn.disabled = !input.value.trim();
+          input.focus({ preventScroll: true });
+          chatContainer.scrollTop = chatContainer.scrollHeight;
         });
     });
   }
@@ -530,6 +568,19 @@ var lastStreamedReflection = '';
       source.close();
       renderCurrentText();
       if (fullText !== '__reflection_failed__') {
+        // Reconcile with canonical saved reflection from DB in case SSE dropped the tail
+        fetch('/api/v1/anky/' + ankyId)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data && data.reflection && typeof data.reflection === 'string') {
+              var canonical = (data.title ? data.title + '\n' : '') + data.reflection;
+              if (canonical.length > fullText.length) {
+                fullText = canonical;
+                renderCurrentText();
+              }
+            }
+          })
+          .catch(function() {});
         pollAnkyImage(ankyId);
       }
     });
@@ -541,6 +592,18 @@ var lastStreamedReflection = '';
       } else {
         renderCurrentText();
         if (fullText !== '__reflection_failed__') {
+          fetch('/api/v1/anky/' + ankyId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data && data.reflection && typeof data.reflection === 'string') {
+                var canonical = (data.title ? data.title + '\n' : '') + data.reflection;
+                if (canonical.length > fullText.length) {
+                  fullText = canonical;
+                  renderCurrentText();
+                }
+              }
+            })
+            .catch(function() {});
           pollAnkyImage(ankyId);
         }
       }
@@ -725,7 +788,13 @@ var lastStreamedReflection = '';
             addChatBubble('anky', '<div id="anky-inline-image" class="anky-image-skeleton"><div class="skeleton-pulse"></div></div>');
             streamAnkyReflection(data.ankyId);
           } else {
-            ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(data.response) + '</span>';
+            var messages = assistantMessagesFromData(data);
+            ankyBubble.innerHTML = '<span class="anky-response-text">' + renderMarkdown(messages[0].content) + '</span>';
+            chatHistory.push({ role: 'assistant', content: messages[0].content, purpose: messages[0].purpose || null });
+            for (var i = 1; i < messages.length; i++) {
+              chatHistory.push({ role: 'assistant', content: messages[i].content, purpose: messages[i].purpose || null });
+              addChatBubble('anky', '<span class="anky-response-text">' + renderMarkdown(messages[i].content) + '</span>');
+            }
             chatContainer.scrollTop = chatContainer.scrollHeight;
             setTimeout(function() { showQuickChatInput(); }, 1500);
           }

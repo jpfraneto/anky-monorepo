@@ -2,8 +2,8 @@ use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 
-/// Middleware that intercepts requests to pitch.anky.app and serves the pitch deck PDF,
-/// and routes ankycoin.com to its own landing page.
+/// Middleware that intercepts requests to pitch.anky.app, mirror.anky.app,
+/// and ankycoin.com and serves the appropriate content.
 pub async fn pitch_subdomain(req: Request, next: Next) -> Response {
     let host = req
         .headers()
@@ -11,11 +11,41 @@ pub async fn pitch_subdomain(req: Request, next: Next) -> Response {
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
 
-    // ankycoin.com — serve standalone landing page + farcaster miniapp
+    // mirror.anky.app — Farcaster miniapp (public mirror)
+    if host == "mirror.anky.app" || host == "www.mirror.anky.app" {
+        let path = req.uri().path();
+
+        // Farcaster manifest — use mirror-specific manifest
+        if path == "/.well-known/farcaster.json" {
+            let json = include_str!("../../static/mirror-farcaster.json");
+            return (
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                json,
+            )
+                .into_response();
+        }
+
+        // Serve static assets, API routes, and special endpoints normally
+        if path.starts_with("/static/")
+            || path.starts_with("/data/")
+            || path.starts_with("/favicon")
+            || path.starts_with("/api/")
+            || path == "/image.png"
+            || path == "/splash.png"
+        {
+            return next.run(req).await;
+        }
+
+        // Everything else gets the miniapp
+        let html = include_str!("../../templates/mirror_miniapp.html");
+        return axum::response::Html(html).into_response();
+    }
+
+    // ankycoin.com — browser landing page only (no miniapp)
     if host == "ankycoin.com" || host == "www.ankycoin.com" {
         let path = req.uri().path();
 
-        // Farcaster manifest
+        // Farcaster manifest (legacy — keep for existing frame references)
         if path == "/.well-known/farcaster.json" {
             let json = include_str!("../../static/ankycoin-farcaster.json");
             return (
@@ -36,7 +66,7 @@ pub async fn pitch_subdomain(req: Request, next: Next) -> Response {
             return next.run(req).await;
         }
 
-        // Everything else gets the landing page
+        // Everything else gets the landing page (browser-only, no miniapp)
         let html = include_str!("../../templates/ankycoin_landing.html");
         return axum::response::Html(html).into_response();
     }

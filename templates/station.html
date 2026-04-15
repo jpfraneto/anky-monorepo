@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>anky — video station</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Righteous&family=JetBrains+Mono:wght@400;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --surface2: #1a1a1a;
+      --border: #222;
+      --text: #e0e0e0;
+      --dim: #666;
+      --accent: #3498db;
+      --green: #2ecc71;
+      --orange: #f39c12;
+      --red: #e74c3c;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 44px 1fr;
+      grid-template-columns: 260px 1fr 400px;
+      grid-template-areas:
+        "header header header"
+        "sidebar main panel";
+    }
+
+    .header {
+      grid-area: header;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+
+    .header-title {
+      font-family: 'Righteous', sans-serif;
+      font-size: 16px;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #e74c3c, #f39c12, #f1c40f, #2ecc71, #3498db, #4b0082, #8e44ad, #e91e90);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-status {
+      display: flex;
+      gap: 14px;
+      font-size: 10px;
+      color: var(--dim);
+    }
+
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+    .dot.on { background: var(--green); }
+    .dot.off { background: var(--red); }
+
+    /* SIDEBAR */
+    .sidebar {
+      grid-area: sidebar;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      padding: 10px 14px 6px;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .step-list { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #333 transparent; }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      font-size: 11px;
+    }
+
+    .step-item:hover { background: var(--surface2); }
+    .step-item.active { background: var(--surface2); border-left-color: var(--accent); }
+
+    .step-icon {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; flex-shrink: 0;
+    }
+
+    .step-icon.done { background: #0d3320; color: var(--green); }
+    .step-icon.running { background: #332b0d; color: var(--orange); animation: pulse 1.5s infinite; }
+    .step-icon.pending { background: var(--surface2); color: var(--dim); }
+
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .step-name { flex: 1; }
+    .step-size { font-size: 9px; color: var(--dim); }
+
+    .sidebar-actions {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .btn:hover { background: #252525; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+    .btn.primary:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* MAIN — Markdown Viewer */
+    .main {
+      grid-area: main;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .main-header {
+      height: 40px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+    }
+
+    .main-title { font-size: 12px; font-weight: 700; flex: 1; }
+    .main-meta { font-size: 10px; color: var(--dim); }
+
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      scrollbar-width: thin;
+      scrollbar-color: #333 transparent;
+    }
+
+    .md-render {
+      font-size: 13px;
+      line-height: 1.8;
+      max-width: 800px;
+    }
+
+    .md-render h1 { font-family: 'Righteous', sans-serif; font-size: 22px; margin: 0 0 16px; color: var(--accent); }
+    .md-render h2 { font-size: 16px; margin: 24px 0 12px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .md-render h3 { font-size: 14px; margin: 16px 0 8px; color: var(--dim); }
+    .md-render p { margin: 8px 0; }
+    .md-render hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .md-render ul, .md-render ol { padding-left: 20px; margin: 8px 0; }
+    .md-render li { margin: 4px 0; }
+    .md-render code { background: var(--surface2); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+    .md-render pre { background: var(--surface2); padding: 12px; border-radius: 4px; overflow-x: auto; margin: 12px 0; }
+    .md-render pre code { background: none; padding: 0; }
+    .md-render strong { color: #fff; }
+    .md-render em { color: var(--dim); font-style: italic; }
+    .md-render blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--dim); margin: 12px 0; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--dim);
+      text-align: center;
+      gap: 12px;
+    }
+
+    .empty-state .big { font-size: 48px; opacity: 0.2; }
+
+    /* PANEL — Video Preview + Log */
+    .panel {
+      grid-area: panel;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      color: var(--dim);
+      border-bottom: 2px solid transparent;
+    }
+
+    .panel-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .panel-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .panel-body[data-tab] { display: none; }
+    .panel-body.active { display: flex; }
+
+    /* Video tab */
+    .video-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      min-height: 0;
+    }
+
+    .video-area video { max-width: 100%; max-height: 100%; }
+
+    .video-controls {
+      padding: 8px;
+      display: flex;
+      gap: 6px;
+      border-top: 1px solid var(--border);
+    }
+
+    .video-controls .btn { flex: 1; font-size: 10px; padding: 6px; }
+
+    /* Log tab */
+    .log-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      font-size: 11px;
+      line-height: 1.6;
+      scrollbar-width: thin;
+      scrollbar-color: #333 transparent;
+    }
+
+    .log-line { color: var(--dim); }
+    .log-line .ts { color: #555; }
+    .log-line.info { color: var(--text); }
+    .log-line.ok { color: var(--green); }
+    .log-line.err { color: var(--red); }
+
+    /* Scenes tab */
+    .scenes-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: #333 transparent;
+    }
+
+    .scenes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+
+    .scene-thumb {
+      aspect-ratio: 0.57;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .scene-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .md-img {
+      max-width: 320px; width: 100%; height: auto; display: block;
+      margin: 8px 0; border-radius: 6px; border: 1px solid var(--border);
+    }
+    .md-render audio { width: 100%; margin: 6px 0; }
+    .lang-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+    .lang-tab {
+      padding: 4px 12px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--dim);
+      cursor: pointer; border-radius: 3px; font-family: 'JetBrains Mono', monospace;
+    }
+    .lang-tab.active { color: var(--accent); border-color: var(--accent); }
+    /* Story review UI */
+    .review-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; }
+    @media (max-width: 1100px) { .review-wrap { grid-template-columns: 1fr; } }
+    .review-story { }
+    .story-block {
+      position: relative; padding: 10px 14px 10px 12px; margin-bottom: 10px; border-radius: 4px;
+      border-left: 3px solid transparent; cursor: pointer; transition: background 0.1s, border-color 0.1s;
+    }
+    .story-block:hover { background: #141414; border-left-color: #333; }
+    .story-block.has-comment { border-left-color: var(--orange); background: #1a1510; }
+    .story-block .sp-label {
+      font-size: 9px; letter-spacing: 2px; color: var(--accent);
+      font-weight: bold; margin-bottom: 4px; display: block;
+    }
+    .story-block.god .sp-label { color: var(--orange); }
+    .story-block .sp-text { font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; }
+    .story-block .sp-text .audio-tag {
+      display: inline-block; padding: 0 5px; font-size: 10px; color: var(--dim);
+      background: #1a1a1a; border-radius: 3px; margin-right: 3px;
+    }
+    .story-block .comment-badge {
+      position: absolute; top: 8px; right: 8px;
+      font-size: 9px; color: var(--orange); letter-spacing: 1px;
+    }
+    .review-side { background: #0c0c0c; border: 1px solid var(--border); border-radius: 6px; padding: 12px; height: fit-content; position: sticky; top: 10px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .review-side h4 { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin: 0 0 8px 0; font-weight: normal; }
+    .review-comment { background: #141414; border: 1px solid #222; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; font-size: 11px; }
+    .review-comment .rc-block { color: var(--dim); font-style: italic; margin-bottom: 4px; font-size: 10px; }
+    .review-comment .rc-text { color: var(--text); line-height: 1.5; }
+    .review-comment .rc-delete { float: right; color: var(--red); font-size: 10px; cursor: pointer; opacity: 0.5; }
+    .review-comment .rc-delete:hover { opacity: 1; }
+    .comment-form { background: #1a1a1a; border: 1px solid var(--accent); border-radius: 4px; padding: 8px; margin-top: 8px; }
+    .comment-form textarea { width: 100%; background: #0a0a0a; border: 1px solid var(--border); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 6px; border-radius: 3px; resize: vertical; min-height: 60px; box-sizing: border-box; }
+    .comment-form .cf-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .review-btn { flex: 1; padding: 6px 10px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 3px; font-family: inherit; }
+    .review-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .review-btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+    .review-btn.danger { color: var(--red); border-color: var(--red); }
+    .evolve-result { background: #0a0a0a; border: 1px solid var(--orange); border-radius: 4px; padding: 10px; margin-top: 10px; font-size: 11px; }
+    .evolve-result h5 { font-size: 10px; letter-spacing: 1px; color: var(--orange); margin: 0 0 6px 0; font-weight: normal; text-transform: uppercase; }
+    .proposed-note { background: #1a1a1a; padding: 6px 8px; border-radius: 3px; margin-bottom: 4px; font-size: 11px; line-height: 1.5; }
+    .tag-chip {
+      display: inline-block; padding: 3px 8px; font-size: 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 12px; cursor: pointer;
+      font-family: 'JetBrains Mono', monospace; user-select: none;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .tag-chip:hover { background: #2a2a2a; border-color: var(--accent); color: var(--accent); }
+    .tag-chip:active { background: var(--accent); color: #000; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">ANKY VIDEO STATION</div>
+  <div class="header-status">
+    <span><span class="dot" id="st-comfy"></span>ComfyUI</span>
+    <span><span class="dot" id="st-11labs"></span>ElevenLabs</span>
+    <span><span class="dot" id="st-qwen"></span>Qwen</span>
+    <span id="pipeline-status" style="color:var(--dim)">idle</span>
+  </div>
+</div>
+
+<div class="sidebar">
+  <div class="sidebar-section">Pipeline Steps</div>
+  <div class="step-list" id="step-list"></div>
+  <div class="sidebar-actions">
+    <button class="btn primary" id="btn-run" onclick="runPipeline()">GENERATE TODAY'S EPISODE</button>
+    <button class="btn" onclick="runStep('zeitgeist')">Zeitgeist Only</button>
+    <button class="btn" onclick="runStep('council')">Council Only</button>
+    <button class="btn" onclick="refreshSteps()">Refresh</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="main-header">
+    <div class="main-title" id="main-title">Select a step to view</div>
+    <div class="main-meta" id="main-meta"></div>
+  </div>
+  <div class="main-content" id="main-content">
+    <div class="empty-state">
+      <div class="big">&#9681;</div>
+      <div>Hit GENERATE to start today's GODS episode</div>
+      <div style="font-size:11px">or select a pipeline step from the left</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-tabs">
+    <div class="panel-tab active" onclick="showPanelTab('voices')">Voices</div>
+    <div class="panel-tab" onclick="showPanelTab('video')">Video</div>
+    <div class="panel-tab" onclick="showPanelTab('log')">Log</div>
+  </div>
+  <div class="panel-body active" data-tab="voices" id="tab-voices" style="padding:10px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent;">
+    <div style="margin-bottom:10px;">
+      <textarea id="tts-text" rows="3" placeholder="Type something for the voice to say..." style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:8px;border-radius:4px;resize:vertical;"></textarea>
+    </div>
+    <div style="margin-bottom:8px;">
+      <select id="tts-voice" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px;border-radius:4px;">
+        <optgroup label="English — Characters">
+          <option value="cgSgspJ2msm6clMCkdW9">Anky — Jessica (Playful, Warm)</option>
+          <option value="JBFqnCBsd6RMkjVDRZzb">Cronos — George (Storyteller)</option>
+          <option value="nPczCjzI2devNBz1zQrb">Anubis — Brian (Deep, Resonant)</option>
+          <option value="cjVigY5qzO86Huf0OWal">Quetzalcoatl — Eric (Smooth)</option>
+          <option value="pqHfZKP75CvOlQylNhV4">Odin — Bill (Wise, Mature)</option>
+          <option value="pFZP5JQG7iQjIQuC4Bku">Kali — Lily (Velvety)</option>
+          <option value="IKne3meq5aSn9XLyUdCD">Ra — Charlie (Deep, Energetic)</option>
+          <option value="N2lVS1w4EtoT3dr4eOWO">Loki — Callum (Husky Trickster)</option>
+          <option value="Xb7hH8MSUJpSbSDYk0k2">Amaterasu — Alice (Clear)</option>
+          <option value="pNInz6obpgDQGcFmaJgB">Shiva — Adam (Dominant)</option>
+        </optgroup>
+        <optgroup label="English — Other">
+          <option value="EXAVITQu4vr4xnSDxMaL">Sarah (Mature, Reassuring)</option>
+          <option value="SAz9YHcvj6GT2YYXdXww">River (Relaxed, Neutral)</option>
+          <option value="onwK4e9ZLuTAKqWW03F9">Daniel (Steady, British)</option>
+          <option value="bIHbv24MWmeRgasZH58o">Will (Relaxed Optimist)</option>
+        </optgroup>
+        <optgroup label="Español — Anky narrator">
+          <option value="4vqDWmE9rvDX51nxtDbo">Sofia — soft, storytelling (ES)</option>
+        </optgroup>
+        <optgroup label="Español — Gods (characters)">
+          <option value="DdKbXdRlBmj7Ty7N0FVr">Cronos — Juanjo (velvety baritone)</option>
+          <option value="wfTWLJ20rcMqvU8gIiAB">Shiva / Quetzalcoatl — Salvatore (warm, old)</option>
+          <option value="bml6kfu9aNiHKYxhtGuS">Odin — Sebastián (low, fatherly)</option>
+          <option value="ePriEYH8pb97Fpb15Xij">Anubis — Lázaro (shadowed)</option>
+          <option value="Y4A7VD8bsOlWNzF8WIRV">Ra — Gabriel (neutral Mexican)</option>
+          <option value="nnTkGIqnpqpdIrWbRAtF">Loki — Lisandro (Argentinian mellow)</option>
+          <option value="j3pzCmrdzkT5DUtyT61a">Kali — Paloma (grounded Mexican)</option>
+          <option value="O5hbneAmtjLMgfg5UFIm">Amaterasu — Andrea (Venezuelan warm)</option>
+        </optgroup>
+        <optgroup label="Español (voces multilingües EN — backup)">
+          <option value="cgSgspJ2msm6clMCkdW9">Jessica (multi) — Anky narrator</option>
+          <option value="pFZP5JQG7iQjIQuC4Bku">Lily (multi) — Velvety</option>
+          <option value="XrExE9yKIg1WjnnlVkGX">Matilda (multi) — Warm, Professional</option>
+          <option value="hpp4J3VqNfWAUOO0d1Us">Bella (multi) — Bright, Warm</option>
+          <option value="JBFqnCBsd6RMkjVDRZzb">George (multi) — Storyteller</option>
+          <option value="nPczCjzI2devNBz1zQrb">Brian (multi) — Deep, Comforting</option>
+        </optgroup>
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <select id="tts-model" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px;border-radius:4px;" title="ElevenLabs model">
+        <option value="eleven_v3" selected>v3 — expressive + audio tags</option>
+        <option value="eleven_multilingual_v2">multilingual v2 — life-like</option>
+        <option value="eleven_turbo_v2_5">turbo v2.5 — fast/cheap</option>
+      </select>
+      <select id="tts-stability" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px;border-radius:4px;" title="v3 stability preset">
+        <option value="creative">creative — tags on, expressive</option>
+        <option value="natural" selected>natural — balanced (stories)</option>
+        <option value="robust">robust — stable, ignores tags</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:8px;">
+      <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);margin-bottom:4px;">v3 audio tags — click to insert at cursor</div>
+      <div id="tts-tag-chips" style="display:flex;flex-wrap:wrap;gap:4px;">
+        <span class="tag-chip" data-tag="[whispers]">whispers</span>
+        <span class="tag-chip" data-tag="[softly]">softly</span>
+        <span class="tag-chip" data-tag="[sighs]">sighs</span>
+        <span class="tag-chip" data-tag="[exhales]">exhales</span>
+        <span class="tag-chip" data-tag="[gently]">gently</span>
+        <span class="tag-chip" data-tag="[warm]">warm</span>
+        <span class="tag-chip" data-tag="[curious]">curious</span>
+        <span class="tag-chip" data-tag="[laughs]">laughs</span>
+        <span class="tag-chip" data-tag="[starts laughing]">starts laughing</span>
+        <span class="tag-chip" data-tag="[crying]">crying</span>
+        <span class="tag-chip" data-tag="[sarcastic]">sarcastic</span>
+        <span class="tag-chip" data-tag="[excited]">excited</span>
+        <span class="tag-chip" data-tag="[mischievously]">mischievously</span>
+        <span class="tag-chip" data-tag="...">...</span>
+        <span class="tag-chip" data-tag="[strong Latin American accent]">LatAm accent</span>
+        <span class="tag-chip" data-tag="[strong Mexican accent]">Mexican</span>
+      </div>
+    </div>
+
+    <button class="btn primary" id="btn-tts" onclick="generateTTS()" style="width:100%;margin-bottom:10px;">SPEAK</button>
+    <audio id="tts-audio" controls style="width:100%;height:32px;margin-bottom:12px;display:none;"></audio>
+    <div style="font-size:9px;color:var(--dim);margin-bottom:12px;" id="tts-status"></div>
+
+    <div style="border-top:1px solid var(--border);padding-top:10px;">
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:8px;">Test Samples</div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:11px;margin-bottom:4px;">Anky (Jessica) — English</div>
+        <audio controls src="/static/voice_anky_test.mp3" style="width:100%;height:28px;"></audio>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:11px;margin-bottom:4px;">Cronos (George) — English</div>
+        <audio controls src="/static/voice_cronos_test.mp3" style="width:100%;height:28px;"></audio>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-body" data-tab="video" id="tab-video">
+    <div class="video-area" id="video-area">
+      <div style="color:var(--dim);font-size:12px;text-align:center">No video yet<br><br>Generate an episode first</div>
+    </div>
+    <div class="video-controls">
+      <button class="btn" onclick="loadVideo('short')">88s Short</button>
+      <button class="btn" onclick="loadVideo('long')">8min Full</button>
+    </div>
+  </div>
+  <div class="panel-body" data-tab="scenes" id="tab-scenes">
+    <div class="scenes-area">
+      <div class="scenes-grid" id="scenes-grid"></div>
+    </div>
+  </div>
+  <div class="panel-body" data-tab="log" id="tab-log">
+    <div class="log-area" id="log-area">
+      <div class="log-line"><span class="ts">[--:--:--]</span> Waiting for pipeline...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var STEP_NAMES = [
+  {id: 'zeitgeist', file: '01_zeitgeist.md', label: '1. Zeitgeist', desc: 'Read the pulse'},
+  {id: 'council',   file: '02_council.md',   label: '2. Council',   desc: 'Choose the god'},
+  {id: 'script',    file: '03_script.md',    label: '3. Script',    desc: 'Write the story'},
+  {id: 'prompts',   file: '04_prompts.md',   label: '4. Prompts',   desc: 'Scene descriptions'},
+  {id: 'images',    file: '05_images.md',    label: '5. Images',    desc: 'Generate scenes'},
+  {id: 'voice',     file: '06_voice.md',     label: '6. Voice',     desc: 'ElevenLabs TTS'},
+  {id: 'video',     file: '07_video.md',     label: '7. Video',     desc: 'Assemble video'},
+  {id: 'publish',   file: '08_publish.md',   label: '8. Publish',   desc: 'Upload to platforms'}
+];
+
+var currentStep = null;
+var stepData = {};
+var pipelineRunning = false;
+
+function refreshSteps() {
+  fetch('/api/station/steps').then(r => r.json()).then(data => {
+    stepData = {};
+    (data.steps || []).forEach(s => { stepData[s.name] = s; });
+    renderSteps();
+  });
+}
+
+function renderSteps() {
+  var el = document.getElementById('step-list');
+  el.innerHTML = '';
+  STEP_NAMES.forEach(s => {
+    var info = stepData[s.file];
+    var state = info ? 'done' : 'pending';
+    var icon = state === 'done' ? '&#10003;' : '&#9675;';
+    var size = info ? (info.size > 1024 ? (info.size/1024).toFixed(1)+'KB' : info.size+'B') : '';
+
+    var div = document.createElement('div');
+    div.className = 'step-item' + (currentStep === s.id ? ' active' : '');
+    div.innerHTML =
+      '<div class="step-icon ' + state + '">' + icon + '</div>' +
+      '<div class="step-name">' + s.label + '<br><span style="font-size:9px;color:var(--dim)">' + s.desc + '</span></div>' +
+      '<div class="step-size">' + size + '</div>';
+    div.onclick = function() { selectStep(s); };
+    el.appendChild(div);
+  });
+}
+
+function loadStepFile(filename) {
+  return fetch('/api/station/step/' + filename).then(r => r.text());
+}
+
+function selectStep(s) {
+  if (typeof stopInFlightPoll === 'function') stopInFlightPoll();
+  currentStep = s.id;
+  renderSteps();
+  document.getElementById('main-title').textContent = s.label + ' — ' + s.desc;
+
+  // Script step has per-language variants AND a full Review UI — render them.
+  if (s.id === 'script') {
+    var langVariants = Object.keys(stepData)
+      .filter(n => /^03_script_[a-z]{2}\.md$/.test(n))
+      .sort();
+    if (langVariants.length) {
+      renderReviewUI(langVariants);
+      return;
+    }
+  }
+
+  if (stepData[s.file]) {
+    fetch('/api/station/step/' + s.file).then(r => r.text()).then(md => {
+      document.getElementById('main-content').innerHTML = '<div class="md-render">' + renderMarkdown(md) + '</div>';
+      document.getElementById('main-meta').textContent = (stepData[s.file].size/1024).toFixed(1) + 'KB';
+    });
+  } else {
+    renderInFlight(s);
+  }
+}
+
+// ── Story review UI ─────────────────────────────────────────────────
+var reviewState = {
+  episode: null,       // e.g. "kali"
+  lang: 'en',          // 'en' | 'es'
+  comments: [],        // [{id, block_id, block_text, text, created_at}]
+  blocks: [],          // [{id, speaker, text}]
+  activeBlockId: null, // when comment box is open
+};
+
+function parseScript(md) {
+  // Find the "Full Story (8 minutes)" section content
+  var m = md.split('## Full Story (8 minutes)');
+  if (m.length < 2) return [];
+  var tail = m[1];
+  var nextIdx = tail.indexOf('\n## ');
+  var section = nextIdx >= 0 ? tail.slice(0, nextIdx) : tail;
+  // Parse stage-play blocks
+  var blocks = [];
+  var current = null;
+  var speakerRegex = /^\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ_ ]*):\s*(.*)$/;
+  section.split('\n').forEach(function(raw) {
+    var line = raw.replace(/\s+$/, '');
+    if (!line.trim()) {
+      if (current) { blocks.push(current); current = null; }
+      return;
+    }
+    var mm = line.match(speakerRegex);
+    if (mm) {
+      if (current) blocks.push(current);
+      var label = mm[1].trim().toUpperCase();
+      var rest = mm[2];
+      current = { speaker: label, lines: rest ? [rest] : [] };
+    } else if (current) {
+      current.lines.push(line.trim());
+    }
+  });
+  if (current) blocks.push(current);
+  // Flatten + assign ids
+  return blocks.map(function(b, i) {
+    var text = b.lines.join(' ').replace(/\s+/g, ' ').trim();
+    return { id: 'b' + i, speaker: b.speaker, text: text };
+  }).filter(function(b) { return b.text.length > 0; });
+}
+
+function renderReviewUI(langVariants) {
+  var episode = 'current';
+  // Extract god name as episode id from the combined script
+  loadStepFile('03_script.md').then(md => {
+    var match = md.match(/- \*\*God:\*\*\s*(\S+)/);
+    reviewState.episode = match ? match[1].toLowerCase() : 'unknown';
+    // Pick lang
+    var preferredFile = '03_script_' + reviewState.lang + '.md';
+    var activeFile = langVariants.indexOf(preferredFile) >= 0 ? preferredFile : langVariants[0];
+    reviewState.lang = activeFile.match(/_([a-z]{2})\.md$/)[1];
+
+    Promise.all([
+      loadStepFile(activeFile),
+      fetch('/api/station/review/comments?episode=' + reviewState.episode).then(r => r.json())
+    ]).then(function(pair) {
+      var scriptMd = pair[0];
+      var commentsData = pair[1];
+      reviewState.comments = commentsData.comments || [];
+      reviewState.blocks = parseScript(scriptMd);
+      paintReviewUI(langVariants, activeFile);
+    });
+  });
+}
+
+function paintReviewUI(langVariants, activeFile) {
+  var tabs = '<div class="lang-tabs" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">' +
+    langVariants.map(function(v) {
+      var code = v.match(/_([a-z]{2})\.md$/)[1];
+      var cls = (v === activeFile) ? 'lang-tab active' : 'lang-tab';
+      return '<span class="' + cls + '" data-file="' + v + '">' + code.toUpperCase() + '</span>';
+    }).join('') +
+    '<div style="flex:1"></div>' +
+    '<button class="review-btn" onclick="evolvePrompts()">EVOLVE PROMPTS</button>' +
+    '<button class="review-btn" onclick="regenerateScript()">REGENERATE STORY</button>' +
+    '</div>';
+
+  var commentsByBlock = {};
+  reviewState.comments.forEach(function(c) {
+    if (!commentsByBlock[c.block_id]) commentsByBlock[c.block_id] = [];
+    commentsByBlock[c.block_id].push(c);
+  });
+
+  var storyHtml = reviewState.blocks.map(function(b) {
+    var hasComment = !!commentsByBlock[b.id];
+    var isGod = b.speaker !== 'ANKY';
+    var cls = 'story-block' + (isGod ? ' god' : '') + (hasComment ? ' has-comment' : '');
+    var badge = hasComment ? '<span class="comment-badge">' + commentsByBlock[b.id].length + ' 💬</span>' : '';
+    // highlight audio tags in text
+    var safeText = escapeHTML(b.text).replace(/\[([^\]]+)\]/g, '<span class="audio-tag">[$1]</span>');
+    return '<div class="story-block ' + cls + '" data-block-id="' + b.id + '" onclick="openCommentForm(\'' + b.id + '\')">' +
+      badge +
+      '<span class="sp-label">' + b.speaker + '</span>' +
+      '<span class="sp-text">' + safeText + '</span>' +
+    '</div>';
+  }).join('');
+
+  var sideHtml = '<div class="review-side">' +
+    '<h4>Comments (' + reviewState.comments.length + ')</h4>' +
+    (reviewState.comments.length === 0
+      ? '<div style="font-size:11px;color:var(--dim);">Click any story block on the left to leave a note. Your comments will be used to evolve the prompts.</div>'
+      : reviewState.comments.map(function(c) {
+          return '<div class="review-comment">' +
+            '<span class="rc-delete" onclick="event.stopPropagation();deleteComment(\'' + c.id + '\')">✕</span>' +
+            '<div class="rc-block">"' + escapeHTML((c.block_text || '').slice(0, 80)) + (c.block_text && c.block_text.length > 80 ? '…' : '') + '"</div>' +
+            '<div class="rc-text">' + escapeHTML(c.text) + '</div>' +
+          '</div>';
+        }).join('')
+    ) +
+    '<div id="evolve-result"></div>' +
+  '</div>';
+
+  document.getElementById('main-content').innerHTML =
+    tabs +
+    '<div class="review-wrap">' +
+      '<div class="review-story">' + storyHtml + '</div>' +
+      sideHtml +
+    '</div>';
+
+  document.querySelectorAll('.lang-tab').forEach(function(t) {
+    t.onclick = function() {
+      reviewState.lang = this.getAttribute('data-file').match(/_([a-z]{2})\.md$/)[1];
+      renderReviewUI(langVariants);
+    };
+  });
+
+  document.getElementById('main-meta').textContent = reviewState.blocks.length + ' blocks';
+}
+
+function escapeHTML(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function openCommentForm(blockId) {
+  // Close any existing form
+  var existing = document.querySelector('.comment-form');
+  if (existing) existing.remove();
+  var block = document.querySelector('[data-block-id="' + blockId + '"]');
+  if (!block) return;
+  var form = document.createElement('div');
+  form.className = 'comment-form';
+  form.innerHTML =
+    '<textarea placeholder="What feels off about this line? (specific & actionable lands best)" id="cf-text-' + blockId + '" autofocus></textarea>' +
+    '<div class="cf-actions">' +
+      '<button class="review-btn" onclick="closeCommentForm()">cancel</button>' +
+      '<button class="review-btn primary" onclick="saveComment(\'' + blockId + '\')">save comment</button>' +
+    '</div>';
+  form.onclick = function(e) { e.stopPropagation(); };
+  block.appendChild(form);
+  var ta = form.querySelector('textarea');
+  ta.focus();
+  ta.onkeydown = function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { saveComment(blockId); }
+    if (e.key === 'Escape') { closeCommentForm(); }
+  };
+}
+
+function closeCommentForm() {
+  var existing = document.querySelector('.comment-form');
+  if (existing) existing.remove();
+}
+
+function saveComment(blockId) {
+  var textarea = document.getElementById('cf-text-' + blockId);
+  if (!textarea) return;
+  var text = textarea.value.trim();
+  if (!text) { closeCommentForm(); return; }
+  var block = reviewState.blocks.find(function(b) { return b.id === blockId; });
+  fetch('/api/station/review/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      episode: reviewState.episode,
+      block_id: blockId,
+      block_text: block ? block.text : '',
+      text: text,
+    }),
+  }).then(r => r.json()).then(data => {
+    reviewState.comments = data.comments || reviewState.comments;
+    closeCommentForm();
+    // Repaint current lang
+    var activeFile = '03_script_' + reviewState.lang + '.md';
+    var langVariants = Object.keys(stepData).filter(function(n) { return /^03_script_[a-z]{2}\.md$/.test(n); }).sort();
+    paintReviewUI(langVariants, activeFile);
+  });
+}
+
+function deleteComment(id) {
+  fetch('/api/station/review/comments/' + reviewState.episode + '/' + id, {
+    method: 'DELETE',
+  }).then(() => {
+    reviewState.comments = reviewState.comments.filter(function(c) { return c.id !== id; });
+    var activeFile = '03_script_' + reviewState.lang + '.md';
+    var langVariants = Object.keys(stepData).filter(function(n) { return /^03_script_[a-z]{2}\.md$/.test(n); }).sort();
+    paintReviewUI(langVariants, activeFile);
+  });
+}
+
+function evolvePrompts() {
+  var box = document.getElementById('evolve-result');
+  if (!box) return;
+  if (reviewState.comments.length === 0) {
+    box.innerHTML = '<div class="evolve-result"><h5>Need comments first</h5>Click story blocks and leave notes before evolving.</div>';
+    return;
+  }
+  box.innerHTML = '<div class="evolve-result"><h5>Asking Qwen to propose changes…</h5>This takes about 30 seconds.</div>';
+
+  fetch('/api/station/review/evolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ episode: reviewState.episode, lang: reviewState.lang }),
+  }).then(r => r.json()).then(data => {
+    if (!data.ok) {
+      box.innerHTML = '<div class="evolve-result"><h5>Error</h5>' + escapeHTML(data.error || 'unknown') + '</div>';
+      return;
+    }
+    var proposal = data.proposal || {};
+    var notes = proposal.proposed_notes || [];
+    var rationale = proposal.rationale || '';
+    if (notes.length === 0) {
+      box.innerHTML = '<div class="evolve-result"><h5>No proposal</h5>' + escapeHTML(rationale || 'Qwen returned no notes.') + '</div>';
+      return;
+    }
+    var notesHtml = notes.map(function(n) { return '<div class="proposed-note">' + escapeHTML(n) + '</div>'; }).join('');
+    box.innerHTML =
+      '<div class="evolve-result">' +
+        '<h5>Proposed style-note additions</h5>' +
+        (rationale ? '<div style="font-size:10px;color:var(--dim);margin-bottom:8px;">' + escapeHTML(rationale) + '</div>' : '') +
+        notesHtml +
+        '<div class="cf-actions" style="margin-top:10px;">' +
+          '<button class="review-btn" onclick="document.getElementById(\'evolve-result\').innerHTML=\'\'">reject</button>' +
+          '<button class="review-btn primary" onclick=\'applyEvolution(' + JSON.stringify(JSON.stringify(notes)) + ', ' + JSON.stringify(JSON.stringify(rationale)) + ')\'>apply & regenerate</button>' +
+        '</div>' +
+      '</div>';
+  });
+}
+
+function applyEvolution(notesJson, rationaleJson) {
+  var notes = JSON.parse(notesJson);
+  var rationale = JSON.parse(rationaleJson);
+  var box = document.getElementById('evolve-result');
+  if (box) box.innerHTML = '<div class="evolve-result"><h5>Applying…</h5>Writing to prompt_overrides.py and kicking a new script generation.</div>';
+
+  fetch('/api/station/review/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ episode: reviewState.episode, notes: notes, rationale: rationale }),
+  }).then(r => r.json()).then(data => {
+    if (!data.ok) {
+      box.innerHTML = '<div class="evolve-result"><h5>Apply failed</h5>' + escapeHTML(data.error || 'unknown') + '</div>';
+      return;
+    }
+    return fetch('/api/station/review/regenerate', { method: 'POST' });
+  }).then(() => {
+    box.innerHTML = '<div class="evolve-result"><h5>Applied. Regenerating story…</h5>Watch the log. This takes ~2 min. The page will refresh the story when ready.</div>';
+    // Poll script file for changes
+    var activeFile = '03_script_' + reviewState.lang + '.md';
+    var before = stepData[activeFile] ? stepData[activeFile].modified : 0;
+    var attempts = 0;
+    var poll = setInterval(function() {
+      attempts++;
+      fetch('/api/station/steps').then(r => r.json()).then(function(sd) {
+        (sd.steps || []).forEach(function(s) { stepData[s.name] = s; });
+        if (stepData[activeFile] && stepData[activeFile].modified > before) {
+          clearInterval(poll);
+          var langVariants = Object.keys(stepData).filter(function(n) { return /^03_script_[a-z]{2}\.md$/.test(n); }).sort();
+          renderReviewUI(langVariants);
+        }
+        if (attempts > 60) clearInterval(poll); // 5 min max
+      });
+    }, 5000);
+  });
+}
+
+function regenerateScript() {
+  fetch('/api/station/review/regenerate', { method: 'POST' }).then(() => {
+    var box = document.getElementById('evolve-result');
+    if (box) box.innerHTML = '<div class="evolve-result"><h5>Regenerating story…</h5>Watch the log. ~2 min.</div>';
+  });
+}
+
+// Show live log tail for an in-flight or pending step so the user can see something happening.
+var inFlightPoller = null;
+function stopInFlightPoll() { if (inFlightPoller) { clearInterval(inFlightPoller); inFlightPoller = null; } }
+
+function renderInFlight(s) {
+  stopInFlightPoll();
+  var render = function() {
+    fetch('/api/station/step/pipeline.log').then(r => r.ok ? r.text() : '').then(logText => {
+      // Determine which step is currently running based on last "STEP N:" line
+      var lines = (logText || '').split('\n');
+      var currentStepIdx = -1;
+      var currentStepLabel = '';
+      for (var i = lines.length - 1; i >= 0; i--) {
+        var m = lines[i].match(/STEP (\d+):/);
+        if (m) { currentStepIdx = parseInt(m[1], 10); currentStepLabel = lines[i]; break; }
+      }
+      var sIdxInSteps = STEP_NAMES.findIndex(x => x.id === s.id) + 1;
+      var state = 'pending';
+      if (currentStepIdx === sIdxInSteps) state = 'running';
+      else if (currentStepIdx > sIdxInSteps) state = 'skipped'; // shouldn't happen, but safe
+      else state = 'pending';
+
+      // Tail of log, last 40 lines
+      var tail = lines.slice(-40).join('\n');
+      var statusBadge = state === 'running'
+        ? '<span style="color:var(--orange);font-size:10px;letter-spacing:2px;">● RUNNING</span>'
+        : '<span style="color:var(--dim);font-size:10px;letter-spacing:2px;">○ WAITING</span>';
+
+      var header = '<div style="margin-bottom:12px;">' +
+        statusBadge +
+        (currentStepLabel ? '<div style="font-size:11px;color:var(--text);margin-top:4px;">' + currentStepLabel.replace(/[<>]/g,'') + '</div>' : '') +
+        '</div>';
+
+      var logBox = '<pre style="background:#0a0a0a;border:1px solid var(--border);border-radius:4px;padding:10px;font-size:10px;line-height:1.5;color:var(--dim);max-height:60vh;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">' +
+        tail.replace(/[<>]/g, function(c) { return c === '<' ? '&lt;' : '&gt;'; }) +
+        '</pre>';
+
+      var foot = '<div style="margin-top:10px;font-size:9px;color:var(--dim);letter-spacing:1px;">LIVE LOG TAIL — auto-refreshing every 2s</div>';
+
+      document.getElementById('main-content').innerHTML = header + logBox + foot;
+      document.getElementById('main-meta').textContent = state === 'running' ? 'running' : '';
+
+      // If the step's file now exists, stop polling and re-select to render the real content.
+      if (stepData[s.file]) {
+        stopInFlightPoll();
+        selectStep(s);
+      }
+    });
+  };
+  render();
+  inFlightPoller = setInterval(function() {
+    // Also refresh step list so stepData stays current
+    fetch('/api/station/steps').then(r => r.json()).then(data => {
+      (data.steps || []).forEach(st => { stepData[st.name] = st; });
+      render();
+    });
+  }, 2000);
+}
+
+function renderMarkdown(md) {
+  // Extract safe embeds (images + audio) before HTML-escaping, then reinsert.
+  var placeholders = [];
+  function stash(html) {
+    var key = '\u0001STASH' + placeholders.length + '\u0001';
+    placeholders.push(html);
+    return key;
+  }
+  // ![alt](url) — markdown images
+  md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(_, alt, url) {
+    return stash('<img src="' + url + '" alt="' + alt + '" class="md-img">');
+  });
+  // <audio controls src="..."></audio> — raw HTML allowed
+  md = md.replace(/<audio[^>]*src="[^"]+"[^>]*>\s*<\/audio>/gi, function(m) {
+    return stash(m);
+  });
+  // <video controls src="..."></video>
+  md = md.replace(/<video[^>]*src="[^"]+"[^>]*>\s*<\/video>/gi, function(m) {
+    return stash(m);
+  });
+
+  // Standard escape + markdown
+  var html = md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- (.*$)/gm, '<li>$1</li>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+
+  // Reinsert stashed embeds
+  html = html.replace(/\u0001STASH(\d+)\u0001/g, function(_, i) {
+    return placeholders[parseInt(i, 10)];
+  });
+  return html;
+}
+
+function runPipeline() {
+  if (pipelineRunning) return;
+  pipelineRunning = true;
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('btn-run').textContent = 'RUNNING...';
+  document.getElementById('pipeline-status').textContent = 'running';
+  document.getElementById('pipeline-status').style.color = 'var(--orange)';
+
+  fetch('/api/station/run', {method: 'POST'}).then(() => {
+    pollPipeline();
+  });
+}
+
+function runStep(step) {
+  fetch('/api/station/run/' + step, {method: 'POST'}).then(() => {
+    document.getElementById('pipeline-status').textContent = 'running: ' + step;
+    document.getElementById('pipeline-status').style.color = 'var(--orange)';
+    setTimeout(refreshSteps, 3000);
+    setTimeout(refreshSteps, 8000);
+    setTimeout(refreshSteps, 15000);
+  });
+}
+
+var pollCount = 0;
+function pollPipeline() {
+  pollCount++;
+  refreshSteps();
+  refreshLog();
+
+  // Check if all 8 steps are done
+  var doneCount = STEP_NAMES.filter(s => stepData[s.file]).length;
+  if (doneCount >= 8 || pollCount > 200) {
+    pipelineRunning = false;
+    document.getElementById('btn-run').disabled = false;
+    document.getElementById('btn-run').textContent = 'GENERATE TODAY\'S EPISODE';
+    document.getElementById('pipeline-status').textContent = doneCount >= 8 ? 'complete' : 'idle';
+    document.getElementById('pipeline-status').style.color = doneCount >= 8 ? 'var(--green)' : 'var(--dim)';
+    pollCount = 0;
+    return;
+  }
+
+  // Auto-select the latest step
+  for (var i = STEP_NAMES.length - 1; i >= 0; i--) {
+    if (stepData[STEP_NAMES[i].file]) {
+      selectStep(STEP_NAMES[i]);
+      break;
+    }
+  }
+
+  setTimeout(pollPipeline, 5000);
+}
+
+function refreshLog() {
+  fetch('/api/station/step/pipeline.log').then(r => {
+    if (!r.ok) return;
+    return r.text();
+  }).then(text => {
+    if (!text) return;
+    var el = document.getElementById('log-area');
+    var lines = text.trim().split('\n');
+    el.innerHTML = lines.map(l => {
+      var cls = 'log-line';
+      if (l.includes('STEP') || l.includes('═══')) cls += ' info';
+      else if (l.includes('Wrote') || l.includes('Saved')) cls += ' ok';
+      else if (l.includes('error') || l.includes('Error')) cls += ' err';
+      return '<div class="' + cls + '">' + l + '</div>';
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+function showPanelTab(tab) {
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === tab));
+  document.querySelectorAll('.panel-body').forEach(p => p.classList.toggle('active', p.dataset.tab === tab));
+}
+
+function loadVideo(version) {
+  // Try to find video from the script metadata
+  var area = document.getElementById('video-area');
+  var paths = version === 'short'
+    ? ['/videos/gods/pipeline/../Cronos/gods_cronos_final.webm', '/videos/gods/Cronos/gods_cronos.webm']
+    : ['/videos/gods/Cronos/gods_cronos.mp4'];
+
+  var v = document.createElement('video');
+  v.controls = true;
+  v.style.cssText = 'max-width:100%;max-height:100%';
+  v.onerror = function() { area.innerHTML = '<div style="color:var(--dim);font-size:11px">Video not found</div>'; };
+  v.oncanplay = function() { area.innerHTML = ''; area.appendChild(v); };
+  v.src = paths[0];
+}
+
+// Insert an audio tag at the cursor position in the TTS textarea.
+document.addEventListener('click', function(e) {
+  var chip = e.target.closest && e.target.closest('.tag-chip');
+  if (!chip) return;
+  var tag = chip.getAttribute('data-tag');
+  var ta = document.getElementById('tts-text');
+  if (!ta) return;
+  var s = ta.selectionStart, t = ta.selectionEnd;
+  var before = ta.value.slice(0, s), after = ta.value.slice(t);
+  // Add a leading space if the char before isn't whitespace.
+  var lead = (s > 0 && !/\s$/.test(before)) ? ' ' : '';
+  ta.value = before + lead + tag + ' ' + after;
+  var pos = (before + lead + tag + ' ').length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+});
+
+function generateTTS() {
+  var text = document.getElementById('tts-text').value.trim();
+  var voiceId = document.getElementById('tts-voice').value;
+  var modelId = (document.getElementById('tts-model') || {}).value || 'eleven_v3';
+  var stability = (document.getElementById('tts-stability') || {}).value || 'natural';
+  var btn = document.getElementById('btn-tts');
+  var audio = document.getElementById('tts-audio');
+  var status = document.getElementById('tts-status');
+
+  if (!text) { status.textContent = 'Type something first'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'GENERATING...';
+  status.textContent = 'Sending to ElevenLabs...';
+
+  fetch('/api/station/tts', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: text, voice_id: voiceId, model_id: modelId, stability: stability})
+  }).then(r => {
+    if (!r.ok) throw new Error('TTS failed: ' + r.status);
+    return r.blob();
+  }).then(blob => {
+    var url = URL.createObjectURL(blob);
+    audio.src = url;
+    audio.style.display = 'block';
+    audio.play();
+    status.textContent = 'Generated — ' + (blob.size/1024).toFixed(0) + 'KB';
+    btn.disabled = false;
+    btn.textContent = 'SPEAK';
+  }).catch(err => {
+    status.textContent = 'Error: ' + err.message;
+    btn.disabled = false;
+    btn.textContent = 'SPEAK';
+  });
+}
+
+function checkServices() {
+  fetch('http://localhost:8188/system_stats').then(() => {
+    document.getElementById('st-comfy').className = 'dot on';
+  }).catch(() => { document.getElementById('st-comfy').className = 'dot off'; });
+
+  fetch('http://localhost:8080/health').then(() => {
+    document.getElementById('st-qwen').className = 'dot on';
+  }).catch(() => { document.getElementById('st-qwen').className = 'dot off'; });
+
+  document.getElementById('st-11labs').className = 'dot on';
+}
+
+// Init
+checkServices();
+refreshSteps();
+setInterval(checkServices, 30000);
+</script>
+</body>
+</html>

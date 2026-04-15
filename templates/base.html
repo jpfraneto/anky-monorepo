@@ -1,7 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang | default(value='en') }}">
 <head>
   <meta charset="UTF-8">
+  <script>
+    /* i18n bridge — window.t(key) looks up the current-language string,
+       falling back to the key itself so nothing breaks if a key is missing. */
+    window.__LANG__ = {{ lang | default(value='en') | json_encode() | safe }};
+    {% if i18n_js %}window.__I18N__ = {{ i18n_js | json_encode() | safe }};{% else %}window.__I18N__ = {};{% endif %}
+    window.t = function(key) {
+      return (window.__I18N__ && window.__I18N__[key]) || key;
+    };
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>{% block title %}anky{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👽</text></svg>">
@@ -19,19 +28,437 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="anky">
   <meta name="theme-color" content="#0a0a0a">
+  <style>
+    .wallet-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 46px;
+      padding: 6px 12px 6px 6px;
+      border-radius: 999px;
+      background: transparent;
+      border: 1px solid #333;
+      color: #666;
+      font-family: 'Righteous', sans-serif;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s, background 0.2s, transform 0.2s;
+    }
+    .wallet-btn:hover {
+      color: #c4a0ff;
+      border-color: #7b2ff7;
+      transform: translateY(-1px);
+    }
+    .wallet-btn.connected {
+      color: #8a8;
+      background: rgba(123, 47, 247, 0.08);
+      border-color: #2a2a3a;
+    }
+    .wallet-btn-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      flex-shrink: 0;
+    }
+    .wallet-btn-copy {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.08;
+      min-width: 0;
+    }
+    .wallet-btn-title {
+      max-width: 10rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      color: inherit;
+    }
+    .wallet-btn-subtitle {
+      font-family: system-ui, sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.32);
+    }
+    .wallet-btn.connected .wallet-btn-subtitle {
+      color: rgba(255,255,255,0.4);
+    }
+    .auth-panel-backdrop[hidden],
+    .auth-panel[hidden] {
+      display: none !important;
+    }
+    .auth-panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: transparent;
+      z-index: 1001;
+    }
+    .auth-panel {
+      position: fixed;
+      top: 68px;
+      right: 16px;
+      z-index: 1002;
+      width: min(320px, calc(100vw - 24px));
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(10, 10, 18, 0.98);
+      border: 1px solid rgba(232, 184, 75, 0.14);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+      color: #e8dfd0;
+    }
+    .auth-panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .auth-panel-title {
+      font-family: 'Righteous', sans-serif;
+      font-size: 17px;
+      color: #f2ede3;
+    }
+    .auth-panel-note {
+      margin-top: 4px;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(232, 223, 208, 0.56);
+    }
+    .auth-panel-close {
+      border: none;
+      background: transparent;
+      color: rgba(232, 223, 208, 0.42);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .auth-panel-close:hover {
+      color: rgba(232, 223, 208, 0.76);
+    }
+    .auth-panel-card {
+      display: inline-flex;
+      width: min(100%, 188px);
+      min-height: 188px;
+      margin: 4px 0 12px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      background: #fff;
+      color: #04040d;
+      text-decoration: none;
+      overflow: hidden;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .auth-panel-card svg {
+      display: block;
+      width: 156px;
+      height: 156px;
+    }
+    .auth-panel-card.is-action {
+      min-height: 0;
+      background: #e8b84b;
+      color: #16110a;
+      padding: 14px 18px;
+    }
+    .auth-panel-card.is-action:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 28px rgba(232, 184, 75, 0.16);
+    }
+    .auth-panel-card-wrap {
+      display: flex;
+      justify-content: center;
+    }
+    .auth-panel-placeholder,
+    .auth-panel-link-label {
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: center;
+      font-weight: 700;
+    }
+    .auth-panel-placeholder {
+      color: rgba(4, 4, 13, 0.56);
+      max-width: 10rem;
+    }
+    .auth-panel-status {
+      min-height: 1.4em;
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(232, 223, 208, 0.42);
+      text-align: center;
+    }
+    .auth-panel-status.error {
+      color: #ff9e9e;
+    }
+    .auth-panel-status.success {
+      color: #9ce8c6;
+    }
+    .auth-panel-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 10px;
+      font-family: system-ui, sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(232, 223, 208, 0.3);
+    }
+    .auth-panel-divider::before,
+    .auth-panel-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(232, 223, 208, 0.12);
+    }
+    .phantom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid rgba(171, 154, 255, 0.28);
+      border-radius: 12px;
+      background: rgba(171, 154, 255, 0.08);
+      color: #c4b5fd;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .phantom-btn:hover {
+      background: rgba(171, 154, 255, 0.16);
+      border-color: rgba(171, 154, 255, 0.44);
+      transform: translateY(-1px);
+    }
+    .phantom-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .phantom-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    /* ── Now Prompt Modal ── */
+    .now-modal-backdrop {
+      position: fixed; inset: 0; z-index: 9998;
+      background: rgba(4, 4, 13, 0.82);
+      backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .now-modal-backdrop.open { opacity: 1; pointer-events: auto; }
+    .now-modal {
+      position: fixed; z-index: 9999;
+      top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
+      width: min(92vw, 420px);
+      max-height: 90vh; overflow-y: auto;
+      background: #16110a;
+      border: 1px solid rgba(232, 184, 75, 0.14);
+      border-radius: 20px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6);
+      padding: 28px 24px;
+      color: #e8dfd0;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .now-modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+    .now-modal-title {
+      font-family: 'Righteous', sans-serif;
+      font-size: 22px; color: #f2ede3;
+      margin-bottom: 4px;
+    }
+    .now-modal-sub {
+      font-size: 12px; color: rgba(232, 223, 208, 0.5);
+      margin-bottom: 20px;
+    }
+    .now-modal-close {
+      position: absolute; top: 16px; right: 16px;
+      border: none; background: transparent;
+      color: rgba(232, 223, 208, 0.42); font-size: 22px;
+      cursor: pointer; line-height: 1;
+    }
+    .now-modal-close:hover { color: rgba(232, 223, 208, 0.76); }
+    .now-input {
+      width: 100%; box-sizing: border-box;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(232, 184, 75, 0.18);
+      border-radius: 12px;
+      color: #f2ede3;
+      font-family: system-ui, sans-serif;
+      font-size: 15px; line-height: 1.5;
+      resize: none; outline: none;
+    }
+    .now-input:focus { border-color: rgba(232, 184, 75, 0.4); }
+    .now-input::placeholder { color: rgba(232, 223, 208, 0.3); }
+    .now-location-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 14px;
+    }
+    .now-location-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(232, 184, 75, 0.18);
+      background: transparent;
+      color: rgba(232, 223, 208, 0.7);
+      font-size: 13px; cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .now-location-btn:hover { border-color: rgba(232, 184, 75, 0.4); color: #f2ede3; }
+    .now-location-btn.active { border-color: #e8b84b; color: #e8b84b; }
+    .now-location-label {
+      font-size: 12px; color: rgba(232, 223, 208, 0.45);
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .now-mode-row {
+      display: flex; gap: 8px; margin-top: 14px;
+    }
+    .now-mode-btn {
+      flex: 1; padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(232, 184, 75, 0.18);
+      background: transparent;
+      color: rgba(232, 223, 208, 0.6);
+      font-family: 'Righteous', sans-serif;
+      font-size: 13px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .now-mode-btn.active {
+      border-color: #e8b84b; color: #e8b84b;
+      background: rgba(232, 184, 75, 0.08);
+    }
+    .now-create-btn {
+      width: 100%; margin-top: 20px;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: #e8b84b; color: #16110a;
+      font-family: 'Righteous', sans-serif;
+      font-size: 16px; cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .now-create-btn:hover { background: #f0c65c; transform: translateY(-1px); }
+    .now-create-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .now-result {
+      display: none; text-align: center; margin-top: 20px;
+    }
+    .now-result.show { display: block; }
+    .now-result-qr {
+      display: inline-block;
+      background: #fff; border-radius: 14px;
+      padding: 12px; margin-bottom: 14px;
+    }
+    .now-result-qr svg { display: block; width: 180px; height: 180px; }
+    .now-result-link {
+      font-size: 14px; color: #e8b84b;
+      word-break: break-all;
+    }
+    .now-result-link a { color: #e8b84b; text-decoration: underline; }
+    .now-result-actions {
+      display: flex; gap: 8px; justify-content: center; margin-top: 14px;
+    }
+    .now-dl-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(232, 184, 75, 0.3);
+      background: transparent;
+      color: #e8b84b;
+      font-size: 13px; font-family: 'Righteous', sans-serif;
+      cursor: pointer; text-decoration: none;
+      transition: background 0.2s;
+    }
+    .now-dl-btn:hover { background: rgba(232, 184, 75, 0.1); }
+  </style>
   {% block head %}{% endblock %}
 </head>
 <body>
   <nav class="navbar">
-    <button class="nav-hamburger" id="nav-hamburger" aria-label="menu">&#9776;</button>
-    <a href="/" class="logo">anky</a>
+    <button class="nav-hamburger" id="nav-hamburger" aria-label="you" title="you">&#9776;</button>
+    <button class="logo" id="now-trigger" style="background:none;border:none;cursor:pointer;">anky</button>
     <div class="nav-right">
       <div class="nav-auth" id="nav-auth">
-        <button class="wallet-btn" id="wallet-btn" onclick="window.ankyAuth.login()">login</button>
+        <button class="wallet-btn" id="wallet-btn" aria-label="login via anky">
+          <img class="wallet-btn-avatar" id="wallet-btn-avatar" src="/static/icon-192.png" alt="">
+          <span class="wallet-btn-copy">
+            <span class="wallet-btn-title" id="wallet-btn-title">login</span>
+            <span class="wallet-btn-subtitle" id="wallet-btn-subtitle">with anky app</span>
+          </span>
+        </button>
       </div>
       <a class="anky-tv-btn" href="https://pump.fun/coin/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump" target="_blank" rel="noopener">BUY $ANKY</a>
     </div>
   </nav>
+  <div class="auth-panel-backdrop" id="auth-panel-backdrop" hidden></div>
+  <div class="auth-panel" id="auth-panel" hidden>
+    <div class="auth-panel-head">
+      <div>
+        <div class="auth-panel-title">login with your phone</div>
+        <div class="auth-panel-note" id="auth-panel-note">creating a bridge between this page and your phone...</div>
+      </div>
+      <button class="auth-panel-close" id="auth-panel-close" aria-label="close">&times;</button>
+    </div>
+    <div class="auth-panel-card-wrap">
+      <a class="auth-panel-card" id="auth-panel-card" aria-label="login with the anky app">
+        <span class="auth-panel-placeholder">preparing the login...</span>
+      </a>
+    </div>
+    <div class="auth-panel-status" id="auth-panel-status">creating a bridge between this page and your phone...</div>
+    <div class="auth-panel-divider">or</div>
+    <button class="phantom-btn" id="phantom-btn" type="button">
+      <svg viewBox="0 0 128 128" fill="none"><defs><linearGradient id="pg" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs><rect width="128" height="128" rx="26" fill="url(#pg)"/><path d="M110.5 65.6c-1.2 17.5-16.4 30.6-35.8 30.6H44.3c-2.3 0-4.2-1.9-4-4.2.7-10.3 9.5-18.3 20-18.3h14.6c2 0 3.7-1.6 3.8-3.6.1-2.1-1.5-3.8-3.6-3.8H59.4c-17.5 0-32 13.5-33.3 31-.1 1.7-.2 3.3-.1 5 .6 11.3 10 20.4 21.3 20.7h28c22.5 0 41.2-17.3 42.8-39.6l1-17.8c.1-2.1-1.5-3.8-3.6-3.8h-.4c-2 .1-3.6 1.7-3.7 3.8l-.9 0z" fill="#FFF" fill-opacity=".95"/><circle cx="79" cy="52" r="5.5" fill="#FFF"/><circle cx="99" cy="52" r="5.5" fill="#FFF"/></svg>
+      connect phantom
+    </button>
+  </div>
+
+  <!-- Now Prompt Modal -->
+  <div class="now-modal-backdrop" id="now-backdrop"></div>
+  <div class="now-modal" id="now-modal">
+    <button class="now-modal-close" id="now-close">&times;</button>
+    <div id="now-form-view">
+      <div class="now-modal-title">now</div>
+      <div class="now-modal-sub">create a writing prompt. print the QR. place it in the world.</div>
+      <textarea class="now-input" id="now-prompt" rows="3" placeholder="escribe acerca de gabriela mistral..." maxlength="500"></textarea>
+      <div class="now-location-row">
+        <button class="now-location-btn" id="now-geo-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+          <span id="now-geo-label">add location</span>
+        </button>
+        <span class="now-location-label" id="now-coords-display"></span>
+      </div>
+      <div class="now-mode-row">
+        <button class="now-mode-btn active" id="now-mode-sticker" data-mode="sticker">sticker</button>
+        <button class="now-mode-btn" id="now-mode-live" data-mode="live">live</button>
+      </div>
+      <button class="now-create-btn" id="now-create">create now</button>
+    </div>
+    <div class="now-result" id="now-result">
+      <div class="now-modal-title" id="now-result-prompt"></div>
+      <div class="now-result-qr" id="now-result-qr"></div>
+      <div class="now-result-link" id="now-result-link"></div>
+      <div class="now-result-actions">
+        <a class="now-dl-btn" id="now-dl-svg" download="anky-now.svg">download SVG</a>
+        <a class="now-dl-btn" id="now-dl-png" download="anky-now.png">download PNG</a>
+        <button class="now-dl-btn" id="now-copy-link">copy link</button>
+      </div>
+    </div>
+  </div>
+
 <div class="drawer-overlay" id="drawer-overlay"></div>
   <div class="drawer" id="drawer">
     <div class="drawer-header">
@@ -75,9 +502,9 @@
     </div>
   </div>
   <nav class="mobile-nav" id="mobile-nav">
-    <a href="/stories" class="mobile-nav-item {% if active_tab is defined and active_tab == 'stories' %}active{% endif %}">
+    <a href="/ankys" class="mobile-nav-item {% if active_tab is defined and active_tab == 'ankys' %}active{% endif %}">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-      <span>historias</span>
+      <span>ankys</span>
     </a>
     <a href="/" class="mobile-nav-item {% if not active_tab is defined or active_tab == 'home' %}active{% endif %}">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
@@ -107,31 +534,251 @@
   // --- Auth ---
   window.ankyAuth = (function() {
     var btn = document.getElementById('wallet-btn');
+    var btnAvatar = document.getElementById('wallet-btn-avatar');
+    var btnTitle = document.getElementById('wallet-btn-title');
+    var btnSubtitle = document.getElementById('wallet-btn-subtitle');
+    var authPanel = document.getElementById('auth-panel');
+    var authPanelBackdrop = document.getElementById('auth-panel-backdrop');
+    var authPanelClose = document.getElementById('auth-panel-close');
+    var authPanelCard = document.getElementById('auth-panel-card');
+    var authPanelNote = document.getElementById('auth-panel-note');
+    var authPanelStatus = document.getElementById('auth-panel-status');
+    var mobileSealMedia = window.matchMedia('(max-width: 768px), (pointer: coarse)');
+    var authState = { connected: false, profile: null };
+    var activeChallenge = null;
+    var pollTimer = null;
+    var expiryTimer = null;
+    var redirectTarget = null;
 
-    function updateBtn() {
-      var loggedIn = localStorage.getItem('anky_logged_in');
-      var uname = localStorage.getItem('anky_username');
-      var email = localStorage.getItem('anky_email');
-      if (loggedIn) {
-        btn.textContent = uname ? ('@' + uname) : (email || 'logged in');
-        btn.classList.add('connected');
-        btn.onclick = function() { window.location.href = '/settings'; };
-      } else {
-        btn.textContent = 'login';
-        btn.classList.remove('connected');
-        btn.onclick = login;
+    function sanitizeRedirect(candidate) {
+      if (!candidate) return null;
+      try {
+        var url = new URL(candidate, window.location.origin);
+        if (url.origin !== window.location.origin) return null;
+        return url.pathname + url.search + url.hash;
+      } catch (_) {
+        return null;
       }
+    }
+
+    function currentPath() {
+      return window.location.pathname + window.location.search + window.location.hash;
+    }
+
+    function getRedirectTarget(candidate) {
+      return sanitizeRedirect(candidate) || sanitizeRedirect(currentPath()) || '/';
+    }
+
+    function setPanelStatus(message, kind) {
+      authPanelStatus.textContent = message;
+      authPanelStatus.className = kind ? 'auth-panel-status ' + kind : 'auth-panel-status';
+    }
+
+    function getPanelNote() {
+      if (mobileSealMedia.matches) {
+        return 'you are already on your phone. tap below to open anky, or download it if this phone does not have it yet.';
+      }
+      return 'scan this with your phone camera. it will open anky if it is installed, or send you to the download.';
+    }
+
+    function setCardMarkup(markup) {
+      authPanelCard.innerHTML = markup;
+    }
+
+    function clearAuthTimers() {
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (expiryTimer) {
+        window.clearTimeout(expiryTimer);
+        expiryTimer = null;
+      }
+    }
+
+    function resetPanel() {
+      activeChallenge = null;
+      authPanelNote.textContent = getPanelNote();
+      authPanelCard.removeAttribute('href');
+      authPanelCard.classList.remove('is-action');
+      setCardMarkup('<span class="auth-panel-placeholder">preparing the bridge...</span>');
+      setPanelStatus('creating a bridge between this page and your phone...', '');
+    }
+
+    function closePanel() {
+      clearAuthTimers();
+      authPanel.hidden = true;
+      authPanelBackdrop.hidden = true;
+      activeChallenge = null;
+    }
+
+    function renderChallenge(challenge) {
+      activeChallenge = challenge;
+      authPanelNote.textContent = getPanelNote();
+
+      if (mobileSealMedia.matches) {
+        authPanelCard.href = challenge.deeplink;
+        authPanelCard.classList.add('is-action');
+        setCardMarkup('<span class="auth-panel-link-label">open anky</span>');
+      } else if (challenge.qr_svg) {
+        authPanelCard.removeAttribute('href');
+        authPanelCard.classList.remove('is-action');
+        setCardMarkup(challenge.qr_svg);
+      } else {
+        showPanelError('the bridge opened, but the QR did not render.', challenge.deeplink);
+        return;
+      }
+
+      setPanelStatus('waiting for your phone to answer...', '');
+    }
+
+    function showPanelError(message, deeplink) {
+      if (deeplink) {
+        authPanelCard.href = deeplink;
+        authPanelCard.classList.add('is-action');
+        setCardMarkup('<span class="auth-panel-link-label">open anky</span>');
+      } else {
+        authPanelCard.removeAttribute('href');
+        authPanelCard.classList.remove('is-action');
+        setCardMarkup('<span class="auth-panel-placeholder">login unavailable right now</span>');
+      }
+      setPanelStatus(message, 'error');
+    }
+
+    function readJson(resp) {
+      return resp.json().catch(function() { return {}; });
+    }
+
+    function finishSeal(status) {
+      clearAuthTimers();
+      document.cookie = 'anky_session=' + status.session_token + '; path=/; max-age=2592000; secure; samesite=lax';
+      setPanelStatus('logged in. entering...', 'success');
+      updateBtn().finally(function() {
+        window.setTimeout(function() {
+          var target = getRedirectTarget(redirectTarget);
+          var here = currentPath();
+          closePanel();
+          if (target && target !== here) {
+            window.location.replace(target);
+          }
+        }, 180);
+      });
+    }
+
+    function startPolling(challengeId) {
+      clearAuthTimers();
+      pollTimer = window.setInterval(function() {
+        fetch('/api/auth/qr/' + challengeId)
+          .then(readJson)
+          .then(function(status) {
+            if (status.sealed && status.session_token) {
+              finishSeal(status);
+            }
+          })
+          .catch(function() {});
+      }, 2000);
+
+      expiryTimer = window.setTimeout(function() {
+        clearAuthTimers();
+        showPanelError('that login request expired. try again.', activeChallenge && activeChallenge.deeplink);
+      }, 300000);
+    }
+
+    function createChallenge() {
+      resetPanel();
+      fetch('/api/auth/qr', { method: 'POST' })
+        .then(function(resp) {
+          return readJson(resp).then(function(data) {
+            if (!resp.ok) throw new Error(data.error || 'could not start login');
+            if (!data.id || !data.deeplink) throw new Error('login request was incomplete');
+            renderChallenge(data);
+            startPolling(data.id);
+          });
+        })
+        .catch(function(err) {
+          showPanelError(err.message || 'could not start login', activeChallenge && activeChallenge.deeplink);
+        });
+    }
+
+    function trimIdentity(value) {
+      if (!value) return 'remembered';
+      if (value.length <= 14) return value;
+      return value.slice(0, 4) + '..' + value.slice(-4);
+    }
+
+    function dispatchAuthChanged() {
       window.dispatchEvent(new CustomEvent('anky:auth-changed', {
-        detail: { connected: !!loggedIn }
+        detail: { connected: !!authState.connected }
       }));
     }
 
-    function isLoggedIn() {
-      return !!localStorage.getItem('anky_logged_in');
+    function setLoggedIn(profile) {
+      authState.connected = true;
+      authState.profile = profile || null;
+      localStorage.setItem('anky_logged_in', 'true');
+      if (profile && profile.username) localStorage.setItem('anky_username', profile.username);
+      else localStorage.removeItem('anky_username');
+      if (profile && profile.email) localStorage.setItem('anky_email', profile.email);
+      else localStorage.removeItem('anky_email');
+
+      btnAvatar.src = (profile && profile.profile_image_url) || '/static/icon-192.png';
+      if (profile && profile.username) btnTitle.textContent = '@' + profile.username;
+      else if (profile && profile.display_name) btnTitle.textContent = profile.display_name;
+      else if (profile && profile.email) btnTitle.textContent = profile.email;
+      else if (profile && profile.user_id) btnTitle.textContent = trimIdentity(profile.user_id);
+      else btnTitle.textContent = 'remembered';
+      btnSubtitle.textContent = 'your ankys';
+      btn.classList.add('connected');
+      btn.setAttribute('aria-label', 'your profile');
+      btn.onclick = function() { window.location.href = '/you'; };
+      dispatchAuthChanged();
     }
 
-    function login() {
-      window.location.href = '/login';
+    function setLoggedOut() {
+      authState.connected = false;
+      authState.profile = null;
+      localStorage.removeItem('anky_logged_in');
+      localStorage.removeItem('anky_username');
+      localStorage.removeItem('anky_email');
+      btnAvatar.src = '/static/icon-192.png';
+      btnTitle.textContent = 'login';
+      btnSubtitle.textContent = 'with anky app';
+      btn.classList.remove('connected');
+      btn.setAttribute('aria-label', 'login with anky app');
+      btn.onclick = function() { login(); };
+      dispatchAuthChanged();
+    }
+
+    async function updateBtn() {
+      try {
+        var resp = await fetch('/api/me', { credentials: 'same-origin' });
+        var data = await resp.json();
+        if (data && data.ok && data.authenticated === true) {
+          setLoggedIn(data);
+          return true;
+        }
+      } catch(_) {}
+      setLoggedOut();
+      return false;
+    }
+
+    function isLoggedIn() {
+      return !!authState.connected;
+    }
+
+    function login(target) {
+      if (authState.connected) {
+        window.location.href = '/you';
+        return;
+      }
+      redirectTarget = getRedirectTarget(target);
+      if (!authPanel.hidden) {
+        closePanel();
+        return;
+      }
+      authPanel.hidden = false;
+      authPanelBackdrop.hidden = false;
+      createChallenge();
     }
 
     function logout() {
@@ -141,9 +788,11 @@
       localStorage.removeItem('wallet_address');
       // Clear seed vault (identity stays in recovery phrase, not on this device)
       localStorage.removeItem('anky_seed_vault');
-      fetch('/auth/seed/logout', { method: 'POST' }).catch(function(){});
-      fetch('/auth/privy/logout', { method: 'POST' }).catch(function(){});
-      updateBtn();
+      fetch('/auth/logout', { method: 'POST' })
+        .catch(function(){})
+        .finally(function() {
+          updateBtn();
+        });
     }
 
     // Send USDC on Base (for payment flows only). Returns tx hash.
@@ -172,9 +821,128 @@
       return txHash;
     }
 
+    // --- Phantom wallet connect ---
+    var phantomBtn = document.getElementById('phantom-btn');
+
+    function getPhantomProvider() {
+      if (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) {
+        return window.phantom.solana;
+      }
+      if (window.solana && window.solana.isPhantom) {
+        return window.solana;
+      }
+      return null;
+    }
+
+    async function connectPhantom() {
+      var provider = getPhantomProvider();
+      if (!provider) {
+        window.open('https://phantom.app/', '_blank');
+        setPanelStatus('install phantom wallet, then try again', 'error');
+        return;
+      }
+      phantomBtn.disabled = true;
+      setPanelStatus('connecting to phantom...', '');
+      try {
+        var resp = await provider.connect();
+        var walletAddress = resp.publicKey.toString();
+        // Create a challenge nonce
+        var nonce = 'anky-auth-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+        var message = 'Sign in to anky.app\n\nThis signature proves you own this wallet.\nNonce: ' + nonce;
+        // Request signature
+        var encodedMessage = new TextEncoder().encode(message);
+        var signResult = await provider.signMessage(encodedMessage, 'utf8');
+        // signResult.signature is a Uint8Array — encode as base58
+        var sigBytes = signResult.signature || signResult;
+        var sigB58 = base58encode(sigBytes instanceof Uint8Array ? sigBytes : new Uint8Array(sigBytes));
+        // Send to backend
+        setPanelStatus('verifying...', '');
+        var verifyResp = await fetch('/auth/solana/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: walletAddress,
+            signature: sigB58,
+            message: message,
+          }),
+        });
+        var data = await verifyResp.json();
+        if (!verifyResp.ok || !data.ok) {
+          throw new Error(data.error || 'verification failed');
+        }
+        // Set cookies and update UI
+        if (data.session_token) {
+          document.cookie = 'anky_session=' + data.session_token + '; path=/; max-age=2592000; secure; samesite=lax';
+        }
+        if (data.wallet_address) {
+          localStorage.setItem('wallet_address', data.wallet_address);
+        }
+        setPanelStatus('connected. entering...', 'success');
+        await updateBtn();
+        window.setTimeout(function() {
+          var target = getRedirectTarget(redirectTarget);
+          closePanel();
+          if (target && target !== currentPath()) {
+            window.location.replace(target);
+          }
+        }, 300);
+      } catch (err) {
+        if (err.code === 4001 || (err.message && err.message.includes('rejected'))) {
+          setPanelStatus('signature request was cancelled', 'error');
+        } else {
+          setPanelStatus(err.message || 'phantom connection failed', 'error');
+        }
+      } finally {
+        phantomBtn.disabled = false;
+      }
+    }
+
+    // Minimal base58 encoder (Bitcoin/Solana alphabet)
+    function base58encode(bytes) {
+      var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      // Count leading zeros
+      var leadingZeros = 0;
+      for (var i = 0; i < bytes.length && bytes[i] === 0; i++) leadingZeros++;
+      // Convert to BigInt
+      var num = BigInt(0);
+      for (var j = 0; j < bytes.length; j++) num = num * BigInt(256) + BigInt(bytes[j]);
+      // Encode
+      var chars = [];
+      while (num > BigInt(0)) {
+        chars.push(ALPHABET[Number(num % BigInt(58))]);
+        num = num / BigInt(58);
+      }
+      chars.reverse();
+      // Prepend '1' for each leading zero byte
+      var prefix = '';
+      for (var k = 0; k < leadingZeros; k++) prefix += '1';
+      return prefix + chars.join('');
+    }
+
+    if (phantomBtn) {
+      phantomBtn.addEventListener('click', connectPhantom);
+    }
+
     updateBtn();
 
-    return { login: login, logout: logout, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn, updateBtn: updateBtn };
+    // Refresh auth state when the page is restored from bfcache (mobile back-nav
+    // after OAuth redirect) so the navbar doesn't show stale logged-out state.
+    window.addEventListener('pageshow', function(e) {
+      if (e.persisted) updateBtn();
+    });
+
+    if (authPanelClose) authPanelClose.addEventListener('click', closePanel);
+    if (authPanelBackdrop) authPanelBackdrop.addEventListener('click', closePanel);
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && authPanel && !authPanel.hidden) closePanel();
+    });
+    if (mobileSealMedia && typeof mobileSealMedia.addEventListener === 'function') {
+      mobileSealMedia.addEventListener('change', function() {
+        if (activeChallenge) renderChallenge(activeChallenge);
+      });
+    }
+
+    return { login: login, logout: logout, sendUSDC: sendUSDC, isLoggedIn: isLoggedIn, updateBtn: updateBtn, connectPhantom: connectPhantom };
   })();
 
   // Backwards compat: ankyWallet points to ankyAuth
@@ -192,6 +960,9 @@
       drawer.classList.add('open');
       overlay.classList.add('open');
       document.body.style.overflow = 'hidden';
+      if (window.ankyAuth && typeof window.ankyAuth.updateBtn === 'function') {
+        try { window.ankyAuth.updateBtn(); } catch (e) {}
+      }
     }
     function closeDrawer() {
       drawer.classList.remove('open');
@@ -199,7 +970,9 @@
       document.body.style.overflow = '';
     }
 
-    btn.addEventListener('click', openDrawer);
+    btn.addEventListener('click', function() {
+      window.location.href = '/you';
+    });
     if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
     if (overlay) overlay.addEventListener('click', closeDrawer);
     drawer.querySelectorAll('a').forEach(function(a) {
@@ -864,10 +1637,7 @@
             });
             const data = await resp.json();
             if (data.ok) {
-              localStorage.setItem('anky_logged_in', 'true');
               if (data.wallet_address) localStorage.setItem('wallet_address', data.wallet_address);
-              if (data.username) localStorage.setItem('anky_username', data.username);
-              if (data.email) localStorage.setItem('anky_email', data.email);
               if (window.ankyAuth) window.ankyAuth.updateBtn();
             }
           } catch(_) {}
@@ -884,6 +1654,157 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function() {});
   }
+  </script>
+  <script>
+  // ── Now Prompt Modal ──
+  (function() {
+    var trigger = document.getElementById('now-trigger');
+    var backdrop = document.getElementById('now-backdrop');
+    var modal = document.getElementById('now-modal');
+    var closeBtn = document.getElementById('now-close');
+    var promptInput = document.getElementById('now-prompt');
+    var createBtn = document.getElementById('now-create');
+    var geoBtn = document.getElementById('now-geo-btn');
+    var geoLabel = document.getElementById('now-geo-label');
+    var coordsDisplay = document.getElementById('now-coords-display');
+    var formView = document.getElementById('now-form-view');
+    var resultView = document.getElementById('now-result');
+    var resultPrompt = document.getElementById('now-result-prompt');
+    var resultQr = document.getElementById('now-result-qr');
+    var resultLink = document.getElementById('now-result-link');
+    var dlSvg = document.getElementById('now-dl-svg');
+    var dlPng = document.getElementById('now-dl-png');
+    var copyLink = document.getElementById('now-copy-link');
+
+    if (!trigger || !modal) return;
+
+    var lat = null, lng = null;
+    var mode = 'sticker';
+
+    function openModal() {
+      backdrop.classList.add('open');
+      modal.classList.add('open');
+      formView.style.display = '';
+      resultView.classList.remove('show');
+      promptInput.value = '';
+      promptInput.focus();
+    }
+
+    function closeModal() {
+      backdrop.classList.remove('open');
+      modal.classList.remove('open');
+    }
+
+    trigger.addEventListener('click', function(e) {
+      e.preventDefault();
+      openModal();
+    });
+    backdrop.addEventListener('click', closeModal);
+    closeBtn.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+    });
+
+    // Mode toggle
+    document.querySelectorAll('.now-mode-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.now-mode-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        mode = btn.dataset.mode;
+      });
+    });
+
+    // Geolocation
+    geoBtn.addEventListener('click', function() {
+      if (lat !== null) {
+        lat = null; lng = null;
+        geoBtn.classList.remove('active');
+        geoLabel.textContent = 'add location';
+        coordsDisplay.textContent = '';
+        return;
+      }
+      if (!navigator.geolocation) {
+        geoLabel.textContent = 'not supported';
+        return;
+      }
+      geoLabel.textContent = 'locating...';
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        geoBtn.classList.add('active');
+        geoLabel.textContent = 'location set';
+        coordsDisplay.textContent = lat.toFixed(4) + ', ' + lng.toFixed(4);
+      }, function() {
+        geoLabel.textContent = 'denied';
+        setTimeout(function() { geoLabel.textContent = 'add location'; }, 2000);
+      });
+    });
+
+    // Create
+    createBtn.addEventListener('click', function() {
+      var prompt = promptInput.value.trim();
+      if (!prompt) { promptInput.focus(); return; }
+
+      createBtn.disabled = true;
+      createBtn.textContent = 'creating...';
+
+      var body = { prompt: prompt, mode: mode };
+      if (lat !== null) { body.latitude = lat; body.longitude = lng; }
+
+      fetch('/api/v1/now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) throw new Error(data.error);
+
+        // Show result
+        formView.style.display = 'none';
+        resultView.classList.add('show');
+        resultPrompt.textContent = data.prompt;
+        resultQr.innerHTML = data.qr_svg;
+        resultLink.innerHTML = '<a href="' + data.qr_url + '" target="_blank">' + data.qr_url + '</a>';
+
+        // SVG download
+        var svgBlob = new Blob([data.qr_svg], { type: 'image/svg+xml' });
+        dlSvg.href = URL.createObjectURL(svgBlob);
+
+        // PNG download — render SVG to canvas
+        var svgEl = resultQr.querySelector('svg');
+        if (svgEl) {
+          var svgData = new XMLSerializer().serializeToString(svgEl);
+          var canvas = document.createElement('canvas');
+          canvas.width = 512; canvas.height = 512;
+          var ctx = canvas.getContext('2d');
+          var img = new Image();
+          img.onload = function() {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, 512, 512);
+            ctx.drawImage(img, 0, 0, 512, 512);
+            dlPng.href = canvas.toDataURL('image/png');
+          };
+          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        }
+
+        // Copy link
+        copyLink.onclick = function() {
+          navigator.clipboard.writeText(data.qr_url).then(function() {
+            copyLink.textContent = 'copied!';
+            setTimeout(function() { copyLink.textContent = 'copy link'; }, 2000);
+          });
+        };
+      })
+      .catch(function(err) {
+        createBtn.textContent = 'error: ' + err.message;
+        setTimeout(function() {
+          createBtn.disabled = false;
+          createBtn.textContent = 'create now';
+        }, 2000);
+      });
+    });
+  })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

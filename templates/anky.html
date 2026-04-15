@@ -1,8 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang | default(value='en') }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <script>
+    window.__LANG__ = {{ lang | default(value='en') | json_encode() | safe }};
+    {% if i18n_js %}window.__I18N__ = {{ i18n_js | json_encode() | safe }};{% else %}window.__I18N__ = {};{% endif %}
+    window.t = function(k){return (window.__I18N__ && window.__I18N__[k]) || k;};
+  </script>
   <title>ANKY | {{ title }}</title>
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -433,9 +438,9 @@
 
 <div class="app" id="app">
   <nav class="top-nav">
-    <a class="nav-back" href="/" title="back to home">
+    <a class="nav-back" href="/" title="{{ t(key='anky.back', lang=lang) }}">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
-      <span class="nav-back-label">back</span>
+      <span class="nav-back-label">{{ t(key='anky.back', lang=lang) }}</span>
     </a>
     <div class="nav-spacer"></div>
   </nav>
@@ -445,7 +450,7 @@
 
       <!-- SECTION 1: who the world sees -->
       <section class="anky-section" id="sectionWorld">
-        <div class="section-label">who the world sees</div>
+        <div class="section-label">{{ t(key='anky.section_who_world_sees', lang=lang) }}</div>
 
         {% if status == "complete" and image_path %}
         <div class="anky-thread-image">
@@ -462,7 +467,7 @@
         <div class="anky-thread-image" id="imageSection">
           <div class="generating-placeholder">
             <div class="gen-icon">&#9998;</div>
-            <div class="gen-label">your anky is being born...</div>
+            <div class="gen-label">{{ t(key='anky.being_born', lang=lang) }}</div>
           </div>
         </div>
         {% endif %}
@@ -475,14 +480,14 @@
         <div class="anky-thread-meta">
           {{ created_at }}
           {% if status == "complete" %}
-          <button class="anky-share-btn" id="shareBtn" style="margin-left:12px;">share</button>
+          <button class="anky-share-btn" id="shareBtn" style="margin-left:12px;">{{ t(key='share.share', lang=lang) }}</button>
           {% endif %}
         </div>
       </section>
 
       <!-- SECTION 2: your anky -->
       <section class="anky-section" id="sectionYours">
-        <div class="section-label">your anky</div>
+        <div class="section-label">{{ t(key='anky.section_your_anky', lang=lang) }}</div>
 
         {% if writing %}
         <div class="anky-thread-writing">{% if formatted_writing %}{{ formatted_writing }}{% else %}{{ writing }}{% endif %}</div>
@@ -491,8 +496,8 @@
         {% if reflection or has_story %}
         {% if reflection and has_story %}
         <div class="anky-thread-tabs">
-          <button class="anky-thread-tab active" data-tab="mind">reflection</button>
-          <button class="anky-thread-tab" data-tab="heart">story</button>
+          <button class="anky-thread-tab active" data-tab="mind">{{ t(key='anky.tab_reflection', lang=lang) }}</button>
+          <button class="anky-thread-tab" data-tab="heart">{{ t(key='anky.tab_story', lang=lang) }}</button>
         </div>
         {% endif %}
 
@@ -519,7 +524,7 @@
 
       <!-- SECTION 3: talk with this anky -->
       <section class="anky-section" id="sectionTalk">
-        <div class="section-label">talk with this anky</div>
+        <div class="section-label">{{ t(key='anky.section_talk', lang=lang) }}</div>
 
         <div class="talk-shell">
           <div class="conversation-thread" id="conversationThread"></div>
@@ -529,13 +534,13 @@
             <div class="reply-suggestions" id="replySuggestions"></div>
             <div class="reply-custom-wrap">
               <textarea class="reply-textarea" id="replyInput" placeholder="talk to anky about this..." rows="1"></textarea>
-              <button class="reply-send-btn" id="replySendBtn" disabled>send</button>
+              <button class="reply-send-btn" id="replySendBtn" disabled>{{ t(key='anky.send', lang=lang) }}</button>
             </div>
           </div>
           {% else %}
           <div class="talk-input-panel">
             <div class="talk-login-nudge">
-              <a href="/login">seal on your phone</a> to talk with this anky
+              {{ t(key='anky.login_to_talk_html', lang=lang) | safe }}
             </div>
           </div>
           {% endif %}
@@ -732,7 +737,7 @@
       }
 
       es.onmessage = function(e) {
-        rawText += e.data + '\n';
+        rawText += e.data;
         reflEl.innerHTML = renderMarkdown(rawText) + '<span class="stream-cursor"></span>';
         if (!userScrolledUp) {
           var target = contentArea || window;

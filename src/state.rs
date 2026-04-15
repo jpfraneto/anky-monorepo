@@ -22,6 +22,15 @@ pub enum GpuJob {
     CuentacuentosImages { cuentacuentos_id: String },
     /// Generate TTS audio for cuentacuentos story
     CuentacuentosAudio { cuentacuentos_id: String },
+    /// Generate anky image from enclave-provided prompt (sealed write path — no plaintext)
+    AnkyImageFromPrompt {
+        anky_id: String,
+        session_id: String,
+        user_id: String,
+        image_prompt: String,
+    },
+    /// Generate prompt image for an Anky Now
+    NowPromptImage { now_id: String, prompt: String },
 }
 
 /// Simple in-memory rate limiter: tracks request timestamps per key.
@@ -155,6 +164,7 @@ pub struct LiveTextEvent {
 pub struct AppState {
     pub db: sqlx::PgPool,
     pub tera: Arc<Tera>,
+    pub i18n: Arc<crate::i18n::I18n>,
     pub config: Arc<Config>,
     pub gpu_status: Arc<RwLock<GpuStatus>>,
     pub log_tx: broadcast::Sender<LogEntry>,

@@ -1,4 +1,3 @@
-use super::swift;
 use crate::db::queries;
 use crate::error::AppError;
 use crate::services::twitter;
@@ -7,6 +6,10 @@ use axum::extract::{Query, State};
 use axum::response::Redirect;
 use axum::Json;
 use axum_extra::extract::cookie::{Cookie, CookieJar};
+
+const PRIMARY_WEB_SESSION_COOKIE: &str = "anky_session";
+const LEGACY_WEB_SESSION_COOKIE: &str = "anky_privy_token";
+const WEB_USER_COOKIE: &str = "anky_user_id";
 
 #[derive(serde::Deserialize)]
 pub struct LoginQuery {
@@ -101,11 +104,8 @@ pub async fn callback(
         let uid = match existing {
             Some(xu) => xu.user_id,
             None => {
-                // Check if there's an existing anky_user_id cookie to link
-                let uid = jar
-                    .get("anky_user_id")
-                    .map(|c| c.value().to_string())
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                let uid =
+                    visitor_id_from_jar(&jar).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
                 queries::ensure_user(&db, &uid)?;
                 uid
             }
@@ -154,28 +154,15 @@ pub async fn callback(
         queries::create_auth_session(&db, &session_token, &user_id, Some(&user.id), &expires_at)?;
     }
 
+    merge_visitor_writings(&state, &jar, &user_id);
+
     state.emit_log(
         "INFO",
         "auth",
         &format!("X login: @{} ({})", user.username, &user_id[..8]),
     );
 
-    // Set cookies
-    let session_cookie = Cookie::build(("anky_session", session_token))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .max_age(time::Duration::days(30))
-        .build();
-
-    let user_cookie = Cookie::build(("anky_user_id", user_id))
-        .path("/")
-        .http_only(false)
-        .secure(true)
-        .max_age(time::Duration::days(365))
-        .build();
-
-    let jar = jar.add(session_cookie).add(user_cookie);
+    let jar = add_web_auth_cookies(jar, &session_token, &user_id, 30);
     let redirect = redirect_to.as_deref().unwrap_or("/");
 
     Ok((jar, Redirect::temporary(redirect)))
@@ -186,22 +173,15 @@ pub async fn logout(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AppError> {
-    if let Some(token) = jar.get("anky_session") {
-        let db = crate::db::conn(&state.db)?;
-        let _ = queries::delete_auth_session(&db, token.value());
-    }
-
-    let jar = jar
-        .remove(Cookie::build("anky_session").path("/").build())
-        .remove(Cookie::build("anky_user_id").path("/").build());
+    delete_session_from_jar(&state, &jar)?;
+    let jar = clear_web_auth_cookies(jar);
 
     Ok((jar, Redirect::temporary("/")))
 }
 
-/// Helper: extract auth context from cookies or Privy token for template rendering.
+/// Helper: extract browser auth context for page rendering.
 pub struct AuthUser {
     pub user_id: String,
-    pub x_user_id: Option<String>,
     pub username: Option<String>,
     pub display_name: Option<String>,
     pub profile_image_url: Option<String>,
@@ -209,381 +189,186 @@ pub struct AuthUser {
     pub email: Option<String>,
 }
 
-pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser> {
-    // Try cookie-based session first
-    if let Some(cookie) = jar.get("anky_session") {
-        let token = cookie.value();
-        let db = crate::db::conn(&state.db).ok()?;
-        if let Ok(Some((user_id, x_user_id))) = queries::get_auth_session(&db, token) {
-            if let Some(ref xid) = x_user_id {
-                if let Ok(Some(xu)) = queries::get_x_user_by_x_id(&db, xid) {
-                    let email = queries::get_user_email(&db, &xu.user_id).ok().flatten();
-                    return Some(AuthUser {
-                        user_id: xu.user_id,
-                        x_user_id: Some(xu.x_user_id),
-                        username: Some(xu.username),
-                        display_name: xu.display_name,
-                        profile_image_url: xu.profile_image_url,
-                        wallet_address: None,
-                        email,
-                    });
-                }
+/// Reattach writing sessions that were saved under a visitor id (anky_user_id cookie)
+/// to the authenticated user_id after login. Best-effort: failure is logged and
+/// does not block the login flow.
+fn merge_visitor_writings(state: &AppState, jar: &CookieJar, authenticated_user_id: &str) {
+    let visitor_id = match visitor_id_from_jar(jar) {
+        Some(v) => v,
+        None => return,
+    };
+    if visitor_id == authenticated_user_id {
+        return;
+    }
+    let db = match crate::db::conn(&state.db) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("merge_visitor_writings: db conn failed: {}", e);
+            return;
+        }
+    };
+    match db.execute(
+        "UPDATE writing_sessions SET user_id = ?1 WHERE user_id = ?2",
+        crate::params![authenticated_user_id, &visitor_id],
+    ) {
+        Ok(rows) => {
+            if rows > 0 {
+                state.emit_log(
+                    "INFO",
+                    "auth",
+                    &format!(
+                        "merged {} visitor writing_sessions from {} → {}",
+                        rows,
+                        &visitor_id[..visitor_id.len().min(8)],
+                        &authenticated_user_id[..authenticated_user_id.len().min(8)],
+                    ),
+                );
             }
-            let email = queries::get_user_email(&db, &user_id).ok().flatten();
+        }
+        Err(e) => {
+            tracing::warn!("merge_visitor_writings UPDATE failed: {}", e);
+        }
+    }
+}
+
+fn build_auth_session_cookie(session_token: &str, max_age_days: i64) -> Cookie<'static> {
+    Cookie::build((PRIMARY_WEB_SESSION_COOKIE, session_token.to_string()))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(tower_cookies::cookie::SameSite::Lax)
+        .max_age(time::Duration::days(max_age_days))
+        .build()
+}
+
+fn build_user_cookie(user_id: &str) -> Cookie<'static> {
+    Cookie::build((WEB_USER_COOKIE, user_id.to_string()))
+        .path("/")
+        .http_only(false)
+        .secure(true)
+        .same_site(tower_cookies::cookie::SameSite::Lax)
+        .max_age(time::Duration::days(365))
+        .build()
+}
+
+pub fn build_visitor_cookie(user_id: &str) -> Cookie<'static> {
+    Cookie::build((WEB_USER_COOKIE, user_id.to_string()))
+        .path("/")
+        .http_only(false)
+        .secure(true)
+        .same_site(tower_cookies::cookie::SameSite::Lax)
+        .max_age(time::Duration::days(365))
+        .build()
+}
+
+fn add_web_auth_cookies(
+    jar: CookieJar,
+    session_token: &str,
+    user_id: &str,
+    max_age_days: i64,
+) -> CookieJar {
+    jar.add(build_auth_session_cookie(session_token, max_age_days))
+        .add(build_user_cookie(user_id))
+}
+
+fn clear_web_auth_cookies(jar: CookieJar) -> CookieJar {
+    jar.remove(Cookie::build(PRIMARY_WEB_SESSION_COOKIE).path("/").build())
+        .remove(Cookie::build(LEGACY_WEB_SESSION_COOKIE).path("/").build())
+        .remove(Cookie::build(WEB_USER_COOKIE).path("/").build())
+}
+
+pub fn visitor_id_from_jar(jar: &CookieJar) -> Option<String> {
+    jar.get(WEB_USER_COOKIE)
+        .map(|cookie| cookie.value().to_string())
+}
+
+pub fn visitor_cookie_if_missing(jar: &CookieJar) -> Option<Cookie<'static>> {
+    if visitor_id_from_jar(jar).is_some() {
+        None
+    } else {
+        Some(build_visitor_cookie(&uuid::Uuid::new_v4().to_string()))
+    }
+}
+
+pub fn ensure_visitor_cookie(jar: CookieJar) -> CookieJar {
+    if let Some(cookie) = visitor_cookie_if_missing(&jar) {
+        jar.add(cookie)
+    } else {
+        jar
+    }
+}
+
+fn session_token_from_jar(jar: &CookieJar) -> Option<String> {
+    jar.get(PRIMARY_WEB_SESSION_COOKIE)
+        .or_else(|| jar.get(LEGACY_WEB_SESSION_COOKIE))
+        .map(|cookie| cookie.value().to_string())
+}
+
+fn delete_session_from_jar(state: &AppState, jar: &CookieJar) -> Result<(), AppError> {
+    if let Some(token) = session_token_from_jar(jar) {
+        let db = crate::db::conn(&state.db)?;
+        let _ = queries::delete_auth_session(&db, &token);
+    }
+    Ok(())
+}
+
+fn auth_user_from_session_token(state: &AppState, token: &str) -> Option<AuthUser> {
+    let db = crate::db::conn(&state.db).ok()?;
+    let (user_id, x_user_id) = queries::get_auth_session(&db, token).ok()??;
+    let wallet_address = queries::get_user_wallet(&db, &user_id).ok().flatten();
+    let email = queries::get_user_email(&db, &user_id).ok().flatten();
+    let (username, farcaster_username, farcaster_pfp_url) = db
+        .query_row(
+            "SELECT username, farcaster_username, farcaster_pfp_url FROM users WHERE id = ?1",
+            crate::params![&user_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .ok()
+        .unwrap_or((None, None, None));
+
+    if let Some(ref xid) = x_user_id {
+        if let Ok(Some(xu)) = queries::get_x_user_by_x_id(&db, xid) {
+            let fallback_username = username.clone().or(farcaster_username.clone());
+            let x_username = xu.username.clone();
             return Some(AuthUser {
-                user_id,
-                x_user_id,
-                username: None,
-                display_name: None,
-                profile_image_url: None,
-                wallet_address: None,
+                user_id: xu.user_id,
+                username: Some(x_username.clone()).or(fallback_username.clone()),
+                display_name: xu.display_name.or(Some(x_username)),
+                profile_image_url: xu.profile_image_url.or(farcaster_pfp_url),
+                wallet_address,
                 email,
             });
         }
     }
 
-    // Try Privy token from anky_privy_token cookie (set by frontend after Privy login)
-    if let Some(cookie) = jar.get("anky_privy_token") {
-        let token = cookie.value();
-        if let Some(user) = get_auth_user_from_privy_token(state, token).await {
-            return Some(user);
-        }
-    }
-
-    None
+    let display_name = username.clone().or(farcaster_username.clone());
+    Some(AuthUser {
+        user_id,
+        username: username.or(farcaster_username),
+        display_name,
+        profile_image_url: farcaster_pfp_url,
+        wallet_address,
+        email,
+    })
 }
 
-/// Extract auth user from Privy auth token by looking up the session we created during verify.
-async fn get_auth_user_from_privy_token(state: &AppState, token: &str) -> Option<AuthUser> {
+pub async fn get_auth_user(state: &AppState, jar: &CookieJar) -> Option<AuthUser> {
+    session_token_from_jar(jar).and_then(|token| auth_user_from_session_token(state, &token))
+}
+
+/// Resolve the authenticated user_id from the `anky_session` cookie, if any.
+/// Unlike `get_auth_user`, this does only the minimal session lookup.
+pub fn authenticated_user_id_from_jar(state: &AppState, jar: &CookieJar) -> Option<String> {
+    let token = session_token_from_jar(jar)?;
     let db = crate::db::conn(&state.db).ok()?;
-    // The token is our session token created during privy verify
-    if let Ok(Some((user_id, _))) = queries::get_auth_session(&db, token) {
-        let wallet = queries::get_user_wallet(&db, &user_id).ok().flatten();
-        let username = queries::get_user_username(&db, &user_id).ok().flatten();
-        let email = queries::get_user_email(&db, &user_id).ok().flatten();
-        return Some(AuthUser {
-            user_id,
-            x_user_id: None,
-            username,
-            display_name: None,
-            profile_image_url: None,
-            wallet_address: wallet,
-            email,
-        });
-    }
-    None
-}
-
-/// POST /auth/privy/verify — verify Privy auth token and create session.
-/// Frontend calls this after successful Privy login.
-/// Verifies JWT locally using ES256 public key, then looks up or creates user.
-#[derive(serde::Deserialize)]
-pub struct PrivyVerifyRequest {
-    pub auth_token: String,
-}
-
-#[derive(serde::Deserialize)]
-struct PrivyClaims {
-    sub: String, // Privy DID (e.g. "did:privy:...")
-    iss: Option<String>,
-    aud: Option<String>,
-}
-
-pub async fn privy_verify(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Json(req): Json<PrivyVerifyRequest>,
-) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
-    let app_id = &state.config.privy_app_id;
-    let app_secret = &state.config.privy_app_secret;
-    let verification_key = &state.config.privy_verification_key;
-
-    if app_id.is_empty() || app_secret.is_empty() {
-        return Err(AppError::Internal("Privy not configured".into()));
-    }
-
-    // Step 1: Verify JWT locally using ES256 public key
-    let privy_did = if !verification_key.is_empty() {
-        let decoding_key = jsonwebtoken::DecodingKey::from_ec_pem(verification_key.as_bytes())
-            .map_err(|e| AppError::Internal(format!("Invalid Privy verification key: {}", e)))?;
-
-        let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256);
-        validation.set_issuer(&["privy.io"]);
-        validation.set_audience(&[app_id.as_str()]);
-
-        let token_data =
-            jsonwebtoken::decode::<PrivyClaims>(&req.auth_token, &decoding_key, &validation)
-                .map_err(|e| {
-                    tracing::warn!("Privy JWT verification failed: {}", e);
-                    AppError::BadRequest("invalid privy token".into())
-                })?;
-
-        token_data.claims.sub
-    } else {
-        // Fallback: verify via Privy API if no local key configured
-        let client = reqwest::Client::new();
-        let resp = client
-            .post("https://auth.privy.io/api/v1/sessions/verify")
-            .header("privy-app-id", app_id.as_str())
-            .basic_auth(app_id, Some(app_secret))
-            .json(&serde_json::json!({ "auth_token": req.auth_token }))
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("Privy verification request failed: {}", e)))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            tracing::warn!("Privy verify failed ({}): {}", status, body);
-            return Err(AppError::BadRequest("invalid privy token".into()));
-        }
-
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("Privy response parse failed: {}", e)))?;
-
-        body.get("user")
-            .and_then(|u| u.get("id"))
-            .and_then(|id| id.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| AppError::Internal("no user id in Privy response".into()))?
-    };
-
-    // Step 2: Check if we already know this Privy user (fast path — no API call)
-    {
-        let db = crate::db::conn(&state.db)?;
-        if let Some(user_id) = queries::get_user_by_privy_did(&db, &privy_did)? {
-            let email = queries::get_user_email(&db, &user_id)?;
-            let wallet = queries::get_user_wallet(&db, &user_id)?;
-            let username = queries::get_user_username(&db, &user_id)?;
-            let session_token = uuid::Uuid::new_v4().to_string();
-            let expires_at = chrono::Utc::now()
-                .checked_add_signed(chrono::Duration::days(30))
-                .unwrap()
-                .to_rfc3339();
-            queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
-
-            let display = username
-                .as_deref()
-                .or(email.as_deref())
-                .unwrap_or(&privy_did[..12.min(privy_did.len())]);
-            state.emit_log(
-                "INFO",
-                "auth",
-                &format!("Privy login (returning): {} ({})", display, &user_id[..8]),
-            );
-
-            let session_cookie = Cookie::build(("anky_privy_token", session_token))
-                .path("/")
-                .http_only(true)
-                .secure(true)
-                .max_age(time::Duration::days(30))
-                .build();
-            let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
-                .path("/")
-                .http_only(false)
-                .secure(true)
-                .max_age(time::Duration::days(365))
-                .build();
-            let jar = jar.add(session_cookie).add(user_cookie);
-
-            return Ok((
-                jar,
-                Json(serde_json::json!({
-                    "ok": true,
-                    "user_id": user_id,
-                    "email": email,
-                    "wallet_address": wallet,
-                    "username": username,
-                })),
-            ));
-        }
-    }
-
-    // Step 3: New user — call Privy API to get linked accounts (email, wallet, etc.)
-    let client = reqwest::Client::new();
-    let encoded_did = urlencoding::encode(&privy_did);
-    let resp = client
-        .get(format!(
-            "https://auth.privy.io/api/v1/users/{}",
-            encoded_did
-        ))
-        .header("privy-app-id", app_id.as_str())
-        .basic_auth(app_id, Some(app_secret))
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("Privy user fetch failed: {}", e)))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        tracing::warn!("Privy user fetch failed ({}): {}", status, body);
-        return Err(AppError::Internal(
-            "failed to fetch Privy user details".into(),
-        ));
-    }
-
-    let user_data: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("Privy user parse failed: {}", e)))?;
-
-    // Extract email and wallet from linked_accounts (both optional)
-    let linked_accounts = user_data
-        .get("linked_accounts")
-        .and_then(|la| la.as_array());
-
-    let email_address = linked_accounts.and_then(|accounts| {
-        accounts.iter().find_map(|acc| {
-            let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            if acct_type == "email" {
-                acc.get("address")
-                    .and_then(|a| a.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
-    });
-
-    // Also check for Google/Apple email
-    let email_address = email_address.or_else(|| {
-        linked_accounts.and_then(|accounts| {
-            accounts.iter().find_map(|acc| {
-                let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                if acct_type == "google_oauth" || acct_type == "apple_oauth" {
-                    acc.get("email")
-                        .and_then(|a| a.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-        })
-    });
-
-    let wallet_address = linked_accounts.and_then(|accounts| {
-        accounts.iter().find_map(|acc| {
-            let acct_type = acc.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            if acct_type == "wallet" {
-                acc.get("address")
-                    .and_then(|a| a.as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
-    });
-
-    // Step 4: Create or find user
-    let user_id = {
-        let db = crate::db::conn(&state.db)?;
-
-        // Try to find existing user by email first
-        let existing_uid = if let Some(ref email) = email_address {
-            queries::get_user_by_email(&db, email)?
-        } else {
-            None
-        };
-
-        // Then try by wallet
-        let existing_uid = existing_uid.or(if let Some(ref addr) = wallet_address {
-            queries::get_user_by_wallet(&db, addr)?
-        } else {
-            None
-        });
-
-        if let Some(uid) = existing_uid {
-            // Link privy_did to existing user
-            let _ = queries::set_privy_did(&db, &uid, &privy_did);
-            if let Some(ref email) = email_address {
-                let _ = queries::set_email(&db, &uid, email);
-            }
-            if let Some(ref addr) = wallet_address {
-                if queries::get_user_wallet(&db, &uid)?.is_none() {
-                    let _ = queries::set_wallet_address(&db, &uid, addr);
-                }
-            }
-            uid
-        } else {
-            let uid = jar
-                .get("anky_user_id")
-                .map(|c| c.value().to_string())
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-            if let Some(ref email) = email_address {
-                queries::create_user_with_email_and_privy(&db, &uid, email, &privy_did)?;
-            } else if let Some(ref addr) = wallet_address {
-                queries::create_user_with_wallet_and_privy(&db, &uid, addr, &privy_did)?;
-            } else {
-                queries::ensure_user(&db, &uid)?;
-                let _ = queries::set_privy_did(&db, &uid, &privy_did);
-            }
-
-            if let Some(ref addr) = wallet_address {
-                if email_address.is_some() {
-                    let _ = queries::set_wallet_address(&db, &uid, addr);
-                }
-            }
-
-            uid
-        }
-    };
-
-    // Create auth session
-    let session_token = uuid::Uuid::new_v4().to_string();
-    let expires_at = chrono::Utc::now()
-        .checked_add_signed(chrono::Duration::days(30))
-        .unwrap()
-        .to_rfc3339();
-
-    {
-        let db = crate::db::conn(&state.db)?;
-        queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
-    }
-
-    let display = email_address
-        .as_deref()
-        .or(wallet_address.as_deref().map(|a| &a[..6.min(a.len())]))
-        .unwrap_or(&privy_did[..12.min(privy_did.len())]);
-    state.emit_log(
-        "INFO",
-        "auth",
-        &format!("Privy login (new): {} ({})", display, &user_id[..8]),
-    );
-
-    // Set cookies
-    let session_cookie = Cookie::build(("anky_privy_token", session_token))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .max_age(time::Duration::days(30))
-        .build();
-    let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
-        .path("/")
-        .http_only(false)
-        .secure(true)
-        .max_age(time::Duration::days(365))
-        .build();
-    let jar = jar.add(session_cookie).add(user_cookie);
-
-    // Get final username
-    let final_username = {
-        let db = crate::db::conn(&state.db)?;
-        queries::get_user_username(&db, &user_id)?
-    };
-
-    Ok((
-        jar,
-        Json(serde_json::json!({
-            "ok": true,
-            "user_id": user_id,
-            "email": email_address,
-            "wallet_address": wallet_address,
-            "username": final_username,
-        })),
-    ))
+    let (user_id, _) = queries::get_auth_session(&db, &token).ok()??;
+    Some(user_id)
 }
 
 /// POST /auth/farcaster/verify — authenticate via Farcaster MiniApp SDK context.
@@ -592,7 +377,6 @@ pub async fn privy_verify(
 pub struct FarcasterVerifyRequest {
     pub fid: i64,
     pub username: Option<String>,
-    pub display_name: Option<String>,
     pub pfp_url: Option<String>,
     pub wallet_address: Option<String>,
 }
@@ -692,6 +476,8 @@ pub async fn farcaster_verify(
         queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
     }
 
+    merge_visitor_writings(&state, &jar, &user_id);
+
     state.emit_log(
         "INFO",
         "auth",
@@ -712,20 +498,7 @@ pub async fn farcaster_verify(
         )
     };
 
-    // Set cookies
-    let session_cookie = Cookie::build(("anky_privy_token", session_token))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .max_age(time::Duration::days(30))
-        .build();
-    let user_cookie = Cookie::build(("anky_user_id", user_id.clone()))
-        .path("/")
-        .http_only(false)
-        .secure(true)
-        .max_age(time::Duration::days(365))
-        .build();
-    let jar = jar.add(session_cookie).add(user_cookie);
+    let jar = add_web_auth_cookies(jar, &session_token, &user_id, 30);
 
     Ok((
         jar,
@@ -738,81 +511,84 @@ pub async fn farcaster_verify(
     ))
 }
 
-/// POST /auth/privy/logout — clear Privy session cookies
-pub async fn privy_logout(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Result<(CookieJar, Redirect), AppError> {
-    if let Some(token) = jar.get("anky_privy_token") {
-        let db = crate::db::conn(&state.db)?;
-        let _ = queries::delete_auth_session(&db, token.value());
-    }
-
-    let jar = jar
-        .remove(Cookie::build("anky_privy_token").path("/").build())
-        .remove(Cookie::build("anky_user_id").path("/").build());
-
-    Ok((jar, Redirect::temporary("/")))
+/// POST /auth/solana/verify — authenticate via Phantom (or any Solana wallet).
+/// The browser extension signs a challenge nonce; we verify the Ed25519 signature.
+#[derive(serde::Deserialize)]
+pub struct SolanaVerifyRequest {
+    pub wallet_address: String,
+    pub signature: String,
+    pub message: String,
 }
 
-/// POST /auth/seed/verify — Web-side seed identity verification.
-/// Same logic as /swift/v2/auth/verify but sets browser cookies.
-pub async fn seed_verify(
+pub async fn solana_verify(
     State(state): State<AppState>,
     jar: CookieJar,
-    Json(req): Json<swift::SeedAuthVerifyRequest>,
+    Json(req): Json<SolanaVerifyRequest>,
 ) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
-    let result = swift::auth_seed_verify_inner(&state, &req).await?;
+    // Validate and normalize the wallet address
+    let wallet = crate::services::wallet::normalize_solana_address(&req.wallet_address)?;
 
-    let session_cookie = Cookie::build(("anky_session", result.session_token.clone()))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .max_age(time::Duration::days(90))
-        .build();
-    let user_cookie = Cookie::build(("anky_user_id", result.user_id.clone()))
-        .path("/")
-        .http_only(false)
-        .secure(true)
-        .max_age(time::Duration::days(365))
-        .build();
-    let jar = jar.add(session_cookie).add(user_cookie);
+    // Verify the Ed25519 signature
+    crate::services::wallet::verify_solana_signature(&wallet, &req.message, &req.signature)?;
+
+    // Find existing user by wallet or create a new one
+    let user_id = {
+        let db = crate::db::conn(&state.db)?;
+        if let Some(uid) = queries::get_user_by_wallet(&db, &wallet)? {
+            uid
+        } else {
+            // Check if current visitor cookie has a user we can attach the wallet to
+            let uid = visitor_id_from_jar(&jar).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            queries::ensure_user(&db, &uid)?;
+            queries::set_wallet_address(&db, &uid, &wallet)?;
+            uid
+        }
+    };
+
+    // Create auth session (30 days)
+    let session_token = uuid::Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(30))
+        .unwrap()
+        .to_rfc3339();
+
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
+    }
 
     state.emit_log(
         "INFO",
         "auth",
-        &format!(
-            "Seed login (web): {} ({})",
-            &result.user_id[..8],
-            result.wallet_address.as_deref().unwrap_or("?")
-        ),
+        &format!("Solana login: {} ({})", &wallet[..8], &user_id[..8]),
     );
+
+    let username = {
+        let db = crate::db::conn(&state.db)?;
+        queries::get_user_username(&db, &user_id)?
+    };
+
+    let jar = add_web_auth_cookies(jar, &session_token, &user_id, 30);
 
     Ok((
         jar,
         Json(serde_json::json!({
             "ok": true,
-            "user_id": result.user_id,
-            "wallet_address": result.wallet_address,
-            "username": result.username,
-            "session_token": result.session_token,
+            "session_token": session_token,
+            "user_id": user_id,
+            "wallet_address": wallet,
+            "username": username,
         })),
     ))
 }
 
-/// POST /auth/seed/logout — clear seed session cookies and invalidate session.
-pub async fn seed_logout(
+/// POST /auth/logout — clear browser auth cookies and invalidate the current session.
+pub async fn logout_json(
     State(state): State<AppState>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Json<serde_json::Value>), AppError> {
-    if let Some(token) = jar.get("anky_session") {
-        let db = crate::db::conn(&state.db)?;
-        let _ = queries::delete_auth_session(&db, token.value());
-    }
-
-    let jar = jar
-        .remove(Cookie::build("anky_session").path("/").build())
-        .remove(Cookie::build("anky_user_id").path("/").build());
+    delete_session_from_jar(&state, &jar)?;
+    let jar = clear_web_auth_cookies(jar);
 
     Ok((jar, Json(serde_json::json!({ "ok": true }))))
 }

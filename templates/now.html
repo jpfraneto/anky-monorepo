@@ -1,0 +1,532 @@
+{% extends "base.html" %}
+
+{% block title %}now{% endblock %}
+
+{% block head %}
+<style>
+  .navbar, .drawer, .drawer-overlay, .bottom-live-bar,
+  .mobile-bottom-nav, .mobile-nav { display: none !important; }
+  html, body { margin: 0; padding: 0; background: #0a0a0a; height: 100%; overflow: hidden; position: fixed; width: 100%; }
+
+  .writing-surface {
+    display: flex;
+    flex-direction: column;
+    height: calc(var(--vh, 1dvh) * 100);
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    background: #0a0a0a;
+    overflow: hidden;
+  }
+
+  /* ── TOP: idle bar ── */
+  .idle-bar-wrap {
+    flex-shrink: 0;
+    height: 3px;
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+  }
+  .idle-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff9a3d 0%, #ff4444 100%);
+    transition: width 0.1s linear;
+    opacity: 0;
+  }
+  .idle-bar-fill.warning {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(255, 92, 68, 0.35);
+  }
+
+  /* ── PROMPT ── */
+  .writing-prompt {
+    padding: 16px 16px 0 16px;
+    font-size: 17px;
+    line-height: 1.6;
+    color: #b366ff;
+    font-style: italic;
+    flex-shrink: 0;
+    transition: opacity 0.6s, transform 0.4s, font-size 0.4s;
+  }
+  .writing-prompt.faded { opacity: 0.5; transform: translateY(-4px); font-size: 13px; }
+
+  /* ── TEXTAREA ── */
+  .writing-textarea {
+    flex: 1;
+    min-height: 0;
+    margin: 12px 16px 0 16px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 18px;
+    line-height: 1.8;
+    color: #e8e0f0;
+    font-family: system-ui, -apple-system, sans-serif;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    caret-color: #b366ff;
+    overflow-y: auto;
+    letter-spacing: 0.01em;
+  }
+  .writing-textarea::placeholder { color: rgba(179,102,255,0.25); }
+  .writing-textarea::-webkit-scrollbar { width: 0; }
+
+  /* ── BOTTOM BAR ── */
+  .writing-bottom {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chakra-bar {
+    height: 3px;
+    width: 100%;
+    background: #1a1a1a;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .chakra-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+  .bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    min-height: 44px;
+  }
+  .writing-timer {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 18px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+  }
+  .writing-timer.past-zero { color: #c4a0ff; }
+  .send-btn {
+    display: none;
+    background: linear-gradient(135deg, #b366ff, #7b2ff7);
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 14px 48px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    box-shadow: 0 0 20px rgba(123, 47, 247, 0.3);
+  }
+  .send-btn:hover {
+    background: linear-gradient(135deg, #c084ff, #9b5ff7);
+    box-shadow: 0 0 30px rgba(123, 47, 247, 0.5);
+    transform: translateY(-1px);
+  }
+  .send-btn:active { transform: translateY(0); }
+  .send-btn.visible {
+    display: block;
+    animation: sendPulse 2s ease-in-out infinite;
+  }
+  @keyframes sendPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(123, 47, 247, 0.3); }
+    50% { box-shadow: 0 0 35px rgba(179, 102, 255, 0.5); }
+  }
+
+  /* ── PRESENCE (small overlay) ── */
+  .now-presence {
+    position: fixed;
+    top: 8px;
+    right: 12px;
+    font-size: 12px;
+    color: rgba(232,223,208,0.4);
+    z-index: 50;
+  }
+
+  /* ── COUNTDOWN overlay ── */
+  .now-countdown-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: calc(var(--vh, 1dvh) * 100);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0a;
+    z-index: 200;
+  }
+  .now-countdown-num {
+    font-family: 'Righteous', sans-serif;
+    font-size: 80px;
+    color: #b366ff;
+    line-height: 1;
+  }
+  .now-countdown-prompt {
+    margin-top: 24px;
+    font-size: 17px;
+    color: rgba(232,223,208,0.5);
+    font-style: italic;
+    text-align: center;
+    padding: 0 32px;
+    line-height: 1.6;
+  }
+
+  /* ── DONE state ── */
+  .now-done {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(var(--vh, 1dvh) * 100);
+    text-align: center;
+    padding: 32px;
+  }
+  .now-done.visible { display: flex; }
+  .now-done-msg {
+    font-size: 20px;
+    color: rgba(232,223,208,0.6);
+    margin-bottom: 16px;
+  }
+  .now-done-link {
+    color: #b366ff;
+    text-decoration: none;
+    font-size: 15px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="now-root"
+     data-slug="{{ slug }}"
+     data-mode="{{ mode }}"
+     data-started="{{ started }}"
+     data-starts-at="{{ starts_at | default(value='') }}"
+     data-duration="{{ duration_seconds }}"
+     data-prompt="{{ prompt }}">
+
+  <!-- Countdown overlay (live mode, before writing starts) -->
+  <div class="now-countdown-overlay" id="now-countdown" style="display:none">
+    <div class="now-countdown-num" id="countdown-num"></div>
+    <div class="now-countdown-prompt">{{ prompt }}</div>
+  </div>
+
+  <!-- Presence indicator -->
+  <div class="now-presence" id="now-presence">
+    <span id="presence-count">0</span> here
+  </div>
+
+  <!-- Writing surface (same as home) -->
+  <div class="writing-surface" id="writingSurface">
+    <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
+    <div class="writing-prompt" id="writingPrompt">{{ prompt }}</div>
+    <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start writing..."></textarea>
+    <div class="writing-bottom" id="writingBottom">
+      <div class="chakra-bar"><div class="chakra-fill" id="chakraFill"></div></div>
+      <div class="bottom-row">
+        <span class="writing-timer" id="writingTimer">8:00</span>
+        <button class="send-btn" id="sendBtn">send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Done state -->
+  <div class="now-done" id="nowDone">
+    <div class="now-done-msg">thanks for writing.</div>
+    <a class="now-done-link" href="/">write again</a>
+  </div>
+</div>
+
+<script>
+(function() {
+  // ── Keyboard-aware height ──
+  function setVh() {
+    var h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--vh', h + 'px');
+  }
+  setVh();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setVh);
+    window.visualViewport.addEventListener('scroll', setVh);
+  } else {
+    window.addEventListener('resize', setVh);
+  }
+
+  var CHAKRA_COLORS = ['#cc2222','#e87020','#d4a017','#2d9e2d','#3399ff','#7744cc','#b388ff','#e0d8c8'];
+  var SESSION_DURATION = 480;
+  var IDLE_TIMEOUT = 8;
+  var IDLE_VISIBLE_AFTER = 3;
+
+  var root = document.getElementById('now-root');
+  var slug = root.dataset.slug;
+  var mode = root.dataset.mode;
+  var started = root.dataset.started === 'true';
+  var startsAt = root.dataset.startsAt;
+  var prompt = root.dataset.prompt;
+
+  var countdownEl = document.getElementById('now-countdown');
+  var countdownNum = document.getElementById('countdown-num');
+  var writingSurface = document.getElementById('writingSurface');
+  var writingPrompt = document.getElementById('writingPrompt');
+  var writingArea = document.getElementById('writingArea');
+  var writingTimer = document.getElementById('writingTimer');
+  var idleBarFill = document.getElementById('idleBarFill');
+  var chakraFill = document.getElementById('chakraFill');
+  var sendBtn = document.getElementById('sendBtn');
+  var nowDone = document.getElementById('nowDone');
+
+  var state = 'waiting'; // waiting | ready | writing | paused | sent
+  var sessionStarted = null;
+  var lastInputAt = null;
+  var activeTime = 0;
+  var pausedAtActive = 0;
+  var tickInterval = null;
+  var sessionId = null;
+
+  // Visitor ID
+  var vid = localStorage.getItem('anky_visitor_id');
+  if (!vid) { vid = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2); localStorage.setItem('anky_visitor_id', vid); }
+
+  function generateSessionId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // ── Initial state ──
+  if (mode === 'sticker') {
+    showWriteSurface();
+  } else if (started && startsAt) {
+    showCountdownOrWrite();
+  } else {
+    // Live, not started: show countdown with "waiting..."
+    writingSurface.style.display = 'none';
+    countdownEl.style.display = '';
+    countdownNum.textContent = 'waiting...';
+  }
+
+  // ── Presence ──
+  fetch('/api/v1/now/' + slug + '/join', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ user_id: vid, display_name: '' })
+  }).then(function(r) { return r.json(); }).then(function(d) { updatePresence(d.presence || []); });
+
+  setInterval(function() {
+    fetch('/api/v1/now/' + slug + '/heartbeat', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: vid })
+    });
+  }, 10000);
+
+  // ── Poll state (live mode) ──
+  setInterval(function() {
+    fetch('/api/v1/now/' + slug).then(function(r) { return r.json(); }).then(function(d) {
+      updatePresence(d.presence || []);
+      if (d.started && d.starts_at) {
+        startsAt = d.starts_at;
+        started = true;
+        showCountdownOrWrite();
+      }
+    });
+  }, 3000);
+
+  // Countdown tick
+  setInterval(function() {
+    if (started && startsAt && state === 'waiting') showCountdownOrWrite();
+  }, 1000);
+
+  function showCountdownOrWrite() {
+    var target = new Date(startsAt + 'Z').getTime();
+    var now = Date.now();
+    var diff = target - now;
+    if (diff <= 0) {
+      showWriteSurface();
+    } else {
+      writingSurface.style.display = 'none';
+      countdownEl.style.display = '';
+      var mins = Math.floor(diff / 60000);
+      var secs = Math.floor((diff % 60000) / 1000);
+      countdownNum.textContent = mins + ':' + secs.toString().padStart(2, '0');
+    }
+  }
+
+  function showWriteSurface() {
+    if (state !== 'waiting') return;
+    state = 'ready';
+    countdownEl.style.display = 'none';
+    writingSurface.style.display = '';
+    writingArea.focus();
+  }
+
+  function updatePresence(list) {
+    document.getElementById('presence-count').textContent = list.length;
+  }
+
+  // ── Writing logic (same as home) ──
+
+  function beginSession() {
+    sessionStarted = Date.now();
+    lastInputAt = Date.now();
+    activeTime = 0;
+    pausedAtActive = 0;
+    sessionId = generateSessionId();
+    state = 'writing';
+    tickInterval = setInterval(tick, 100);
+  }
+
+  function resumeFromPause() {
+    lastInputAt = Date.now();
+    sessionStarted = Date.now() - (pausedAtActive * 1000);
+    state = 'writing';
+    sendBtn.classList.remove('visible');
+    idleBarFill.style.width = '0%';
+    idleBarFill.classList.remove('warning');
+    if (!tickInterval) tickInterval = setInterval(tick, 100);
+    writingArea.focus();
+  }
+
+  writingArea.addEventListener('keydown', function(e) {
+    if (state === 'sent') { e.preventDefault(); return; }
+
+    if (state === 'ready') {
+      if (e.key.length === 1) {
+        beginSession();
+        writingPrompt.classList.add('faded');
+      }
+    } else if (state === 'paused') {
+      if (e.key === 'Enter') { e.preventDefault(); doSend(); return; }
+      if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); return; }
+      if (e.key.length === 1) resumeFromPause();
+    }
+
+    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') {
+      e.preventDefault();
+      return;
+    }
+
+    if (state === 'writing' && e.key.length === 1) {
+      lastInputAt = Date.now();
+      idleBarFill.style.width = '0%';
+      idleBarFill.classList.remove('warning');
+    }
+  });
+
+  writingArea.addEventListener('input', function() {
+    if (state === 'paused') resumeFromPause();
+    if (writingArea.value.includes('\n')) {
+      var pos = writingArea.selectionStart;
+      writingArea.value = writingArea.value.replace(/\n/g, ' ');
+      writingArea.selectionStart = writingArea.selectionEnd = pos;
+    }
+    if (state === 'writing') lastInputAt = Date.now();
+  });
+
+  writingArea.addEventListener('paste', function(e) { e.preventDefault(); });
+
+  sendBtn.addEventListener('click', function() {
+    if (state !== 'paused') return;
+    doSend();
+  });
+
+  function tick() {
+    if (state !== 'writing') return;
+    var now = Date.now();
+    activeTime = (now - sessionStarted) / 1000;
+    var idleElapsed = (now - lastInputAt) / 1000;
+
+    if (idleElapsed > IDLE_VISIBLE_AFTER && writingArea.value.length > 0) {
+      var idleProgress = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
+      idleBarFill.style.width = (idleProgress * 100) + '%';
+      idleBarFill.classList.add('warning');
+    } else {
+      idleBarFill.style.width = '0%';
+      idleBarFill.classList.remove('warning');
+    }
+
+    if (idleElapsed >= IDLE_TIMEOUT && writingArea.value.length > 0) {
+      pauseSession();
+      return;
+    }
+
+    updateTimerDisplay();
+    updateChakra();
+  }
+
+  function pauseSession() {
+    state = 'paused';
+    pausedAtActive = activeTime;
+    clearInterval(tickInterval);
+    tickInterval = null;
+    idleBarFill.style.width = '100%';
+    idleBarFill.classList.add('warning');
+    sendBtn.classList.add('visible');
+  }
+
+  function updateTimerDisplay() {
+    var remaining = SESSION_DURATION - activeTime;
+    if (remaining >= 0) {
+      var mins = Math.floor(remaining / 60);
+      var secs = Math.floor(remaining % 60);
+      writingTimer.textContent = mins + ':' + String(secs).padStart(2, '0');
+      writingTimer.classList.remove('past-zero');
+    } else {
+      var over = Math.abs(remaining);
+      var mins = Math.floor(over / 60);
+      var secs = Math.floor(over % 60);
+      writingTimer.textContent = '+' + mins + ':' + String(secs).padStart(2, '0');
+      writingTimer.classList.add('past-zero');
+    }
+  }
+
+  function updateChakra() {
+    var progress = Math.min(activeTime / SESSION_DURATION, 1);
+    var colorIdx = Math.min(Math.floor(progress * 8), 7);
+    var stops = [];
+    for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
+    chakraFill.style.background = stops.length === 1
+      ? stops[0]
+      : 'linear-gradient(90deg, ' + stops.join(', ') + ')';
+    chakraFill.style.width = (progress * 100) + '%';
+  }
+
+  function doSend() {
+    if (state !== 'paused') return;
+    state = 'sent';
+    clearInterval(tickInterval);
+    tickInterval = null;
+
+    var text = writingArea.value.trim();
+    if (!text) return;
+
+    sendBtn.textContent = 'sending...';
+    sendBtn.classList.remove('visible');
+
+    fetch('/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        text: text,
+        duration: Math.round(activeTime),
+        session_id: sessionId,
+        now_slug: slug
+      })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      writingSurface.style.display = 'none';
+      nowDone.classList.add('visible');
+    }).catch(function() {
+      sendBtn.textContent = 'send';
+      sendBtn.classList.add('visible');
+      state = 'paused';
+    });
+  }
+})();
+</script>
+{% endblock %}

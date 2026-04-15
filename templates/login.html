@@ -3,193 +3,466 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>anky — log in</title>
+  <title>anky — login with your phone</title>
   <meta name="theme-color" content="#07070d">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --void: #07070d;
+      --ink: #11111b;
+      --ember: #e8b84b;
+      --parchment: #e8dfd0;
+      --smoke: rgba(232, 223, 208, 0.58);
+      --danger: #ff7a7a;
+      --success: #90f1c8;
+    }
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #07070d;
-      color: #e0e0e0;
+      font-family: Georgia, serif;
+      background:
+        radial-gradient(circle at top, rgba(232, 184, 75, 0.09), transparent 28rem),
+        var(--void);
+      color: var(--parchment);
       height: 100vh;
       height: 100dvh;
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 24px;
     }
     .login-box {
-      max-width: 380px;
+      max-width: 420px;
       width: 100%;
-      padding: 24px;
+      padding: 28px 24px;
       text-align: center;
+      background: rgba(17, 17, 27, 0.9);
+      border: 1px solid rgba(232, 184, 75, 0.16);
+      border-radius: 24px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
     }
     .login-pfp {
       width: 72px;
       height: 72px;
       border-radius: 50%;
-      margin: 0 auto 20px;
+      margin: 0 auto 18px;
       display: block;
       opacity: 0.7;
     }
+    .login-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(232, 184, 75, 0.72);
+      margin-bottom: 10px;
+    }
     .login-title {
-      font-size: 22px;
+      font-size: 28px;
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .login-sub {
       font-size: 14px;
-      color: rgba(255,255,255,0.4);
-      margin-bottom: 32px;
-      line-height: 1.5;
+      color: var(--smoke);
+      margin-bottom: 24px;
+      line-height: 1.6;
     }
-    .login-btn {
-      display: block;
-      width: 100%;
-      background: #7b2ff7;
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 14px 24px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-bottom: 12px;
-      transition: opacity 0.2s;
-    }
-    .login-btn:hover { opacity: 0.85; }
-    .login-btn:disabled { opacity: 0.4; cursor: default; }
-    .login-btn.apple {
+    .seal-card {
+      display: inline-flex;
+      width: min(100%, 224px);
+      min-height: 224px;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
       background: #fff;
-      color: #000;
+      color: #04040d;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      margin-bottom: 18px;
+    }
+    .seal-card svg {
+      display: block;
+      width: 180px;
+      height: 180px;
+    }
+    .seal-card.is-action {
+      min-height: 0;
+      background: var(--ember);
+      color: #16110a;
+      padding: 16px 22px;
+    }
+    .seal-card.is-action:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 32px rgba(232, 184, 75, 0.18);
+    }
+    .seal-placeholder,
+    .seal-link-label {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .seal-placeholder {
+      color: rgba(4, 4, 13, 0.62);
+      max-width: 10rem;
     }
     .login-status {
       font-size: 13px;
-      color: rgba(255,255,255,0.3);
-      margin-top: 16px;
-      min-height: 20px;
+      color: rgba(255,255,255,0.4);
+      min-height: 2.6em;
+      line-height: 1.5;
+      margin-bottom: 8px;
     }
+    .login-status.error { color: var(--danger); }
+    .login-status.success { color: var(--success); }
     .login-back {
       display: inline-block;
-      margin-top: 24px;
       font-size: 13px;
       color: rgba(255,255,255,0.3);
       text-decoration: none;
     }
     .login-back:hover { color: rgba(255,255,255,0.5); }
+    .login-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 18px 0 14px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.22);
+    }
+    .login-divider::before,
+    .login-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+    }
+    .phantom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 280px;
+      margin: 0 auto 18px;
+      padding: 14px 18px;
+      border: 1px solid rgba(171, 154, 255, 0.28);
+      border-radius: 14px;
+      background: rgba(171, 154, 255, 0.08);
+      color: #c4b5fd;
+      font-family: Georgia, serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .phantom-btn:hover {
+      background: rgba(171, 154, 255, 0.16);
+      border-color: rgba(171, 154, 255, 0.44);
+      transform: translateY(-1px);
+    }
+    .phantom-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .phantom-btn svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
   <div class="login-box">
     <img class="login-pfp" src="/static/icon-192.png" alt="anky">
-    <h1 class="login-title">anky</h1>
-    <p class="login-sub">log in to save your writing and see anky's interpretation of who you are.</p>
-    <button class="login-btn" id="emailBtn">log in with email</button>
-    <button class="login-btn apple" id="appleBtn">log in with apple</button>
-    <div class="login-status" id="status"></div>
-    <a class="login-back" href="/">back to writing</a>
+    <div class="login-eyebrow">the website waits here</div>
+    <h1 class="login-title">login with your phone</h1>
+    <p class="login-sub" id="sealSub">login happens on your phone. once you approve, this page will know.</p>
+    <a class="seal-card" id="sealCard" aria-label="Login with the anky app">
+      <span class="seal-placeholder">preparing the login...</span>
+    </a>
+    <div class="login-status" id="status">creating a bridge between this page and your phone...</div>
+    <div class="login-divider">or</div>
+    <button class="phantom-btn" id="phantom-btn" type="button">
+      <svg viewBox="0 0 128 128" fill="none"><defs><linearGradient id="pg" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs><rect width="128" height="128" rx="26" fill="url(#pg)"/><path d="M110.5 65.6c-1.2 17.5-16.4 30.6-35.8 30.6H44.3c-2.3 0-4.2-1.9-4-4.2.7-10.3 9.5-18.3 20-18.3h14.6c2 0 3.7-1.6 3.8-3.6.1-2.1-1.5-3.8-3.6-3.8H59.4c-17.5 0-32 13.5-33.3 31-.1 1.7-.2 3.3-.1 5 .6 11.3 10 20.4 21.3 20.7h28c22.5 0 41.2-17.3 42.8-39.6l1-17.8c.1-2.1-1.5-3.8-3.6-3.8h-.4c-2 .1-3.6 1.7-3.7 3.8l-.9 0z" fill="#FFF" fill-opacity=".95"/><circle cx="79" cy="52" r="5.5" fill="#FFF"/><circle cx="99" cy="52" r="5.5" fill="#FFF"/></svg>
+      connect phantom wallet
+    </button>
+    <a class="login-back" id="backLink" href="/">back</a>
   </div>
 
   <script>
-    var privyAppId = '{{ privy_app_id | default(value="") }}';
-    var statusEl = document.getElementById('status');
+    (function() {
+      var statusEl = document.getElementById('status');
+      var cardEl = document.getElementById('sealCard');
+      var subEl = document.getElementById('sealSub');
+      var backLinkEl = document.getElementById('backLink');
+      var mobileSealMedia = window.matchMedia('(max-width: 768px), (pointer: coarse)');
+      var activeChallenge = null;
+      var pollTimer = null;
 
-    function doLogin(method) {
-      console.log('[login] starting login with method:', method, 'appId:', privyAppId ? privyAppId.substring(0,8) + '...' : 'MISSING');
-      if (!privyAppId) {
-        statusEl.textContent = 'login not configured.';
-        console.error('[login] no privy app id');
-        return;
+      function sanitizeRedirect(candidate) {
+        if (!candidate) return null;
+        try {
+          var url = new URL(candidate, window.location.origin);
+          if (url.origin !== window.location.origin) return null;
+          return url.pathname + url.search + url.hash;
+        } catch (e) {
+          return null;
+        }
       }
-      statusEl.textContent = 'loading...';
-      document.getElementById('emailBtn').disabled = true;
-      document.getElementById('appleBtn').disabled = true;
 
-      // Check if Privy SDK already loaded
-      if (window.Privy) {
-        console.log('[login] Privy SDK already loaded, skipping script inject');
-        initAndLogin(method);
-        return;
+      function getRedirectTarget() {
+        var params = new URLSearchParams(window.location.search);
+        var direct = sanitizeRedirect(params.get('redirect_to'));
+        if (direct) return direct;
+        var referrer = sanitizeRedirect(document.referrer);
+        if (referrer && referrer !== '/login' && referrer.indexOf('/auth/') !== 0) {
+          return referrer;
+        }
+        return '/you';
       }
 
-      console.log('[login] loading Privy SDK from cdn.privy.io...');
-      var script = document.createElement('script');
-      script.src = 'https://cdn.privy.io/js-sdk/v1/privy.min.js';
-      script.onload = function() {
-        console.log('[login] Privy SDK loaded successfully, window.Privy:', typeof window.Privy);
-        initAndLogin(method);
-      };
-      script.onerror = function(e) {
-        console.error('[login] failed to load Privy SDK:', e);
-        statusEl.textContent = 'could not load login. try again.';
-        enableButtons();
-      };
-      document.head.appendChild(script);
-    }
+      var redirectTarget = getRedirectTarget();
+      backLinkEl.href = redirectTarget === '/you' ? '/' : redirectTarget;
 
-    function initAndLogin(method) {
-      console.log('[login] initAndLogin, window.Privy:', typeof window.Privy);
-      if (typeof window.Privy === 'undefined') {
-        console.error('[login] window.Privy is undefined after script load');
-        statusEl.textContent = 'login SDK not available. try again.';
-        enableButtons();
-        return;
+      function readJson(resp) {
+        return resp.json().catch(function() { return {}; });
       }
-      try {
-        console.log('[login] creating Privy instance...');
-        var privy = new window.Privy({
-          appId: privyAppId,
-          config: {
-            loginMethods: [method],
-            appearance: { theme: 'dark', accentColor: '#7b2ff7' },
-          },
-        });
-        console.log('[login] Privy instance created, calling login()...');
-        statusEl.textContent = '';
-        privy.login().then(function(result) {
-          console.log('[login] login result:', result ? Object.keys(result) : 'null');
-          if (result && result.authToken) {
-            statusEl.textContent = 'verifying...';
-            console.log('[login] got authToken, verifying with backend...');
-            return fetch('/auth/privy/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ auth_token: result.authToken }),
-            }).then(function(r) {
-              console.log('[login] verify response status:', r.status);
-              return r.json();
-            }).then(function(data) {
-              console.log('[login] verify response:', data);
-              if (data.ok) {
-                statusEl.textContent = 'welcome back.';
-                window.location.href = '/';
-              } else {
-                statusEl.textContent = 'verification failed: ' + (data.error || 'unknown error');
-                enableButtons();
+
+      function setStatus(message, kind) {
+        statusEl.textContent = message;
+        statusEl.className = kind ? 'login-status ' + kind : 'login-status';
+      }
+
+      function getSubtitle() {
+        if (isMobile) {
+          return 'opening anky on this phone. if it is not installed, you will be sent to the download.';
+        }
+        return 'scan this with your phone camera. it will open anky if it is installed, or send you to the download.';
+      }
+
+      function setCardMarkup(markup) {
+        cardEl.innerHTML = markup;
+      }
+
+      var isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+
+      function renderChallenge(data) {
+        activeChallenge = data;
+        subEl.textContent = getSubtitle();
+
+        if (isMobile) {
+          // On mobile: show a big tappable "open anky" button. Let the user tap it
+          // when they are ready — don't auto-navigate, which kicks the page to
+          // TestFlight if the app isn't installed yet and breaks the polling loop.
+          cardEl.href = data.deeplink;
+          cardEl.classList.add('is-action');
+          setCardMarkup('<span class="seal-link-label">open anky app</span>');
+          statusEl.innerHTML = 'tap the button to open anky. if the app is not installed, <a href="https://testflight.apple.com/join/WcRYyCm5" style="color:#c4b5fd;text-decoration:underline;">download it from testflight</a>.';
+        } else if (data.qr_svg) {
+          cardEl.removeAttribute('href');
+          cardEl.classList.remove('is-action');
+          setCardMarkup(data.qr_svg);
+          setStatus('waiting for your phone to answer...', '');
+        } else {
+          showError('the bridge is open, but the QR did not render. open the anky app directly instead.', data.deeplink);
+          return;
+        }
+      }
+
+      function showError(message, deeplink) {
+        if (deeplink) {
+          cardEl.href = deeplink;
+          cardEl.classList.add('is-action');
+          setCardMarkup('<span class="seal-link-label">open anky</span>');
+        } else {
+          cardEl.removeAttribute('href');
+          cardEl.classList.remove('is-action');
+          setCardMarkup('<span class="seal-placeholder">login unavailable right now</span>');
+        }
+        setStatus(message, 'error');
+      }
+
+      function finishSeal(status) {
+        document.cookie = 'anky_session=' + status.session_token + '; path=/; max-age=2592000; secure; samesite=lax';
+        setStatus('logged in. entering...', 'success');
+        window.setTimeout(function() {
+          window.location.replace(redirectTarget);
+        }, 180);
+      }
+
+      function startPolling(challengeId) {
+        if (pollTimer) window.clearInterval(pollTimer);
+        pollTimer = window.setInterval(function() {
+          fetch('/api/auth/qr/' + challengeId)
+            .then(readJson)
+            .then(function(status) {
+              if (status.sealed && status.session_token) {
+                window.clearInterval(pollTimer);
+                pollTimer = null;
+                finishSeal(status);
               }
-            });
-          } else {
-            console.log('[login] no authToken in result, user may have closed modal');
-            enableButtons();
-          }
-        }).catch(function(err) {
-          console.error('[login] login() rejected:', err);
-          statusEl.textContent = '';
-          enableButtons();
-        });
-      } catch(e) {
-        console.error('[login] Privy init/login error:', e);
-        statusEl.textContent = 'login failed: ' + e.message;
-        enableButtons();
+            })
+            .catch(function() {});
+        }, 2000);
+
+        window.setTimeout(function() {
+          if (!pollTimer) return;
+          window.clearInterval(pollTimer);
+          pollTimer = null;
+          showError('that login request expired. refresh the page for a new one.', activeChallenge && activeChallenge.deeplink);
+        }, 300000);
       }
-    }
 
-    function enableButtons() {
-      document.getElementById('emailBtn').disabled = false;
-      document.getElementById('appleBtn').disabled = false;
-    }
+      function createChallenge() {
+        setStatus('creating a bridge between this page and your phone...', '');
+        cardEl.removeAttribute('href');
+        cardEl.classList.remove('is-action');
+        setCardMarkup('<span class="seal-placeholder">preparing the login...</span>');
 
-    document.getElementById('emailBtn').addEventListener('click', function() { doLogin('email'); });
-    document.getElementById('appleBtn').addEventListener('click', function() { doLogin('apple'); });
+        fetch('/api/auth/qr', { method: 'POST' })
+          .then(function(resp) {
+            return readJson(resp).then(function(data) {
+              if (!resp.ok) {
+                throw new Error(data.error || 'could not start login');
+              }
+              if (!data.id || !data.deeplink) {
+                throw new Error('login request was incomplete');
+              }
+              renderChallenge(data);
+              startPolling(data.id);
+            });
+          })
+          .catch(function(err) {
+            showError(err.message || 'could not start login', activeChallenge && activeChallenge.deeplink);
+          });
+      }
+
+      function syncChallengeForViewport() {
+        if (activeChallenge) {
+          renderChallenge(activeChallenge);
+        } else {
+          subEl.textContent = getSubtitle();
+        }
+      }
+
+      function checkExistingSession() {
+        return fetch('/api/me')
+          .then(readJson)
+          .then(function(data) {
+            // /api/me returns ok:true for anonymous visitors too (they have a
+            // visitor-tracking cookie). Only treat the session as sealed if
+            // there's an actual authenticated identity attached.
+            // Only treat as logged-in if the server reports an authenticated
+            // session (anky_session cookie resolved to a user). wallet_address
+            // alone is NOT proof of auth — a visitor cookie can map to a user
+            // row with a wallet from a prior Phantom connect.
+            var sealed = data.ok && data.authenticated === true;
+            if (sealed) {
+              setStatus('already logged in. entering...', 'success');
+              window.location.replace(redirectTarget);
+              return true;
+            }
+            return false;
+          })
+          .catch(function() { return false; });
+      }
+
+      if (typeof mobileSealMedia.addEventListener === 'function') {
+        mobileSealMedia.addEventListener('change', syncChallengeForViewport);
+      } else if (typeof mobileSealMedia.addListener === 'function') {
+        mobileSealMedia.addListener(syncChallengeForViewport);
+      }
+
+      // If the app opens, the page goes hidden — cancel TestFlight fallback
+      var installFallbackTimer = null;
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden && installFallbackTimer) {
+          clearTimeout(installFallbackTimer);
+          installFallbackTimer = null;
+        }
+      });
+
+      // --- Phantom wallet connect ---
+      var phantomBtn = document.getElementById('phantom-btn');
+
+      function getPhantomProvider() {
+        if (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) return window.phantom.solana;
+        if (window.solana && window.solana.isPhantom) return window.solana;
+        return null;
+      }
+
+      function base58encode(bytes) {
+        var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        var leadingZeros = 0;
+        for (var i = 0; i < bytes.length && bytes[i] === 0; i++) leadingZeros++;
+        var num = BigInt(0);
+        for (var j = 0; j < bytes.length; j++) num = num * BigInt(256) + BigInt(bytes[j]);
+        var chars = [];
+        while (num > BigInt(0)) {
+          chars.push(ALPHABET[Number(num % BigInt(58))]);
+          num = num / BigInt(58);
+        }
+        chars.reverse();
+        var prefix = '';
+        for (var k = 0; k < leadingZeros; k++) prefix += '1';
+        return prefix + chars.join('');
+      }
+
+      async function connectPhantom() {
+        var provider = getPhantomProvider();
+        if (!provider) {
+          window.open('https://phantom.app/', '_blank');
+          setStatus('install phantom wallet, then try again', 'error');
+          return;
+        }
+        phantomBtn.disabled = true;
+        setStatus('connecting to phantom...', '');
+        try {
+          var resp = await provider.connect();
+          var walletAddress = resp.publicKey.toString();
+          var nonce = 'anky-auth-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+          var message = 'Sign in to anky.app\n\nThis signature proves you own this wallet.\nNonce: ' + nonce;
+          var encodedMessage = new TextEncoder().encode(message);
+          var signResult = await provider.signMessage(encodedMessage, 'utf8');
+          var sigBytes = signResult.signature || signResult;
+          var sigB58 = base58encode(sigBytes instanceof Uint8Array ? sigBytes : new Uint8Array(sigBytes));
+          setStatus('verifying...', '');
+          var verifyResp = await fetch('/auth/solana/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet_address: walletAddress, signature: sigB58, message: message }),
+          });
+          var data = await verifyResp.json();
+          if (!verifyResp.ok || !data.ok) throw new Error(data.error || 'verification failed');
+          if (data.session_token) {
+            document.cookie = 'anky_session=' + data.session_token + '; path=/; max-age=2592000; secure; samesite=lax';
+          }
+          setStatus('connected. entering...', 'success');
+          window.setTimeout(function() { window.location.replace(redirectTarget); }, 300);
+        } catch (err) {
+          if (err.code === 4001 || (err.message && err.message.includes('rejected'))) {
+            setStatus('signature request was cancelled', 'error');
+          } else {
+            setStatus(err.message || 'phantom connection failed', 'error');
+          }
+        } finally {
+          phantomBtn.disabled = false;
+        }
+      }
+
+      if (phantomBtn) phantomBtn.addEventListener('click', connectPhantom);
+
+      checkExistingSession().then(function(alreadySealed) {
+        if (!alreadySealed) {
+          createChallenge();
+        }
+      });
+    })();
   </script>
 </body>
 </html>

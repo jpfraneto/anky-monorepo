@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}anky — ankys{% endblock %}
+
+{% block head %}
+<style>
+  body { background: #0a0a0a; color: #e0e0e0; }
+
+  .ankys-page {
+    max-width: 640px;
+    margin: 80px auto 120px;
+    padding: 0 16px;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* ── GENERATE SECTION ── */
+  .generate-section {
+    margin-bottom: 24px;
+  }
+  .generate-section h2 {
+    font-size: 14px;
+    font-weight: 400;
+    color: #888;
+    margin: 0 0 10px;
+    text-transform: lowercase;
+  }
+  .generate-form {
+    display: flex;
+    gap: 8px;
+  }
+  .generate-input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: #e0e0e0;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .generate-input:focus {
+    border-color: #b366ff;
+  }
+  .generate-input::placeholder {
+    color: #555;
+  }
+  .generate-btn {
+    background: #b366ff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 15px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  .generate-btn:hover { opacity: 0.85; }
+  .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .generate-status {
+    font-size: 13px;
+    color: #888;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+  .generate-status a {
+    color: #b366ff;
+    text-decoration: none;
+  }
+
+  /* ── MARQUEE ── */
+  .marquee-section {
+    margin-bottom: 32px;
+    overflow: hidden;
+    position: relative;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 12px;
+    animation: marquee-scroll 60s linear infinite;
+    width: max-content;
+  }
+  .marquee-track:hover {
+    animation-play-state: paused;
+  }
+  @keyframes marquee-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .marquee-item {
+    flex-shrink: 0;
+    width: 120px;
+    height: 120px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #1a1a1a;
+  }
+  .marquee-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* ── USER ANKYS GRID ── */
+  .my-ankys-section h2 {
+    font-size: 14px;
+    font-weight: 400;
+    color: #888;
+    margin: 0 0 14px;
+    text-transform: lowercase;
+  }
+  .ankys-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .anky-cell {
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #1a1a1a;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .anky-cell:hover { opacity: 0.8; }
+  .anky-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .empty-state {
+    text-align: center;
+    color: #555;
+    padding: 40px 0;
+    font-size: 14px;
+  }
+  .empty-state a {
+    color: #b366ff;
+    text-decoration: none;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ankys-page">
+
+  <!-- Generate anky image -->
+  <div class="generate-section">
+    <h2>generate an anky</h2>
+    <div class="generate-form">
+      <input type="text" class="generate-input" id="generateInput" placeholder="describe where anky is, what anky feels, or what anky becomes..." maxlength="500">
+      <button class="generate-btn" id="generateBtn" onclick="generateAnky()">generate</button>
+    </div>
+    <div class="generate-status" id="generateStatus"></div>
+  </div>
+
+  <!-- Scrolling marquee of all ankys -->
+  <div class="marquee-section">
+    <div class="marquee-track" id="marqueeTrack"></div>
+  </div>
+
+  <!-- User's ankys -->
+  <div class="my-ankys-section">
+    <h2>your ankys</h2>
+    <div class="ankys-grid" id="ankysGrid">
+      <div class="empty-state" id="ankysEmpty">
+        {% if logged_in %}
+        no ankys yet. <a href="/">write one</a>.
+        {% else %}
+        <a href="/login?redirect_to=%2Fankys">login with your phone</a> to see your ankys.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const R2_BASE = '{{ r2_public_url }}'.replace(/\/+$/, '');
+const PENDING_GENERATIONS_KEY = 'anky_pending_generations_v1';
+const generateStatus = document.getElementById('generateStatus');
+
+function ankyImageUrl(anky) {
+  if (anky.image_webp) return anky.image_webp;
+  // Prefer R2 compressed image
+  if (R2_BASE && anky.id) {
+    return R2_BASE + '/stories/' + anky.id + '/page-0.webp';
+  }
+  // Fallback to local webp or png
+  if (anky.imageUrl) return anky.imageUrl;
+  if (anky.image_url) return anky.image_url;
+  if (anky.image_path) return anky.image_path;
+  return '';
+}
+
+function imgWithFallback(url, anky) {
+  const img = document.createElement('img');
+  img.loading = 'lazy';
+  img.alt = anky.title || 'anky';
+  img.src = url;
+  // If R2 image fails, fall back to local
+  img.onerror = function() {
+    const local = anky.image_path || anky.imageUrl || '';
+    if (local && this.src !== local) {
+      this.src = local;
+    } else {
+      this.style.display = 'none';
+    }
+  };
+  return img;
+}
+
+// ── MARQUEE ──
+async function loadMarquee() {
+  try {
+    const res = await fetch('/api/ankys?origin=generated');
+    const data = await res.json();
+    const track = document.getElementById('marqueeTrack');
+    track.innerHTML = '';
+
+    const seen = {};
+    const ankys = (data.ankys || []).filter(function(a) {
+      if (!a || !a.id || seen[a.id]) return false;
+      seen[a.id] = true;
+      return !!ankyImageUrl(a);
+    });
+    if (!ankys.length) return;
+
+    // Duplicate for infinite scroll
+    const items = [...ankys, ...ankys];
+    items.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'marquee-item';
+      const url = ankyImageUrl(a);
+      if (!url) return;
+      div.appendChild(imgWithFallback(url, a));
+      div.addEventListener('click', () => window.location.href = '/anky/' + a.id);
+      track.appendChild(div);
+    });
+
+    // Adjust speed based on count
+    const totalWidth = items.length * 132; // 120px + 12px gap
+    const duration = Math.max(30, totalWidth / 80);
+    track.style.animationDuration = duration + 's';
+  } catch(e) {
+    console.error('marquee load error', e);
+  }
+}
+
+// ── USER'S ANKYS ──
+async function loadMyAnkys() {
+  {% if not logged_in %}return;{% endif %}
+  try {
+    const res = await fetch('/api/my-ankys');
+    if (!res.ok) return;
+    const ankys = await res.json();
+    const grid = document.getElementById('ankysGrid');
+    const empty = document.getElementById('ankysEmpty');
+    grid.innerHTML = '';
+    grid.appendChild(empty);
+    if (!ankys.length) {
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    ankys.forEach(a => {
+      const cell = document.createElement('div');
+      cell.className = 'anky-cell';
+      const url = ankyImageUrl(a);
+      if (url) {
+        cell.appendChild(imgWithFallback(url, a));
+      }
+      cell.addEventListener('click', () => window.location.href = '/anky/' + a.id);
+      grid.appendChild(cell);
+    });
+  } catch(e) {
+    console.error('my ankys load error', e);
+  }
+}
+
+function readPendingGenerations() {
+  try {
+    var raw = localStorage.getItem(PENDING_GENERATIONS_KEY);
+    var ids = raw ? JSON.parse(raw) : [];
+    return Array.isArray(ids) ? ids.filter(Boolean) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writePendingGenerations(ids) {
+  localStorage.setItem(PENDING_GENERATIONS_KEY, JSON.stringify(ids));
+}
+
+function rememberPendingGeneration(id) {
+  var ids = readPendingGenerations();
+  if (ids.indexOf(id) === -1) {
+    ids.push(id);
+    writePendingGenerations(ids);
+  }
+}
+
+function forgetPendingGeneration(id) {
+  writePendingGenerations(readPendingGenerations().filter(function(item) {
+    return item !== id;
+  }));
+}
+
+function setGenerateStatus(message, html) {
+  if (html) {
+    generateStatus.innerHTML = message;
+  } else {
+    generateStatus.textContent = message;
+  }
+}
+
+function busyMessage() {
+  return 'flux server is busy right now. try again in a minute.';
+}
+
+async function generateAnky() {
+  const input = document.getElementById('generateInput');
+  const btn = document.getElementById('generateBtn');
+  const moment = input.value.trim();
+  if (!moment) { input.focus(); return; }
+
+  btn.disabled = true;
+  setGenerateStatus('generating with flux...');
+
+  try {
+    const res = await fetch('/api/v1/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'flux',
+        writing: 'anky ' + moment
+      })
+    });
+    const data = await res.json().catch(function() { return {}; });
+    if (!res.ok) {
+      var err = (data && data.error) ? String(data.error) : '';
+      if (res.status === 503 || /busy|not ready|queue/i.test(err)) {
+        setGenerateStatus(busyMessage());
+      } else {
+        setGenerateStatus(err || 'something went wrong');
+      }
+      return;
+    }
+    if (data.anky_id) {
+      rememberPendingGeneration(data.anky_id);
+      setGenerateStatus('anky is being born. checking for the image...');
+      input.value = '';
+      pollAnky(data.anky_id);
+    } else {
+      setGenerateStatus(data.error || 'something went wrong');
+    }
+  } catch(e) {
+    setGenerateStatus(busyMessage());
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function pollAnky(id, silent) {
+  let attempts = 0;
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > 60) {
+      clearInterval(interval);
+      if (!silent) setGenerateStatus('still generating. come back in a moment.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/v1/anky/' + id);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.status === 'complete' && (data.image_url || data.image_path || data.image_webp)) {
+        clearInterval(interval);
+        forgetPendingGeneration(id);
+        setGenerateStatus('<a href="/anky/' + id + '">your anky is ready</a>', true);
+        loadMarquee();
+        loadMyAnkys();
+      } else if (data.status === 'failed') {
+        clearInterval(interval);
+        forgetPendingGeneration(id);
+        setGenerateStatus(busyMessage());
+      }
+    } catch(e) {}
+  }, 5000);
+}
+
+function resumePendingGenerations() {
+  var pending = readPendingGenerations();
+  if (!pending.length) return;
+  setGenerateStatus('checking pending ankys...');
+  pending.forEach(function(id) {
+    pollAnky(id, true);
+  });
+}
+
+loadMarquee();
+loadMyAnkys();
+resumePendingGenerations();
+</script>
+{% endblock %}

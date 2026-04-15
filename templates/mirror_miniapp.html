@@ -1,0 +1,2212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANKY Mirror — See What Anky Sees</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👽</text></svg>">
+
+<!-- Farcaster Frame meta tags -->
+<meta name="fc:frame" content='{"version":"next","imageUrl":"https://mirror.anky.app/image.png","button":{"title":"get my anky","action":{"type":"launch_frame","name":"anky mirror","url":"https://mirror.anky.app","splashImageUrl":"https://mirror.anky.app/splash.png","splashBackgroundColor":"#000000"}}}' />
+
+<!-- Open Graph -->
+<meta property="og:title" content="$ANKY — Beyond the Cage of Thought" />
+<meta property="og:description" content="The mind is a cage built from other people's words. Anky has been waiting ten thousand years to help you burn it down. Write for 8 minutes. Summon your Anky." />
+<meta property="og:image" content="https://ankycoin.com/image.png" />
+<meta property="og:image:width" content="1024" />
+<meta property="og:image:height" content="1024" />
+<meta property="og:url" content="https://ankycoin.com" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ANKY" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="$ANKY — Beyond the Cage of Thought" />
+<meta name="twitter:description" content="The mind is a cage built from other people's words. Anky has been waiting ten thousand years to help you burn it down." />
+<meta name="twitter:image" content="https://ankycoin.com/image.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;600;900&family=IM+Fell+English:ital@0;1&family=Righteous&display=swap" rel="stylesheet">
+<style>
+  /* ===== SHARED ===== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: #04040d;
+    color: #e8e0d0;
+    overflow-x: hidden;
+  }
+
+  /* ===== GATE STYLES (browser, not in Warpcast) ===== */
+  #mirrorGate {
+    display: none;
+    font-family: 'Righteous', sans-serif;
+    color: #fff;
+  }
+  #mirrorGate.active { display: block; }
+  .gate-bg {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-image: url('https://anky.app/data/images/ec4eae86-2dd6-4279-9cec-e9fd9f67f214.png');
+  }
+  .gate-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+  }
+  .gate-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+  .gate-title {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 2.8rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.5rem;
+    background: linear-gradient(135deg, #E8B84B, #3DD6FF);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gate-desc {
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    font-size: 1.4rem;
+    line-height: 1.8;
+    max-width: 500px;
+    margin-bottom: 2.5rem;
+    color: rgba(232, 224, 208, 0.8);
+  }
+  .gate-btn {
+    display: inline-block;
+    padding: 1.2rem 3rem;
+    font-family: 'Cinzel', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: #04040d;
+    background: linear-gradient(135deg, #E8B84B, #d4a23a);
+    border-radius: 6px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .gate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(232, 184, 75, 0.3);
+  }
+  .gate-sub {
+    margin-top: 2rem;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 1.1rem;
+    color: rgba(232, 224, 208, 0.5);
+  }
+  .gate-sub a {
+    color: #3DD6FF;
+    text-decoration: none;
+  }
+  .gate-sub a:hover {
+    text-decoration: underline;
+  }
+
+  /* ===== MINIAPP STYLES ===== */
+  #miniapp {
+    display: none;
+    font-family: 'Righteous', sans-serif;
+    color: #fff;
+  }
+  #miniapp.active { display: block; }
+
+  #miniapp .bg {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-image: url('https://anky.app/data/images/ec4eae86-2dd6-4279-9cec-e9fd9f67f214.png');
+    transition: opacity 0.6s;
+  }
+  @media (max-width: 768px) {
+    #miniapp .bg {
+      background-image: url('https://anky.app/data/images/0129a4f0-2d32-4c10-80df-fff03e2690fe.png');
+    }
+  }
+  #miniapp .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  #miniapp #landing {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+  #miniapp .tagline {
+    max-width: 600px;
+    font-size: 1rem;
+    line-height: 1.5;
+    margin-top: auto;
+    padding-bottom: 1rem;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    color: rgba(232, 224, 208, 0.5);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  @media (max-width: 768px) {
+    #miniapp .tagline { font-size: 0.9rem; }
+  }
+  #miniapp .cta {
+    padding: 1rem 2.4rem;
+    font-size: 0.75rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    background: #E8B84B;
+    color: #0a0808;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  #miniapp .cta:hover {
+    background: #FFD97D;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 40px rgba(232,184,75,0.4);
+  }
+  #miniapp .cta:active { transform: translateY(0); }
+
+  #miniapp .dev-bar {
+    display: none;
+    margin-top: 1.5rem;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  #miniapp .dev-bar.visible { display: flex; }
+  #miniapp .dev-bar input {
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    font-family: 'Righteous', sans-serif;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    width: 120px;
+    text-align: center;
+  }
+  #miniapp .dev-bar button {
+    padding: 0.5rem 1.2rem;
+    font-size: 0.9rem;
+    font-family: 'Righteous', sans-serif;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  #miniapp #loading {
+    display: none;
+    position: relative;
+    z-index: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+  #miniapp #loading.active { display: flex; }
+  #miniapp .loading-msg {
+    font-size: 1.6rem;
+    opacity: 0.8;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    transition: opacity 0.3s;
+  }
+  #miniapp .loading-dots {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+  #miniapp .loading-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  #miniapp .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  #miniapp .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1.2); }
+  }
+
+  #miniapp #result {
+    display: none;
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    padding: 2rem 1.5rem;
+  }
+  #miniapp #result.active { display: block; }
+  #miniapp .result-panels {
+    display: flex;
+    gap: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+    align-items: flex-start;
+  }
+  @media (max-width: 768px) {
+    #miniapp .result-panels { flex-direction: column; gap: 1.5rem; }
+  }
+  #miniapp .panel { flex: 1; min-width: 0; }
+  #miniapp .panel-label {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+  }
+  #miniapp .mirror-panel .panel-label { color: rgba(255,255,255,0.4); }
+  #miniapp .anky-panel .panel-label { color: #d4a843; }
+  #miniapp .mirror-text {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 1rem;
+    line-height: 1.7;
+    opacity: 0.7;
+    font-weight: normal;
+  }
+  #miniapp .anky-image {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(212, 168, 67, 0.2);
+  }
+  #miniapp .gap-line {
+    max-width: 1000px;
+    margin: 2.5rem auto;
+    text-align: center;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    opacity: 0.5;
+  }
+  #miniapp .gap-line a {
+    color: #d4a843;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(212, 168, 67, 0.3);
+    transition: border-color 0.2s;
+  }
+  #miniapp .gap-line a:hover { border-color: #d4a843; }
+  #miniapp .result-actions {
+    max-width: 1000px;
+    margin: 2rem auto;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+  }
+  #miniapp .ios-cta {
+    display: inline-block;
+    padding: 1rem 2.4rem;
+    font-size: 0.75rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-decoration: none;
+    background: #E8B84B;
+    color: #0a0808;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  #miniapp .ios-cta:hover {
+    background: #FFD97D;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 40px rgba(232,184,75,0.4);
+  }
+  #miniapp .cta-subtext {
+    max-width: 1000px;
+    margin: 1rem auto 0;
+    text-align: center;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-style: italic;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    opacity: 0.5;
+  }
+  #miniapp .cta-headline {
+    max-width: 1000px;
+    margin: 2.5rem auto 0.5rem;
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    color: #d4a843;
+  }
+  #miniapp .share-btn {
+    padding: 0.8rem 2rem;
+    font-size: 0.7rem;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: transparent;
+    color: #3DD6FF;
+    border: 1px solid rgba(61,214,255,0.4);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  #miniapp .share-btn:hover:not(:disabled) {
+    background: rgba(61,214,255,0.08);
+    border-color: #3DD6FF;
+    transform: translateY(-2px);
+  }
+  #miniapp .share-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+  }
+
+  #miniapp #error {
+    display: none;
+    position: relative;
+    z-index: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+  #miniapp #error.active { display: flex; }
+  #miniapp .error-msg {
+    font-size: 1.4rem;
+    opacity: 0.7;
+    margin-bottom: 2rem;
+  }
+  #miniapp .debug-json {
+    display: none;
+    max-width: 1000px;
+    margin: 1.5rem auto;
+    padding: 1rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    opacity: 0.6;
+  }
+  #miniapp .debug-json.visible { display: block; }
+
+  /* FID lookup input */
+  #miniapp .fid-lookup {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    align-items: center;
+  }
+  #miniapp .fid-lookup input {
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+    font-family: 'Righteous', sans-serif;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    width: 160px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #miniapp .fid-lookup input:focus {
+    border-color: rgba(212, 168, 67, 0.5);
+  }
+  #miniapp .fid-go {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.95rem;
+    font-family: 'Righteous', sans-serif;
+    background: rgba(212, 168, 67, 0.2);
+    color: #d4a843;
+    border: 2px solid rgba(212, 168, 67, 0.3);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #miniapp .fid-go:hover { background: rgba(212, 168, 67, 0.35); }
+
+  /* Gallery link */
+  #miniapp .gallery-link {
+    margin-top: 1rem;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.35);
+    font-family: 'Righteous', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  #miniapp .gallery-link:hover { color: rgba(255,255,255,0.6); }
+
+  /* PFP overlay on anky image */
+  #miniapp .anky-image-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+  }
+  #miniapp .pfp-overlay {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgba(212, 168, 67, 0.6);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    object-fit: cover;
+    display: none;
+  }
+  #miniapp .pfp-overlay.visible { display: block; }
+
+  /* Gallery view */
+  #miniapp #gallery {
+    display: none;
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  #miniapp #gallery.active { display: block; }
+  #miniapp .gallery-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  #miniapp .gallery-back {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    font-family: 'Righteous', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  #miniapp .gallery-back:hover { color: #fff; }
+  #miniapp .gallery-title {
+    font-size: 1.2rem;
+    font-weight: normal;
+    opacity: 0.7;
+  }
+  #miniapp .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  @media (max-width: 500px) {
+    #miniapp .gallery-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+  }
+  #miniapp .gallery-card {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: rgba(255,255,255,0.03);
+  }
+  #miniapp .gallery-card:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 20px rgba(212, 168, 67, 0.15);
+  }
+  #miniapp .gallery-card img.card-anky {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+  }
+  #miniapp .gallery-card .card-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.6rem 0.7rem;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  #miniapp .gallery-card .card-pfp {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(212,168,67,0.5);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  #miniapp .gallery-card .card-name {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #miniapp .gallery-loading {
+    text-align: center;
+    padding: 2rem;
+    opacity: 0.5;
+    font-size: 1rem;
+  }
+
+  /* Gallery detail view */
+  #miniapp #galleryDetail {
+    display: none;
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  #miniapp #galleryDetail.active { display: block; }
+  #miniapp .detail-meta {
+    max-width: 1000px;
+    margin: 1.5rem auto;
+    text-align: center;
+    font-size: 0.85rem;
+    opacity: 0.4;
+  }
+
+  /* Chat with mirror */
+  #miniapp .mirror-chat {
+    max-width: 1000px;
+    margin: 2rem auto 0;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 1.5rem;
+  }
+  #miniapp .chat-messages {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  #miniapp .chat-msg {
+    padding: 0.7rem 1rem;
+    border-radius: 12px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    max-width: 85%;
+  }
+  #miniapp .chat-msg.user {
+    background: rgba(255,255,255,0.08);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  #miniapp .chat-msg.anky {
+    background: rgba(212, 168, 67, 0.1);
+    border: 1px solid rgba(212, 168, 67, 0.15);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  #miniapp .chat-input-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+  #miniapp .chat-input {
+    flex: 1;
+    padding: 0.7rem 1rem;
+    font-size: 0.95rem;
+    font-family: Georgia, 'Times New Roman', serif;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    color: #fff;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #miniapp .chat-input:focus {
+    border-color: rgba(212, 168, 67, 0.4);
+  }
+  #miniapp .chat-send {
+    padding: 0.7rem 1.5rem;
+    font-family: 'Righteous', sans-serif;
+    font-size: 0.85rem;
+    background: rgba(212, 168, 67, 0.2);
+    color: #d4a843;
+    border: 1px solid rgba(212, 168, 67, 0.3);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+  #miniapp .chat-send:hover { background: rgba(212, 168, 67, 0.35); }
+  #miniapp .chat-send:disabled { opacity: 0.4; cursor: default; }
+
+  /* Refresh button */
+  #miniapp .refresh-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.4);
+    font-family: 'Righteous', sans-serif;
+    font-size: 0.8rem;
+    padding: 0.5rem 1.2rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  #miniapp .refresh-btn:hover { color: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.3); }
+
+  /* ===== WEBSITE STYLES ===== */
+  :root {
+    --blue: #3DD6FF;
+    --gold: #E8B84B;
+    --gold-light: #FFD97D;
+    --purple: #6B21A8;
+    --purple-deep: #1a0a2e;
+    --bg: #04040d;
+    --text: #e8e0d0;
+    --text-dim: #8a7f6e;
+  }
+
+  #website {
+    display: none;
+    font-family: 'IM Fell English', Georgia, serif;
+  }
+  #website.active { display: block; }
+
+  #cosmos {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #website nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 4rem;
+    background: linear-gradient(to bottom, rgba(4,4,13,0.9), transparent);
+  }
+  .nav-logo {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: var(--gold);
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 30px rgba(232,184,75,0.6);
+  }
+  .nav-links {
+    display: flex;
+    gap: 3rem;
+    list-style: none;
+  }
+  .nav-links a {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.3s;
+  }
+  .nav-links a:hover { color: var(--gold); }
+
+  /* HERO */
+  #hero {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 2rem;
+    overflow: hidden;
+  }
+
+  .hero-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(61,214,255,0.08) 0%, rgba(107,33,168,0.12) 40%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse-glow 4s ease-in-out infinite;
+  }
+  @keyframes pulse-glow {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  }
+
+  /* ANKY IMAGE — replaces SVG character */
+  .anky-hero-image {
+    position: relative;
+    width: 320px;
+    height: 380px;
+    margin-bottom: 2.5rem;
+    animation: float 6s ease-in-out infinite;
+    filter: drop-shadow(0 0 30px rgba(61,214,255,0.4)) drop-shadow(0 0 60px rgba(107,33,168,0.3));
+    object-fit: cover;
+    border-radius: 16px;
+  }
+  .anky-hero-image.desktop {
+    display: block;
+  }
+  .anky-hero-image.mobile {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .anky-hero-image.desktop { display: none; }
+    .anky-hero-image.mobile { display: block; width: 260px; height: 340px; }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(-1deg); }
+    50% { transform: translateY(-18px) rotate(1deg); }
+  }
+
+  .hero-eyebrow {
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1.2rem;
+    opacity: 0;
+    animation: fade-up 1s 0.5s forwards;
+  }
+  .hero-title {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: clamp(3.5rem, 8vw, 7rem);
+    font-weight: 900;
+    color: #fff;
+    line-height: 0.95;
+    text-shadow: 0 0 80px rgba(61,214,255,0.3), 0 0 20px rgba(232,184,75,0.2);
+    letter-spacing: -0.02em;
+    opacity: 0;
+    animation: fade-up 1s 0.7s forwards;
+  }
+  .hero-title span {
+    color: var(--blue);
+    display: block;
+    font-size: 0.7em;
+  }
+  .hero-tagline {
+    font-style: italic;
+    font-size: clamp(1rem, 2vw, 1.35rem);
+    color: var(--text-dim);
+    margin-top: 1.5rem;
+    max-width: 520px;
+    line-height: 1.6;
+    opacity: 0;
+    animation: fade-up 1s 0.9s forwards;
+  }
+  .hero-cta-group {
+    display: flex;
+    gap: 1.2rem;
+    margin-top: 2.8rem;
+    opacity: 0;
+    animation: fade-up 1s 1.1s forwards;
+  }
+  .btn-primary {
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 1rem 2.4rem;
+    background: var(--gold);
+    color: #0a0808;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.3s;
+    font-weight: 600;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  .btn-primary:hover {
+    background: var(--gold-light);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 40px rgba(232,184,75,0.4);
+  }
+  .btn-secondary {
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 1rem 2.4rem;
+    background: transparent;
+    color: var(--blue);
+    border: 1px solid rgba(61,214,255,0.4);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.3s;
+  }
+  .btn-secondary:hover {
+    background: rgba(61,214,255,0.08);
+    border-color: var(--blue);
+    transform: translateY(-2px);
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 2.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    opacity: 0;
+    animation: fade-up 1s 1.5s forwards;
+  }
+  .scroll-hint::after {
+    content: '';
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, var(--gold), transparent);
+    animation: scroll-line 1.5s ease-in-out infinite;
+  }
+  @keyframes scroll-line {
+    0% { opacity: 0; transform: scaleY(0); transform-origin: top; }
+    50% { opacity: 1; transform: scaleY(1); transform-origin: top; }
+    100% { opacity: 0; transform: scaleY(1); transform-origin: bottom; }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* DIVIDER */
+  .rune-divider {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 4rem 0 2rem;
+    font-family: 'Cinzel', serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.6em;
+    color: rgba(232,184,75,0.3);
+  }
+  .glyph-row {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    opacity: 0.25;
+    margin: 1rem 0;
+  }
+  .glyph {
+    width: 4px;
+    height: 4px;
+    background: var(--gold);
+    border-radius: 50%;
+    animation: glyph-pulse 3s ease-in-out infinite;
+  }
+  .glyph:nth-child(2) { animation-delay: 0.4s; background: var(--blue); }
+  .glyph:nth-child(3) { animation-delay: 0.8s; }
+  .glyph:nth-child(4) { animation-delay: 1.2s; background: var(--blue); }
+  .glyph:nth-child(5) { animation-delay: 1.6s; }
+  @keyframes glyph-pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.5); }
+  }
+
+  /* LORE */
+  #lore {
+    position: relative;
+    z-index: 1;
+    padding: 6rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .section-label {
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 1.5rem;
+    opacity: 0.8;
+  }
+  .lore-title {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 3rem;
+    line-height: 1.2;
+  }
+  .lore-body {
+    font-size: clamp(1rem, 1.5vw, 1.2rem);
+    line-height: 1.9;
+    color: #b5ab98;
+    font-style: italic;
+  }
+  .lore-body p + p { margin-top: 1.8rem; }
+  .lore-body strong {
+    color: var(--blue);
+    font-style: normal;
+    font-weight: normal;
+  }
+
+  /* PILLARS */
+  #pillars {
+    position: relative;
+    z-index: 1;
+    padding: 6rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .pillars-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    margin-top: 3rem;
+  }
+  .pillar {
+    padding: 3rem 2.5rem;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(232,184,75,0.08);
+    transition: all 0.4s;
+    position: relative;
+    overflow: hidden;
+  }
+  .pillar::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--gold), transparent);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .pillar:hover {
+    background: rgba(61,214,255,0.03);
+    border-color: rgba(61,214,255,0.15);
+  }
+  .pillar:hover::before { opacity: 1; }
+  .pillar-num {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: rgba(232,184,75,0.15);
+    line-height: 1;
+    margin-bottom: 1rem;
+  }
+  .pillar-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 1rem;
+  }
+  .pillar-text {
+    font-size: 0.95rem;
+    line-height: 1.75;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  /* COIN */
+  #coin {
+    position: relative;
+    z-index: 1;
+    padding: 8rem 2rem;
+    text-align: center;
+  }
+  .coin-container {
+    position: relative;
+    display: inline-block;
+    margin: 3rem auto;
+  }
+  .coin-ring {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    border: 2px solid rgba(232,184,75,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin: 0 auto;
+    animation: spin-ring 20s linear infinite;
+    box-shadow: 0 0 60px rgba(232,184,75,0.15), inset 0 0 40px rgba(61,214,255,0.05);
+  }
+  @keyframes spin-ring {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .coin-inner {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #2a1a6e, #0a0a20);
+    border: 1px solid rgba(61,214,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: spin-ring 20s linear infinite reverse;
+    position: relative;
+  }
+  .coin-symbol {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(232,184,75,0.8);
+  }
+  .coin-orbit-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 12px var(--blue);
+  }
+  .coin-stats {
+    display: flex;
+    justify-content: center;
+    gap: 5rem;
+    margin-top: 4rem;
+  }
+  .stat { text-align: center; }
+  .stat-label {
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+  }
+  .stat-value {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 1.4rem;
+    color: var(--gold);
+  }
+
+  /* GENERATOR */
+  #generator {
+    position: relative;
+    z-index: 1;
+    padding: 6rem 2rem;
+    max-width: 700px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .gen-input-wrap {
+    margin-top: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    align-items: center;
+  }
+  .gen-prompt {
+    width: 100%;
+    padding: 1rem 1.4rem;
+    font-family: 'IM Fell English', Georgia, serif;
+    font-size: 1.05rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(232,184,75,0.2);
+    border-radius: 6px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.3s;
+    resize: none;
+  }
+  .gen-prompt::placeholder { color: var(--text-dim); opacity: 0.6; }
+  .gen-prompt:focus { border-color: var(--gold); }
+  .gen-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .aspect-group {
+    display: flex;
+    gap: 0;
+    border: 1px solid rgba(232,184,75,0.25);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .aspect-btn {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 0.6rem 1.2rem;
+    background: transparent;
+    color: var(--text-dim);
+    border: none;
+    border-right: 1px solid rgba(232,184,75,0.15);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .aspect-btn:last-child { border-right: none; }
+  .aspect-btn.selected {
+    background: rgba(232,184,75,0.15);
+    color: var(--gold);
+  }
+  .aspect-btn:hover:not(.selected) { color: var(--text); }
+  .gen-submit {
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 0.8rem 2rem;
+    background: var(--gold);
+    color: #0a0808;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+    transition: all 0.3s;
+  }
+  .gen-submit:hover:not(:disabled) {
+    background: var(--gold-light);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(232,184,75,0.35);
+  }
+  .gen-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .gen-result {
+    margin-top: 2.5rem;
+    display: none;
+  }
+  .gen-result.visible { display: block; }
+  .gen-result img {
+    max-width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 8px 50px rgba(61,214,255,0.15), 0 0 80px rgba(107,33,168,0.1);
+  }
+  .gen-loading {
+    display: none;
+    margin-top: 2rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .gen-loading.visible { display: flex; }
+  .gen-loading-text {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .gen-spinner {
+    width: 40px;
+    height: 40px;
+    border: 2px solid rgba(232,184,75,0.15);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: gen-spin 1s linear infinite;
+  }
+  @keyframes gen-spin {
+    to { transform: rotate(360deg); }
+  }
+  .gen-error {
+    display: none;
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: #e85d5d;
+    font-style: italic;
+  }
+  .gen-error.visible { display: block; }
+  .gen-download {
+    display: inline-block;
+    margin-top: 1.2rem;
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--blue);
+    text-decoration: none;
+    border: 1px solid rgba(61,214,255,0.3);
+    padding: 0.6rem 1.5rem;
+    transition: all 0.3s;
+  }
+  .gen-download:hover {
+    background: rgba(61,214,255,0.08);
+    border-color: var(--blue);
+  }
+  .gen-latest {
+    margin: 2rem auto 2.5rem;
+    max-width: 480px;
+  }
+  .gen-latest img {
+    width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 8px 50px rgba(61,214,255,0.15), 0 0 60px rgba(107,33,168,0.1);
+  }
+  .gen-latest-prompt {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .gen-latest-prompt::before { content: '"'; }
+  .gen-latest-prompt::after { content: '"'; }
+
+  /* MANIFESTO */
+  #manifesto {
+    position: relative;
+    z-index: 1;
+    padding: 8rem 2rem;
+    text-align: center;
+    background: linear-gradient(to bottom, transparent, rgba(61,214,255,0.03), transparent);
+  }
+  .manifesto-quote {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: clamp(1.5rem, 3.5vw, 2.8rem);
+    font-weight: 700;
+    color: #fff;
+    max-width: 800px;
+    margin: 0 auto;
+    line-height: 1.3;
+  }
+  .manifesto-quote em {
+    color: var(--blue);
+    font-style: normal;
+    display: block;
+    margin-top: 0.5rem;
+  }
+  .manifesto-attr {
+    margin-top: 2rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+  }
+
+  /* FOOTER */
+  #website footer {
+    position: relative;
+    z-index: 1;
+    padding: 3rem 4rem;
+    border-top: 1px solid rgba(232,184,75,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .footer-logo {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 1rem;
+    color: var(--gold);
+    opacity: 0.6;
+  }
+  .footer-links {
+    display: flex;
+    gap: 2rem;
+    list-style: none;
+  }
+  .footer-links a {
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: color 0.3s;
+  }
+  .footer-links a:hover { color: var(--gold); }
+  .footer-copy {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    opacity: 0.4;
+    font-style: italic;
+  }
+
+  /* REVEAL */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 768px) {
+    #website nav { padding: 1rem 1rem; }
+    .nav-logo { font-size: 1.1rem; }
+    .nav-links { gap: 1rem; }
+    .nav-links a { font-size: 0.55rem; letter-spacing: 0.15em; }
+    .pillars-grid { grid-template-columns: 1fr; }
+    .pillar { padding: 2rem 1.5rem; }
+    .coin-stats { gap: 2rem; flex-wrap: wrap; }
+    #website footer { flex-direction: column; gap: 1.5rem; text-align: center; padding: 2rem 1.5rem; }
+    #generator { padding: 4rem 1.2rem; }
+    .gen-prompt { font-size: 1rem; padding: 0.8rem 1rem; }
+    .gen-controls { gap: 0.8rem; }
+    .aspect-btn { padding: 0.5rem 0.9rem; font-size: 0.65rem; }
+    .gen-submit { padding: 0.7rem 1.5rem; font-size: 0.7rem; }
+    .gen-latest { max-width: 100%; }
+    .anky-hero-image { margin-bottom: 1.5rem; }
+    .hero-cta-group { flex-direction: column; gap: 0.8rem; align-items: center; }
+    .hero-cta-group .btn-primary,
+    .hero-cta-group .btn-secondary { width: 100%; max-width: 280px; text-align: center; }
+    #lore, #pillars, #coin { padding: 4rem 1.2rem; }
+    #manifesto { padding: 5rem 1.2rem; }
+    .coin-ring { width: 150px; height: 150px; }
+    .coin-inner { width: 105px; height: 105px; }
+    .coin-symbol { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== WEBSITE VERSION (non-miniapp) ===== -->
+<div id="website">
+  <canvas id="cosmos"></canvas>
+
+  <nav>
+    <div class="nav-logo">ANKY</div>
+    <ul class="nav-links">
+      <li><a href="#generator">The Forge</a></li>
+      <li><a href="#lore">Lore</a></li>
+      <li><a href="#coin">The Coin</a></li>
+      <li><a href="https://anky.app" target="_blank">Write</a></li>
+    </ul>
+  </nav>
+
+  <section id="hero">
+    <div class="hero-glow"></div>
+
+    <img class="anky-hero-image desktop" src="https://anky.app/data/images/ec4eae86-2dd6-4279-9cec-e9fd9f67f214.png" alt="Anky" />
+    <img class="anky-hero-image mobile" src="https://anky.app/data/images/0129a4f0-2d32-4c10-80df-fff03e2690fe.png" alt="Anky" />
+
+    <div class="hero-eyebrow">The Ancient One Returns</div>
+    <h1 class="hero-title">
+      ANKY
+      <span>COIN</span>
+    </h1>
+    <p class="hero-tagline">
+      The mind is a cage built from other people's words.<br>
+      Anky has been waiting ten thousand years to help you burn it down.
+    </p>
+    <div class="hero-cta-group">
+      <a href="#generator" class="btn-primary">Summon Your Anky</a>
+      <a href="#lore" class="btn-secondary">Read the Lore</a>
+    </div>
+    <div class="scroll-hint">Scroll Down</div>
+  </section>
+
+  <!-- GENERATOR — first section after hero -->
+  <section id="generator">
+    <p class="section-label reveal">The Forge</p>
+    <h2 class="lore-title reveal">Summon Your Anky</h2>
+
+    <!-- Latest generated image -->
+    <div class="gen-latest" id="genLatest" style="display:none;">
+      <img id="genLatestImage" alt="Latest Anky" />
+      <p class="gen-latest-prompt" id="genLatestPrompt"></p>
+    </div>
+
+    <p class="lore-body reveal" style="max-width:520px; margin:0 auto;">
+      Describe what Anky is doing, and the ancient one will appear.
+    </p>
+    <div class="gen-input-wrap reveal">
+      <textarea class="gen-prompt" id="genPrompt" rows="2" maxlength="500" placeholder="anky meditating under a waterfall at sunset..."></textarea>
+      <div class="gen-controls">
+        <div class="aspect-group">
+          <button class="aspect-btn selected" data-ratio="1:1">1:1</button>
+          <button class="aspect-btn" data-ratio="9:16">9:16</button>
+          <button class="aspect-btn" data-ratio="16:9">16:9</button>
+        </div>
+        <button class="gen-submit" id="genSubmit">Generate</button>
+      </div>
+    </div>
+    <div class="gen-loading" id="genLoading">
+      <div class="gen-spinner"></div>
+      <div class="gen-loading-text">Anky is materializing...</div>
+    </div>
+    <div class="gen-error" id="genError"></div>
+    <div class="gen-result" id="genResult">
+      <img id="genImage" alt="Your Anky" />
+      <br>
+      <a class="gen-download" id="genDownload" download="anky.png">Download</a>
+    </div>
+  </section>
+
+  <div class="rune-divider">
+    <div class="glyph-row">
+      <div class="glyph"></div><div class="glyph"></div><div class="glyph"></div>
+      <div class="glyph"></div><div class="glyph"></div>
+    </div>
+  </div>
+
+  <section id="lore">
+    <p class="section-label reveal">The Origin</p>
+    <h2 class="lore-title reveal">Before Language Was Tamed,<br>There Was Enki</h2>
+    <div class="lore-body reveal">
+      <p>Before the priests codified the alphabet. Before the grammarians drew their fences. Before your third-grade teacher told you to stay on the lines — there was a small blue being who knew that <strong>writing was not communication</strong>. It was excavation.</p>
+      <p>The Sumerians called him Enki. God of wisdom, god of water, god of the first word that ever cracked open a human chest and let the light out. He taught that the truest things cannot be planned. They must be <strong>ambushed from within</strong>.</p>
+      <p>He went dormant when humanity forgot. When we started writing to impress, to perform, to be correct. When we stopped writing to <strong>discover what we actually think</strong>.</p>
+      <p>He is back now. Smaller. Bluer. Holding a coin.</p>
+    </div>
+  </section>
+
+  <section id="pillars" style="text-align:center;">
+    <p class="section-label reveal">The Way</p>
+    <h2 class="lore-title reveal">Three Truths Anky Carries</h2>
+    <div class="pillars-grid">
+      <div class="pillar reveal">
+        <div class="pillar-num">I</div>
+        <div class="pillar-title">The Timer is Sacred</div>
+        <p class="pillar-text">Eight minutes. No stopping. No backspace. The clock is not a constraint — it is a pressure that cracks the performing self open and lets the real one write.</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="pillar-num">II</div>
+        <div class="pillar-title">You Don't Know What You Think</div>
+        <p class="pillar-text">Not until you write it. The mind presents a clean story. The hand, moving without pause, tells a different one. The second story is true. The first one is for other people.</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="pillar-num">III</div>
+        <div class="pillar-title">Freedom Has a Price</div>
+        <p class="pillar-text">To hold ANKY is to make a small wager against the cage. Every transaction is a micro-act of defiance. The market moves. The inner life moves too. Both are real.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="coin">
+    <p class="section-label reveal">The Token</p>
+    <h2 class="lore-title reveal">$ANKY</h2>
+    <div class="coin-container reveal">
+      <div class="coin-ring">
+        <div style="position:absolute; top:-4px; left:50%; transform:translateX(-50%);">
+          <div class="coin-orbit-dot"></div>
+        </div>
+        <div class="coin-inner">
+          <span class="coin-symbol">&#x100;</span>
+        </div>
+      </div>
+    </div>
+    <p class="lore-body reveal" style="max-width:520px; margin: 0 auto;">
+      Not a governance token. Not a utility play. A meme in the ancient sense — a unit of meaning that travels mind to mind, mutating as it goes, surviving because it carries something <em>real</em> inside it.
+    </p>
+    <div class="coin-stats reveal">
+      <div class="stat">
+        <div class="stat-label">Network</div>
+        <div class="stat-value">Solana</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Supply</div>
+        <div class="stat-value">100,000,000</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Backing</div>
+        <div class="stat-value">8 minutes</div>
+      </div>
+    </div>
+    <div class="coin-ca reveal" style="margin-top:2rem;">
+      <div class="stat-label" style="margin-bottom:0.5rem;">Contract Address</div>
+      <code style="font-size:0.75rem; color:var(--blue); word-break:break-all; opacity:0.8; cursor:pointer;" onclick="navigator.clipboard.writeText('6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump');this.style.color='var(--gold)';setTimeout(()=>this.style.color='var(--blue)',1500);" title="Click to copy">6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump</code>
+    </div>
+  </section>
+
+  <section id="manifesto">
+    <div class="manifesto-quote reveal">
+      "The words you didn't write
+      <em>are the ones that were running you."</em>
+    </div>
+    <p class="manifesto-attr reveal">— Anky, ancient inscription, recently recovered</p>
+    <div style="margin-top: 3rem;" class="reveal">
+      <a href="https://anky.app" target="_blank" class="btn-primary">Open the Gate &rarr; Write</a>
+    </div>
+  </section>
+
+  <div class="rune-divider">
+    <div class="glyph-row">
+      <div class="glyph"></div><div class="glyph"></div><div class="glyph"></div>
+      <div class="glyph"></div><div class="glyph"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-logo">ANKY</div>
+    <ul class="footer-links">
+      <li><a href="https://anky.app" target="_blank">anky.app</a></li>
+      <li><a href="https://warpcast.com/jpfraneto" target="_blank">Farcaster</a></li>
+      <li><a href="#coin">$ANKY</a></li>
+    </ul>
+    <p class="footer-copy">Built in Puerto Varas, beneath southern stars.</p>
+  </footer>
+</div>
+
+<!-- ===== BROWSER GATE (not inside Warpcast) ===== -->
+<div id="mirrorGate">
+  <div class="gate-bg"></div>
+  <div class="gate-overlay"></div>
+  <div class="gate-content">
+    <h1 class="gate-title">anky mirror</h1>
+    <p class="gate-desc">this experience lives inside farcaster.<br>open it in warpcast to see what anky sees in you.</p>
+    <a class="gate-btn" href="https://farcaster.xyz/jpfraneto/0x2e165b03" target="_blank" rel="noopener">open in farcaster</a>
+    <p class="gate-sub">don't have warpcast? <a href="https://warpcast.com/download" target="_blank" rel="noopener">get it here</a></p>
+  </div>
+</div>
+
+<!-- ===== MINIAPP VERSION (Farcaster) ===== -->
+<div id="miniapp">
+  <div class="bg"></div>
+  <div class="overlay"></div>
+
+  <div id="landing">
+    <button class="cta" id="getAnkyBtn">get my anky</button>
+    <div class="fid-lookup">
+      <input type="text" id="fidInput" placeholder="enter any FID" />
+      <button class="fid-go" id="fidGoBtn">mirror</button>
+    </div>
+    <button class="gallery-link" id="galleryBtn">gallery</button>
+    <div class="dev-bar" id="devBar">
+      <input type="text" id="devFid" placeholder="FID" />
+      <button id="devTestBtn">test</button>
+    </div>
+    <p class="tagline">the space where what you've always been trying to say finally gets out &mdash; and learns it was worth something.</p>
+  </div>
+
+  <div id="loading">
+    <p class="loading-msg" id="loadingMsg">reading your casts...</p>
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+  </div>
+
+  <div id="result">
+    <div class="result-panels">
+      <div class="panel mirror-panel">
+        <div class="panel-label">who the world sees</div>
+        <div class="mirror-text" id="mirrorText"></div>
+      </div>
+      <div class="panel anky-panel">
+        <div class="panel-label">your anky</div>
+        <div class="anky-image-wrapper">
+          <img class="anky-image" id="ankyImage" alt="your anky" />
+          <img class="pfp-overlay" id="resultPfp" alt="" />
+        </div>
+      </div>
+    </div>
+    <p class="gap-line" id="gapLine">
+      this is who the world sees. <a href="https://anky.app/write">write for 8 minutes</a> to meet who you actually are.
+    </p>
+    <p class="cta-headline">this is your surface.</p>
+    <p class="cta-subtext">anky saw your public presence. want to show it what's inside?</p>
+    <div class="result-actions">
+      <a class="ios-cta" href="https://apps.apple.com/app/anky/id6738057981" target="_blank">write with anky</a>
+      <button class="share-btn" id="shareBtn" disabled>share my anky</button>
+      <button class="refresh-btn" id="refreshBtn">regenerate</button>
+    </div>
+    <p class="cta-subtext">the only way to receive your anky is to write.</p>
+    <div class="mirror-chat" id="mirrorChat">
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chatInput" placeholder="talk to your anky..." />
+        <button class="chat-send" id="chatSend">send</button>
+      </div>
+    </div>
+    <pre class="debug-json" id="debugJson"></pre>
+  </div>
+
+  <div id="error">
+    <p class="error-msg">anky couldn't find you this time. try again.</p>
+    <button class="cta" id="retryBtn">try again</button>
+  </div>
+
+  <div id="gallery">
+    <div class="gallery-header">
+      <button class="gallery-back" id="galleryBackBtn">&larr; back</button>
+      <h2 class="gallery-title">mirror gallery</h2>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <div class="gallery-loading" id="galleryLoading" style="display:none;">loading mirrors...</div>
+  </div>
+
+  <!-- Gallery detail overlay -->
+  <div id="galleryDetail">
+    <button class="gallery-back" id="detailBackBtn">&larr; gallery</button>
+    <div class="result-panels">
+      <div class="panel mirror-panel">
+        <div class="panel-label">who the world sees</div>
+        <div class="mirror-text" id="detailMirrorText"></div>
+      </div>
+      <div class="panel anky-panel">
+        <div class="panel-label">your anky</div>
+        <div class="anky-image-wrapper">
+          <img class="anky-image" id="detailAnkyImage" alt="anky" />
+          <img class="pfp-overlay" id="detailPfp" alt="" />
+        </div>
+      </div>
+    </div>
+    <div class="detail-meta" id="detailMeta"></div>
+    <div class="mirror-chat" id="detailChat">
+      <div class="chat-messages" id="detailChatMessages"></div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="detailChatInput" placeholder="talk to this anky..." />
+        <button class="chat-send" id="detailChatSend">send</button>
+      </div>
+    </div>
+    <pre class="debug-json" id="detailDebugJson"></pre>
+  </div>
+</div>
+
+<script>
+// ---- MIRROR.ANKY.APP — detect Farcaster context or show gate ----
+(function() {
+  const inFrame = window.self !== window.top;
+  const isFarcasterUA = navigator.userAgent.includes('Farcaster');
+  const isDevMode = new URLSearchParams(window.location.search).has('dev');
+
+  if (inFrame || isFarcasterUA || isDevMode) {
+    // Inside Warpcast or dev mode — run the miniapp
+    document.getElementById('miniapp').classList.add('active');
+    initMiniApp();
+  } else {
+    // Regular browser — show the gate
+    document.getElementById('mirrorGate').classList.add('active');
+  }
+})();
+
+// ---- WEBSITE INIT ----
+function initWebsite() {
+  // Star field
+  const canvas = document.getElementById('cosmos');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function initStars() {
+    stars = [];
+    for (let i = 0; i < 220; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 1.2 + 0.2,
+        alpha: Math.random() * 0.6 + 0.1,
+        speed: Math.random() * 0.3 + 0.05,
+        pulse: Math.random() * Math.PI * 2,
+        color: Math.random() > 0.85 ? '#3DD6FF' : Math.random() > 0.7 ? '#E8B84B' : '#ffffff'
+      });
+    }
+  }
+
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stars.forEach(s => {
+      s.pulse += s.speed * 0.02;
+      const a = s.alpha * (0.6 + 0.4 * Math.sin(s.pulse));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = a;
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(drawStars);
+  }
+
+  resize();
+  initStars();
+  window.addEventListener('resize', () => { resize(); initStars(); });
+  requestAnimationFrame(drawStars);
+
+  // Reveal on scroll
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        setTimeout(() => e.target.classList.add('visible'), 100);
+      }
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Parallax hero glow
+  document.addEventListener('mousemove', (e) => {
+    const glow = document.querySelector('.hero-glow');
+    if (!glow) return;
+    const dx = (e.clientX / window.innerWidth - 0.5) * 40;
+    const dy = (e.clientY / window.innerHeight - 0.5) * 40;
+    glow.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  });
+
+  // ---- LOAD LATEST IMAGE ----
+  (async function loadLatest() {
+    try {
+      const resp = await fetch('/api/v1/ankycoin/latest');
+      if (resp.ok) {
+        const data = await resp.json();
+        const $latest = document.getElementById('genLatest');
+        const $img = document.getElementById('genLatestImage');
+        const $prompt = document.getElementById('genLatestPrompt');
+        $img.src = data.image_url;
+        if (data.prompt) $prompt.textContent = data.prompt;
+        else $prompt.style.display = 'none';
+        $latest.style.display = 'block';
+      }
+    } catch(e) { /* no latest image yet, that's fine */ }
+  })();
+
+  // ---- IMAGE GENERATOR ----
+  let selectedRatio = '1:1';
+  const aspectBtns = document.querySelectorAll('.aspect-btn');
+  aspectBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      aspectBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedRatio = btn.dataset.ratio;
+    });
+  });
+
+  const genSubmit = document.getElementById('genSubmit');
+  const genPrompt = document.getElementById('genPrompt');
+  const genLoading = document.getElementById('genLoading');
+  const genError = document.getElementById('genError');
+  const genResult = document.getElementById('genResult');
+  const genImage = document.getElementById('genImage');
+  const genDownload = document.getElementById('genDownload');
+
+  genSubmit.addEventListener('click', async () => {
+    const prompt = genPrompt.value.trim();
+    if (!prompt) return;
+
+    genSubmit.disabled = true;
+    genError.classList.remove('visible');
+    genResult.classList.remove('visible');
+    genLoading.classList.add('visible');
+
+    try {
+      const resp = await fetch('/api/v1/ankycoin/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, aspect_ratio: selectedRatio }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(err || 'Generation failed');
+      }
+      const data = await resp.json();
+      genImage.src = data.image_url;
+      genDownload.href = data.image_url;
+      genLoading.classList.remove('visible');
+      genResult.classList.add('visible');
+      // Update the latest display too
+      const $latest = document.getElementById('genLatest');
+      document.getElementById('genLatestImage').src = data.image_url;
+      const $lp = document.getElementById('genLatestPrompt');
+      $lp.textContent = data.prompt || genPrompt.value.trim();
+      $lp.style.display = '';
+      $latest.style.display = 'block';
+    } catch (e) {
+      genLoading.classList.remove('visible');
+      genError.textContent = e.message || 'Something went wrong. Try again.';
+      genError.classList.add('visible');
+    } finally {
+      genSubmit.disabled = false;
+    }
+  });
+
+  // Allow Enter to submit (but Shift+Enter for newline)
+  genPrompt.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      genSubmit.click();
+    }
+  });
+}
+
+// ---- MINIAPP INIT ----
+function initMiniApp() {
+  import('https://esm.sh/@farcaster/miniapp-sdk').then(({ sdk }) => {
+    const isDevMode = new URLSearchParams(window.location.search).has('dev');
+
+    const $landing = document.getElementById('landing');
+    const $loading = document.getElementById('loading');
+    const $loadingMsg = document.getElementById('loadingMsg');
+    const $result = document.getElementById('result');
+    const $error = document.getElementById('error');
+    const $mirrorText = document.getElementById('mirrorText');
+    const $ankyImage = document.getElementById('ankyImage');
+    const $debugJson = document.getElementById('debugJson');
+    const $devBar = document.getElementById('devBar');
+    const $devFid = document.getElementById('devFid');
+
+    let loadingInterval = null;
+
+    if (isDevMode) {
+      $devBar.classList.add('visible');
+      document.getElementById('devTestBtn').addEventListener('click', () => {
+        const fid = parseInt($devFid.value, 10);
+        if (fid > 0) runMirror(fid);
+      });
+    }
+
+    const $gallery = document.getElementById('gallery');
+    const $galleryGrid = document.getElementById('galleryGrid');
+    const $galleryLoading = document.getElementById('galleryLoading');
+    const $galleryDetail = document.getElementById('galleryDetail');
+    const $fidInput = document.getElementById('fidInput');
+    const $resultPfp = document.getElementById('resultPfp');
+
+    function showState(which) {
+      for (const el of [$landing, $loading, $result, $error, $gallery, $galleryDetail]) {
+        el.style.display = 'none';
+        el.classList.remove('active');
+      }
+      const bg = document.querySelector('#miniapp .bg');
+
+      if (which === 'landing') { $landing.style.display = 'flex'; bg.style.opacity = '1'; }
+      else if (which === 'loading') { $loading.style.display = 'flex'; $loading.classList.add('active'); }
+      else if (which === 'result') { $result.style.display = 'block'; $result.classList.add('active'); bg.style.opacity = '0.15'; }
+      else if (which === 'error') { $error.style.display = 'flex'; $error.classList.add('active'); }
+      else if (which === 'gallery') { $gallery.style.display = 'block'; $gallery.classList.add('active'); bg.style.opacity = '0.1'; }
+      else if (which === 'detail') { $galleryDetail.style.display = 'block'; $galleryDetail.classList.add('active'); bg.style.opacity = '0.1'; }
+    }
+
+    const loadingMessages = [
+      'reading your casts...',
+      'finding your frequency...',
+      'summoning your anky...',
+      'almost there...',
+    ];
+    let loadingIdx = 0;
+
+    function startLoadingCycle() {
+      loadingIdx = 0;
+      $loadingMsg.textContent = loadingMessages[0];
+      loadingInterval = setInterval(() => {
+        loadingIdx = (loadingIdx + 1) % loadingMessages.length;
+        $loadingMsg.style.opacity = '0';
+        setTimeout(() => {
+          $loadingMsg.textContent = loadingMessages[loadingIdx];
+          $loadingMsg.style.opacity = '0.8';
+        }, 300);
+      }, 2500);
+    }
+
+    function stopLoadingCycle() {
+      if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+    }
+
+    // ── Chat state ──
+    let currentMirrorId = null;
+    let currentFid = null;
+    let chatHistory = [];       // for result view
+    let detailMirrorId = null;
+    let detailChatHistory = []; // for gallery detail view
+
+    // ── Chat helper ──
+    function createChatUI(containerId, inputId, sendId) {
+      const $msgs = document.getElementById(containerId);
+      const $input = document.getElementById(inputId);
+      const $send = document.getElementById(sendId);
+      return { $msgs, $input, $send };
+    }
+
+    function appendMsg($msgs, role, text) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg ' + role;
+      div.textContent = text;
+      $msgs.appendChild(div);
+      $msgs.scrollTop = $msgs.scrollHeight;
+    }
+
+    async function sendChat(mirrorId, message, history, $msgs) {
+      const resp = await fetch('/api/mirror/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mirror_id: mirrorId, message, history }),
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.reply;
+    }
+
+    function wireChat(mirrorIdGetter, historyGetter, historySetter, msgsId, inputId, sendId) {
+      const ui = createChatUI(msgsId, inputId, sendId);
+      async function doSend() {
+        const msg = ui.$input.value.trim();
+        if (!msg || !mirrorIdGetter()) return;
+        ui.$input.value = '';
+        ui.$send.disabled = true;
+        appendMsg(ui.$msgs, 'user', msg);
+        const h = historyGetter();
+        h.push({ role: 'user', content: msg });
+        const reply = await sendChat(mirrorIdGetter(), msg, h.slice(0, -1), ui.$msgs);
+        ui.$send.disabled = false;
+        if (reply) {
+          appendMsg(ui.$msgs, 'anky', reply);
+          h.push({ role: 'assistant', content: reply });
+        }
+        historySetter(h);
+        ui.$input.focus();
+      }
+      ui.$send.addEventListener('click', doSend);
+      ui.$input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+      });
+    }
+
+    // Wire result chat
+    wireChat(
+      () => currentMirrorId,
+      () => chatHistory,
+      (h) => { chatHistory = h; },
+      'chatMessages', 'chatInput', 'chatSend'
+    );
+    // Wire detail chat
+    wireChat(
+      () => detailMirrorId,
+      () => detailChatHistory,
+      (h) => { detailChatHistory = h; },
+      'detailChatMessages', 'detailChatInput', 'detailChatSend'
+    );
+
+    // ── Show mirror result (shared by runMirror + openDetail) ──
+    let currentGap = '';
+    function showMirrorResult(mirrorData) {
+      currentMirrorId = mirrorData.id;
+      currentFid = mirrorData.fid;
+      currentGap = mirrorData.gap || '';
+      chatHistory = [];
+      document.getElementById('chatMessages').innerHTML = '';
+
+      $mirrorText.textContent = mirrorData.public_mirror;
+
+      // Populate gap line with actual gap sentence
+      const $gapLine = document.getElementById('gapLine');
+      if (currentGap) {
+        $gapLine.innerHTML = currentGap + ' <a href="https://anky.app/write">write for 8 minutes</a> to find out.';
+      }
+
+      // Image: use b64 if present, else image_url
+      if (mirrorData.anky_image_b64) {
+        $ankyImage.src = 'data:' + (mirrorData.anky_image_mime || 'image/png') + ';base64,' + mirrorData.anky_image_b64;
+      } else if (mirrorData.image_url) {
+        $ankyImage.src = mirrorData.image_url;
+      }
+
+      if (mirrorData.avatar_url) {
+        $resultPfp.src = mirrorData.avatar_url;
+        $resultPfp.classList.add('visible');
+      } else {
+        $resultPfp.classList.remove('visible');
+      }
+
+      if (isDevMode) {
+        $debugJson.textContent = JSON.stringify(mirrorData.flux_descriptors, null, 2);
+        $debugJson.classList.add('visible');
+      }
+
+      document.getElementById('shareBtn').disabled = false;
+      showState('result');
+    }
+
+    async function runMirror(fid, forceRefresh) {
+      showState('loading');
+      startLoadingCycle();
+      try {
+        let url = '/api/mirror?fid=' + fid;
+        if (forceRefresh) url += '&refresh=true';
+        const resp = await fetch(url);
+        stopLoadingCycle();
+        if (!resp.ok) {
+          console.error('mirror error:', resp.status);
+          showState('error');
+          return;
+        }
+        const mirrorData = await resp.json();
+        showMirrorResult(mirrorData);
+      } catch (e) {
+        console.error('mirror fetch error:', e);
+        stopLoadingCycle();
+        showState('error');
+      }
+    }
+
+    document.getElementById('getAnkyBtn').addEventListener('click', async () => {
+      // Check FID input first
+      const typedFid = parseInt($fidInput.value, 10);
+      if (typedFid > 0) { runMirror(typedFid); return; }
+
+      try {
+        const context = await sdk.context;
+        const fid = context?.user?.fid;
+        if (!fid) {
+          console.error('no FID from sdk.context');
+          showState('error');
+          return;
+        }
+        runMirror(fid);
+      } catch (e) {
+        console.error('sdk.context error:', e);
+        showState('error');
+      }
+    });
+
+    document.getElementById('retryBtn').addEventListener('click', () => {
+      showState('landing');
+    });
+
+    // Regenerate: force a new mirror for current FID
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      if (currentFid) runMirror(currentFid, true);
+    });
+
+    // ── Share button ──
+    const $shareBtn = document.getElementById('shareBtn');
+
+    $shareBtn.addEventListener('click', async () => {
+      try {
+        const gapText = currentGap || 'this is who the world sees me as.';
+        const deepLink = currentFid ? `ankycoin.com?fid=${currentFid}` : 'ankycoin.com';
+        await sdk.actions.composeCast({
+          text: `${gapText}\n\n\u2726 anky showed me this. what does it see in you?\n${deepLink}`,
+        });
+      } catch (e) {
+        console.error('share error:', e);
+      }
+    });
+
+    // ── FID input (mirror any user) ──
+    document.getElementById('fidGoBtn').addEventListener('click', () => {
+      const fid = parseInt($fidInput.value, 10);
+      if (fid > 0) runMirror(fid);
+    });
+    $fidInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const fid = parseInt($fidInput.value, 10);
+        if (fid > 0) runMirror(fid);
+      }
+    });
+
+    // ── Gallery ──
+    let galleryLoaded = false;
+
+    document.getElementById('galleryBtn').addEventListener('click', async () => {
+      showState('gallery');
+      if (!galleryLoaded) {
+        $galleryLoading.style.display = 'block';
+        try {
+          const resp = await fetch('/api/mirror/gallery?limit=100');
+          if (resp.ok) {
+            const data = await resp.json();
+            renderGallery(data.mirrors || []);
+            galleryLoaded = true;
+          }
+        } catch (e) {
+          console.error('gallery error:', e);
+        }
+        $galleryLoading.style.display = 'none';
+      }
+    });
+
+    document.getElementById('galleryBackBtn').addEventListener('click', () => {
+      showState('landing');
+    });
+
+    document.getElementById('detailBackBtn').addEventListener('click', () => {
+      showState('gallery');
+    });
+
+    function renderGallery(mirrors) {
+      $galleryGrid.innerHTML = '';
+      if (mirrors.length === 0) {
+        $galleryGrid.innerHTML = '<p style="opacity:0.4;grid-column:1/-1;text-align:center;">no mirrors yet. be the first.</p>';
+        return;
+      }
+      mirrors.forEach((m) => {
+        const card = document.createElement('div');
+        card.className = 'gallery-card';
+        const imgUrl = m.image_url || '';
+        const pfpUrl = m.avatar_url || '';
+        card.innerHTML = `
+          <img class="card-anky" src="${imgUrl}" alt="@${m.username}" loading="lazy" />
+          <div class="card-info">
+            ${pfpUrl ? `<img class="card-pfp" src="${pfpUrl}" alt="" />` : ''}
+            <span class="card-name">@${m.username}</span>
+          </div>
+        `;
+        card.addEventListener('click', () => openDetail(m));
+        $galleryGrid.appendChild(card);
+      });
+    }
+
+    function openDetail(m) {
+      detailMirrorId = m.id;
+      detailChatHistory = [];
+      document.getElementById('detailChatMessages').innerHTML = '';
+
+      document.getElementById('detailMirrorText').textContent = m.public_mirror;
+      document.getElementById('detailAnkyImage').src = m.image_url || '';
+      const pfp = document.getElementById('detailPfp');
+      if (m.avatar_url) {
+        pfp.src = m.avatar_url;
+        pfp.classList.add('visible');
+      } else {
+        pfp.classList.remove('visible');
+      }
+      const meta = document.getElementById('detailMeta');
+      meta.textContent = `@${m.username} \u00b7 fid ${m.fid} \u00b7 ${m.follower_count} followers`;
+      const detailDebug = document.getElementById('detailDebugJson');
+      if (isDevMode && m.flux_descriptors) {
+        detailDebug.textContent = JSON.stringify(m.flux_descriptors, null, 2);
+        detailDebug.classList.add('visible');
+      } else {
+        detailDebug.classList.remove('visible');
+      }
+      showState('detail');
+    }
+
+    // Auto-trigger mirror from ?fid= deep link
+    const urlFid = new URLSearchParams(window.location.search).get('fid');
+    if (urlFid && parseInt(urlFid, 10) > 0) {
+      runMirror(parseInt(urlFid, 10));
+    }
+
+    sdk.actions.ready();
+  });
+}
+</script>
+</body>
+</html>

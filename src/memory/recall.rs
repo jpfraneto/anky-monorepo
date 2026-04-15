@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::db::Connection;
+use anyhow::Result;
 
 /// A recalled memory for context injection.
 #[derive(Debug)]
@@ -136,7 +136,9 @@ pub async fn build_memory_context(
 fn get_user_profile(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     let mut stmt =
         conn.prepare("SELECT psychological_profile FROM user_profiles WHERE user_id = ?1")?;
-    let mut rows = stmt.query_map(crate::params![user_id], |row| row.get::<_, Option<String>>(0))?;
+    let mut rows = stmt.query_map(crate::params![user_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })?;
     Ok(rows.next().and_then(|r| r.ok()).flatten())
 }
 

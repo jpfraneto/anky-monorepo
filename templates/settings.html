@@ -1,163 +1,632 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>anky — settings</title>
+  <meta name="theme-color" content="#08080e">
+  <link rel="icon" href="/static/icon-192.png">
+  <style>
+    :root {
+      --bg: #08080e;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-strong: rgba(255, 255, 255, 0.08);
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.12);
+      --text: #e8e0d0;
+      --text-strong: #f4efe7;
+      --muted: #8a8078;
+      --dim: #5f5a58;
+      --quiet: #3a3a3a;
+      --field: #14141f;
+      --field-strong: #181824;
+      --accent: #a78bfa;
+      --accent-soft: rgba(167, 139, 250, 0.14);
+      --accent-line: rgba(167, 139, 250, 0.28);
+      --success: #86d39d;
+      --error: #ff8f8f;
+      --shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+    }
 
-{% block title %}settings — anky{% endblock %}
+    * {
+      box-sizing: border-box;
+    }
 
-{% block content %}
-<div class="settings-form">
-  <h1>settings</h1>
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">username</label>
-    <input type="text" class="settings-input" id="settings-username" value="{{ username }}" maxlength="20" placeholder="your username">
-  </div>
+    body {
+      background:
+        radial-gradient(circle at top, rgba(167, 139, 250, 0.08), transparent 32rem),
+        radial-gradient(circle at bottom right, rgba(247, 37, 133, 0.04), transparent 24rem),
+        var(--bg);
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">font</label>
-    <select class="settings-select" id="settings-font">
-      <option value="monospace" {% if font_family == "monospace" %}selected{% endif %}>monospace</option>
-      <option value="serif" {% if font_family == "serif" %}selected{% endif %}>serif</option>
-      <option value="sans-serif" {% if font_family == "sans-serif" %}selected{% endif %}>sans-serif</option>
-    </select>
-  </div>
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      mix-blend-mode: screen;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">font size <span class="settings-range-value" id="size-display">{{ font_size }}px</span></label>
-    <input type="range" class="settings-range" id="settings-size" min="14" max="28" value="{{ font_size }}">
-  </div>
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">theme</label>
-    <div class="settings-toggle" id="settings-theme">
-      <button class="settings-toggle-btn {% if theme == 'dark' %}active{% endif %}" data-value="dark">dark</button>
-      <button class="settings-toggle-btn {% if theme == 'light' %}active{% endif %}" data-value="light">light</button>
-    </div>
-  </div>
+    button,
+    input,
+    select {
+      font: inherit;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">idle timeout <span class="settings-range-value" id="timeout-display">{{ idle_timeout }}s</span></label>
-    <input type="range" class="settings-range" id="settings-timeout" min="5" max="15" value="{{ idle_timeout }}">
-  </div>
+    .settings-app {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">keyboard layout</label>
-    <select class="settings-select" id="settings-keyboard-layout">
-      <option value="qwerty" {% if keyboard_layout == "qwerty" %}selected{% endif %}>QWERTY</option>
-      <option value="azerty" {% if keyboard_layout == "azerty" %}selected{% endif %}>AZERTY</option>
-      <option value="qwertz" {% if keyboard_layout == "qwertz" %}selected{% endif %}>QWERTZ</option>
-    </select>
-  </div>
+    .settings-shell {
+      position: relative;
+      z-index: 1;
+      width: min(100%, 430px);
+      margin: 0 auto;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding:
+        calc(env(safe-area-inset-top) + 18px)
+        16px
+        calc(env(safe-area-inset-bottom) + 132px);
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">anky's voice</label>
-    <p class="settings-hint">choose which ai model speaks as anky when responding to your writing. all free models — pick by vibe.</p>
-    <select class="settings-select" id="settings-model">
-      <option value="default" {% if preferred_model == "default" %}selected{% endif %}>default (llama 4 scout)</option>
-      <option value="meta-llama/llama-4-maverick:free" {% if preferred_model == "meta-llama/llama-4-maverick:free" %}selected{% endif %}>llama 4 maverick</option>
-      <option value="google/gemma-3-1b-it:free" {% if preferred_model == "google/gemma-3-1b-it:free" %}selected{% endif %}>gemma 3 1b (fast, tiny)</option>
-      <option value="qwen/qwen3-0.6b:free" {% if preferred_model == "qwen/qwen3-0.6b:free" %}selected{% endif %}>qwen 3 0.6b (fast, tiny)</option>
-      <option value="deepseek/deepseek-r1:free" {% if preferred_model == "deepseek/deepseek-r1:free" %}selected{% endif %}>deepseek r1 (reasoning)</option>
-      <option value="google/gemini-2.5-pro-exp-03-25:free" {% if preferred_model == "google/gemini-2.5-pro-exp-03-25:free" %}selected{% endif %}>gemini 2.5 pro (experimental)</option>
-    </select>
-  </div>
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 82px;
+    }
 
-  <div class="settings-group">
-    <label class="settings-label">preview</label>
-    <div class="settings-preview" id="settings-preview">the quick brown fox jumps over the lazy dog. write without stopping and see what emerges.</div>
-  </div>
+    .hero-back {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      color: var(--dim);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
 
-  {% if wallet_address and wallet_address != "" %}
-  <div class="settings-group">
-    <label class="settings-label">wallet address</label>
-    <div class="settings-wallet" style="font-family:monospace; font-size:13px; color:#d4a853; word-break:break-all; padding:10px 14px; background:#111; border:1px solid #222; border-radius:8px; user-select:all;">{{ wallet_address }}</div>
-  </div>
-  {% endif %}
+    .hero-back:hover,
+    .hero-back:active {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
 
-  <button class="settings-save" id="settings-save">save settings</button>
-  <div class="settings-msg" id="settings-msg"></div>
-</div>
-{% endblock %}
+    .hero-avatar-ring {
+      width: 72px;
+      height: 72px;
+      padding: 2.5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: conic-gradient(from 180deg, rgba(167, 139, 250, 0.55) 0deg, rgba(255, 255, 255, 0.06) 120deg, rgba(167, 139, 250, 0.55) 240deg, rgba(255, 255, 255, 0.06) 360deg);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+    }
 
-{% block scripts %}
-<script>
-(function() {
-  var fontSelect = document.getElementById('settings-font');
-  var sizeSlider = document.getElementById('settings-size');
-  var sizeDisplay = document.getElementById('size-display');
-  var timeoutSlider = document.getElementById('settings-timeout');
-  var timeoutDisplay = document.getElementById('timeout-display');
-  var themeToggle = document.getElementById('settings-theme');
-  var preview = document.getElementById('settings-preview');
-  var saveBtn = document.getElementById('settings-save');
-  var msg = document.getElementById('settings-msg');
-  var usernameInput = document.getElementById('settings-username');
+    .hero-avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid #151520;
+      background: radial-gradient(circle at 40% 35%, #1a1030, #08080e);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-size: 34px;
+      line-height: 1;
+    }
 
-  var layoutSelect = document.getElementById('settings-keyboard-layout');
-  var modelSelect = document.getElementById('settings-model');
-  var currentTheme = '{{ theme }}';
+    .hero-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
 
-  function updatePreview() {
-    preview.style.fontFamily = fontSelect.value;
-    preview.style.fontSize = sizeSlider.value + 'px';
-  }
+    .hero-copy {
+      min-width: 0;
+      flex: 1;
+    }
 
-  fontSelect.addEventListener('change', updatePreview);
+    .hero-kicker {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--quiet);
+    }
 
-  sizeSlider.addEventListener('input', function() {
-    sizeDisplay.textContent = sizeSlider.value + 'px';
-    updatePreview();
-  });
+    .hero-title {
+      margin-top: 4px;
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--text-strong);
+      text-transform: lowercase;
+    }
 
-  timeoutSlider.addEventListener('input', function() {
-    timeoutDisplay.textContent = timeoutSlider.value + 's';
-  });
+    .hero-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-  themeToggle.querySelectorAll('.settings-toggle-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      themeToggle.querySelectorAll('.settings-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      currentTheme = btn.dataset.value;
-    });
-  });
+    .panel {
+      margin-top: 16px;
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
 
-  updatePreview();
+    .panel-title {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--quiet);
+    }
 
-  saveBtn.addEventListener('click', function() {
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'saving...';
-    msg.textContent = '';
+    .panel-copy {
+      margin-top: 8px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
 
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: usernameInput.value.trim() || null,
-        font_family: fontSelect.value,
-        font_size: parseInt(sizeSlider.value),
-        theme: currentTheme,
-        idle_timeout: parseInt(timeoutSlider.value),
-        keyboard_layout: layoutSelect.value,
-        preferred_model: modelSelect.value,
-      }),
-    })
-    .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
-    .then(function(result) {
-      if (result.ok) {
-        msg.textContent = 'saved!';
-        msg.style.color = '#8a8';
-      } else {
-        msg.textContent = result.data.error || 'failed to save';
-        msg.style.color = '#e05050';
+    .field {
+      margin-top: 16px;
+    }
+
+    .field:first-of-type {
+      margin-top: 18px;
+    }
+
+    .field-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .field-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-strong);
+      text-transform: lowercase;
+    }
+
+    .field-value {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .field-hint {
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--dim);
+    }
+
+    .text-input,
+    .select-input {
+      width: 100%;
+      height: 48px;
+      padding: 0 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--field);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .text-input:focus,
+    .select-input:focus {
+      border-color: var(--accent-line);
+      background: var(--field-strong);
+    }
+
+    .text-input::placeholder {
+      color: var(--dim);
+    }
+
+    .range-input {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .toggle-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      height: 46px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+      text-transform: lowercase;
+    }
+
+    .toggle-btn:hover,
+    .toggle-btn:active {
+      border-color: var(--line-strong);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+
+    .toggle-btn.active {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+      color: #ddd5ff;
+    }
+
+    .preview-card {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.03);
+      color: #b9aea6;
+      line-height: 1.8;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .preview-card.is-light {
+      background: #f4efe7;
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #524a44;
+    }
+
+    .wallet-block {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(232, 184, 75, 0.14);
+      background: rgba(232, 184, 75, 0.05);
+      color: #d9b15a;
+      font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      word-break: break-all;
+      user-select: all;
+    }
+
+    .save-bar {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      width: min(100%, 430px);
+      transform: translateX(-50%);
+      padding: 16px;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 18px);
+      background: linear-gradient(180deg, rgba(8, 8, 14, 0) 0%, rgba(8, 8, 14, 0.92) 18%, rgba(8, 8, 14, 0.98) 100%);
+      z-index: 4;
+    }
+
+    .save-btn {
+      width: 100%;
+      height: 54px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #a78bfa 0%, #7b2ff7 100%);
+      color: #faf7ff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      box-shadow: 0 18px 32px rgba(123, 47, 247, 0.24);
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .save-btn:hover,
+    .save-btn:active {
+      transform: translateY(-1px);
+    }
+
+    .save-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+      transform: none;
+    }
+
+    .settings-msg {
+      min-height: 18px;
+      margin-top: 10px;
+      font-size: 12px;
+      text-align: center;
+      color: var(--dim);
+    }
+
+    .settings-msg.is-success {
+      color: var(--success);
+    }
+
+    .settings-msg.is-error {
+      color: var(--error);
+    }
+
+    @media (max-width: 360px) {
+      .hero-title {
+        font-size: 24px;
       }
-    })
-    .catch(function() {
-      msg.textContent = 'network error';
-      msg.style.color = '#e05050';
-    })
-    .finally(function() {
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'save settings';
-    });
-  });
-})();
-</script>
-{% endblock %}
+
+      .panel {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="settings-app">
+    <div class="settings-shell">
+      <section class="hero">
+        <a class="hero-back" href="/you" aria-label="back to you">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"></path>
+          </svg>
+        </a>
+        <div class="hero-avatar-ring">
+          <div class="hero-avatar">
+            {% if profile_image_url and profile_image_url != "" %}
+            <img src="{{ profile_image_url }}" alt="{{ display_name | default(value='YOU') }}">
+            {% else %}
+            <span aria-hidden="true">👽</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="hero-copy">
+          <div class="hero-kicker">you</div>
+          <div class="hero-title">settings</div>
+          <div class="hero-meta" id="hero-handle">
+            {% if username and username != "" %}@{{ username }}{% else %}tune your writing instrument{% endif %}
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">identity</div>
+        <div class="panel-copy">Keep the profile and writing defaults inside the same shell you already entered from.</div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">username</div>
+          </div>
+          <input type="text" class="text-input" id="settings-username" value="{{ username }}" maxlength="20" placeholder="your username">
+          <div class="field-hint">3-20 characters. letters, numbers, and underscores only.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">writing feel</div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">font</div>
+          </div>
+          <select class="select-input" id="settings-font">
+            <option value="monospace" {% if font_family == "monospace" %}selected{% endif %}>monospace</option>
+            <option value="serif" {% if font_family == "serif" %}selected{% endif %}>serif</option>
+            <option value="sans-serif" {% if font_family == "sans-serif" %}selected{% endif %}>sans-serif</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">font size</div>
+            <div class="field-value" id="size-display">{{ font_size }}px</div>
+          </div>
+          <input type="range" class="range-input" id="settings-size" min="14" max="28" value="{{ font_size }}">
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">theme</div>
+          </div>
+          <div class="toggle-row" id="settings-theme">
+            <button class="toggle-btn {% if theme == 'dark' %}active{% endif %}" type="button" data-value="dark">dark</button>
+            <button class="toggle-btn {% if theme == 'light' %}active{% endif %}" type="button" data-value="light">light</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">idle timeout</div>
+            <div class="field-value" id="timeout-display">{{ idle_timeout }}s</div>
+          </div>
+          <input type="range" class="range-input" id="settings-timeout" min="5" max="15" value="{{ idle_timeout }}">
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">keyboard layout</div>
+          </div>
+          <select class="select-input" id="settings-keyboard-layout">
+            <option value="qwerty" {% if keyboard_layout == "qwerty" %}selected{% endif %}>QWERTY</option>
+            <option value="azerty" {% if keyboard_layout == "azerty" %}selected{% endif %}>AZERTY</option>
+            <option value="qwertz" {% if keyboard_layout == "qwertz" %}selected{% endif %}>QWERTZ</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">anky's voice</div>
+        <div class="panel-copy">Choose which model responds after you finish writing. Same free set, just placed inside the new shell.</div>
+
+        <div class="field">
+          <div class="field-head">
+            <div class="field-label">response model</div>
+          </div>
+          <select class="select-input" id="settings-model">
+            <option value="default" {% if preferred_model == "default" %}selected{% endif %}>default (llama 4 scout)</option>
+            <option value="meta-llama/llama-4-maverick:free" {% if preferred_model == "meta-llama/llama-4-maverick:free" %}selected{% endif %}>llama 4 maverick</option>
+            <option value="google/gemma-3-1b-it:free" {% if preferred_model == "google/gemma-3-1b-it:free" %}selected{% endif %}>gemma 3 1b</option>
+            <option value="qwen/qwen3-0.6b:free" {% if preferred_model == "qwen/qwen3-0.6b:free" %}selected{% endif %}>qwen 3 0.6b</option>
+            <option value="deepseek/deepseek-r1:free" {% if preferred_model == "deepseek/deepseek-r1:free" %}selected{% endif %}>deepseek r1</option>
+            <option value="google/gemini-2.5-pro-exp-03-25:free" {% if preferred_model == "google/gemini-2.5-pro-exp-03-25:free" %}selected{% endif %}>gemini 2.5 pro</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">preview</div>
+        <div class="preview-card" id="settings-preview">the quick brown fox jumps over the lazy dog. write without stopping and see what emerges.</div>
+      </section>
+
+      {% if wallet_address and wallet_address != "" %}
+      <section class="panel">
+        <div class="panel-title">wallet</div>
+        <div class="panel-copy">Your connected wallet stays visible here without dropping back into the old navigation stack.</div>
+        <div class="field">
+          <div class="wallet-block">{{ wallet_address }}</div>
+        </div>
+      </section>
+      {% endif %}
+    </div>
+
+    <div class="save-bar">
+      <button class="save-btn" id="settings-save" type="button">save settings</button>
+      <div class="settings-msg" id="settings-msg" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <script>
+    (function() {
+      var fontSelect = document.getElementById('settings-font');
+      var sizeSlider = document.getElementById('settings-size');
+      var sizeDisplay = document.getElementById('size-display');
+      var timeoutSlider = document.getElementById('settings-timeout');
+      var timeoutDisplay = document.getElementById('timeout-display');
+      var themeToggle = document.getElementById('settings-theme');
+      var preview = document.getElementById('settings-preview');
+      var saveBtn = document.getElementById('settings-save');
+      var msg = document.getElementById('settings-msg');
+      var usernameInput = document.getElementById('settings-username');
+      var heroHandle = document.getElementById('hero-handle');
+      var layoutSelect = document.getElementById('settings-keyboard-layout');
+      var modelSelect = document.getElementById('settings-model');
+      var currentTheme = '{{ theme }}';
+
+      function resolvePreviewFont(value) {
+        if (value === 'serif') return 'Georgia, "Times New Roman", serif';
+        if (value === 'sans-serif') return '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif';
+        return '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+      }
+
+      function setMessage(text, kind) {
+        msg.textContent = text || '';
+        msg.className = 'settings-msg';
+        if (kind === 'success') msg.classList.add('is-success');
+        if (kind === 'error') msg.classList.add('is-error');
+      }
+
+      function updatePreview() {
+        preview.style.fontFamily = resolvePreviewFont(fontSelect.value);
+        preview.style.fontSize = sizeSlider.value + 'px';
+        preview.classList.toggle('is-light', currentTheme === 'light');
+      }
+
+      fontSelect.addEventListener('change', updatePreview);
+
+      sizeSlider.addEventListener('input', function() {
+        sizeDisplay.textContent = sizeSlider.value + 'px';
+        updatePreview();
+      });
+
+      timeoutSlider.addEventListener('input', function() {
+        timeoutDisplay.textContent = timeoutSlider.value + 's';
+      });
+
+      themeToggle.querySelectorAll('.toggle-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          themeToggle.querySelectorAll('.toggle-btn').forEach(function(other) {
+            other.classList.remove('active');
+          });
+          btn.classList.add('active');
+          currentTheme = btn.dataset.value;
+          updatePreview();
+        });
+      });
+
+      updatePreview();
+
+      saveBtn.addEventListener('click', function() {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'saving...';
+        setMessage('');
+
+        fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: usernameInput.value.trim() || null,
+            font_family: fontSelect.value,
+            font_size: parseInt(sizeSlider.value, 10),
+            theme: currentTheme,
+            idle_timeout: parseInt(timeoutSlider.value, 10),
+            keyboard_layout: layoutSelect.value,
+            preferred_model: modelSelect.value
+          })
+        })
+          .then(function(res) {
+            return res.json().then(function(data) {
+              return { ok: res.ok, data: data };
+            });
+          })
+          .then(function(result) {
+            if (result.ok) {
+              var handle = usernameInput.value.trim();
+              heroHandle.textContent = handle ? ('@' + handle.toLowerCase()) : 'tune your writing instrument';
+              setMessage('saved', 'success');
+              return;
+            }
+            setMessage(result.data.error || 'failed to save', 'error');
+          })
+          .catch(function() {
+            setMessage('network error', 'error');
+          })
+          .finally(function() {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'save settings';
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

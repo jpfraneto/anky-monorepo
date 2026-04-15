@@ -1,0 +1,1255 @@
+{% extends "base.html" %}
+{% block title %}anky — encoder{% endblock %}
+{% block head %}
+<style>
+:root {
+  --void: #080612;
+  --dim: #1a1528;
+  --muted: #3a2f4a;
+  --text: #c4b8d8;
+  --accent: #9b6dff;
+  --bright: #d4c0ff;
+}
+body { background: var(--void); }
+.encoder-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+  color: var(--text);
+  font-family: 'Righteous', monospace, sans-serif;
+}
+h1 { color: var(--bright); font-size: 1.4rem; margin: 0 0 6px; }
+.subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; }
+
+/* Anky selector */
+.anky-selector {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 8px 0 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+.anky-card {
+  flex: 0 0 auto;
+  width: 100px;
+  cursor: pointer;
+  text-align: center;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 6px;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.anky-card:hover { border-color: var(--muted); transform: translateY(-2px); }
+.anky-card.active { border-color: var(--accent); }
+.anky-card img {
+  width: 88px; height: 88px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.anky-card .card-title {
+  font-size: 0.6rem;
+  color: var(--muted);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.anky-card .card-kingdom {
+  font-size: 0.55rem;
+  color: var(--accent);
+  opacity: 0.6;
+}
+
+/* Main display area */
+.display-area {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+@media (max-width: 900px) {
+  .display-area { grid-template-columns: 1fr; }
+}
+
+.original-panel, .encoded-panel {
+  background: var(--dim);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--muted);
+}
+.panel-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+.original-panel img {
+  width: 100%;
+  border-radius: 8px;
+}
+.original-panel .meta {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.encoded-panel canvas {
+  width: 100%;
+  border-radius: 8px;
+  background: var(--void);
+}
+
+/* Encoding selector tabs */
+.encoding-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.enc-tab {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--muted);
+  background: transparent;
+  color: var(--text);
+  font-family: 'Righteous', monospace;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.enc-tab:hover { border-color: var(--accent); color: var(--bright); }
+.enc-tab.active { background: var(--accent); color: var(--void); border-color: var(--accent); }
+
+/* Playback controls */
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--dim);
+  border-radius: 8px;
+  border: 1px solid var(--muted);
+}
+.play-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.play-btn:hover { background: var(--accent); color: var(--void); }
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--muted);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.05s linear;
+}
+.playback-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-family: monospace;
+  min-width: 80px;
+}
+.speed-btn {
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--muted);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.65rem;
+  cursor: pointer;
+  font-family: monospace;
+}
+.speed-btn.active { border-color: var(--accent); color: var(--accent); }
+
+/* Text playback */
+.text-output {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--dim);
+  border-radius: 8px;
+  border: 1px solid var(--muted);
+  min-height: 120px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--bright);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.text-output .cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  animation: blink 0.8s infinite;
+  vertical-align: text-bottom;
+}
+@keyframes blink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
+
+/* Stats bar */
+.stats-bar {
+  display: flex;
+  gap: 24px;
+  margin-top: 12px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.stat-val { color: var(--accent); font-family: monospace; }
+
+.loading { text-align: center; padding: 40px; color: var(--muted); }
+
+/* Encoding guide */
+.encoding-guide {
+  margin-top: 20px;
+  padding: 20px 24px;
+  background: var(--dim);
+  border-radius: 12px;
+  border: 1px solid var(--muted);
+  line-height: 1.7;
+}
+.encoding-guide h2 {
+  font-size: 1.1rem;
+  color: var(--bright);
+  margin: 0 0 4px;
+}
+.encoding-guide .guide-subtitle {
+  font-size: 0.75rem;
+  color: var(--accent);
+  margin-bottom: 16px;
+  font-style: italic;
+}
+.encoding-guide p {
+  font-size: 0.8rem;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+.encoding-guide h3 {
+  font-size: 0.8rem;
+  color: var(--bright);
+  margin: 16px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.encoding-guide .color-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.encoding-guide .color-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.encoding-guide .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.encoding-guide .guide-detail {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 4px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--muted);
+}
+.encoding-guide .guide-section {
+  margin-bottom: 14px;
+}
+.guide-format {
+  background: var(--void);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+  line-height: 1.8;
+  border: 1px solid #1f1a2e;
+}
+.guide-format .comment { color: var(--muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="encoder-page">
+  <h1>anky encoder</h1>
+  <p class="subtitle">the writing is the pattern. the pattern is the writing.</p>
+
+  <div class="anky-selector" id="ankySelector">
+    <div class="loading">loading ankys...</div>
+  </div>
+
+  <div class="display-area">
+    <div class="original-panel">
+      <div class="panel-label">the anky</div>
+      <img id="originalImage" src="" alt="" style="display:none">
+      <div class="meta" id="originalMeta"></div>
+    </div>
+    <div class="encoded-panel">
+      <div class="panel-label">the encoding</div>
+      <div class="encoding-tabs" id="encodingTabs"></div>
+      <canvas id="encoderCanvas" width="1024" height="1024"></canvas>
+    </div>
+  </div>
+
+  <div class="encoding-guide" id="encodingGuide"></div>
+
+  <div class="playback">
+    <button class="play-btn" id="playBtn" title="play">&#9654;</button>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <span class="playback-time" id="playbackTime">0:00 / 0:00</span>
+    <button class="speed-btn active" data-speed="1">1x</button>
+    <button class="speed-btn" data-speed="4">4x</button>
+    <button class="speed-btn" data-speed="16">16x</button>
+    <button class="speed-btn" data-speed="64">64x</button>
+  </div>
+
+  <div class="stats-bar" id="statsBar">
+    <span>keystrokes: <span class="stat-val" id="statKeys">-</span></span>
+    <span>words: <span class="stat-val" id="statWords">-</span></span>
+    <span>duration: <span class="stat-val" id="statDuration">-</span></span>
+    <span>flow: <span class="stat-val" id="statFlow">-</span></span>
+    <span>hash: <span class="stat-val" id="statHash">-</span></span>
+  </div>
+
+  <div class="text-output" id="textOutput"><span class="cursor"></span></div>
+</div>
+
+<script>
+// ─── KINGDOM COLORS ────────────────────────────────────────────────────────
+const KINGDOMS = {
+  Primordia: { primary: [204,51,51],   accent: [255,120,80],  dim: [80,20,20] },
+  Emblazion: { primary: [227,111,30],  accent: [255,180,60],  dim: [80,40,10] },
+  Chryseos:  { primary: [230,195,30],  accent: [255,230,100], dim: [80,70,10] },
+  Eleasis:   { primary: [46,184,76],   accent: [120,230,140], dim: [15,60,25] },
+  Voxlumis:  { primary: [41,150,204],  accent: [100,200,255], dim: [15,50,70] },
+  Insightia: { primary: [106,61,181],  accent: [160,120,230], dim: [35,20,60] },
+  Claridium: { primary: [168,85,200],  accent: [210,150,255], dim: [55,28,65] },
+  Poiesis:   { primary: [220,210,240], accent: [240,235,255], dim: [70,65,80] },
+};
+
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function rgba(c,a) { return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+function lerp(a,b,t) { return a.map((v,i) => Math.round(v + (b[i]-v)*t)); }
+
+function deltaToColor(d, pal) {
+  d = Math.max(0, Math.min(d, 5000));
+  if (d < 300) return lerp(pal.accent, pal.primary, d/300);
+  return lerp(pal.primary, pal.dim, Math.min((d-300)/2700, 1));
+}
+
+// HSL for the spiral encoding
+function deltaToHue(d) { return Math.min(d, 5000) / 5000 * 270; }
+function hsl(h,s,l) { return `hsl(${h},${s}%,${l}%)`; }
+
+// ─── PARSE STREAM ──────────────────────────────────────────────────────────
+function buildStream(text, deltas) {
+  // Strip banned keys (Enter, Tab, Backspace) per spec v2
+  const chars = [...text].filter(ch => ch !== '\n' && ch !== '\t');
+  const stream = [];
+  for (let i = 0; i < chars.length; i++) {
+    const delta = i === 0 ? 0 : (i-1 < deltas.length ? Math.max(0, deltas[i-1]) : 0);
+    stream.push({ delta, char: chars[i] });
+  }
+  return stream;
+}
+
+// ─── 8 ENCODING ALGORITHMS ────────────────────────────────────────────────
+const ENCODINGS = [
+  {
+    name: 'Spiral',
+    desc: 'Archimedean spiral unfolding from center. Color = rhythm.',
+    draw: drawSpiral,
+    guide: `
+      <h2>Spiral</h2>
+      <p class="guide-subtitle">an Archimedean spiral that unwinds from center — the writing unfolds in time</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The spiral starts at the center of the canvas — that's the first keystroke, the very beginning of the writing session. As the writer types, the spiral unwinds outward, one segment per keystroke. The position along the spiral is determined by cumulative time: fast typing packs segments tightly together, while pauses stretch them apart.</p>
+        <p>By the time the spiral reaches the outer edge, the full 8 minutes of writing have been encoded. You can read the session by following the spiral from center to edge — from first word to last.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the colors mean</h3>
+        <div class="color-key">
+          <span class="color-swatch"><span class="swatch" style="background:hsl(0,85%,55%)"></span> 0-100ms (burst typing)</span>
+          <span class="color-swatch"><span class="swatch" style="background:hsl(30,85%,55%)"></span> 100-200ms (fast flow)</span>
+          <span class="color-swatch"><span class="swatch" style="background:hsl(60,85%,55%)"></span> 200-400ms (steady rhythm)</span>
+          <span class="color-swatch"><span class="swatch" style="background:hsl(120,85%,55%)"></span> 500ms-1s (thinking)</span>
+          <span class="color-swatch"><span class="swatch" style="background:hsl(200,85%,55%)"></span> 1-2s (pause)</span>
+          <span class="color-swatch"><span class="swatch" style="background:hsl(270,85%,55%)"></span> 3-5s+ (deep pause)</span>
+        </div>
+        <p>The line thickness also increases with pause length. Thin lines = steady typing. Thick segments = moments where the writer stopped to think before continuing.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Diamond markers</h3>
+        <p>The small diamond shapes scattered along the spiral mark pauses longer than 800ms. These are the significant thinking moments — where something was forming in the writer's mind before the next burst of words. The larger the diamond, the longer the pause.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading the spiral</h3>
+        <p class="guide-detail">Center = beginning. Edge = end. Warm colors = flow state. Cool colors = reflection. Diamonds = deep thought. The spiral's density tells you the overall pace — a tightly wound spiral means sustained fast writing; wide spacing means a more contemplative session.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Frame',
+    desc: 'Keystrokes flow clockwise around the border.',
+    draw: drawFrame,
+    guide: `
+      <h2>Frame</h2>
+      <p class="guide-subtitle">the writing session becomes the border around the anky image — the frame IS the text</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The anky image (the AI-generated art born from the writing) sits in the center. The frame around it encodes every single keystroke of the writing session that created it. Keystrokes flow clockwise: starting at the top-left corner, moving right across the top, down the right side, left across the bottom, and up the left side.</p>
+        <p>Each keystroke becomes a thin vertical or horizontal stripe in the frame. The total number of keystrokes is distributed evenly around the entire perimeter, so the frame is always complete — no matter how many characters were typed.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the colors mean</h3>
+        <div class="color-key">
+          <span class="color-swatch"><span class="swatch" style="background:rgb(160,120,230)"></span> Bright (accent) = fast keystroke (&lt;100ms)</span>
+          <span class="color-swatch"><span class="swatch" style="background:rgb(106,61,181)"></span> Medium (primary) = steady rhythm (~300ms)</span>
+          <span class="color-swatch"><span class="swatch" style="background:rgb(35,20,60)"></span> Dark (dim) = long pause (&gt;1s)</span>
+        </div>
+        <p>The colors are kingdom-specific. An Insightia anky has indigo/violet tones. A Primordia anky burns red/orange. The palette shifts but the encoding logic is identical — bright = fast, dark = slow.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Tick marks</h3>
+        <p>The small tick marks along the inner edge of the frame mark phrase boundaries — points where the writer paused for more than 600ms. These are natural breath points in the writing, separating one burst of thought from the next.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Corner squares & hash</h3>
+        <p>The small colored squares at each corner identify the kingdom. The tiny colored dots along the bottom-left encode the SHA256 session hash — a cryptographic fingerprint of the entire writing session. This is the same hash that goes on-chain in the Solana program.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Why this matters</h3>
+        <p class="guide-detail">The image and the frame are one artifact. The art was generated FROM the writing. The frame IS the writing. Together they form a self-contained object: the visual interpretation and the raw source, inseparable. Print it, and you hold the complete anky in your hands.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Waveform',
+    desc: 'Audio-style waveform. Amplitude = pause length.',
+    draw: drawWaveform,
+    guide: `
+      <h2>Waveform</h2>
+      <p class="guide-subtitle">the writing session rendered as sound would look — amplitude is the silence between words</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>Imagine the writing session as audio. This encoding treats each keystroke delta (the time between consecutive keystrokes) as an audio amplitude. The waveform runs left to right across the canvas, from first keystroke to last. Time flows linearly — the horizontal position IS the position in the keystroke sequence.</p>
+        <p>The waveform is mirrored: the top half and bottom half are reflections of each other, creating symmetry like a real audio waveform.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the shape means</h3>
+        <p>The center line (zero amplitude) represents a keystroke delta of 0ms — instantaneous typing. The further from center, the longer the pause between that keystroke and the previous one.</p>
+        <div class="guide-detail">Flat sections near the center = sustained flow state, rapid typing with barely any gap between keystrokes.</div>
+        <div class="guide-detail">Tall spikes = long pauses. The writer stopped. Thought. Then resumed.</div>
+        <div class="guide-detail">The maximum amplitude represents pauses of 3+ seconds.</div>
+      </div>
+
+      <div class="guide-section">
+        <h3>Color & fill</h3>
+        <p>The waveform line color follows the same delta-to-color mapping: warm/bright for fast keystrokes, cool/dark for slow ones. Segments with pauses over 500ms also get a translucent fill behind them, creating visible "blocks" of hesitation.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Word markers</h3>
+        <p>Every 5th word, a faint vertical line runs the full height of the canvas. These let you roughly correlate position in the waveform with position in the text.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">A waveform that stays tight and compact near the center = pure flow. A waveform with dramatic spikes = a session with deep thinking pauses. Most 8-minute ankys show a pattern: initial hesitation (spikes), then settling into rhythm (flat), occasionally interrupted by moments of deep thought (isolated tall spikes).</p>
+      </div>
+    `
+  },
+  {
+    name: 'Grid',
+    desc: 'Each keystroke is one tile. A mosaic of rhythm.',
+    draw: drawGrid,
+    guide: `
+      <h2>Grid</h2>
+      <p class="guide-subtitle">every keystroke is one tile in a mosaic — the writing becomes a texture</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The canvas is divided into a grid of tiny tiles. Each tile represents exactly one keystroke. Tiles are filled left-to-right, top-to-bottom — like reading a book. The first keystroke is the top-left tile. The last keystroke is the bottom-right.</p>
+        <p>The grid dimensions are calculated to fill the canvas proportionally. A typical 8-minute session (~2000-3000 keystrokes) creates a grid roughly 55 columns wide and 50 rows tall.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the colors mean</h3>
+        <div class="color-key">
+          <span class="color-swatch"><span class="swatch" style="background:rgb(160,120,230)"></span> Bright tile = fast keystroke (in the flow)</span>
+          <span class="color-swatch"><span class="swatch" style="background:rgb(106,61,181)"></span> Medium tile = steady typing</span>
+          <span class="color-swatch"><span class="swatch" style="background:rgb(35,20,60)"></span> Dark tile = long pause before this key</span>
+        </div>
+      </div>
+
+      <div class="guide-section">
+        <h3>Special markers</h3>
+        <p>Space characters get a small bright dot at their center — these make word boundaries visible as a subtle rhythm of dots across the mosaic. Enter/newline characters get a horizontal line at the bottom of their tile, marking paragraph breaks.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">The grid shows the writing's texture at a glance. Horizontal bands of bright tiles = sustained flow. Dark patches = moments of pause. The overall brightness of the mosaic tells you how fluid the session was. Look for patterns: many sessions show a gradient from darker (top, beginning) to brighter (bottom, end) as the writer finds their rhythm.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Tree',
+    desc: 'Organic branching. Pauses create forks in the path.',
+    draw: drawTree,
+    guide: `
+      <h2>Tree</h2>
+      <p class="guide-subtitle">an organic path that branches when the writer pauses — thought creates forks</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The tree grows from the bottom center of the canvas, pointing upward. Each keystroke extends the path by a small step. The direction of each step is influenced by the keystroke's delta time: fast typing keeps the path relatively straight, while pauses cause the path to turn, branch, and wander.</p>
+        <p>Pauses over 400ms create noticeable turns. The longer the pause, the sharper the potential turn angle. This means flow-state writing produces tall, straight trunks, while reflective writing creates sprawling, branching canopies.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the colors mean</h3>
+        <p>Each segment's color maps to the delta time of that keystroke. Bright/warm segments = fast typing. Dark/cool segments = pauses. The visual effect is a tree where the "heartwood" (fast sections) glows brighter than the outer branches (where the writer paused and reconsidered).</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Branch nodes</h3>
+        <p>Small glowing dots appear at pauses longer than 1 second. These are the major decision points — moments where the writer's stream of consciousness encountered something significant enough to stop and process before continuing.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">A tall, narrow tree = a focused, unbroken flow of writing. A wide, sprawling tree = a session full of pauses, digressions, and changes in direction. The tree's shape is the topography of the writer's attention over 8 minutes. No two ankys produce the same tree.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Constellation',
+    desc: 'Stars scattered by timing. Words form clusters.',
+    draw: drawConstellation,
+    guide: `
+      <h2>Constellation</h2>
+      <p class="guide-subtitle">each keystroke is a star — words form galaxies in a field of thought</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The canvas is a star field. Each keystroke is placed as a point of light. The position of each star is determined by the delta time: fast keystrokes drift slowly from the previous position, so rapid typing creates tight clusters. Long pauses cause bigger jumps, scattering stars further apart.</p>
+        <p>The placement is deterministic — the same writing session always produces the same constellation. It's seeded by the keystroke pattern itself, not randomness.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What you see</h3>
+        <div class="guide-detail">Star brightness = typing speed. Fast keystrokes glow brighter and larger.</div>
+        <div class="guide-detail">Star clusters = words. Keystrokes within a word stay close together.</div>
+        <div class="guide-detail">Faint lines connect stars within the same word, like constellation lines.</div>
+        <div class="guide-detail">Glowing halos appear around very fast keystrokes (&lt;150ms) — moments of pure flow.</div>
+        <div class="guide-detail">Spaces are tiny dots, almost invisible, creating natural gaps between word clusters.</div>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">A constellation with many dense, bright clusters connected by faint lines = a well-paced session with clear words flowing steadily. Scattered, dim stars with wide gaps = a session with lots of hesitation and long pauses. The overall density map tells you where in the session the writer was most and least engaged.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Rings',
+    desc: 'Concentric mandala. Each ring is one phrase.',
+    draw: drawRings,
+    guide: `
+      <h2>Rings</h2>
+      <p class="guide-subtitle">a mandala of concentric rings — each ring is one unbroken phrase of thought</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>The writing session is split into "phrases" — bursts of continuous typing separated by pauses longer than 600ms. Each phrase becomes one concentric ring radiating outward from the center.</p>
+        <p>Within each ring, every keystroke occupies an angular slice. The slice's color represents the keystroke's delta time. A ring with 100 keystrokes divides its full 360 degrees into 100 equal wedges.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the structure means</h3>
+        <div class="guide-detail">Inner rings = the first phrases of the writing session. The center is where it all began.</div>
+        <div class="guide-detail">Outer rings = later phrases, near the end of the 8 minutes.</div>
+        <div class="guide-detail">Thick rings (many wedges) = long phrases of sustained writing.</div>
+        <div class="guide-detail">Thin rings (few wedges) = short phrases, quick thoughts between pauses.</div>
+        <div class="guide-detail">Total ring count = number of significant pauses in the session + 1.</div>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the colors mean</h3>
+        <p>Within each ring, the wedge colors follow the standard delta mapping. A ring that's uniformly bright = a phrase typed at consistent speed. A ring with color variation = fluctuating rhythm within that phrase.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">A mandala with few thick rings = a writer who entered flow early and stayed there, with rare pauses. Many thin rings = a more fragmented, contemplative session. The mandala's symmetry and color consistency tell you at a glance whether the writing was fluid or turbulent.</p>
+      </div>
+    `
+  },
+  {
+    name: 'Helix',
+    desc: 'Double helix. Two strands encode timing and character.',
+    draw: drawHelix,
+    guide: `
+      <h2>Helix</h2>
+      <p class="guide-subtitle">a double helix — two intertwined strands encoding rhythm and identity</p>
+
+      <div class="guide-section">
+        <h3>How it works</h3>
+        <p>Two sinusoidal strands wind around each other across the canvas, like DNA. Each strand encodes a different dimension of the writing:</p>
+        <div class="guide-detail"><strong>Strand 1 (timing):</strong> Color is determined by the keystroke delta. This strand captures the rhythm of the writing — the pace, the pauses, the flow.</div>
+        <div class="guide-detail"><strong>Strand 2 (character):</strong> Color is determined by the character's identity (its Unicode code point mapped to the kingdom palette). This strand captures what was written — the actual content, encoded as hue.</div>
+        <p>The two strands are offset by 180 degrees (pi radians), so they interweave. Where one strand peaks, the other troughs.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>Cross-bridges</h3>
+        <p>At every space character (word boundary), a faint vertical line connects the two strands. These bridges are analogous to the base pairs in DNA — they tie timing to content at the word level. The spacing of bridges tells you word length: close bridges = short words, wide gaps = long words.</p>
+      </div>
+
+      <div class="guide-section">
+        <h3>What the shape means</h3>
+        <div class="guide-detail">The helix makes ~30 full rotations across the canvas. Amplitude is constant — the shape doesn't change with the data. Only the color changes.</div>
+        <div class="guide-detail">This means the helix is best read as a color sequence, not a shape. Follow one strand and read its colors left to right.</div>
+      </div>
+
+      <div class="guide-section">
+        <h3>Reading it</h3>
+        <p class="guide-detail">The helix is the most "scientific" encoding — it separates the two fundamental dimensions of a writing session (when and what) into parallel channels. A helix with matching colors on both strands = the rhythm and content are in harmony. Divergent colors = the writer's pace and subject matter are pulling in different directions.</p>
+      </div>
+    `
+  },
+];
+
+// ─── GUIDE RENDERER ──────────────────────────────────────────────────────
+function renderGuide(idx) {
+  const guide = document.getElementById('encodingGuide');
+  const enc = ENCODINGS[idx];
+
+  // Add the universal data format section after the encoding-specific guide
+  const formatSection = `
+    <div class="guide-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--muted);">
+      <h3>The raw data format</h3>
+      <p>Every anky is stored as a newline-delimited stream of keystrokes. Each line is one keystroke: the delta time in milliseconds since the previous keystroke, followed by a space, followed by the character.</p>
+      <div class="guide-format">
+        <span class="comment">// first keystroke — delta is always 0</span><br>
+        0 i<br>
+        <span class="comment">// 364ms later, typed 'm'</span><br>
+        364 m<br>
+        <span class="comment">// 353ms later, a space (literal space character)</span><br>
+        353 &nbsp;<br>
+        <span class="comment">// 309ms later, typed 'b'</span><br>
+        309 b<br>
+        131 a<br>
+        320 c<br>
+        134 k<br>
+        <span class="comment">// ... ~2000-3000 lines for a full 8-minute session</span><br>
+        <span class="comment">// file ends when the file ends. no sentinel.</span>
+      </div>
+      <p>Every line is identical: delta, space, character. No padding. No epoch. No sentinel. No special cases. Enter, Backspace, and Delete are banned — the writing only goes forward. Characters are literal: a space is just a space after the delta. Any Unicode character works: any language on earth.</p>
+      <p>The SHA256 hash of this stream is the session hash. It goes on-chain as a Solana event. The hash proves the writing exists without revealing its content. The stream reconstructs the original text perfectly (lossless round-trip), and replays the writing at its original rhythm — every hesitation, every burst of flow, exactly as it happened.</p>
+      <p>Full spec: <a href="/spec.md" style="color:var(--accent)">anky.app/spec.md</a></p>
+    </div>
+  `;
+
+  guide.innerHTML = enc.guide + formatSection;
+}
+
+// 1. SPIRAL
+function drawSpiral(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  const cx = w/2, cy = h/2;
+  const maxR = Math.min(w,h)/2 - 40;
+  const total = stream.reduce((s,k) => s + Math.max(k.delta, 20), 0);
+  const turns = 8 + stream.length / 500;
+  let cum = 0;
+  let prev = null;
+  for (let i = 0; i < n; i++) {
+    const t = cum / total;
+    const angle = t * turns * 2 * Math.PI;
+    const r = t * maxR;
+    const x = cx + r * Math.cos(angle);
+    const y = cy + r * Math.sin(angle);
+    if (prev) {
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(x, y);
+      const hue = deltaToHue(stream[i].delta);
+      ctx.strokeStyle = hsl(hue, 85, 55);
+      ctx.lineWidth = Math.max(1, Math.min(4, stream[i].delta/200 + 1));
+      ctx.stroke();
+    }
+    if (stream[i].delta > 800) {
+      const sz = Math.min(10, stream[i].delta/400 + 2);
+      ctx.fillStyle = rgb(pal.accent);
+      ctx.beginPath();
+      ctx.moveTo(x, y-sz); ctx.lineTo(x+sz, y); ctx.lineTo(x, y+sz); ctx.lineTo(x-sz, y);
+      ctx.fill();
+    }
+    prev = {x, y};
+    cum += Math.max(stream[i].delta, 20);
+  }
+}
+
+// 2. FRAME (with anky image in center)
+function drawFrame(ctx, w, h, stream, pal, progress, ankyImg) {
+  const fw = 48;
+  const n = Math.floor(stream.length * progress);
+  // Draw image in center
+  if (ankyImg) {
+    ctx.drawImage(ankyImg, fw, fw, w - fw*2, h - fw*2);
+  }
+  // Inner border
+  ctx.strokeStyle = rgb(pal.dim);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(fw-1, fw-1, w-fw*2+2, h-fw*2+2);
+  // Distribute keystrokes along perimeter
+  const iw = w - fw*2, ih = h - fw*2;
+  const perim = (iw + ih) * 2;
+  const ppk = perim / stream.length;
+  for (let i = 0; i < n; i++) {
+    let pos = i * ppk;
+    let sx, sy, sw, sh;
+    if (pos < iw) {
+      sx = fw + pos; sy = 0; sw = Math.max(1, ppk); sh = fw;
+    } else if (pos < iw + ih) {
+      const l = pos - iw;
+      sx = w - fw; sy = fw + l; sw = fw; sh = Math.max(1, ppk);
+    } else if (pos < iw*2 + ih) {
+      const l = pos - iw - ih;
+      sx = w - fw - l; sy = h - fw; sw = Math.max(1, ppk); sh = fw;
+    } else {
+      const l = pos - iw*2 - ih;
+      sx = 0; sy = h - fw - l; sw = fw; sh = Math.max(1, ppk);
+    }
+    ctx.fillStyle = rgb(deltaToColor(stream[i].delta, pal));
+    ctx.fillRect(sx, sy, sw, sh);
+  }
+  // Corners
+  ctx.fillStyle = rgb(pal.primary);
+  [[0,0],[w-6,0],[w-6,h-6],[0,h-6]].forEach(([x,y]) => ctx.fillRect(x,y,6,6));
+}
+
+// 3. WAVEFORM
+function drawWaveform(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  const mid = h / 2;
+  const maxAmp = h * 0.4;
+  const step = w / stream.length;
+  // Center line
+  ctx.strokeStyle = rgba(pal.dim, 0.4);
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+  // Waveform
+  for (let i = 1; i < n; i++) {
+    const x0 = (i-1) * step, x1 = i * step;
+    const amp0 = Math.min(stream[i-1].delta / 3000, 1) * maxAmp;
+    const amp1 = Math.min(stream[i].delta / 3000, 1) * maxAmp;
+    // Upper half
+    ctx.beginPath();
+    ctx.moveTo(x0, mid - amp0);
+    ctx.lineTo(x1, mid - amp1);
+    ctx.strokeStyle = rgb(deltaToColor(stream[i].delta, pal));
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Lower half (mirror)
+    ctx.beginPath();
+    ctx.moveTo(x0, mid + amp0);
+    ctx.lineTo(x1, mid + amp1);
+    ctx.stroke();
+    // Fill between
+    if (stream[i].delta > 500) {
+      ctx.fillStyle = rgba(deltaToColor(stream[i].delta, pal), 0.15);
+      ctx.fillRect(x1 - step/2, mid - amp1, step, amp1 * 2);
+    }
+  }
+  // Word markers at top
+  let wordIdx = 0;
+  for (let i = 0; i < n; i++) {
+    if (stream[i].char === ' ') {
+      wordIdx++;
+      if (wordIdx % 5 === 0) {
+        const x = i * step;
+        ctx.fillStyle = rgba(pal.accent, 0.3);
+        ctx.fillRect(x, 0, 1, h);
+      }
+    }
+  }
+}
+
+// 4. GRID
+function drawGrid(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  const cols = Math.ceil(Math.sqrt(stream.length * (w/h)));
+  const rows = Math.ceil(stream.length / cols);
+  const cellW = w / cols, cellH = h / rows;
+  for (let i = 0; i < n; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = col * cellW, y = row * cellH;
+    ctx.fillStyle = rgb(deltaToColor(stream[i].delta, pal));
+    ctx.fillRect(x + 0.5, y + 0.5, cellW - 1, cellH - 1);
+    // Mark spaces with brighter dot
+    if (stream[i].char === ' ') {
+      ctx.fillStyle = rgba(pal.accent, 0.5);
+      ctx.beginPath();
+      ctx.arc(x + cellW/2, y + cellH/2, Math.min(cellW, cellH)/4, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // Mark ENTERs with line
+    if (false /* ENTER banned in anky */) {
+      ctx.fillStyle = rgb(pal.primary);
+      ctx.fillRect(x, y + cellH - 1, cellW, 1);
+    }
+  }
+}
+
+// 5. TREE
+function drawTree(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  // Start from bottom center, grow upward
+  let x = w/2, y = h - 30;
+  let angle = -Math.PI/2; // pointing up
+  const step = Math.min(3, (h - 60) / stream.length * 2);
+  for (let i = 0; i < n; i++) {
+    const d = stream[i].delta;
+    // Pause causes a branch/turn
+    const turn = (d > 400) ? (Math.random() - 0.5) * Math.min(d / 500, 1.2) : (Math.random() - 0.5) * 0.1;
+    angle += turn;
+    const len = step + (d > 1000 ? step * 0.5 : 0);
+    const nx = x + Math.cos(angle) * len;
+    const ny = y + Math.sin(angle) * len;
+    // Keep in bounds
+    const bx = Math.max(20, Math.min(w-20, nx));
+    const by = Math.max(20, Math.min(h-20, ny));
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(bx, by);
+    ctx.strokeStyle = rgb(deltaToColor(d, pal));
+    ctx.lineWidth = d > 600 ? 2.5 : 1.2;
+    ctx.stroke();
+    // Branch nodes at pauses
+    if (d > 1000) {
+      ctx.fillStyle = rgba(pal.accent, 0.7);
+      ctx.beginPath();
+      ctx.arc(bx, by, 3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    x = bx; y = by;
+  }
+}
+
+// 6. CONSTELLATION
+function drawConstellation(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  // Use a seeded pseudo-random based on stream content for deterministic layout
+  let seed = 42;
+  function srand() { seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; }
+  // Place each keystroke as a star
+  const stars = [];
+  let cx = w/2, cy = h/2;
+  for (let i = 0; i < stream.length; i++) {
+    const d = stream[i].delta;
+    // Drift position based on delta
+    const drift = Math.min(d / 200, 8);
+    const da = srand() * Math.PI * 2;
+    cx += Math.cos(da) * drift;
+    cy += Math.sin(da) * drift;
+    // Wrap
+    cx = ((cx % w) + w) % w;
+    cy = ((cy % h) + h) % h;
+    stars.push({ x: cx, y: cy, delta: d, char: stream[i].char });
+  }
+  // Draw connections for words (between spaces)
+  let wordStart = 0;
+  for (let i = 0; i < n; i++) {
+    if (stream[i].char === ' ' || i === n-1) {
+      // Connect this word's stars
+      ctx.beginPath();
+      ctx.moveTo(stars[wordStart].x, stars[wordStart].y);
+      for (let j = wordStart+1; j <= i && j < n; j++) {
+        ctx.lineTo(stars[j].x, stars[j].y);
+      }
+      ctx.strokeStyle = rgba(pal.dim, 0.5);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+      wordStart = i + 1;
+    }
+  }
+  // Draw stars
+  for (let i = 0; i < n; i++) {
+    const s = stars[i];
+    const brightness = Math.max(0.3, 1 - s.delta / 3000);
+    const size = s.char === ' ' ? 1 : Math.max(1.5, 4 - s.delta / 500);
+    ctx.fillStyle = rgba(deltaToColor(s.delta, pal), brightness);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, size, 0, Math.PI*2);
+    ctx.fill();
+    // Glow on fast keystrokes
+    if (s.delta < 150 && s.delta > 0) {
+      ctx.fillStyle = rgba(pal.accent, 0.15);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 8, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+// 7. RINGS (mandala)
+function drawRings(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  const cx = w/2, cy = h/2;
+  const maxR = Math.min(w,h)/2 - 20;
+  // Split into phrases (at pauses > 600ms)
+  const phrases = [[]];
+  for (let i = 0; i < stream.length; i++) {
+    if (stream[i].delta > 600 && i > 0 && phrases[phrases.length-1].length > 0) {
+      phrases.push([]);
+    }
+    phrases[phrases.length-1].push({ ...stream[i], idx: i });
+  }
+  const ringWidth = maxR / phrases.length;
+  let drawn = 0;
+  for (let p = 0; p < phrases.length; p++) {
+    const phrase = phrases[p];
+    const innerR = p * ringWidth + 4;
+    const outerR = (p + 1) * ringWidth;
+    for (let k = 0; k < phrase.length; k++) {
+      if (drawn >= n) return;
+      const angleStart = (k / phrase.length) * Math.PI * 2 - Math.PI/2;
+      const angleEnd = ((k+1) / phrase.length) * Math.PI * 2 - Math.PI/2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR, angleStart, angleEnd);
+      ctx.arc(cx, cy, outerR, angleEnd, angleStart, true);
+      ctx.closePath();
+      ctx.fillStyle = rgb(deltaToColor(phrase[k].delta, pal));
+      ctx.fill();
+      drawn++;
+    }
+    // Ring separator
+    if (drawn <= n) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI*2);
+      ctx.strokeStyle = rgba(pal.dim, 0.4);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+// 8. HELIX
+function drawHelix(ctx, w, h, stream, pal, progress) {
+  const n = Math.floor(stream.length * progress);
+  const centerY = h / 2;
+  const amplitude = h * 0.3;
+  const step = w / stream.length;
+  const freq = stream.length / 30; // ~30 full rotations
+  for (let i = 1; i < n; i++) {
+    const x0 = (i-1) * step, x1 = i * step;
+    const phase = (i / stream.length) * freq * Math.PI * 2;
+    // Strand 1: timing
+    const y1a = centerY + Math.sin(phase) * amplitude;
+    const y1b = centerY + Math.sin(phase + step/w * freq * Math.PI * 2) * amplitude;
+    ctx.beginPath();
+    ctx.moveTo(x0, centerY + Math.sin(phase - step/w * freq * Math.PI * 2) * amplitude);
+    ctx.lineTo(x1, y1a);
+    ctx.strokeStyle = rgb(deltaToColor(stream[i].delta, pal));
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Strand 2: character class (offset by PI)
+    const y2a = centerY + Math.sin(phase + Math.PI) * amplitude;
+    const charCode = stream[i].char ? stream[i].char.charCodeAt(0) : 0;
+    const charHue = (charCode % 26) / 26;
+    const cc = lerp(pal.dim, pal.accent, charHue);
+    ctx.beginPath();
+    ctx.moveTo(x0, centerY + Math.sin(phase - step/w * freq * Math.PI * 2 + Math.PI) * amplitude);
+    ctx.lineTo(x1, y2a);
+    ctx.strokeStyle = rgb(cc);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Cross-bridges at word boundaries
+    if (stream[i].char === ' ') {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1a);
+      ctx.lineTo(x1, y2a);
+      ctx.strokeStyle = rgba(pal.primary, 0.3);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+// ─── STATE ─────────────────────────────────────────────────────────────────
+let currentAnky = null;
+let currentStream = null;
+let currentEncoding = 0;
+let ankyImage = null;
+let isPlaying = false;
+let playbackSpeed = 1;
+let playbackPosition = 0; // 0-1
+let animFrame = null;
+let playStartTime = 0;
+let playStartPos = 0;
+
+const canvas = document.getElementById('encoderCanvas');
+const cctx = canvas.getContext('2d');
+
+// ─── INIT ──────────────────────────────────────────────────────────────────
+async function init() {
+  const res = await fetch('/api/encoder/data');
+  const data = await res.json();
+  const selector = document.getElementById('ankySelector');
+  selector.innerHTML = '';
+
+  if (!data.ankys || data.ankys.length === 0) {
+    selector.innerHTML = '<div class="loading">no ankys with keystroke data found</div>';
+    return;
+  }
+
+  data.ankys.forEach((a, i) => {
+    const card = document.createElement('div');
+    card.className = 'anky-card' + (i === 0 ? ' active' : '');
+    const imgSrc = a.image_path.startsWith('http') ? a.image_path : `/data/images/${a.image_path}`;
+    card.innerHTML = `
+      <img src="${imgSrc}" alt="${a.title}" loading="lazy">
+      <div class="card-title">${a.title}</div>
+      <div class="card-kingdom">${a.kingdom}</div>
+    `;
+    card.onclick = () => loadAnky(a.id, card);
+    selector.appendChild(card);
+  });
+
+  // Build encoding tabs
+  const tabs = document.getElementById('encodingTabs');
+  ENCODINGS.forEach((enc, i) => {
+    const tab = document.createElement('button');
+    tab.className = 'enc-tab' + (i === 0 ? ' active' : '');
+    tab.textContent = enc.name;
+    tab.title = enc.desc;
+    tab.onclick = () => selectEncoding(i, tab);
+    tabs.appendChild(tab);
+  });
+
+  // Speed buttons
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      playbackSpeed = parseInt(btn.dataset.speed);
+    };
+  });
+
+  // Play button
+  document.getElementById('playBtn').onclick = togglePlay;
+
+  // Progress bar click
+  document.getElementById('progressBar').onclick = (e) => {
+    const rect = e.target.getBoundingClientRect();
+    playbackPosition = (e.clientX - rect.left) / rect.width;
+    renderAtPosition(playbackPosition);
+  };
+
+  // Render initial guide
+  renderGuide(0);
+
+  // Load first anky
+  loadAnky(data.ankys[0].id, selector.querySelector('.anky-card'));
+}
+
+async function loadAnky(id, card) {
+  stopPlay();
+  document.querySelectorAll('.anky-card').forEach(c => c.classList.remove('active'));
+  if (card) card.classList.add('active');
+
+  const res = await fetch(`/api/encoder/data?id=${id}`);
+  currentAnky = await res.json();
+
+  if (currentAnky.error) return;
+
+  // Parse deltas
+  let deltas = [];
+  try { deltas = JSON.parse(currentAnky.keystroke_deltas || '[]'); } catch(e) {}
+
+  currentStream = buildStream(currentAnky.text, deltas);
+
+  // Load image
+  const imgSrc = currentAnky.image_path.startsWith('http')
+    ? currentAnky.image_path
+    : `/data/images/${currentAnky.image_path}`;
+
+  ankyImage = new Image();
+  ankyImage.crossOrigin = 'anonymous';
+  ankyImage.onload = () => {
+    document.getElementById('originalImage').src = imgSrc;
+    document.getElementById('originalImage').style.display = 'block';
+    playbackPosition = 1;
+    renderAtPosition(1);
+  };
+  ankyImage.src = imgSrc;
+
+  // Meta
+  const dur = Math.round(currentAnky.duration);
+  const min = Math.floor(dur/60), sec = dur % 60;
+  document.getElementById('originalMeta').innerHTML =
+    `<strong>${currentAnky.title}</strong><br>` +
+    `${currentAnky.kingdom} &middot; ${currentAnky.word_count} words &middot; ${min}:${String(sec).padStart(2,'0')}`;
+
+  // Stats
+  document.getElementById('statKeys').textContent = currentStream.length;
+  document.getElementById('statWords').textContent = currentAnky.word_count;
+  document.getElementById('statDuration').textContent = `${min}:${String(sec).padStart(2,'0')}`;
+  const totalDelta = currentStream.reduce((s,k) => s + k.delta, 0);
+  const avgDelta = Math.round(totalDelta / currentStream.length);
+  document.getElementById('statFlow').textContent = `${avgDelta}ms avg`;
+
+  // Hash
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(
+    currentStream.map(k => `${Math.max(0,Math.round(k.delta))} ${k.char}`).join('\n')
+  ));
+  const hashArr = Array.from(new Uint8Array(hashBuf));
+  const hashHex = hashArr.map(b => b.toString(16).padStart(2,'0')).join('');
+  document.getElementById('statHash').textContent = hashHex.slice(0, 16) + '...';
+
+  // Update playback time
+  updateTimeDisplay(1);
+
+  // Reset text
+  document.getElementById('textOutput').innerHTML = currentAnky.text + '<span class="cursor"></span>';
+}
+
+function selectEncoding(idx, tab) {
+  currentEncoding = idx;
+  document.querySelectorAll('.enc-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  renderGuide(idx);
+  renderAtPosition(playbackPosition);
+}
+
+function renderAtPosition(pos) {
+  if (!currentStream || currentStream.length === 0) return;
+  playbackPosition = pos;
+
+  const w = canvas.width, h = canvas.height;
+  cctx.clearRect(0, 0, w, h);
+  cctx.fillStyle = '#080612';
+  cctx.fillRect(0, 0, w, h);
+
+  const kingdom = currentAnky.kingdom || 'Poiesis';
+  const pal = KINGDOMS[kingdom] || KINGDOMS.Poiesis;
+
+  ENCODINGS[currentEncoding].draw(cctx, w, h, currentStream, pal, pos, ankyImage);
+
+  // Update text
+  const n = Math.floor(currentStream.length * pos);
+  let text = '';
+  for (let i = 0; i < n; i++) {
+    const k = currentStream[i];
+    text += k.char;
+  }
+  document.getElementById('textOutput').innerHTML =
+    text.replace(/</g, '&lt;') + '<span class="cursor"></span>';
+  document.getElementById('textOutput').scrollTop = document.getElementById('textOutput').scrollHeight;
+
+  // Progress
+  document.getElementById('progressFill').style.width = (pos * 100) + '%';
+  updateTimeDisplay(pos);
+}
+
+function updateTimeDisplay(pos) {
+  if (!currentStream) return;
+  // Calculate elapsed time up to current position
+  const n = Math.floor(currentStream.length * pos);
+  let elapsed = 0;
+  for (let i = 0; i < n; i++) elapsed += currentStream[i].delta;
+  const total = currentStream.reduce((s,k) => s + k.delta, 0);
+  const eSec = Math.floor(elapsed/1000), tSec = Math.floor(total/1000);
+  const eM = Math.floor(eSec/60), eS = eSec%60;
+  const tM = Math.floor(tSec/60), tS = tSec%60;
+  document.getElementById('playbackTime').textContent =
+    `${eM}:${String(eS).padStart(2,'0')} / ${tM}:${String(tS).padStart(2,'0')}`;
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    stopPlay();
+  } else {
+    startPlay();
+  }
+}
+
+function startPlay() {
+  if (!currentStream) return;
+  isPlaying = true;
+  document.getElementById('playBtn').innerHTML = '&#9646;&#9646;';
+  if (playbackPosition >= 0.999) playbackPosition = 0;
+  playStartPos = playbackPosition;
+  playStartTime = performance.now();
+  animatePlay();
+}
+
+function stopPlay() {
+  isPlaying = false;
+  document.getElementById('playBtn').innerHTML = '&#9654;';
+  if (animFrame) cancelAnimationFrame(animFrame);
+}
+
+function animatePlay() {
+  if (!isPlaying || !currentStream) return;
+
+  const totalDelta = currentStream.reduce((s,k) => s + k.delta, 0);
+  const elapsed = (performance.now() - playStartTime) * playbackSpeed;
+  const deltaPos = elapsed / totalDelta;
+  playbackPosition = Math.min(1, playStartPos + deltaPos);
+
+  renderAtPosition(playbackPosition);
+
+  if (playbackPosition >= 1) {
+    stopPlay();
+    return;
+  }
+
+  animFrame = requestAnimationFrame(animatePlay);
+}
+
+init();
+</script>
+{% endblock %}

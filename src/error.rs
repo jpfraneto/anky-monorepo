@@ -27,6 +27,9 @@ pub enum AppError {
     #[error("{0}")]
     Internal(String),
 
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -48,6 +51,7 @@ impl IntoResponse for AppError {
         let status = match &self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::PaymentRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,

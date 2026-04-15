@@ -1,0 +1,23 @@
+# GODS by Anky Pipeline - Requirements
+
+# Core
+python-dotenv>=1.0.0
+requests>=2.31.0
+pillow>=10.0.0
+
+# ElevenLabs TTS
+elevenlabs>=1.0.0
+
+# Video assembly
+moviepy>=2.0.0
+
+# YouTube upload
+google-api-python-client>=2.100.0
+google-auth>=2.25.0
+google-auth-oauthlib>=1.1.0
+
+# Database
+sqlite3  # Built-in
+
+# For Grok API (using requests)
+# No extra package needed

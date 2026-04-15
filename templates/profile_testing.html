@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>{{ username }} — the ankyverse map</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { background:#06040f; color:#d4c8b8; font-family: 'Georgia', serif; }
+  body {
+    min-height:100vh;
+    min-height:100dvh;
+    overflow-x:hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .frame {
+    position:relative;
+    max-width:420px;
+    margin:0 auto;
+    min-height:100vh;
+    min-height:100dvh;
+    overflow:hidden;
+    background:#06040f;
+  }
+  .ambient {
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:0;
+  }
+  .stars { position:fixed; inset:0; pointer-events:none; z-index:0; }
+  .star { position:absolute; background:#fff; border-radius:50%; }
+  .content { position:relative; z-index:1; }
+
+  /* TOPBAR */
+  .topbar { position:absolute; top:12px; left:12px; z-index:5; }
+  .topbar a {
+    font-size:12px; color:#555; text-decoration:none; letter-spacing:0.08em;
+  }
+  .topbar a:hover { color:#aaa; }
+
+  /* ─────────────────── LAYER 1 — STATIC PORTRAIT ─────────────────── */
+  .portrait {
+    padding:48px 24px 28px;
+    text-align:center;
+    border-bottom:1px solid #111;
+    position:relative;
+  }
+  .portrait-avatar {
+    width:112px; height:112px;
+    border-radius:50%;
+    margin:0 auto 14px;
+    overflow:hidden;
+    border:3px solid var(--dom-primary);
+    box-shadow: 0 0 44px var(--dom-glow), 0 0 100px var(--dom-glow);
+    background:#0a1a3a;
+  }
+  .portrait-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+  .portrait-name { font-size:19px; letter-spacing:0.12em; color:#e2d6c4; }
+  .portrait-sub {
+    font-size:10px;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    margin-top:6px;
+    color:var(--dom-primary);
+  }
+  .portrait-dwells {
+    margin-top:18px;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 16px;
+    border-radius:20px;
+    border:1px solid var(--dom-border);
+    background: var(--dom-bg)55;
+    color:var(--dom-primary);
+    font-size:11px;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+  }
+  .portrait-dwells-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--dom-primary);
+    box-shadow:0 0 8px var(--dom-primary);
+  }
+
+  /* Written portrait paragraph */
+  .portrait-text {
+    margin: 24px auto 0;
+    max-width: 340px;
+    padding: 0 8px;
+    font-size: 14px;
+    line-height: 1.85;
+    color: #c9bda8;
+    font-style: italic;
+    text-align: left;
+    position: relative;
+  }
+  .portrait-text::before {
+    content: "“";
+    position: absolute;
+    left: -12px;
+    top: -14px;
+    font-size: 38px;
+    color: var(--dom-primary);
+    opacity: 0.5;
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+
+  /* CHAKRA SPECTRUM — all 8 kingdoms with counts */
+  .spectrum {
+    padding:28px 20px 4px;
+  }
+  .spectrum-label {
+    font-size:10px;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    color:#333;
+    margin-bottom:14px;
+    text-align:center;
+  }
+  .spectrum-bar {
+    display:grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap:2px;
+    height:56px;
+    border-radius:10px;
+    overflow:hidden;
+    background:#080616;
+  }
+  .spectrum-cell {
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:flex-end;
+    padding:4px 0;
+    font-size:9px;
+    letter-spacing:0.05em;
+    color: #3b3445;
+    position:relative;
+  }
+  .spectrum-cell .ring {
+    position:absolute; inset:0; pointer-events:none;
+    background: linear-gradient(to top, var(--cell-primary), transparent);
+    opacity: var(--cell-fill);
+  }
+  .spectrum-cell .cell-count {
+    position:relative; z-index:1;
+    color:#fff;
+    font-size:12px;
+    font-weight:600;
+    margin-bottom:2px;
+    letter-spacing:0;
+  }
+  .spectrum-cell .cell-name { position:relative; z-index:1; }
+
+  /* ─────────────────── JOURNEY MAP (static) ─────────────────── */
+  .journey { padding:40px 0 8px; position:relative; }
+  .journey-label {
+    font-size:10px;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    color:#333;
+    text-align:center;
+    margin-bottom:26px;
+  }
+  .spine {
+    position:absolute;
+    left:50%;
+    top:56px;
+    bottom:48px;
+    width:1px;
+    background: linear-gradient(to bottom, transparent, #2a1a4a 20%, #2a1a4a 80%, transparent);
+    transform: translateX(-50%);
+  }
+  .nodes { display:flex; flex-direction:column; gap:10px; }
+  .node-row {
+    display:flex;
+    align-items:center;
+    gap:0;
+    cursor:pointer;
+    position:relative;
+  }
+  .node-row.right { flex-direction: row-reverse; }
+  .node-row:active .node-avatar { transform: scale(0.94); }
+
+  .node-side {
+    flex:1;
+    padding: 0 16px 0 24px;
+    text-align: right;
+  }
+  .node-row.right .node-side {
+    padding: 0 24px 0 16px;
+    text-align: left;
+  }
+  .node-empty { flex:1; }
+  .node-kingdom {
+    font-size:10px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    margin-bottom:2px;
+  }
+  .node-date  { font-size:13px; color:#888; }
+  .node-words { font-size:10px; color:#555; margin-top:2px; letter-spacing:0.08em; }
+
+  .node-avatar {
+    width:52px; height:52px;
+    border-radius:50%;
+    overflow:hidden;
+    border:2px solid;
+    flex-shrink:0;
+    z-index:2;
+    position:relative;
+    transition: transform .2s ease;
+    background:#080808;
+  }
+  .node-avatar img {
+    width:100%; height:100%; object-fit:cover; display:block;
+  }
+  .node-avatar.latest { width:68px; height:68px; }
+
+  .not-sealed-dot {
+    position:absolute; bottom:2px; right:2px;
+    width:8px; height:8px; border-radius:50%;
+    background:#666; border:1px solid #333; z-index:3;
+  }
+
+  .origin-label {
+    text-align:center;
+    margin-top:28px;
+    font-size:11px;
+    color:#2a1a4a;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+  }
+
+  /* LEGEND */
+  .legend { padding:20px 24px 60px; }
+  .legend-label {
+    font-size:10px;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    color:#333;
+    margin-bottom:14px;
+  }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip {
+    display:flex; align-items:center; gap:6px;
+    border-radius:20px;
+    padding:5px 12px;
+    font-size:11px;
+    letter-spacing:0.04em;
+  }
+  .chip-dot { width:6px; height:6px; border-radius:50%; }
+  .chip-sep { color:#444; }
+  .chip-count { color:#555; }
+
+  /* ─────────────────── LAYER 2 — BOTTOM SHEET ─────────────────── */
+  .sheet-overlay {
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.68);
+    opacity:0;
+    pointer-events:none;
+    transition: opacity .3s ease;
+    z-index:20;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .sheet-overlay.open {
+    opacity:1;
+    pointer-events:auto;
+  }
+  .sheet {
+    position:fixed;
+    left:50%;
+    bottom:0;
+    transform: translate(-50%, 100%);
+    width:100%;
+    max-width:420px;
+    max-height:85vh;
+    max-height:85dvh;
+    background: linear-gradient(180deg, var(--sheet-bg, #0c0816) 0%, #07050e 100%);
+    border-top-left-radius: 22px;
+    border-top-right-radius: 22px;
+    border-top: 1px solid var(--sheet-border, #2a1a4a);
+    box-shadow: 0 -24px 60px var(--sheet-glow, rgba(0,0,0,0.8));
+    transition: transform .35s cubic-bezier(0.22, 0.8, 0.36, 1);
+    z-index:30;
+    overflow-y:auto;
+    -webkit-overflow-scrolling: touch;
+    display:flex;
+    flex-direction:column;
+  }
+  .sheet.open { transform: translate(-50%, 0); }
+
+  .sheet-handle {
+    position:sticky;
+    top:0;
+    display:flex;
+    justify-content:center;
+    padding: 10px 0 8px;
+    background: linear-gradient(180deg, var(--sheet-bg, #0c0816) 0%, transparent 100%);
+    z-index:2;
+    flex-shrink:0;
+  }
+  .sheet-handle .grip {
+    width:44px; height:4px;
+    border-radius:2px;
+    background: var(--sheet-primary, #7c3aed);
+    opacity:0.6;
+  }
+  .sheet-inner { padding: 6px 20px 40px; }
+
+  .sheet-image {
+    width:100%;
+    aspect-ratio: 1 / 1;
+    border-radius:14px;
+    overflow:hidden;
+    border: 2px solid var(--sheet-primary);
+    box-shadow: 0 0 40px var(--sheet-glow);
+    margin-bottom: 18px;
+    background:#050309;
+  }
+  .sheet-image img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  .sheet-label {
+    font-size:10px;
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    color: var(--sheet-primary);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:18px;
+  }
+  .sheet-label-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--sheet-primary);
+    box-shadow:0 0 8px var(--sheet-primary);
+  }
+
+  .sheet-reflection {
+    font-size:15px;
+    line-height:2;
+    color:#c4b8a6;
+    font-style: italic;
+    margin-bottom: 8px;
+  }
+  .sheet-title {
+    font-size:12px;
+    color:#777;
+    font-style:normal;
+    letter-spacing:0.04em;
+    margin-bottom:22px;
+  }
+
+  .sheet-reason {
+    padding:14px 16px;
+    border: 1px dashed var(--sheet-border);
+    border-radius:10px;
+    font-size:11px;
+    line-height:1.75;
+    color:#7a7063;
+    margin-bottom:18px;
+    background: rgba(255,255,255,0.015);
+  }
+  .sheet-reason b {
+    color:var(--sheet-primary);
+    font-weight:normal;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    font-size:9px;
+    display:block;
+    margin-bottom:6px;
+  }
+
+  .sheet-meta {
+    display:flex;
+    gap:16px;
+    font-size:11px;
+    color:#555;
+    letter-spacing:0.05em;
+    padding-top:12px;
+    border-top:1px solid #1a1630;
+  }
+  .sheet-meta .seal-state { margin-left:auto; }
+  .sheet-sealed-yes { color: var(--sheet-primary); }
+  .sheet-sealed-no  { color: #444; }
+</style>
+</head>
+<body>
+<div class="frame" id="frame">
+  <div class="topbar"><a href="/">&larr; back</a></div>
+  <div class="ambient" id="ambient"></div>
+  <div class="stars" id="stars"></div>
+
+  <div class="content">
+    <!-- ─────────── LAYER 1 — cumulative, static ─────────── -->
+    <div class="portrait">
+      <div class="portrait-avatar">
+        <img src="{{ hero_image }}" alt="latest anky">
+      </div>
+      <div class="portrait-name">{{ username }}</div>
+      <div class="portrait-sub">{{ sessions | length }} ankys · 8 kingdoms · one path</div>
+      <div class="portrait-dwells">
+        <div class="portrait-dwells-dot"></div>
+        <span>dwells mostly in {{ dominant_kingdom }}</span>
+      </div>
+      <div class="portrait-text">{{ portrait }}</div>
+    </div>
+
+    <div class="spectrum">
+      <div class="spectrum-label">your chakra spectrum</div>
+      <div class="spectrum-bar" id="spectrumBar"></div>
+    </div>
+
+    <!-- ─────────── JOURNEY MAP — taps open bottom sheet ─────────── -->
+    <div class="journey">
+      <div class="journey-label">your journey — tap a day</div>
+      <div class="spine"></div>
+      <div class="nodes" id="nodes"></div>
+      <div class="origin-label">· origin ·</div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-label">territories visited</div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+
+  <!-- ─────────── LAYER 2 — BOTTOM SHEET ─────────── -->
+  <div class="sheet-overlay" id="sheetOverlay"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-hidden="true">
+    <div class="sheet-handle"><div class="grip"></div></div>
+    <div class="sheet-inner">
+      <div class="sheet-image" id="sheetImage"><img id="sheetImg" src="" alt=""></div>
+      <div class="sheet-label">
+        <div class="sheet-label-dot"></div>
+        <span id="sheetLabel"></span>
+      </div>
+      <div class="sheet-reflection" id="sheetReflection"></div>
+      <div class="sheet-title" id="sheetTitle"></div>
+      <div class="sheet-reason" id="sheetReason"></div>
+      <div class="sheet-meta">
+        <span id="sheetWords"></span>
+        <span id="sheetDuration"></span>
+        <span class="seal-state" id="sheetSeal"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Ankyverse kingdom palette — each chakra gets its own color resonance.
+  const KINGDOM = {
+    Primordia:  { primary:"#ef4444", glow:"#ef444466", glowSoft:"#ef444433", bg:"#1a0608", border:"#ef444466", short:"root"   },
+    Emblazion:  { primary:"#f97316", glow:"#f9731666", glowSoft:"#f9731633", bg:"#1a0e05", border:"#f9731666", short:"sacral" },
+    Chryseos:   { primary:"#eab308", glow:"#eab30866", glowSoft:"#eab30833", bg:"#1a1406", border:"#eab30866", short:"solar"  },
+    Eleasis:    { primary:"#22c55e", glow:"#22c55e66", glowSoft:"#22c55e33", bg:"#0a1a10", border:"#22c55e66", short:"heart"  },
+    Voxlumis:   { primary:"#38bdf8", glow:"#38bdf866", glowSoft:"#38bdf833", bg:"#06121e", border:"#38bdf866", short:"throat" },
+    Insightia:  { primary:"#6366f1", glow:"#6366f166", glowSoft:"#6366f133", bg:"#0b0a1f", border:"#6366f166", short:"3rd eye"},
+    Claridium:  { primary:"#e5e7eb", glow:"#e5e7eb55", glowSoft:"#e5e7eb22", bg:"#14141c", border:"#e5e7eb55", short:"crown"  },
+    Poiesis:    { primary:"#c084fc", glow:"#c084fc66", glowSoft:"#c084fc33", bg:"#15091e", border:"#c084fc66", short:"∞"      },
+  };
+  const KINGDOM_ORDER = ["Primordia","Emblazion","Chryseos","Eleasis","Voxlumis","Insightia","Claridium","Poiesis"];
+
+  const sessions       = {{ sessions | json_encode() | safe }};
+  const kingdomCounts  = {{ kingdom_counts | json_encode() | safe }};
+  const dominant       = "{{ dominant_kingdom }}";
+
+  // Stars backdrop
+  (function sprinkleStars(){
+    const host = document.getElementById('stars');
+    for (let i = 0; i < 40; i++) {
+      const d = document.createElement('div');
+      d.className = 'star';
+      const big = i % 5 === 0;
+      d.style.width = big ? '2px' : '1px';
+      d.style.height = big ? '2px' : '1px';
+      d.style.top = ((i * 3.3) % 100) + '%';
+      d.style.left = ((i * 7.1) % 100) + '%';
+      d.style.opacity = 0.08 + (i % 4) * 0.06;
+      host.appendChild(d);
+    }
+  })();
+
+  // ── static top: dominant kingdom theme is applied ONCE and never changes ──
+  (function applyDominantTheme(){
+    const k = KINGDOM[dominant] || KINGDOM.Poiesis;
+    const frame = document.getElementById('frame');
+    frame.style.setProperty('--dom-primary', k.primary);
+    frame.style.setProperty('--dom-glow', k.glow);
+    frame.style.setProperty('--dom-glow-soft', k.glowSoft);
+    frame.style.setProperty('--dom-bg', k.bg);
+    frame.style.setProperty('--dom-border', k.border);
+    document.getElementById('ambient').style.background =
+      `radial-gradient(ellipse at 50% 12%, ${k.bg} 0%, #06040f 55%)`;
+  })();
+
+  function renderNodes() {
+    const host = document.getElementById('nodes');
+    host.innerHTML = '';
+    sessions.forEach((s, i) => {
+      const k = KINGDOM[s.kingdom] || KINGDOM.Poiesis;
+      const isLeft = i % 2 === 0;
+      const isLatest = i === 0;
+
+      const row = document.createElement('div');
+      row.className = 'node-row' + (isLeft ? '' : ' right');
+      row.dataset.id = s.id;
+
+      row.innerHTML = `
+        <div class="node-side">
+          <div class="node-kingdom" style="color:${k.primary}">${s.kingdom}</div>
+          <div class="node-date">${s.date}</div>
+          <div class="node-words">${s.words}w · ${s.duration}</div>
+        </div>
+        <div class="node-avatar ${isLatest ? 'latest' : ''}"
+             style="border-color:${k.primary}; box-shadow: 0 0 ${isLatest ? 22 : 10}px ${k.glow}${isLatest ? ', 0 0 44px ' + k.glow : ''};">
+          <img src="${s.image_url}" alt="">
+          ${s.sealed ? '' : '<div class="not-sealed-dot"></div>'}
+        </div>
+        <div class="node-empty"></div>
+      `;
+      row.addEventListener('click', () => openSheet(s.id));
+      host.appendChild(row);
+    });
+  }
+
+  function renderSpectrum() {
+    const host = document.getElementById('spectrumBar');
+    host.innerHTML = '';
+    const countsByName = {};
+    kingdomCounts.forEach(c => { countsByName[c.name] = c.count; });
+    const max = Math.max(1, ...Object.values(countsByName));
+
+    KINGDOM_ORDER.forEach(name => {
+      const k = KINGDOM[name];
+      const count = countsByName[name] || 0;
+      const fill = count / max;
+      const cell = document.createElement('div');
+      cell.className = 'spectrum-cell';
+      cell.style.setProperty('--cell-primary', k.primary);
+      cell.style.setProperty('--cell-fill', Math.max(0.08, fill).toFixed(2));
+      cell.innerHTML = `
+        <div class="ring"></div>
+        ${count > 0 ? `<div class="cell-count">${count}</div>` : ''}
+        <div class="cell-name">${k.short}</div>
+      `;
+      host.appendChild(cell);
+    });
+  }
+
+  function renderChips() {
+    const host = document.getElementById('chips');
+    host.innerHTML = '';
+    const sorted = [...kingdomCounts].sort((a,b) => b.count - a.count);
+    sorted.forEach(kc => {
+      const k = KINGDOM[kc.name] || KINGDOM.Poiesis;
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.style.background = k.primary + '11';
+      chip.style.border = '1px solid ' + k.primary + '33';
+      chip.innerHTML = `
+        <div class="chip-dot" style="background:${k.primary}; box-shadow: 0 0 4px ${k.primary};"></div>
+        <span style="color:${k.primary}">${kc.name}</span>
+        <span style="color:#555;font-size:10px">${k.short}</span>
+        <span class="chip-sep">·</span>
+        <span class="chip-count">${kc.count}</span>
+      `;
+      host.appendChild(chip);
+    });
+  }
+
+  // ─── BOTTOM SHEET ─────────────────────────────────────────
+  const sheet        = document.getElementById('sheet');
+  const sheetOverlay = document.getElementById('sheetOverlay');
+
+  function openSheet(id) {
+    const s = sessions.find(x => x.id === id);
+    if (!s) return;
+    const k = KINGDOM[s.kingdom] || KINGDOM.Poiesis;
+
+    // Theme the sheet in this session's kingdom color
+    sheet.style.setProperty('--sheet-primary', k.primary);
+    sheet.style.setProperty('--sheet-glow', k.glow);
+    sheet.style.setProperty('--sheet-border', k.border);
+    sheet.style.setProperty('--sheet-bg', k.bg);
+
+    document.getElementById('sheetImg').src = s.image_url;
+    document.getElementById('sheetLabel').textContent =
+      `${s.kingdom} · ${s.kingdom_chakra} · ${s.date}`;
+    document.getElementById('sheetReflection').textContent = `"${s.reflection}"`;
+    document.getElementById('sheetTitle').textContent =
+      s.title && s.title !== 'untitled' ? '— ' + s.title : '';
+    document.getElementById('sheetReason').innerHTML = s.kingdom_reason
+      ? `<b>why this kingdom</b>${s.kingdom_reason}`
+      : '';
+    document.getElementById('sheetWords').textContent = `${s.words} words`;
+    document.getElementById('sheetDuration').textContent = s.duration;
+    document.getElementById('sheetSeal').innerHTML = s.sealed
+      ? '<span class="sheet-sealed-yes">✦ complete</span>'
+      : '<span class="sheet-sealed-no">◦ incomplete</span>';
+
+    // Reset scroll to top whenever we open it
+    sheet.scrollTop = 0;
+
+    sheet.classList.add('open');
+    sheetOverlay.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSheet() {
+    sheet.classList.remove('open');
+    sheetOverlay.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  sheetOverlay.addEventListener('click', closeSheet);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && sheet.classList.contains('open')) closeSheet();
+  });
+
+  // Drag-to-dismiss on the handle
+  (function dragSheet(){
+    const handle = sheet.querySelector('.sheet-handle');
+    let startY = null, dy = 0, dragging = false;
+
+    function onStart(e) {
+      // only allow drag if sheet is scrolled to top — otherwise it's internal scroll
+      if (sheet.scrollTop > 0) return;
+      dragging = true;
+      startY = e.touches ? e.touches[0].clientY : e.clientY;
+      dy = 0;
+      sheet.style.transition = 'none';
+    }
+    function onMove(e) {
+      if (!dragging) return;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      dy = Math.max(0, y - startY);
+      sheet.style.transform = `translate(-50%, ${dy}px)`;
+    }
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      sheet.style.transition = '';
+      if (dy > 120) {
+        closeSheet();
+      } else {
+        sheet.style.transform = '';
+      }
+    }
+    handle.addEventListener('touchstart', onStart, { passive: true });
+    handle.addEventListener('touchmove', onMove,  { passive: true });
+    handle.addEventListener('touchend',  onEnd);
+    handle.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onEnd);
+  })();
+
+  // init
+  renderNodes();
+  renderSpectrum();
+  renderChips();
+</script>
+</body>
+</html>

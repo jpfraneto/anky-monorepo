@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::db::Connection;
+use anyhow::Result;
 use serde::Deserialize;
 
 const EXTRACTION_SYSTEM: &str = r#"You are a psychological pattern extractor for a consciousness journaling app called Anky. You analyze raw stream-of-consciousness writing sessions and extract structured psychological memories.

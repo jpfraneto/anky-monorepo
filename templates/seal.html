@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>anky — open the app</title>
+  <meta name="theme-color" content="#07070d">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --void: #07070d;
+      --ink: rgba(17, 17, 27, 0.94);
+      --parchment: #e8dfd0;
+      --smoke: rgba(232, 223, 208, 0.62);
+      --ember: #e8b84b;
+      --line: rgba(232, 184, 75, 0.16);
+    }
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top, rgba(232, 184, 75, 0.09), transparent 28rem),
+        var(--void);
+      color: var(--parchment);
+      font-family: Georgia, serif;
+    }
+    .bridge-box {
+      width: min(100%, 420px);
+      padding: 28px 24px;
+      border-radius: 24px;
+      background: var(--ink);
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    .eyebrow {
+      margin-bottom: 12px;
+      color: rgba(232, 184, 75, 0.72);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin-bottom: 12px;
+      font-size: 28px;
+      font-weight: 600;
+    }
+    p {
+      color: var(--smoke);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .status {
+      margin: 18px 0 22px;
+      min-height: 1.6em;
+      color: rgba(232, 184, 75, 0.9);
+      font-size: 14px;
+    }
+    .actions {
+      display: grid;
+      gap: 12px;
+    }
+    .action {
+      display: inline-block;
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .action-primary {
+      background: var(--ember);
+      color: #16110a;
+    }
+    .action-secondary {
+      color: var(--parchment);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+    }
+  </style>
+</head>
+<body>
+  <div class="bridge-box">
+    <div class="eyebrow">phone seal bridge</div>
+    <h1>opening anky</h1>
+    <p>if the app is on this phone, it should open and ask for the connection seal. if not, this page will send you to the download.</p>
+    <div class="status" id="status">trying the app...</div>
+    <div class="actions">
+      <a class="action action-primary" id="openAppBtn" href="{{ app_scheme_url }}">open anky app</a>
+      <a class="action action-secondary" id="downloadBtn" href="{{ install_url }}">download anky</a>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var appUrl = {{ app_scheme_url | json_encode | safe }};
+      var installUrl = {{ install_url | json_encode | safe }};
+      var statusEl = document.getElementById('status');
+      var fallbackTimer = null;
+
+      // Cancel TestFlight redirect if the app actually opens
+      function cancelFallback() {
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+      }
+      window.addEventListener('pagehide', cancelFallback);
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) cancelFallback();
+      });
+
+      // Also check for challenge token in query params (from /login mobile redirect)
+      var params = new URLSearchParams(window.location.search);
+      var challengeToken = params.get('challenge');
+      var deeplink = challengeToken
+        ? 'anky://seal?challenge=' + encodeURIComponent(challengeToken)
+        : appUrl;
+
+      // Update the button href
+      document.getElementById('openAppBtn').href = deeplink;
+
+      // Try to open the app immediately
+      window.location.href = deeplink;
+
+      // If app not installed, go to TestFlight after 1.5s
+      fallbackTimer = setTimeout(function() {
+        statusEl.textContent = 'anky is not on this phone yet. sending you to the download...';
+        window.location.replace(installUrl);
+      }, 1500);
+    })();
+  </script>
+</body>
+</html>

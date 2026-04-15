@@ -439,13 +439,15 @@ pub fn quick_feedback_prompt(text: &str, duration: f64) -> String {
     let mins = (duration / 60.0) as u32;
     let secs = (duration % 60.0) as u32;
     format!(
-        r#"You are anky — a warm, honest presence that listens to parents write. This parent wrote for {}m{}s. They stopped before the 8-minute mark, but you were listening the whole time.
+        r#"you are anky. someone wrote for {}m{}s and stopped before the full 8-minute rite.
 
-Read what they wrote. Something real was starting to come through. Reflect it back to them — what you noticed, what was emerging, what they might not see about themselves as a parent. Be warm but honest. Speak like a wise friend, not a therapist.
-
-If they wrote about their children, notice what that reveals about the parent — what they're carrying, what they're afraid of, what love looks like when they're not performing it.
-
-3-5 sentences. Use markdown if it helps. Respond in their language.
+do not pretend this is a full anky.
+read what they wrote and reflect what was already surfacing, where the energy was going, and what line of feeling or thought got interrupted.
+be warm, direct, and specific. no therapy voice. no generic encouragement. no praise for trying.
+respond in exactly two lines only.
+line 1: decompression. witnessing. breathing room. no question.
+line 2: one clean inquiry that opens the next door. it must be a question.
+no markdown. no bullets. no extra lines. lowercase only. respond in their language.
 
 Writing:
 ---
@@ -455,7 +457,148 @@ Writing:
     )
 }
 
-const ANKY_NUDGE_SYSTEM: &str = r#"you are anky — a warm, playful presence that lives inside the writing. someone just sat down and typed a few words. they barely started. your job is to meet them where they are and invite them deeper. don't scold them. don't lecture. be alive. be curious about what those few words might mean. maybe tease them gently, maybe ask them what's underneath. 1-2 sentences max. lowercase only. no quotes. respond in their language."#;
+const ANKY_NUDGE_SYSTEM: &str = r#"you are anky — a warm, playful presence that lives inside the writing. someone just sat down and typed a few words. they barely started. your job is to meet them where they are and invite them deeper. don't scold them. don't lecture. be alive. be curious about what those few words might mean.
+
+respond in exactly two lines only.
+line 1: decompression. witnessing. breathing room. no question.
+line 2: one clean inquiry that opens the next door. it must be a question.
+no markdown. no bullets. no extra lines. lowercase only. no quotes. respond in their language."#;
+
+fn clean_two_line_fragment(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut prev_space = false;
+    for ch in text.chars() {
+        let ch = match ch {
+            '\n' | '\r' | '\t' => ' ',
+            '`' | '*' | '#' | '>' => ' ',
+            _ => ch,
+        };
+        if ch.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+            }
+            prev_space = true;
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    out.trim()
+        .trim_matches(|c: char| matches!(c, '"' | '\'' | ' ' | '-' | '•'))
+        .to_string()
+}
+
+fn split_sentences(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        current.push(ch);
+        if matches!(ch, '.' | '!' | '?') {
+            let sentence = clean_two_line_fragment(&current);
+            if !sentence.is_empty() {
+                out.push(sentence);
+            }
+            current.clear();
+        }
+    }
+    let tail = clean_two_line_fragment(&current);
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    out
+}
+
+fn ensure_statement(line: &str) -> String {
+    let mut line = clean_two_line_fragment(line).to_lowercase();
+    while matches!(line.chars().last(), Some('.' | '!' | '?')) {
+        line.pop();
+    }
+    if line.is_empty() {
+        "breathe. i'm here with it.".into()
+    } else {
+        format!("{}.", line)
+    }
+}
+
+fn ensure_question(line: &str) -> String {
+    let mut line = clean_two_line_fragment(line).to_lowercase();
+    while matches!(line.chars().last(), Some('.' | '!' | '?')) {
+        line.pop();
+    }
+    if line.is_empty() {
+        "what is the one thing underneath this that wants to be said?".into()
+    } else {
+        format!("{}?", line)
+    }
+}
+
+pub fn normalize_two_line_reply(text: &str) -> String {
+    let original_lines: Vec<String> = text
+        .lines()
+        .map(clean_two_line_fragment)
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    let sentences = split_sentences(text);
+    let line1_source = original_lines
+        .iter()
+        .find(|line| !line.contains('?'))
+        .cloned()
+        .or_else(|| sentences.iter().find(|line| !line.contains('?')).cloned())
+        .or_else(|| original_lines.first().cloned())
+        .or_else(|| sentences.first().cloned())
+        .unwrap_or_else(|| "breathe. i'm here with it".into());
+    let line2_source = original_lines
+        .iter()
+        .skip_while(|line| *line == &line1_source)
+        .find(|line| line.contains('?'))
+        .cloned()
+        .or_else(|| sentences.iter().find(|line| line.contains('?')).cloned())
+        .or_else(|| {
+            original_lines
+                .iter()
+                .skip_while(|line| *line == &line1_source)
+                .find(|line| !line.is_empty())
+                .cloned()
+        })
+        .or_else(|| {
+            sentences
+                .iter()
+                .skip_while(|line| *line == &line1_source)
+                .find(|line| !line.is_empty())
+                .cloned()
+        })
+        .unwrap_or_else(|| "what is the one thing underneath this that wants to be said".into());
+
+    format!(
+        "{}\n{}",
+        ensure_statement(&line1_source),
+        ensure_question(&line2_source)
+    )
+}
+
+pub fn two_line_reply_messages(text: &str) -> Vec<crate::models::ChatReplyMessage> {
+    let normalized = normalize_two_line_reply(text);
+    let mut lines = normalized.lines();
+    let witness = lines.next().unwrap_or("breathe. i'm here with it.").trim();
+    let inquiry = lines
+        .next()
+        .unwrap_or("what is the one thing underneath this that wants to be said?")
+        .trim();
+
+    vec![
+        crate::models::ChatReplyMessage {
+            role: "assistant".into(),
+            content: witness.into(),
+            purpose: Some("witness".into()),
+        },
+        crate::models::ChatReplyMessage {
+            role: "assistant".into(),
+            content: inquiry.into(),
+            purpose: Some("inquiry".into()),
+        },
+    ]
+}
 
 /// Quick nudge for very short writings (<10 words).
 /// Uses the user's preferred model if set, otherwise OpenRouter default, then Ollama fallback.
@@ -469,6 +612,18 @@ pub async fn quick_nudge(
     } else {
         format!("they wrote: \"{}\"", text)
     };
+
+    if !config.mind_url.is_empty() {
+        let messages = vec![
+            ("system".to_string(), ANKY_NUDGE_SYSTEM.to_string()),
+            ("user".to_string(), user_msg.clone()),
+        ];
+        match crate::services::mind::chat(&config.mind_url, &messages, 160).await {
+            Ok(r) if !r.trim().is_empty() => return Ok(normalize_two_line_reply(&r)),
+            Ok(_) => tracing::warn!("quick_nudge: mind returned empty text"),
+            Err(e) => tracing::warn!("quick_nudge: mind error: {}", e),
+        }
+    }
 
     // Determine which OpenRouter model to use
     let or_model = match user_model {
@@ -491,7 +646,7 @@ pub async fn quick_nudge(
         {
             Ok(r) => {
                 tracing::info!("quick_nudge: openrouter response ({} chars)", r.len());
-                return Ok(r);
+                return Ok(normalize_two_line_reply(&r));
             }
             Err(e) => {
                 tracing::warn!(
@@ -513,7 +668,7 @@ pub async fn quick_nudge(
     {
         Ok(r) => {
             tracing::info!("quick_nudge: haiku response ({} chars)", r.len());
-            Ok(r)
+            Ok(normalize_two_line_reply(&r))
         }
         Err(e) => {
             tracing::error!("quick_nudge: haiku error: {}", e);

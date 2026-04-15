@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjE2MDk4LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4YUIyMERlOGY1QTRmOGUxNDdCYWFDOUQxZjZlMjM2ODYxNDg1NTE2QSJ9",
+    "payload": "eyJkb21haW4iOiJtaXJyb3IuYW5reS5hcHAifQ",
+    "signature": "F15DLgEx0O+n4WWzH3MMsp8fWW9luaeWlF8MWZ3y5TR+fL7iGlTVqH+fljCHVHsxyyphPYfqgzsXY+BQfMZhThw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "anky mirror",
+    "iconUrl": "https://mirror.anky.app/icon.png",
+    "homeUrl": "https://mirror.anky.app",
+    "imageUrl": "https://mirror.anky.app/image.png",
+    "buttonTitle": "get my anky",
+    "splashImageUrl": "https://mirror.anky.app/splash.png",
+    "splashBackgroundColor": "#000000",
+    "webhookUrl": "https://mirror.anky.app/api/webhook"
+  }
+}
