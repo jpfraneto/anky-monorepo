@@ -18,6 +18,12 @@ pub enum GpuJob {
         user_id: String,
         writing: String,
     },
+    /// Continue the canonical processor flow from transient processor state.
+    CanonicalAnkyImage {
+        anky_id: String,
+        session_id: String,
+        user_id: String,
+    },
     /// Generate images for cuentacuentos story paragraphs
     CuentacuentosImages { cuentacuentos_id: String },
     /// Generate TTS audio for cuentacuentos story

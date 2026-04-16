@@ -2044,13 +2044,18 @@ pub fn get_average_anky_cost(conn: &Connection) -> Result<f64> {
     Ok(avg)
 }
 
-/// Get failed ankys (status = 'pending' or 'failed' with a writing session).
+/// Get failed legacy ankys for the plaintext retry worker.
+///
+/// Canonical `/api/anky/submit` rows are processor-only: they resume from
+/// transient processor state and must not be reinterpreted as durable
+/// plaintext retries by the legacy loop.
 pub fn get_failed_ankys(conn: &Connection) -> Result<Vec<(String, String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT a.id, a.writing_session_id, w.content
          FROM ankys a
          JOIN writing_sessions w ON w.id = a.writing_session_id
          WHERE a.status IN ('pending', 'failed', 'generating')
+         AND COALESCE(a.origin, '') <> 'protocol'
          AND a.created_at < datetime('now', '-2 minutes')
          ORDER BY a.created_at ASC
          LIMIT 10",

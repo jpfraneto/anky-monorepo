@@ -1007,9 +1007,7 @@ pub async fn you_page(
         ctx.insert("display_name", &u.display_name.as_deref().unwrap_or("anon"));
         ctx.insert(
             "profile_image_url",
-            &u.profile_image_url
-                .as_deref()
-                .unwrap_or(""),
+            &u.profile_image_url.as_deref().unwrap_or(""),
         );
         ctx.insert("email", &u.email.as_deref().unwrap_or(""));
     } else if let Some(visitor_id) = crate::routes::auth::visitor_id_from_jar(&jar) {

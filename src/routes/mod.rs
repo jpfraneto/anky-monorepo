@@ -269,9 +269,21 @@ async fn station_review_comments_get(
 async fn station_review_comment_post(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let block_id = body.get("block_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let text = body.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let block_id = body
+        .get("block_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let text = body
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let block_text = body
         .get("block_text")
         .and_then(|v| v.as_str())
@@ -319,8 +331,16 @@ async fn station_review_comment_delete(
 async fn station_review_evolve(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let lang = body.get("lang").and_then(|v| v.as_str()).unwrap_or("en").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let lang = body
+        .get("lang")
+        .and_then(|v| v.as_str())
+        .unwrap_or("en")
+        .to_string();
     if episode.is_empty() {
         return axum::Json(serde_json::json!({ "ok": false, "error": "episode required" }));
     }
@@ -363,7 +383,11 @@ async fn station_review_evolve(
         .map(|c| {
             let block = c.get("block_text").and_then(|v| v.as_str()).unwrap_or("");
             let text = c.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            format!("  - On this line: \"{}\"\n    Feedback: {}", block.chars().take(140).collect::<String>(), text)
+            format!(
+                "  - On this line: \"{}\"\n    Feedback: {}",
+                block.chars().take(140).collect::<String>(),
+                text
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -371,8 +395,10 @@ async fn station_review_evolve(
     let history_block = if history_tail.is_empty() {
         String::new()
     } else {
-        format!("\nRECENT REVIEW HISTORY (for context, do not duplicate):\n{}\n",
-            history_tail.join("\n"))
+        format!(
+            "\nRECENT REVIEW HISTORY (for context, do not duplicate):\n{}\n",
+            history_tail.join("\n")
+        )
     };
 
     let meta = format!(
@@ -412,7 +438,11 @@ Output JSON only, no other text:
         script = script,
         comments_bullets = comments_bullets,
         history_block = history_block,
-        current_notes = if current_notes.trim().is_empty() { "(empty — first evolution)" } else { current_notes.trim() }
+        current_notes = if current_notes.trim().is_empty() {
+            "(empty — first evolution)"
+        } else {
+            current_notes.trim()
+        }
     );
 
     // Call Qwen
@@ -453,8 +483,9 @@ Output JSON only, no other text:
                     (Some(s), Some(e)) if e > s => &cleaned[s..=e],
                     _ => cleaned,
                 };
-                serde_json::from_str::<serde_json::Value>(json_str)
-                    .unwrap_or_else(|_| serde_json::json!({ "proposed_notes": [], "rationale": content }))
+                serde_json::from_str::<serde_json::Value>(json_str).unwrap_or_else(
+                    |_| serde_json::json!({ "proposed_notes": [], "rationale": content }),
+                )
             }
             Err(e) => serde_json::json!({ "error": format!("bad llm response: {}", e) }),
         },
@@ -485,13 +516,25 @@ fn extract_learned_notes(src: &str) -> String {
 async fn station_review_apply(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let notes_to_add: Vec<String> = body
         .get("notes")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
-    let rationale = body.get("rationale").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let rationale = body
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if notes_to_add.is_empty() {
         return axum::Json(serde_json::json!({ "ok": false, "error": "no notes provided" }));
     }
@@ -876,6 +919,8 @@ pub fn build_router(state: AppState) -> Router {
             "/swift/v2/writings",
             axum::routing::get(swift::list_writings),
         )
+        // Legacy mobile write endpoints. The canonical core processor contract
+        // is POST /api/anky/submit.
         .route(
             "/swift/v1/write",
             axum::routing::post(swift::submit_writing_unified),
@@ -1050,8 +1095,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/api/station/review/comments",
-            axum::routing::get(station_review_comments_get)
-                .post(station_review_comment_post),
+            axum::routing::get(station_review_comments_get).post(station_review_comment_post),
         )
         .route(
             "/api/station/review/comments/{episode}/{id}",
@@ -1180,9 +1224,11 @@ pub fn build_router(state: AppState) -> Router {
             "/auth/solana/verify",
             axum::routing::post(auth::solana_verify),
         )
-        // Anky protocol relay (encrypt → Irys → Solana)
+        // Legacy encrypted relay/proof path. The canonical core processor
+        // contract is POST /api/anky/submit.
         .route("/api/v1/relay", axum::routing::post(relay::relay_session))
-        // Writing
+        // Legacy browser/plaintext write path. Kept until the canonical submit
+        // cutover and deletion passes land.
         .route("/write", axum::routing::post(writing::process_writing))
         .route("/writings", axum::routing::get(writing::get_writings))
         .route("/writing/{id}", axum::routing::get(writing::view_writing))
@@ -1351,7 +1397,8 @@ pub fn build_router(state: AppState) -> Router {
             "/api/auth/qr/{id}/seal",
             axum::routing::post(qr_auth::seal_challenge),
         )
-        // Sealed sessions
+        // Legacy sealed-session storage paths. Kept during migration; not the
+        // canonical core write flow.
         .route(
             "/api/sessions/seal",
             axum::routing::post(sealed::seal_session),
@@ -1368,10 +1415,20 @@ pub fn build_router(state: AppState) -> Router {
             "/api/anky/public-key",
             axum::routing::get(sealed::get_enclave_public_key),
         )
+        // Canonical core processor submit path for session bundles.
         .route(
             "/api/anky/submit",
             axum::routing::post(writing::submit_anky_protocol),
         )
+        .route(
+            "/api/anky/sessions/{session_hash}",
+            axum::routing::get(writing::get_canonical_anky_session_status),
+        )
+        .route(
+            "/api/anky/sessions/{session_hash}/proof",
+            axum::routing::get(writing::get_canonical_anky_session_proof),
+        )
+        // Legacy sealed write path; not the canonical core submit contract.
         .route(
             "/api/sealed-write",
             axum::routing::post(sealed::sealed_write),

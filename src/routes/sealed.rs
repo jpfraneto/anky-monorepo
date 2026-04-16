@@ -2,6 +2,10 @@
 ///
 /// The backend stores ciphertext + encrypted keys as opaque blobs.
 /// It NEVER decrypts any sealed session data. The backend is blind.
+///
+/// These sealed paths are legacy/non-canonical for the Anky core write flow.
+/// The canonical core submit contract is `POST /api/anky/submit`.
+use crate::contracts::anky_submit;
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::extract::{Path, State};
@@ -459,8 +463,10 @@ pub struct EnclaveProcessResponse {
     pub hash_verified: bool, // enclave confirms SHA256(decrypted) matches session_hash
 }
 
-/// POST /api/sealed-write — the unified sealed write endpoint.
-/// Stores the encrypted envelope, logs on-chain, and relays to enclave for processing.
+/// POST /api/sealed-write — legacy sealed write endpoint.
+///
+/// This path remains live during the migration, but it is not the canonical
+/// core submit contract. It still carries its historical proof/runtime shape.
 pub async fn sealed_write(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -484,7 +490,10 @@ pub async fn sealed_write(
         .decode(&req.ephemeral_public_key)
         .map_err(|e| AppError::BadRequest(format!("invalid ephemeral key: {}", e)))?;
 
-    let is_anky = req.duration >= 480.0 && req.word_count >= 50;
+    // This legacy path still uses its historical 50-word threshold until the
+    // later cutover/removal pass. The canonical threshold is centralized in
+    // `contracts::anky_submit`.
+    let is_anky = anky_submit::legacy_sealed_write_qualifies_as_anky(req.duration, req.word_count);
 
     // Step 1: Store the sealed envelope (backend is blind)
     let sealed_id = uuid::Uuid::new_v4().to_string();

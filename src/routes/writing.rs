@@ -1,7 +1,12 @@
+use crate::contracts::anky_submit::{
+    self as submit_contract, AnkySessionBundleSubmitRequest, AnkySubmitAcceptedResponse,
+    AnkySubmitEventName,
+};
 use crate::error::AppError;
 use crate::models::{WriteRequest, WriteResponse};
+use crate::services::canonical_processor_state::CanonicalProcessorInput;
 use crate::state::AppState;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Html;
 use axum::Json;
@@ -52,18 +57,6 @@ fn get_or_create_user_id(
     };
     let cookie = crate::routes::auth::build_visitor_cookie(&id);
     (id, Some(cookie))
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AnkyProtocolSubmitRequest {
-    pub session_hash: String,
-    pub session: String,
-    pub duration_seconds: i64,
-    pub word_count: i32,
-    pub kingdom: String,
-    pub started_at: String,
-    #[serde(default)]
-    pub wallet_signature: Option<String>,
 }
 
 struct ParsedAnkyProtocolSession {
@@ -152,16 +145,22 @@ struct ProtocolAnkySnapshot {
     title: Option<String>,
     reflection: Option<String>,
     image_url: Option<String>,
-    solana_signature: Option<String>,
+    legacy_proof_receipt: Option<String>,
     reflection_status: String,
     image_status: String,
-    solana_status: String,
+    legacy_proof_status: String,
     processing_job_state: String,
+    accepted_at: Option<String>,
+    reflection_started_at: Option<String>,
+    reflection_completed_at: Option<String>,
+    image_completed_at: Option<String>,
+    proof_completed_at: Option<String>,
     last_error_stage: Option<String>,
     last_error_message: Option<String>,
     done_at: Option<String>,
     session_hash: String,
-    session_payload: String,
+    legacy_plaintext_retained: bool,
+    legacy_session_payload_retained: bool,
 }
 
 #[derive(Default)]
@@ -169,7 +168,7 @@ struct ProtocolReplayState {
     title_sent: bool,
     reflection_complete_sent: bool,
     image_sent: bool,
-    solana_sent: bool,
+    proof_sent: bool,
     done_sent: bool,
     error_sent: bool,
 }
@@ -180,12 +179,161 @@ struct ProtocolStreamMessage {
     data: serde_json::Value,
 }
 
-fn protocol_event(event: &'static str, data: serde_json::Value) -> ProtocolStreamMessage {
-    ProtocolStreamMessage { event, data }
+impl ProtocolAnkySnapshot {
+    fn proof_metadata(&self) -> submit_contract::ProofOfWritingMetadata {
+        submit_contract::proof_metadata_from_legacy_solana(
+            &self.session_hash,
+            &self.legacy_proof_status,
+            self.legacy_proof_receipt.as_deref(),
+        )
+    }
+
+    fn artifact_completeness(&self) -> submit_contract::CompletedAnkyArtifactValidation {
+        submit_contract::validate_completed_anky_artifacts(
+            self.title.as_deref(),
+            self.reflection.as_deref(),
+            self.image_url.as_deref(),
+            &self.proof_metadata(),
+        )
+    }
+
+    fn core_loop_status(&self) -> submit_contract::CanonicalCoreLoopStatus {
+        submit_contract::canonical_core_loop_status(
+            &self.reflection_status,
+            &self.image_status,
+            self.proof_metadata().proof_status,
+            self.last_error_stage.is_some(),
+            is_protocol_done(self),
+        )
+    }
+
+    fn readback_paths(&self) -> submit_contract::CanonicalProcessorReadbackPaths {
+        submit_contract::CanonicalProcessorReadbackPaths {
+            status_path: submit_contract::canonical_anky_session_status_path(&self.session_hash),
+            proof_path: submit_contract::canonical_anky_session_proof_path(&self.session_hash),
+        }
+    }
+
+    fn session_identity(&self) -> submit_contract::CanonicalProcessorSessionIdentity {
+        submit_contract::CanonicalProcessorSessionIdentity {
+            session_hash: self.session_hash.clone(),
+            anky_id: self.anky_id.clone(),
+            writing_session_id: self.writing_session_id.clone(),
+            duration_seconds: self.duration_seconds,
+            word_count: self.word_count,
+        }
+    }
+
+    fn lifecycle_timestamps(&self) -> submit_contract::CanonicalProcessorLifecycleTimestamps {
+        submit_contract::CanonicalProcessorLifecycleTimestamps {
+            accepted_at: self.accepted_at.clone(),
+            reflection_started_at: self.reflection_started_at.clone(),
+            reflection_completed_at: self.reflection_completed_at.clone(),
+            image_completed_at: self.image_completed_at.clone(),
+            proof_completed_at: self.proof_completed_at.clone(),
+            done_at: self.done_at.clone(),
+        }
+    }
+
+    fn proof_readback(&self) -> submit_contract::CanonicalProofReadback {
+        let proof_metadata = self.proof_metadata();
+        let artifact_status = submit_contract::validate_proof_metadata(&proof_metadata);
+        submit_contract::CanonicalProofReadback {
+            session_hash: proof_metadata.session_hash.clone(),
+            proof_status: proof_metadata.proof_status,
+            receipt: proof_metadata.receipt.clone(),
+            artifact_status,
+            completed_at: self.proof_completed_at.clone(),
+        }
+    }
+
+    fn canonical_status_snapshot(&self) -> submit_contract::CanonicalProcessorStatusSnapshot {
+        let artifact_completeness = self.artifact_completeness();
+        let proof_metadata = self.proof_metadata();
+        submit_contract::CanonicalProcessorStatusSnapshot {
+            core_loop_status: self.core_loop_status(),
+            reflection_status: self.reflection_status.clone(),
+            image_status: self.image_status.clone(),
+            processing_job_state: self.processing_job_state.clone(),
+            proof_status: proof_metadata.proof_status,
+            artifact_completeness: artifact_completeness.clone(),
+            artifact_set_valid: artifact_completeness.is_complete(),
+            timestamps: self.lifecycle_timestamps(),
+            last_error_stage: self.last_error_stage.clone(),
+            last_error_message: self.last_error_message.clone(),
+        }
+    }
+
+    fn canonical_artifacts(&self) -> submit_contract::CanonicalProcessorArtifacts {
+        submit_contract::CanonicalProcessorArtifacts {
+            title: trim_non_empty(self.title.as_deref()),
+            reflection: trim_non_empty(self.reflection.as_deref()),
+            image: submit_contract::CanonicalProcessorImageArtifact {
+                status: self.image_status.clone(),
+                image_url: protocol_image_public_url(self.image_url.as_deref()),
+                artifact_ref: trim_non_empty(self.image_url.as_deref()),
+            },
+        }
+    }
+
+    fn legacy_retention_boundary(&self) -> submit_contract::LegacyProcessorRetentionBoundary {
+        submit_contract::LegacyProcessorRetentionBoundary {
+            plaintext_writing_retained: self.legacy_plaintext_retained,
+            session_payload_retained: self.legacy_session_payload_retained,
+        }
+    }
+
+    fn canonical_session_snapshot(&self) -> submit_contract::CanonicalProcessorSessionSnapshot {
+        submit_contract::CanonicalProcessorSessionSnapshot {
+            session: self.session_identity(),
+            paths: self.readback_paths(),
+            status: self.canonical_status_snapshot(),
+            artifacts: self.canonical_artifacts(),
+            proof: self.proof_readback(),
+        }
+    }
+}
+
+fn protocol_event(event: AnkySubmitEventName, data: serde_json::Value) -> ProtocolStreamMessage {
+    ProtocolStreamMessage {
+        event: event.as_str(),
+        data,
+    }
 }
 
 fn derived_protocol_kingdom(started_at: &chrono::DateTime<chrono::Utc>) -> String {
     kingdom_for_epoch_ms(started_at.timestamp_millis()).to_string()
+}
+
+fn trim_non_empty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn canonical_processor_input(
+    req: &AnkySessionBundleSubmitRequest,
+    parsed: &ParsedAnkyProtocolSession,
+) -> CanonicalProcessorInput {
+    CanonicalProcessorInput {
+        session_hash: req.session_hash.clone(),
+        writing_text: parsed.text.clone(),
+        duration_seconds: req.duration_seconds,
+        word_count: req.word_count,
+        started_at: req.started_at.clone(),
+        kingdom: req.kingdom.clone(),
+    }
+}
+
+fn protocol_image_public_url(image_path: Option<&str>) -> Option<String> {
+    trim_non_empty(image_path).map(|path| {
+        if path.starts_with("http://") || path.starts_with("https://") || path.starts_with('/') {
+            path
+        } else {
+            format!("/data/images/{}", path)
+        }
+    })
 }
 
 async fn protocol_submit_user_id(
@@ -198,9 +346,10 @@ async fn protocol_submit_user_id(
     }
 
     crate::routes::auth::authenticated_user_id_from_jar(state, jar).ok_or_else(|| {
-        AppError::Unauthorized(
-            "an authenticated session is required for /api/anky/submit".into(),
-        )
+        AppError::Unauthorized(format!(
+            "an authenticated session is required for {}",
+            submit_contract::CANONICAL_ANKY_SUBMIT_PATH
+        ))
     })
 }
 
@@ -250,11 +399,17 @@ async fn load_protocol_snapshot(
             COALESCE(a.image_status, 'pending'),
             COALESCE(a.solana_status, 'pending'),
             COALESCE(a.processing_job_state, 'idle'),
+            a.accepted_at,
+            a.reflection_started_at,
+            a.reflection_completed_at,
+            a.image_completed_at,
+            a.solana_completed_at,
             a.last_error_stage,
             a.last_error_message,
             a.done_at,
             a.session_hash,
-            COALESCE(a.session_payload, '')
+            CASE WHEN COALESCE(ws.content, '') <> '' THEN TRUE ELSE FALSE END,
+            CASE WHEN COALESCE(a.session_payload, '') <> '' THEN TRUE ELSE FALSE END
         FROM ankys a
         LEFT JOIN writing_sessions ws ON ws.id = a.writing_session_id
         WHERE a.user_id = $1
@@ -276,25 +431,39 @@ async fn load_protocol_snapshot(
         title: row.get::<Option<String>, _>(5),
         reflection: row.get::<Option<String>, _>(6),
         image_url: row.get::<Option<String>, _>(7),
-        solana_signature: row.get::<Option<String>, _>(8),
+        legacy_proof_receipt: row.get::<Option<String>, _>(8),
         reflection_status: row.get::<String, _>(9),
         image_status: row.get::<String, _>(10),
-        solana_status: row.get::<String, _>(11),
+        legacy_proof_status: row.get::<String, _>(11),
         processing_job_state: row.get::<String, _>(12),
-        last_error_stage: row.get::<Option<String>, _>(13),
-        last_error_message: row.get::<Option<String>, _>(14),
-        done_at: row.get::<Option<String>, _>(15),
-        session_hash: row.get::<String, _>(16),
-        session_payload: row.get::<String, _>(17),
+        accepted_at: row.get::<Option<String>, _>(13),
+        reflection_started_at: row.get::<Option<String>, _>(14),
+        reflection_completed_at: row.get::<Option<String>, _>(15),
+        image_completed_at: row.get::<Option<String>, _>(16),
+        proof_completed_at: row.get::<Option<String>, _>(17),
+        last_error_stage: row.get::<Option<String>, _>(18),
+        last_error_message: row.get::<Option<String>, _>(19),
+        done_at: row.get::<Option<String>, _>(20),
+        session_hash: row.get::<String, _>(21),
+        legacy_plaintext_retained: row.get::<bool, _>(22),
+        legacy_session_payload_retained: row.get::<bool, _>(23),
     }))
 }
 
 async fn upsert_protocol_submission(
     state: &AppState,
     user_id: &str,
-    req: &AnkyProtocolSubmitRequest,
+    req: &AnkySessionBundleSubmitRequest,
     parsed: &ParsedAnkyProtocolSession,
 ) -> Result<ProtocolAnkySnapshot, AppError> {
+    // Canonical submit keeps verified plaintext only in short-lived processor
+    // state so the database stores processor metadata/status, not archive text.
+    crate::services::canonical_processor_state::store_canonical_processor_input(
+        &state.config.redis_url,
+        &canonical_processor_input(req, parsed),
+    )
+    .await?;
+
     let mut tx = state.db.begin().await?;
 
     sqlx::query("INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING")
@@ -317,7 +486,8 @@ async fn upsert_protocol_submission(
             status,
             pause_used,
             session_token,
-            session_hash
+            session_hash,
+            content_deleted_at
         ) VALUES (
             $1,
             $2,
@@ -331,7 +501,8 @@ async fn upsert_protocol_submission(
             'completed',
             0,
             NULL,
-            $7
+            $7,
+            anky_now()
         )
         ON CONFLICT (user_id, session_hash) WHERE session_hash IS NOT NULL DO UPDATE SET
             content = EXCLUDED.content,
@@ -339,13 +510,14 @@ async fn upsert_protocol_submission(
             word_count = EXCLUDED.word_count,
             is_anky = 1,
             keystroke_deltas = COALESCE(EXCLUDED.keystroke_deltas, writing_sessions.keystroke_deltas),
-            status = 'completed'
+            status = 'completed',
+            content_deleted_at = COALESCE(writing_sessions.content_deleted_at, EXCLUDED.content_deleted_at)
         RETURNING id
         "#,
     )
     .bind(uuid::Uuid::new_v4().to_string())
     .bind(user_id)
-    .bind(&parsed.text)
+    .bind("")
     .bind(req.duration_seconds as f64)
     .bind(req.word_count)
     .bind(
@@ -358,7 +530,7 @@ async fn upsert_protocol_submission(
     .get::<String, _>(0);
 
     let accepted_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let snapshot = sqlx::query(
+    sqlx::query(
         r#"
         INSERT INTO ankys (
             id,
@@ -407,55 +579,24 @@ async fn upsert_protocol_submission(
             writing_session_id = COALESCE(ankys.writing_session_id, EXCLUDED.writing_session_id),
             session_payload = EXCLUDED.session_payload,
             accepted_at = COALESCE(ankys.accepted_at, EXCLUDED.accepted_at)
-        RETURNING
-            id,
-            writing_session_id,
-            title,
-            reflection,
-            image_path,
-            solana_mint_tx,
-            COALESCE(reflection_status, 'pending'),
-            COALESCE(image_status, 'pending'),
-            COALESCE(solana_status, 'pending'),
-            COALESCE(processing_job_state, 'idle'),
-            last_error_stage,
-            last_error_message,
-            done_at,
-            session_hash,
-            COALESCE(session_payload, '')
         "#,
     )
     .bind(uuid::Uuid::new_v4().to_string())
     .bind(&writing_session_id)
     .bind(user_id)
     .bind(&req.session_hash)
-    .bind(&req.session)
+    .bind(Option::<&str>::None)
     .bind(&accepted_at)
-    .fetch_one(&mut *tx)
+    .execute(&mut *tx)
     .await?;
 
     tx.commit().await?;
 
-    Ok(ProtocolAnkySnapshot {
-        anky_id: snapshot.get::<String, _>(0),
-        user_id: user_id.to_string(),
-        writing_session_id: snapshot.get::<String, _>(1),
-        duration_seconds: req.duration_seconds,
-        word_count: req.word_count,
-        title: snapshot.get::<Option<String>, _>(2),
-        reflection: snapshot.get::<Option<String>, _>(3),
-        image_url: snapshot.get::<Option<String>, _>(4),
-        solana_signature: snapshot.get::<Option<String>, _>(5),
-        reflection_status: snapshot.get::<String, _>(6),
-        image_status: snapshot.get::<String, _>(7),
-        solana_status: snapshot.get::<String, _>(8),
-        processing_job_state: snapshot.get::<String, _>(9),
-        last_error_stage: snapshot.get::<Option<String>, _>(10),
-        last_error_message: snapshot.get::<Option<String>, _>(11),
-        done_at: snapshot.get::<Option<String>, _>(12),
-        session_hash: snapshot.get::<String, _>(13),
-        session_payload: snapshot.get::<String, _>(14),
-    })
+    load_protocol_snapshot(state, user_id, &req.session_hash)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal("protocol submission snapshot missing after commit".into())
+        })
 }
 
 async fn try_claim_protocol_reflection(state: &AppState, anky_id: &str) -> Result<bool, AppError> {
@@ -549,13 +690,15 @@ async fn fail_protocol_stage(
 async fn ensure_protocol_processing_enqueued(
     state: &AppState,
     snapshot: &ProtocolAnkySnapshot,
-    writing_text: &str,
 ) -> Result<bool, AppError> {
     if snapshot.reflection_status != "complete" {
         return Ok(false);
     }
     if snapshot.image_status == "complete"
-        && (snapshot.solana_status == "complete" || snapshot.solana_status == "skipped")
+        && matches!(
+            snapshot.legacy_proof_status.as_str(),
+            "complete" | "skipped"
+        )
     {
         return Ok(false);
     }
@@ -585,20 +728,20 @@ async fn ensure_protocol_processing_enqueued(
         return Ok(false);
     }
 
-    let is_pro = sqlx::query_scalar::<_, i32>("SELECT COALESCE(is_pro, 0) FROM users WHERE id = $1")
-        .bind(&snapshot.user_id)
-        .fetch_optional(&state.db)
-        .await?
-        .unwrap_or(0)
-        != 0;
+    let is_pro =
+        sqlx::query_scalar::<_, i32>("SELECT COALESCE(is_pro, 0) FROM users WHERE id = $1")
+            .bind(&snapshot.user_id)
+            .fetch_optional(&state.db)
+            .await?
+            .unwrap_or(0)
+            != 0;
 
     match crate::services::redis_queue::enqueue_job(
         &state.config.redis_url,
-        &crate::state::GpuJob::AnkyImage {
+        &crate::state::GpuJob::CanonicalAnkyImage {
             anky_id: snapshot.anky_id.clone(),
             session_id: snapshot.writing_session_id.clone(),
             user_id: snapshot.user_id.clone(),
-            writing: writing_text.to_string(),
         },
         is_pro,
     )
@@ -615,19 +758,20 @@ async fn ensure_protocol_processing_enqueued(
 pub async fn maybe_enqueue_protocol_processing_for_anky(
     state: &AppState,
     anky_id: &str,
-    writing_text: &str,
 ) -> Result<bool, AppError> {
     let Some(snapshot) = load_protocol_snapshot_by_anky_id(state, anky_id).await? else {
         return Ok(false);
     };
 
-    ensure_protocol_processing_enqueued(state, &snapshot, writing_text).await
+    ensure_protocol_processing_enqueued(state, &snapshot).await
 }
 
 fn normalize_protocol_title(raw: &str) -> String {
-    let title = crate::services::claude::parse_title_reflection(&format!("{}\n", raw)).0;
+    let title = submit_contract::normalize_title_candidate(
+        &crate::services::claude::parse_title_reflection(&format!("{}\n", raw)).0,
+    );
     if title.is_empty() {
-        "untitled reflection".to_string()
+        submit_contract::CANONICAL_FALLBACK_TITLE.to_string()
     } else {
         title
     }
@@ -636,7 +780,11 @@ fn normalize_protocol_title(raw: &str) -> String {
 fn is_protocol_done(snapshot: &ProtocolAnkySnapshot) -> bool {
     snapshot.done_at.is_some()
         || (snapshot.image_status == "complete"
-            && (snapshot.solana_status == "complete" || snapshot.solana_status == "skipped"))
+            && matches!(
+                snapshot.proof_metadata().proof_status,
+                submit_contract::CanonicalProofStatus::Complete
+                    | submit_contract::CanonicalProofStatus::Skipped
+            ))
 }
 
 async fn send_protocol_message(
@@ -655,7 +803,11 @@ async fn emit_protocol_replay_events(
         if !replay_state.title_sent {
             if let Some(title) = snapshot.title.clone().filter(|title| !title.is_empty()) {
                 replay_state.title_sent = true;
-                send_protocol_message(tx, protocol_event("title", json!({ "title": title }))).await;
+                send_protocol_message(
+                    tx,
+                    protocol_event(AnkySubmitEventName::Title, json!({ "title": title })),
+                )
+                .await;
             }
         }
 
@@ -664,7 +816,10 @@ async fn emit_protocol_replay_events(
                 replay_state.reflection_complete_sent = true;
                 send_protocol_message(
                     tx,
-                    protocol_event("reflection_complete", json!({ "reflection": reflection })),
+                    protocol_event(
+                        AnkySubmitEventName::ReflectionComplete,
+                        json!({ "reflection": reflection }),
+                    ),
                 )
                 .await;
             }
@@ -676,32 +831,52 @@ async fn emit_protocol_replay_events(
             replay_state.image_sent = true;
             send_protocol_message(
                 tx,
-                protocol_event("image_url", json!({ "image_url": image_url })),
+                protocol_event(
+                    AnkySubmitEventName::ImageUrl,
+                    json!({ "image_url": image_url }),
+                ),
             )
             .await;
         }
     }
 
-    if matches!(snapshot.solana_status.as_str(), "complete" | "skipped") && !replay_state.solana_sent {
-        if let Some(signature) = snapshot.solana_signature.clone() {
-            replay_state.solana_sent = true;
-            send_protocol_message(tx, protocol_event("solana", json!({ "signature": signature })))
-                .await;
-        }
+    let proof_metadata = snapshot.proof_metadata();
+    if proof_metadata.proof_status.is_terminal() && !replay_state.proof_sent {
+        replay_state.proof_sent = true;
+        send_protocol_message(
+            tx,
+            protocol_event(
+                AnkySubmitEventName::Proof,
+                json!({ "proof_metadata": proof_metadata }),
+            ),
+        )
+        .await;
     }
 
     if is_protocol_done(snapshot) && !replay_state.done_sent {
         replay_state.done_sent = true;
-        send_protocol_message(tx, protocol_event("done", json!({ "anky_id": snapshot.anky_id })))
-            .await;
+        send_protocol_message(
+            tx,
+            protocol_event(
+                AnkySubmitEventName::Done,
+                json!({
+                    "anky_id": snapshot.anky_id.clone(),
+                    "artifact_completeness": snapshot.artifact_completeness(),
+                }),
+            ),
+        )
+        .await;
     }
 
-    if snapshot.last_error_stage.is_some() && !replay_state.error_sent && !is_protocol_done(snapshot) {
+    if snapshot.last_error_stage.is_some()
+        && !replay_state.error_sent
+        && !is_protocol_done(snapshot)
+    {
         replay_state.error_sent = true;
         send_protocol_message(
             tx,
             protocol_event(
-                "error",
+                AnkySubmitEventName::Error,
                 json!({
                     "stage": snapshot.last_error_stage.clone().unwrap_or_else(|| "persist".to_string()),
                     "retryable": true,
@@ -722,8 +897,13 @@ async fn run_protocol_reflection_generation(
     let (raw_tx, mut raw_rx) = tokio::sync::mpsc::channel::<String>(64);
     let config = state.config.clone();
     let reflection_handle = tokio::spawn(async move {
-        crate::services::claude::stream_title_and_reflection_best(&config, &writing_text, raw_tx, None)
-            .await
+        crate::services::claude::stream_title_and_reflection_best(
+            &config,
+            &writing_text,
+            raw_tx,
+            None,
+        )
+        .await
     });
 
     let mut buffered_title = String::new();
@@ -734,7 +914,10 @@ async fn run_protocol_reflection_generation(
             if !chunk.is_empty() {
                 send_protocol_message(
                     &tx,
-                    protocol_event("reflection_chunk", json!({ "text": chunk })),
+                    protocol_event(
+                        AnkySubmitEventName::ReflectionChunk,
+                        json!({ "text": chunk }),
+                    ),
                 )
                 .await;
             }
@@ -744,14 +927,21 @@ async fn run_protocol_reflection_generation(
         buffered_title.push_str(&chunk);
         if let Some(newline_pos) = buffered_title.find('\n') {
             let title = normalize_protocol_title(&buffered_title[..newline_pos]);
-            send_protocol_message(&tx, protocol_event("title", json!({ "title": title }))).await;
+            send_protocol_message(
+                &tx,
+                protocol_event(AnkySubmitEventName::Title, json!({ "title": title })),
+            )
+            .await;
             title_sent = true;
 
             let remainder = buffered_title[newline_pos + 1..].to_string();
             if !remainder.trim().is_empty() {
                 send_protocol_message(
                     &tx,
-                    protocol_event("reflection_chunk", json!({ "text": remainder })),
+                    protocol_event(
+                        AnkySubmitEventName::ReflectionChunk,
+                        json!({ "text": remainder }),
+                    ),
                 )
                 .await;
             }
@@ -763,21 +953,28 @@ async fn run_protocol_reflection_generation(
         Ok(Ok((full_text, _input_tokens, _output_tokens, _model, _provider))) => {
             let (title, reflection) = crate::services::claude::parse_title_reflection(&full_text);
             let title = if title.is_empty() {
-                "untitled reflection".to_string()
+                submit_contract::CANONICAL_FALLBACK_TITLE.to_string()
             } else {
-                title
+                submit_contract::normalize_title_candidate(&title)
             };
 
             if !title_sent {
-                send_protocol_message(&tx, protocol_event("title", json!({ "title": title.clone() })))
-                    .await;
+                send_protocol_message(
+                    &tx,
+                    protocol_event(
+                        AnkySubmitEventName::Title,
+                        json!({ "title": title.clone() }),
+                    ),
+                )
+                .await;
             }
 
-            if let Err(err) = complete_protocol_reflection(&state, &anky_id, &title, &reflection).await {
+            if let Err(err) =
+                complete_protocol_reflection(&state, &anky_id, &title, &reflection).await
+            {
                 let _ = fail_protocol_stage(&state, &anky_id, "persist", &err.to_string()).await;
                 return;
             }
-
         }
         Ok(Err(err)) => {
             let _ = fail_protocol_stage(&state, &anky_id, "claude", &err.to_string()).await;
@@ -807,7 +1004,7 @@ async fn run_protocol_submit_stream(
         send_protocol_message(
             &tx,
             protocol_event(
-                "error",
+                AnkySubmitEventName::Error,
                 json!({
                     "stage": "persist",
                     "retryable": true,
@@ -821,7 +1018,13 @@ async fn run_protocol_submit_stream(
 
     send_protocol_message(
         &tx,
-        protocol_event("accepted", json!({ "anky_id": initial_snapshot.anky_id })),
+        protocol_event(
+            AnkySubmitEventName::Accepted,
+            json!({
+                "anky_id": initial_snapshot.anky_id,
+                "canonical_path": submit_contract::CANONICAL_ANKY_SUBMIT_PATH,
+            }),
+        ),
     )
     .await;
 
@@ -833,7 +1036,7 @@ async fn run_protocol_submit_stream(
                 send_protocol_message(
                     &tx,
                     protocol_event(
-                        "error",
+                        AnkySubmitEventName::Error,
                         json!({
                             "stage": "persist",
                             "retryable": true,
@@ -865,13 +1068,15 @@ async fn run_protocol_submit_stream(
                 }
                 Ok(false) => {}
                 Err(err) => {
-                    let _ = fail_protocol_stage(&state, &snapshot.anky_id, "persist", &err.to_string()).await;
+                    let _ =
+                        fail_protocol_stage(&state, &snapshot.anky_id, "persist", &err.to_string())
+                            .await;
                 }
             }
         }
 
         if snapshot.reflection_status == "complete" {
-            let _ = ensure_protocol_processing_enqueued(&state, &snapshot, &writing_text).await;
+            let _ = ensure_protocol_processing_enqueued(&state, &snapshot).await;
         }
 
         if started.elapsed() >= Duration::from_secs(180) {
@@ -902,11 +1107,17 @@ async fn load_protocol_snapshot_by_anky_id(
             COALESCE(a.image_status, 'pending'),
             COALESCE(a.solana_status, 'pending'),
             COALESCE(a.processing_job_state, 'idle'),
+            a.accepted_at,
+            a.reflection_started_at,
+            a.reflection_completed_at,
+            a.image_completed_at,
+            a.solana_completed_at,
             a.last_error_stage,
             a.last_error_message,
             a.done_at,
             COALESCE(a.session_hash, ''),
-            COALESCE(a.session_payload, '')
+            CASE WHEN COALESCE(ws.content, '') <> '' THEN TRUE ELSE FALSE END,
+            CASE WHEN COALESCE(a.session_payload, '') <> '' THEN TRUE ELSE FALSE END
         FROM ankys a
         LEFT JOIN writing_sessions ws ON ws.id = a.writing_session_id
         WHERE a.id = $1
@@ -927,17 +1138,42 @@ async fn load_protocol_snapshot_by_anky_id(
         title: row.get::<Option<String>, _>(5),
         reflection: row.get::<Option<String>, _>(6),
         image_url: row.get::<Option<String>, _>(7),
-        solana_signature: row.get::<Option<String>, _>(8),
+        legacy_proof_receipt: row.get::<Option<String>, _>(8),
         reflection_status: row.get::<String, _>(9),
         image_status: row.get::<String, _>(10),
-        solana_status: row.get::<String, _>(11),
+        legacy_proof_status: row.get::<String, _>(11),
         processing_job_state: row.get::<String, _>(12),
-        last_error_stage: row.get::<Option<String>, _>(13),
-        last_error_message: row.get::<Option<String>, _>(14),
-        done_at: row.get::<Option<String>, _>(15),
-        session_hash: row.get::<String, _>(16),
-        session_payload: row.get::<String, _>(17),
+        accepted_at: row.get::<Option<String>, _>(13),
+        reflection_started_at: row.get::<Option<String>, _>(14),
+        reflection_completed_at: row.get::<Option<String>, _>(15),
+        image_completed_at: row.get::<Option<String>, _>(16),
+        proof_completed_at: row.get::<Option<String>, _>(17),
+        last_error_stage: row.get::<Option<String>, _>(18),
+        last_error_message: row.get::<Option<String>, _>(19),
+        done_at: row.get::<Option<String>, _>(20),
+        session_hash: row.get::<String, _>(21),
+        legacy_plaintext_retained: row.get::<bool, _>(22),
+        legacy_session_payload_retained: row.get::<bool, _>(23),
     }))
+}
+
+pub async fn load_canonical_processor_writing_for_anky(
+    state: &AppState,
+    anky_id: &str,
+) -> Result<Option<String>, AppError> {
+    let Some(snapshot) = load_protocol_snapshot_by_anky_id(state, anky_id).await? else {
+        return Ok(None);
+    };
+
+    Ok(
+        crate::services::canonical_processor_state::load_canonical_processor_input(
+            &state.config.redis_url,
+            &snapshot.session_hash,
+        )
+        .await?
+        .map(|input| input.writing_text)
+        .filter(|writing_text| !writing_text.trim().is_empty()),
+    )
 }
 
 pub async fn resume_protocol_anky_job(
@@ -950,6 +1186,31 @@ pub async fn resume_protocol_anky_job(
     let Some(initial_snapshot) = load_protocol_snapshot_by_anky_id(state, anky_id).await? else {
         return Ok(false);
     };
+
+    let processor_input =
+        crate::services::canonical_processor_state::load_canonical_processor_input(
+            &state.config.redis_url,
+            &initial_snapshot.session_hash,
+        )
+        .await?;
+    let processor_writing = processor_input
+        .as_ref()
+        .map(|input| input.writing_text.trim())
+        .filter(|writing_text| !writing_text.is_empty());
+    let writing_text = processor_writing.unwrap_or(writing_text);
+
+    if writing_text.trim().is_empty() {
+        fail_protocol_stage(
+            state,
+            anky_id,
+            "persist",
+            "canonical processor input expired before image/proof completion",
+        )
+        .await?;
+        return Err(AppError::Internal(
+            "canonical processor input missing for queued resume".into(),
+        ));
+    }
 
     let claimed = sqlx::query(
         r#"
@@ -1015,6 +1276,7 @@ pub async fn resume_protocol_anky_job(
             SET image_status = 'complete',
                 image_completed_at = anky_now(),
                 status = CASE
+                    -- `solana_status` is the legacy proof column until the proof cutover PR.
                     WHEN COALESCE(solana_status, 'pending') IN ('complete', 'skipped') THEN 'complete'
                     ELSE 'generating'
                 END,
@@ -1028,11 +1290,15 @@ pub async fn resume_protocol_anky_job(
         .await?;
     }
 
-    let Some(snapshot_after_image) = load_protocol_snapshot_by_anky_id(state, anky_id).await? else {
+    let Some(snapshot_after_image) = load_protocol_snapshot_by_anky_id(state, anky_id).await?
+    else {
         return Ok(true);
     };
 
-    if !matches!(snapshot_after_image.solana_status.as_str(), "complete" | "skipped") {
+    if !matches!(
+        snapshot_after_image.legacy_proof_status.as_str(),
+        "complete" | "skipped"
+    ) {
         if state.config.solana_mint_worker_url.is_empty() {
             sqlx::query(
                 r#"
@@ -1124,12 +1390,17 @@ pub async fn resume_protocol_anky_job(
     Ok(true)
 }
 
+/// POST /api/anky/submit — canonical core processor contract.
+///
+/// This handler is the contract center for the canonical session-bundle submit
+/// path. Legacy write, proof, and archive paths remain live elsewhere until the
+/// later cutover and deletion PRs land.
 pub async fn submit_anky_protocol(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
-    Json(req): Json<AnkyProtocolSubmitRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    Json(req): Json<AnkySessionBundleSubmitRequest>,
+) -> Result<Json<AnkySubmitAcceptedResponse>, AppError> {
     let user_id = protocol_submit_user_id(&state, &headers, &jar).await?;
     validate_protocol_idempotency_headers(&headers, &req.session_hash)?;
 
@@ -1152,6 +1423,14 @@ pub async fn submit_anky_protocol(
         return Err(AppError::BadRequest(format!(
             "word_count mismatch: expected {}, got {}",
             parsed.word_count, req.word_count
+        )));
+    }
+    if !submit_contract::qualifies_as_canonical_anky(req.duration_seconds, req.word_count) {
+        return Err(AppError::BadRequest(format!(
+            "{} only accepts completed Ankys: duration_seconds must be >= {} and word_count must be >= {}",
+            submit_contract::CANONICAL_ANKY_SUBMIT_PATH,
+            submit_contract::CANONICAL_ANKY_MIN_DURATION_SECONDS,
+            submit_contract::CANONICAL_ANKY_MIN_WORD_COUNT,
         )));
     }
 
@@ -1182,19 +1461,86 @@ pub async fn submit_anky_protocol(
     }
 
     let snapshot = upsert_protocol_submission(&state, &user_id, &req, &parsed).await?;
+    let proof_metadata = snapshot.proof_metadata();
+    let artifact_completeness = snapshot.artifact_completeness();
+    let core_loop_status = snapshot.core_loop_status();
+    let readback_paths = snapshot.readback_paths();
+    let artifact_set_valid = artifact_completeness.is_complete();
 
-    Ok(Json(json!({
-        "ok": true,
-        "accepted": true,
-        "isAnky": true,
-        "ankyId": snapshot.anky_id,
-        "writingSessionId": snapshot.writing_session_id,
-        "reflectionStatus": snapshot.reflection_status,
-        "imageStatus": snapshot.image_status,
-        "solanaStatus": snapshot.solana_status,
-    })))
+    Ok(Json(AnkySubmitAcceptedResponse {
+        ok: true,
+        accepted: true,
+        is_anky: true,
+        canonical_path: submit_contract::CANONICAL_ANKY_SUBMIT_PATH,
+        core_loop: submit_contract::CANONICAL_CORE_LOOP,
+        session_hash: snapshot.session_hash.clone(),
+        anky_id: snapshot.anky_id,
+        writing_session_id: snapshot.writing_session_id,
+        status_path: readback_paths.status_path,
+        proof_path: readback_paths.proof_path,
+        core_loop_status,
+        artifact_completeness,
+        artifact_set_valid,
+        proof_metadata,
+        reflection_status: snapshot.reflection_status,
+        image_status: snapshot.image_status,
+        solana_status: snapshot.legacy_proof_status,
+    }))
 }
 
+/// GET /api/anky/sessions/{session_hash} — canonical processor snapshot/readback.
+///
+/// This additive route lets clients retrieve status, artifacts, and proof state
+/// for the canonical submit lifecycle without reading backend plaintext history.
+pub async fn get_canonical_anky_session_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Path(session_hash): Path<String>,
+) -> Result<Json<submit_contract::CanonicalProcessorStatusResponse>, AppError> {
+    let user_id = protocol_submit_user_id(&state, &headers, &jar).await?;
+    let snapshot = load_protocol_snapshot(&state, &user_id, &session_hash)
+        .await?
+        .ok_or_else(|| AppError::NotFound("canonical processor session not found".into()))?;
+
+    Ok(Json(submit_contract::CanonicalProcessorStatusResponse {
+        ok: true,
+        canonical_path: submit_contract::CANONICAL_ANKY_SUBMIT_PATH,
+        core_loop: submit_contract::CANONICAL_CORE_LOOP,
+        snapshot: snapshot.canonical_session_snapshot(),
+        legacy_retention: snapshot.legacy_retention_boundary(),
+    }))
+}
+
+/// GET /api/anky/sessions/{session_hash}/proof — canonical proof readback.
+///
+/// This additive route exposes the one canonical proof object rooted in
+/// `session_hash`, even while legacy proof storage remains in place underneath.
+pub async fn get_canonical_anky_session_proof(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Path(session_hash): Path<String>,
+) -> Result<Json<submit_contract::CanonicalProofResponse>, AppError> {
+    let user_id = protocol_submit_user_id(&state, &headers, &jar).await?;
+    let snapshot = load_protocol_snapshot(&state, &user_id, &session_hash)
+        .await?
+        .ok_or_else(|| AppError::NotFound("canonical processor proof not found".into()))?;
+
+    Ok(Json(submit_contract::CanonicalProofResponse {
+        ok: true,
+        canonical_path: submit_contract::CANONICAL_ANKY_SUBMIT_PATH,
+        core_loop: submit_contract::CANONICAL_CORE_LOOP,
+        session: snapshot.session_identity(),
+        paths: snapshot.readback_paths(),
+        proof: snapshot.proof_readback(),
+    }))
+}
+
+/// POST /write — legacy browser/plaintext write path.
+///
+/// The canonical core write contract is `POST /api/anky/submit`. This endpoint
+/// stays live for older browser and miniapp flows until the cutover PR.
 pub async fn process_writing(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1319,12 +1665,7 @@ pub async fn process_writing(
         .as_ref()
         .map(|d| serde_json::to_string(d).unwrap_or_default());
 
-    let mut is_anky = req.duration >= 480.0;
-
-    // Downgrade: 8+ minutes but fewer than 300 words is not a real anky
-    if is_anky && word_count < 300 {
-        is_anky = false;
-    }
+    let is_anky = submit_contract::qualifies_as_canonical_anky_f64(req.duration, word_count);
 
     let session_id = req
         .session_id
@@ -1933,6 +2274,8 @@ mod tests {
     use crate::routes::simulations::SlotTracker;
     use crate::services::stream::new_frame_buffer;
     use crate::state::{AppState, LiveState, RateLimiter};
+    use axum::http::HeaderMap;
+    use axum_extra::extract::cookie::CookieJar;
     use redis::AsyncCommands;
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Arc, LazyLock, Mutex as StdMutex};
@@ -1949,7 +2292,9 @@ mod tests {
         config.solana_mint_worker_url.clear();
         config.solana_mint_worker_secret.clear();
 
-        let db = crate::db::create_pool(TEST_DATABASE_URL).await.expect("db pool");
+        let db = crate::db::create_pool(TEST_DATABASE_URL)
+            .await
+            .expect("db pool");
         let (log_tx, _) = broadcast::channel(64);
         let (live_status_tx, _) = broadcast::channel(16);
         let (live_text_tx, _) = broadcast::channel(16);
@@ -2032,6 +2377,42 @@ mod tests {
             .expect("delete users");
     }
 
+    async fn insert_test_user(state: &AppState, user_id: &str) {
+        sqlx::query("INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(user_id)
+            .execute(&state.db)
+            .await
+            .expect("insert user");
+    }
+
+    fn create_bearer_headers(state: &AppState, user_id: &str) -> (HeaderMap, String) {
+        let token = uuid::Uuid::new_v4().to_string();
+        let db = crate::db::conn(&state.db).expect("db conn");
+        crate::db::queries::create_auth_session(&db, &token, user_id, None, "2999-01-01 00:00:00")
+            .expect("create auth session");
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            format!("Bearer {}", token)
+                .parse()
+                .expect("authorization header"),
+        );
+        (headers, token)
+    }
+
+    fn cleanup_auth_session(state: &AppState, token: &str) {
+        let db = crate::db::conn(&state.db).expect("db conn");
+        crate::db::queries::delete_auth_session(&db, token).expect("delete auth session");
+    }
+
+    fn canonical_submit_text() -> String {
+        std::iter::repeat("sacred")
+            .take(900)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     fn build_session(text: &str) -> String {
         let mut lines = Vec::new();
         for (idx, ch) in text.chars().enumerate() {
@@ -2045,16 +2426,17 @@ mod tests {
         lines.join("\n")
     }
 
-    fn build_protocol_request(text: &str) -> AnkyProtocolSubmitRequest {
+    fn build_protocol_request(text: &str) -> AnkySessionBundleSubmitRequest {
         let started_at = chrono::DateTime::parse_from_rfc3339("2026-04-14T12:00:00Z")
             .unwrap()
             .with_timezone(&chrono::Utc);
         let session = build_session(text);
         let session_hash = format!("{:x}", Sha256::digest(session.as_bytes()));
         let word_count = text.split_whitespace().count() as i32;
-        let duration_seconds = ((text.chars().count().saturating_sub(1) as f64) * 0.1).round() as i64;
+        let duration_seconds =
+            ((text.chars().count().saturating_sub(1) as f64) * 0.1).round() as i64;
 
-        AnkyProtocolSubmitRequest {
+        AnkySessionBundleSubmitRequest {
             session_hash,
             session,
             duration_seconds,
@@ -2065,7 +2447,9 @@ mod tests {
         }
     }
 
-    async fn collect_replay_events(snapshot: &ProtocolAnkySnapshot) -> Vec<(String, serde_json::Value)> {
+    async fn collect_replay_events(
+        snapshot: &ProtocolAnkySnapshot,
+    ) -> Vec<(String, serde_json::Value)> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<ProtocolStreamMessage>(16);
         let mut replay_state = ProtocolReplayState::default();
         emit_protocol_replay_events(&tx, &mut replay_state, snapshot).await;
@@ -2080,7 +2464,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn first_submit_creates_one_logical_anky() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2097,13 +2483,14 @@ mod tests {
             .expect("load")
             .expect("snapshot");
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
         let writing_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = $1 AND session_hash = $2",
         )
@@ -2116,7 +2503,9 @@ mod tests {
         assert_eq!(snapshot.anky_id, loaded.anky_id);
         assert_eq!(loaded.reflection_status, "pending");
         assert_eq!(loaded.image_status, "pending");
-        assert_eq!(loaded.solana_status, "pending");
+        assert_eq!(loaded.legacy_proof_status, "pending");
+        assert!(!loaded.legacy_plaintext_retained);
+        assert!(!loaded.legacy_session_payload_retained);
         assert_eq!(anky_count, 1);
         assert_eq!(writing_count, 1);
 
@@ -2125,7 +2514,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn duplicate_submit_before_completion_reuses_same_anky() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2140,13 +2531,14 @@ mod tests {
             .await
             .expect("second");
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
 
         assert_eq!(first.anky_id, second.anky_id);
         assert_eq!(anky_count, 1);
@@ -2156,7 +2548,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn duplicate_submit_after_completion_replays_stored_artifacts() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2200,7 +2594,7 @@ mod tests {
                 "title".to_string(),
                 "reflection_complete".to_string(),
                 "image_url".to_string(),
-                "solana".to_string(),
+                "proof".to_string(),
                 "done".to_string()
             ]
         );
@@ -2210,7 +2604,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn partial_failure_retry_reenqueues_once_and_resumes_missing_stage() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2244,13 +2640,11 @@ mod tests {
             .expect("load")
             .expect("snapshot");
 
+        assert!(ensure_protocol_processing_enqueued(&state, &retry_snapshot)
+            .await
+            .expect("enqueue"));
         assert!(
-            ensure_protocol_processing_enqueued(&state, &retry_snapshot, &parsed.text)
-                .await
-                .expect("enqueue")
-        );
-        assert!(
-            !ensure_protocol_processing_enqueued(&state, &retry_snapshot, &parsed.text)
+            !ensure_protocol_processing_enqueued(&state, &retry_snapshot)
                 .await
                 .expect("dedupe enqueue")
         );
@@ -2261,11 +2655,10 @@ mod tests {
             &snapshot.anky_id,
             &snapshot.writing_session_id,
             &user_id,
-            &parsed.text,
+            "",
         )
         .await
-        .expect("resume")
-        ;
+        .expect("resume");
 
         let resumed = load_protocol_snapshot(&state, &user_id, &req.session_hash)
             .await
@@ -2273,7 +2666,7 @@ mod tests {
             .expect("resumed snapshot");
 
         assert_eq!(resumed.image_status, "complete");
-        assert_eq!(resumed.solana_status, "skipped");
+        assert_eq!(resumed.legacy_proof_status, "skipped");
         assert!(resumed.done_at.is_some());
 
         cleanup_protocol_rows(&state, &user_id, &req.session_hash).await;
@@ -2282,7 +2675,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn concurrent_duplicate_submits_collapse_to_one_row() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2310,13 +2705,14 @@ mod tests {
         anky_ids.sort();
         anky_ids.dedup();
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
         let writing_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = $1 AND session_hash = $2",
         )
@@ -2331,5 +2727,253 @@ mod tests {
         assert_eq!(writing_count, 1);
 
         cleanup_protocol_rows(&state, &user_id, &req.session_hash).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn submit_response_exposes_canonical_readback_paths() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = build_test_state().await;
+        flush_test_redis().await;
+
+        let user_id = format!("test-protocol-{}", uuid::Uuid::new_v4());
+        insert_test_user(&state, &user_id).await;
+        let (headers, token) = create_bearer_headers(&state, &user_id);
+        let writing_text = canonical_submit_text();
+        let req = build_protocol_request(&writing_text);
+
+        let Json(response) = submit_anky_protocol(
+            State(state.clone()),
+            headers,
+            CookieJar::new(),
+            Json(req.clone()),
+        )
+        .await
+        .expect("submit");
+        let retention_row = sqlx::query(
+            "SELECT COALESCE(ws.content, '') AS content,
+                    ws.content_deleted_at,
+                    a.session_payload
+             FROM ankys a
+             JOIN writing_sessions ws ON ws.id = a.writing_session_id
+             WHERE a.user_id = $1
+               AND a.session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("retention row");
+
+        assert_eq!(response.session_hash, req.session_hash);
+        assert_eq!(
+            response.status_path,
+            submit_contract::canonical_anky_session_status_path(&req.session_hash)
+        );
+        assert_eq!(
+            response.proof_path,
+            submit_contract::canonical_anky_session_proof_path(&req.session_hash)
+        );
+        assert!(!response.artifact_set_valid);
+        assert_eq!(retention_row.get::<String, _>("content"), "");
+        assert!(retention_row
+            .get::<Option<String>, _>("content_deleted_at")
+            .is_some());
+        assert_eq!(
+            retention_row.get::<Option<String>, _>("session_payload"),
+            None
+        );
+        assert_eq!(
+            load_canonical_processor_writing_for_anky(&state, &response.anky_id)
+                .await
+                .expect("processor writing")
+                .as_deref(),
+            Some(writing_text.as_str())
+        );
+
+        cleanup_auth_session(&state, &token);
+        cleanup_protocol_rows(&state, &user_id, &req.session_hash).await;
+        flush_test_redis().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn canonical_status_route_returns_processor_snapshot_and_legacy_boundary() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = build_test_state().await;
+        flush_test_redis().await;
+
+        let user_id = format!("test-protocol-{}", uuid::Uuid::new_v4());
+        insert_test_user(&state, &user_id).await;
+        let (headers, token) = create_bearer_headers(&state, &user_id);
+        let req = build_protocol_request("status route proof ready");
+        let parsed = parse_anky_protocol_session(&req.session).expect("parsed");
+        let snapshot = upsert_protocol_submission(&state, &user_id, &req, &parsed)
+            .await
+            .expect("upsert");
+
+        sqlx::query(
+            "UPDATE ankys
+             SET title = 'sacred quiet arrival',
+                 reflection = 'the canonical processor response is ready',
+                 image_path = 'stored.webp',
+                 solana_mint_tx = 'sig-123',
+                 reflection_status = 'complete',
+                 image_status = 'complete',
+                 solana_status = 'complete',
+                 processing_job_state = 'complete',
+                 accepted_at = '2026-04-15 10:00:00',
+                 reflection_started_at = '2026-04-15 10:00:01',
+                 reflection_completed_at = '2026-04-15 10:00:10',
+                 image_completed_at = '2026-04-15 10:00:20',
+                 solana_completed_at = '2026-04-15 10:00:30',
+                 done_at = '2026-04-15 10:00:30',
+                 last_error_stage = NULL,
+                 last_error_message = NULL
+             WHERE id = $1",
+        )
+        .bind(&snapshot.anky_id)
+        .execute(&state.db)
+        .await
+        .expect("update canonical snapshot");
+
+        let Json(response) = get_canonical_anky_session_status(
+            State(state.clone()),
+            headers,
+            CookieJar::new(),
+            Path(req.session_hash.clone()),
+        )
+        .await
+        .expect("status route");
+
+        assert_eq!(response.snapshot.session.session_hash, req.session_hash);
+        assert_eq!(
+            response.snapshot.status.core_loop_status,
+            submit_contract::CanonicalCoreLoopStatus::Complete
+        );
+        assert!(response.snapshot.status.artifact_set_valid);
+        assert_eq!(
+            response.snapshot.artifacts.title.as_deref(),
+            Some("sacred quiet arrival")
+        );
+        assert_eq!(
+            response.snapshot.artifacts.image.image_url.as_deref(),
+            Some("/data/images/stored.webp")
+        );
+        assert_eq!(
+            response.snapshot.artifacts.image.artifact_ref.as_deref(),
+            Some("stored.webp")
+        );
+        assert_eq!(
+            response
+                .snapshot
+                .proof
+                .receipt
+                .as_ref()
+                .map(|receipt| receipt.anchor_id.as_str()),
+            Some("sig-123")
+        );
+        assert!(!response.legacy_retention.plaintext_writing_retained);
+        assert!(!response.legacy_retention.session_payload_retained);
+
+        cleanup_auth_session(&state, &token);
+        cleanup_protocol_rows(&state, &user_id, &req.session_hash).await;
+        flush_test_redis().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn canonical_proof_route_returns_session_hash_rooted_proof_object() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = build_test_state().await;
+        flush_test_redis().await;
+
+        let user_id = format!("test-protocol-{}", uuid::Uuid::new_v4());
+        insert_test_user(&state, &user_id).await;
+        let (headers, token) = create_bearer_headers(&state, &user_id);
+        let req = build_protocol_request("proof route object ready");
+        let parsed = parse_anky_protocol_session(&req.session).expect("parsed");
+        let snapshot = upsert_protocol_submission(&state, &user_id, &req, &parsed)
+            .await
+            .expect("upsert");
+
+        sqlx::query(
+            "UPDATE ankys
+             SET solana_mint_tx = 'sig-proof-123',
+                 solana_status = 'complete',
+                 solana_completed_at = '2026-04-15 10:00:30'
+             WHERE id = $1",
+        )
+        .bind(&snapshot.anky_id)
+        .execute(&state.db)
+        .await
+        .expect("complete proof");
+
+        let Json(response) = get_canonical_anky_session_proof(
+            State(state.clone()),
+            headers,
+            CookieJar::new(),
+            Path(req.session_hash.clone()),
+        )
+        .await
+        .expect("proof route");
+
+        assert_eq!(response.session.session_hash, req.session_hash);
+        assert_eq!(
+            response.proof.proof_status,
+            submit_contract::CanonicalProofStatus::Complete
+        );
+        assert_eq!(
+            response
+                .proof
+                .receipt
+                .as_ref()
+                .map(|receipt| receipt.anchor_id.as_str()),
+            Some("sig-proof-123")
+        );
+        assert_eq!(
+            response.proof.artifact_status,
+            submit_contract::ArtifactValidationStatus::Complete
+        );
+        assert_eq!(
+            response.paths.proof_path,
+            submit_contract::canonical_anky_session_proof_path(&req.session_hash)
+        );
+
+        cleanup_auth_session(&state, &token);
+        cleanup_protocol_rows(&state, &user_id, &req.session_hash).await;
+        flush_test_redis().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn legacy_browser_write_short_session_route_still_works() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = build_test_state().await;
+
+        let req = WriteRequest {
+            text: "still here now".to_string(),
+            duration: 45.0,
+            session_hash: None,
+            wallet_signature: None,
+            session_id: None,
+            session_token: None,
+            keystroke_deltas: None,
+            inquiry_id: None,
+            prompt_id: None,
+            now_slug: None,
+        };
+
+        let (_jar, Json(response)) =
+            process_writing(State(state), HeaderMap::new(), CookieJar::new(), Json(req))
+                .await
+                .expect("legacy /write");
+
+        assert!(!response.is_anky);
+        assert!(response.error.is_none());
     }
 }

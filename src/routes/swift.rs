@@ -5,6 +5,10 @@
 /// Mobile auth via Privy SDK: POST /swift/v1/auth/privy → returns session_token as JSON.
 /// Seed-phrase identity auth: POST /swift/v2/auth/challenge + POST /swift/v2/auth/verify.
 /// Supports both Solana Ed25519 (base58 pubkey) and legacy EVM secp256k1 (0x address).
+///
+/// `POST /swift/v1/write` and `POST /swift/v2/write` are legacy mobile write
+/// paths. The canonical core write contract is `POST /api/anky/submit`.
+use crate::contracts::anky_submit;
 use crate::db::queries;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -715,12 +719,13 @@ pub struct MobileWriteResponse {
     pub mood: Option<String>,
 }
 
-/// POST /swift/v1/write and /swift/v2/write — unified mobile writing handler.
+/// POST /swift/v1/write and /swift/v2/write — legacy unified mobile writing handler.
 ///
 /// Design: persist the raw data as fast as possible, return immediately with
 /// what the frontend needs to start evolving the UI, then spawn all processing
 /// in the background. Nothing blocks. The frontend polls /status to watch
-/// the downstream artifacts materialize.
+/// the downstream artifacts materialize. The canonical core processor contract
+/// is `POST /api/anky/submit`.
 pub async fn submit_writing_unified(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -743,7 +748,7 @@ pub async fn submit_writing_unified(
         .as_ref()
         .map(|d| serde_json::to_string(d).unwrap_or_default());
 
-    let is_anky = req.duration >= 480.0 && word_count >= 300;
+    let is_anky = anky_submit::qualifies_as_canonical_anky_f64(req.duration, word_count);
 
     // Resolve wallet once — this determines seed vs privy behavior
     let wallet_address = {
@@ -1288,7 +1293,8 @@ async fn get_local_first_writing_status(
         let solana_status: String = row.get(10);
         let done_at: Option<String> = row.get(11);
         let status = if done_at.is_some()
-            || (image_status == "complete" && matches!(solana_status.as_str(), "complete" | "skipped"))
+            || (image_status == "complete"
+                && matches!(solana_status.as_str(), "complete" | "skipped"))
         {
             "complete".to_string()
         } else {

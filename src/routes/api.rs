@@ -1017,8 +1017,10 @@ pub async fn web_me(State(state): State<AppState>, jar: CookieJar) -> Json<serde
         (completed, flow_bonus)
     };
 
-    let points =
-        (total_ankys * 100) + (completed_ankys * 100) + flow_bonus_sum + (completed_ankys * current_streak * 10);
+    let points = (total_ankys * 100)
+        + (completed_ankys * 100)
+        + flow_bonus_sum
+        + (completed_ankys * current_streak * 10);
     let level = ((points / 500) + 1).clamp(1, 8);
 
     Json(json!({
@@ -1697,7 +1699,7 @@ pub async fn stream_reflection(
         let id_short = &anky_id[..8.min(anky_id.len())];
 
         // DB lookup — may briefly wait for lock but won't block the HTTP response
-        let (writing_text, existing_reflection, existing_title) = {
+        let (writing_text, existing_reflection, existing_title, origin) = {
             let db = match crate::db::conn(&state_clone.db) {
                 Ok(db) => db,
                 Err(e) => {
@@ -1713,6 +1715,7 @@ pub async fn stream_reflection(
                     a.writing_text.unwrap_or_default(),
                     a.reflection.clone(),
                     a.title.clone(),
+                    a.origin.clone(),
                 ),
                 Ok(None) => {
                     tracing::error!("Anky {} not found in DB", id_short);
@@ -1733,6 +1736,21 @@ pub async fn stream_reflection(
                 }
             }
         };
+        // Canonical protocol ankys read plaintext from transient processor state
+        // rather than durable database archive fields.
+        let writing_text = if origin == "protocol" {
+            crate::routes::writing::load_canonical_processor_writing_for_anky(
+                &state_clone,
+                &anky_id,
+            )
+            .await
+            .ok()
+            .flatten()
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(writing_text)
+        } else {
+            writing_text
+        };
 
         let has_existing = existing_reflection
             .as_ref()
@@ -1746,7 +1764,6 @@ pub async fn stream_reflection(
             let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
                 &state_clone,
                 &anky_id,
-                &writing_text,
             )
             .await;
             return;
@@ -1870,7 +1887,6 @@ pub async fn stream_reflection(
                     let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
                         &state_clone,
                         &anky_id,
-                        &writing_text,
                     )
                     .await;
                 }
@@ -1961,12 +1977,12 @@ pub async fn stream_reflection(
                             }
                         }
                         if reflection_saved {
-                            let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
-                                &state_clone,
-                                &anky_id,
-                                &writing_text,
-                            )
-                            .await;
+                            let _ =
+                                crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                                    &state_clone,
+                                    &anky_id,
+                                )
+                                .await;
                         }
                         state_clone.emit_log(
                             "INFO",
@@ -2024,7 +2040,6 @@ pub async fn stream_reflection(
                                         let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
                                             &state_clone,
                                             &anky_id,
-                                            &writing_text,
                                         )
                                         .await;
                                     }
@@ -2088,7 +2103,6 @@ pub async fn stream_reflection(
                                         let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
                                             &state_clone,
                                             &anky_id,
-                                            &writing_text,
                                         )
                                         .await;
                                     }

@@ -1,5 +1,6 @@
 mod ankyverse;
 mod config;
+mod contracts;
 mod create_videos;
 mod db;
 mod error;
@@ -32,11 +33,7 @@ async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), Ap
             writing,
         } => {
             if crate::routes::writing::resume_protocol_anky_job(
-                state,
-                anky_id,
-                session_id,
-                user_id,
-                writing,
+                state, anky_id, session_id, user_id, writing,
             )
             .await?
             {
@@ -82,6 +79,21 @@ async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), Ap
                 state, anky_id, session_id, user_id, writing,
             )
             .await?;
+        }
+        state::GpuJob::CanonicalAnkyImage {
+            anky_id,
+            session_id,
+            user_id,
+        } => {
+            if !crate::routes::writing::resume_protocol_anky_job(
+                state, anky_id, session_id, user_id, "",
+            )
+            .await?
+            {
+                return Err(AppError::Internal(
+                    "canonical processor snapshot missing during queued resume".into(),
+                ));
+            }
         }
         state::GpuJob::CuentacuentosImages { cuentacuentos_id } => {
             pipeline::image_gen::generate_cuentacuentos_images(cuentacuentos_id, state).await?;
@@ -171,7 +183,9 @@ async fn gpu_job_worker(state: AppState) {
                 &format!("GPU job {} failed: {}", &job.id[..8.min(job.id.len())], e),
             );
 
-            if let state::GpuJob::AnkyImage { anky_id, .. } = &job.job {
+            if let state::GpuJob::AnkyImage { anky_id, .. }
+            | state::GpuJob::CanonicalAnkyImage { anky_id, .. } = &job.job
+            {
                 if let Ok(conn) = crate::db::conn(&state.db) {
                     let _ = db::queries::mark_anky_failed(&conn, anky_id);
                 }

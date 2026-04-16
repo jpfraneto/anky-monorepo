@@ -1,4 +1,5 @@
 pub mod apns;
+pub mod canonical_processor_state;
 pub mod claude;
 pub mod comfyui;
 pub mod gemini;

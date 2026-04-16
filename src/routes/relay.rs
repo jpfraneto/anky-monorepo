@@ -4,10 +4,13 @@ use axum::extract::State;
 use axum::Json;
 use serde_json::json;
 
-/// POST /api/v1/relay
+/// POST /api/v1/relay — legacy encrypted relay/proof path.
 ///
 /// Receives an encrypted .anky session from the client, uploads it to Irys (Arweave),
 /// and anchors the session hash + arweave tx to Solana.
+///
+/// This endpoint is not the canonical core write contract. The target canonical
+/// submit path is `POST /api/anky/submit`.
 ///
 /// The client encrypts the session with the enclave's public key.
 /// This endpoint never sees the plaintext writing.
