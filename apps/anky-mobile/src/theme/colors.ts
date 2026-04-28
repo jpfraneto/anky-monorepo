@@ -1,0 +1,15 @@
+export const colors = {
+  midnight: "#05070d",
+  midnightSoft: "#0c111d",
+  midnightPanel: "#111827",
+  gold: "#d6b15d",
+  goldBright: "#ffd36b",
+  goldDim: "#8f773e",
+  goldFaint: "rgba(214, 177, 93, 0.12)",
+  goldGlow: "rgba(255, 203, 94, 0.72)",
+  violet: "#8b5cf6",
+  bone: "#efe6c8",
+  muted: "#8d8773",
+  line: "rgba(214, 177, 93, 0.24)",
+  danger: "#d78166",
+} as const;
