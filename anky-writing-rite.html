@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anky Writing Rite</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gold: #ffd26a;
+      --amber: #ff9c2f;
+      --violet: #7b3dff;
+      --purple: #b15cff;
+      --ink: #07050c;
+      --paper: #f7ead2;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #030207;
+      color: var(--paper);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .phone {
+      position: relative;
+      width: min(100vw, 430px);
+      height: min(100vh, 932px);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 34%, rgba(123, 61, 255, 0.22), transparent 34%),
+        radial-gradient(circle at 50% 66%, rgba(255, 156, 47, 0.14), transparent 44%),
+        linear-gradient(180deg, #090817 0%, #06040b 46%, #030306 100%);
+      border-radius: clamp(0px, 7vw, 34px);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+      isolation: isolate;
+      user-select: none;
+    }
+
+    .phone::before {
+      position: absolute;
+      inset: 0;
+      content: "";
+      background:
+        repeating-linear-gradient(
+          168deg,
+          rgba(255, 210, 106, 0.055) 0 1px,
+          transparent 1px 34px
+        ),
+        repeating-linear-gradient(
+          8deg,
+          rgba(255, 255, 255, 0.018) 0 1px,
+          transparent 1px 5px
+        );
+      opacity: 0.34;
+      mix-blend-mode: screen;
+      pointer-events: none;
+    }
+
+    .phone::after {
+      position: absolute;
+      inset: 0;
+      content: "";
+      background:
+        radial-gradient(circle at 50% 44%, transparent 0 42%, rgba(0, 0, 0, 0.36) 72%, rgba(0, 0, 0, 0.82) 100%),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.38), transparent 14% 86%, rgba(0, 0, 0, 0.38));
+      pointer-events: none;
+      z-index: 8;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+    }
+
+    .glyph {
+      position: absolute;
+      left: 50%;
+      top: 28.2%;
+      z-index: 4;
+      min-width: 1.2em;
+      color: var(--gold);
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+      font-size: clamp(86px, 28vw, 132px);
+      font-style: italic;
+      font-weight: 400;
+      line-height: 1;
+      text-align: center;
+      text-shadow:
+        0 0 9px rgba(255, 210, 106, 0.9),
+        0 0 28px rgba(255, 156, 47, 0.72),
+        0 0 64px rgba(177, 92, 255, 0.36);
+      transform: translate(-50%, -50%) scale(var(--glyph-scale, 1));
+      transition: transform 110ms ease;
+      pointer-events: none;
+    }
+
+    .witness {
+      position: absolute;
+      left: 50%;
+      bottom: 29.5%;
+      z-index: 5;
+      width: min(52%, 236px);
+      max-height: 27%;
+      object-fit: contain;
+      filter:
+        drop-shadow(0 0 16px rgba(255, 156, 47, 0.28))
+        drop-shadow(0 18px 26px rgba(0, 0, 0, 0.58));
+      transform: translateX(-50%) translateY(var(--witness-y, 0px));
+      pointer-events: none;
+    }
+
+    .keyboard {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 6;
+      padding: 10px 12px 14px;
+      background:
+        linear-gradient(180deg, rgba(9, 9, 13, 0.34), rgba(3, 3, 5, 0.88) 28%, rgba(3, 3, 5, 0.96));
+      backdrop-filter: blur(14px);
+    }
+
+    .row {
+      display: flex;
+      justify-content: center;
+      gap: 7px;
+      margin-bottom: 10px;
+    }
+
+    .key {
+      position: relative;
+      display: grid;
+      width: 10%;
+      min-width: 31px;
+      height: 56px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.12), transparent 42%),
+        linear-gradient(180deg, rgba(65, 65, 70, 0.94), rgba(26, 26, 29, 0.96));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 8px 14px rgba(0, 0, 0, 0.36);
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 29px;
+      font-weight: 300;
+      line-height: 1;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+
+    .key.wide {
+      width: 48%;
+      font-size: 20px;
+    }
+
+    .key.medium {
+      width: 25%;
+      font-size: 19px;
+    }
+
+    .key.special {
+      width: 12%;
+      font-size: 24px;
+    }
+
+    .key.active {
+      border-color: rgba(255, 210, 106, 0.92);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        0 0 0 1px rgba(255, 210, 106, 0.28),
+        0 0 18px rgba(255, 156, 47, 0.76),
+        0 8px 14px rgba(0, 0, 0, 0.36);
+      color: #fff5db;
+      transform: translateY(-2px);
+    }
+
+    .hidden-input {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .threshold {
+      position: absolute;
+      left: 50%;
+      top: 16px;
+      z-index: 7;
+      color: rgba(247, 234, 210, 0.34);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      transform: translateX(-50%);
+      transition: opacity 600ms ease;
+    }
+
+    .threshold.hidden {
+      opacity: 0;
+    }
+
+    @media (max-height: 780px) {
+      .witness {
+        bottom: 28%;
+        width: min(44%, 190px);
+      }
+
+      .key {
+        height: 49px;
+        font-size: 25px;
+      }
+
+      .row {
+        margin-bottom: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" id="phone">
+    <canvas id="rite"></canvas>
+    <div class="threshold" id="threshold">write into the loom</div>
+    <div class="glyph" id="glyph">e</div>
+    <img class="witness" src="apps/anky-mobile/assets/anky-onboarding-thread.png" alt="">
+    <textarea class="hidden-input" id="hiddenInput" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <section class="keyboard" id="keyboard" aria-hidden="true">
+      <div class="row">
+        <button class="key" data-key="q">q</button>
+        <button class="key" data-key="w">w</button>
+        <button class="key" data-key="e">e</button>
+        <button class="key" data-key="r">r</button>
+        <button class="key" data-key="t">t</button>
+        <button class="key" data-key="y">y</button>
+        <button class="key" data-key="u">u</button>
+        <button class="key" data-key="i">i</button>
+        <button class="key" data-key="o">o</button>
+        <button class="key" data-key="p">p</button>
+      </div>
+      <div class="row">
+        <button class="key" data-key="a">a</button>
+        <button class="key" data-key="s">s</button>
+        <button class="key" data-key="d">d</button>
+        <button class="key" data-key="f">f</button>
+        <button class="key" data-key="g">g</button>
+        <button class="key" data-key="h">h</button>
+        <button class="key" data-key="j">j</button>
+        <button class="key" data-key="k">k</button>
+        <button class="key" data-key="l">l</button>
+      </div>
+      <div class="row">
+        <button class="key special" data-key="shift">⇧</button>
+        <button class="key" data-key="z">z</button>
+        <button class="key" data-key="x">x</button>
+        <button class="key" data-key="c">c</button>
+        <button class="key" data-key="v">v</button>
+        <button class="key" data-key="b">b</button>
+        <button class="key" data-key="n">n</button>
+        <button class="key" data-key="m">m</button>
+        <button class="key special" data-key="backspace">⌫</button>
+      </div>
+      <div class="row">
+        <button class="key medium" data-key="123">123</button>
+        <button class="key wide" data-key=" ">space</button>
+        <button class="key medium" data-key="enter">return</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const phone = document.getElementById("phone");
+    const canvas = document.getElementById("rite");
+    const ctx = canvas.getContext("2d", { alpha: true });
+    const glyph = document.getElementById("glyph");
+    const threshold = document.getElementById("threshold");
+    const hiddenInput = document.getElementById("hiddenInput");
+    const keyButtons = [...document.querySelectorAll(".key")];
+
+    const RITE_DURATION = 8 * 60 * 1000;
+    const TAU = Math.PI * 2;
+    const GOLD = "#ffd26a";
+    const AMBER = "#ff9c2f";
+    const VIOLET = "#7b3dff";
+    const PURPLE = "#b15cff";
+
+    let dpr = 1;
+    let width = 0;
+    let height = 0;
+    let center = { x: 0, y: 0 };
+    let ringRadius = 0;
+    let startedAt = 0;
+    let lastKeyAt = 0;
+    let pulseScale = 1;
+    let currentChar = "e";
+    let pulses = [];
+    let stitches = [];
+    let glyphEchoes = [];
+    let particles = [];
+
+    resize();
+    requestAnimationFrame(draw);
+    hiddenInput.focus({ preventScroll: true });
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("keydown", (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      let char = "";
+      if (event.key.length === 1) char = event.key;
+      if (event.key === "Enter") char = "\n";
+      if (event.key === "Backspace") char = "⌫";
+      if (!char) return;
+
+      event.preventDefault();
+      acceptChar(char, event.key.toLowerCase());
+    });
+
+    phone.addEventListener("pointerdown", () => {
+      hiddenInput.focus({ preventScroll: true });
+    });
+
+    keyButtons.forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        const key = button.dataset.key || "";
+        if (key === "shift" || key === "123") return;
+        const char = key === "enter" ? "\n" : key === "backspace" ? "⌫" : key;
+        acceptChar(char, key);
+      });
+    });
+
+    hiddenInput.addEventListener("input", () => {
+      hiddenInput.value = "";
+    });
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = phone.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      center = { x: width / 2, y: height * 0.282 };
+      ringRadius = Math.min(width * 0.35, height * 0.19);
+    }
+
+    function acceptChar(rawChar, keyName) {
+      const now = performance.now();
+      if (startedAt === 0) {
+        startedAt = now;
+        threshold.classList.add("hidden");
+      }
+
+      const char = normalizeChar(rawChar);
+      currentChar = char;
+      glyph.textContent = char;
+      pulseScale = 1.14;
+      lastKeyAt = now;
+      flashKey(keyName, now);
+
+      const from = keyOrigin(keyName);
+      const angle = progress(now) * TAU - Math.PI / 2;
+      const to = {
+        x: center.x + Math.cos(angle) * ringRadius,
+        y: center.y + Math.sin(angle) * ringRadius,
+      };
+
+      pulses.push({
+        born: now,
+        char,
+        from,
+        id: `${now}-${Math.random()}`,
+        mid: {
+          x: (from.x + center.x) / 2 + Math.sin(now / 300) * 28,
+          y: (from.y + center.y) / 2 - 42,
+        },
+        to,
+      });
+
+      stitches.push({
+        angle,
+        born: now,
+        char,
+        hueShift: (char.charCodeAt(0) || 0) % 38,
+      });
+
+      glyphEchoes.push({
+        angle,
+        born: now,
+        char,
+        radius: ringRadius * 0.66,
+      });
+
+      for (let i = 0; i < 9; i += 1) {
+        particles.push(makeParticle(to, now, angle));
+      }
+    }
+
+    function normalizeChar(rawChar) {
+      if (rawChar === " ") return ".";
+      if (rawChar === "\n") return "↵";
+      return rawChar.slice(-1);
+    }
+
+    function flashKey(keyName, now) {
+      const normalized = keyName === " " ? " " : keyName.toLowerCase();
+      const button = keyButtons.find((candidate) => candidate.dataset.key === normalized);
+      if (!button) return;
+
+      button.classList.add("active");
+      button.dataset.activeAt = String(now);
+      window.setTimeout(() => {
+        if (Number(button.dataset.activeAt) === now) {
+          button.classList.remove("active");
+        }
+      }, 260);
+    }
+
+    function keyOrigin(keyName) {
+      const normalized = keyName === " " ? " " : keyName.toLowerCase();
+      const button = keyButtons.find((candidate) => candidate.dataset.key === normalized);
+      const root = phone.getBoundingClientRect();
+
+      if (!button) {
+        return { x: width / 2, y: height - 90 };
+      }
+
+      const rect = button.getBoundingClientRect();
+      return {
+        x: rect.left - root.left + rect.width / 2,
+        y: rect.top - root.top + rect.height / 2,
+      };
+    }
+
+    function progress(now) {
+      if (startedAt === 0) return 0;
+      return clamp((now - startedAt) / RITE_DURATION, 0, 1);
+    }
+
+    function draw(now) {
+      ctx.clearRect(0, 0, width, height);
+      pulseScale += (1 - pulseScale) * 0.08;
+      glyph.style.setProperty("--glyph-scale", pulseScale);
+      phone.style.setProperty("--witness-y", `${Math.sin(now / 2100) * 2.2}px`);
+
+      drawManuscript(now);
+      drawBaseLoom(now);
+      drawTimeArc(now);
+      drawStitches(now);
+      drawPulses(now);
+      drawGlyphEchoes(now);
+      drawParticles(now);
+
+      requestAnimationFrame(draw);
+    }
+
+    function drawManuscript(now) {
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "rgba(255, 210, 106, 0.22)";
+      ctx.font = "italic 15px Georgia, Cambria, serif";
+      const phrases = [
+        "the writing enters the field",
+        "the field remembers without reading",
+        "one breath, one thread, one witness",
+        "time receives the offering",
+      ];
+
+      for (let row = 0; row < 16; row += 1) {
+        const y = 52 + row * 31;
+        const drift = Math.sin(now / 4200 + row) * 11;
+        ctx.fillText(phrases[row % phrases.length], 24 + drift, y);
+        ctx.fillText(phrases[(row + 2) % phrases.length], width * 0.58 + drift, y + 9);
+      }
+      ctx.restore();
+    }
+
+    function drawBaseLoom(now) {
+      ctx.save();
+      ctx.translate(center.x, center.y);
+
+      const outerGlow = ctx.createRadialGradient(0, 0, ringRadius * 0.35, 0, 0, ringRadius * 1.35);
+      outerGlow.addColorStop(0, "rgba(123, 61, 255, 0.08)");
+      outerGlow.addColorStop(0.72, "rgba(177, 92, 255, 0.12)");
+      outerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = outerGlow;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringRadius * 1.35, 0, TAU);
+      ctx.fill();
+
+      drawCircleLine(ringRadius * 1.28, "rgba(255, 210, 106, 0.28)", 1.2);
+      drawCircleLine(ringRadius * 0.72, "rgba(255, 210, 106, 0.2)", 1);
+      drawCircleLine(ringRadius * 0.54, "rgba(177, 92, 255, 0.24)", 1);
+
+      ctx.globalCompositeOperation = "lighter";
+      for (let layer = 0; layer < 5; layer += 1) {
+        const strandRadius = ringRadius * (0.94 + layer * 0.018);
+        const offset = layer * 0.38 + now / (8200 + layer * 700);
+        const alpha = 0.11 + layer * 0.022;
+        for (let i = 0; i < 118; i += 1) {
+          const a = i / 118 * TAU + offset;
+          const len = 0.044 + Math.sin(i * 0.7 + layer) * 0.01;
+          const r = strandRadius + Math.sin(i * 0.31 + layer * 3) * 2.5;
+          ctx.beginPath();
+          ctx.strokeStyle = layer % 2 === 0
+            ? `rgba(177, 92, 255, ${alpha})`
+            : `rgba(255, 156, 47, ${alpha * 0.72})`;
+          ctx.lineWidth = 1.2 + layer * 0.4;
+          ctx.arc(0, 0, r, a, a + len);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawTimeArc(now) {
+      const p = progress(now);
+      if (p <= 0) return;
+
+      const end = -Math.PI / 2 + p * TAU;
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.globalCompositeOperation = "lighter";
+
+      drawArc(-Math.PI / 2, end, ringRadius, "rgba(123, 61, 255, 0.26)", 28);
+      drawArc(-Math.PI / 2, end, ringRadius, "rgba(177, 92, 255, 0.62)", 15);
+      drawArc(-Math.PI / 2, end, ringRadius, "rgba(255, 210, 106, 0.96)", 5);
+
+      const head = {
+        x: Math.cos(end) * ringRadius,
+        y: Math.sin(end) * ringRadius,
+      };
+      const pulse = 0.5 + Math.sin(now / 170) * 0.5;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255, 210, 106, ${0.72 + pulse * 0.22})`;
+      ctx.shadowColor = "rgba(255, 156, 47, 0.86)";
+      ctx.shadowBlur = 22;
+      ctx.arc(head.x, head.y, 5 + pulse * 1.8, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawStitches(now) {
+      stitches = stitches.filter((stitch) => now - stitch.born < 16000);
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.globalCompositeOperation = "lighter";
+
+      stitches.forEach((stitch) => {
+        const age = now - stitch.born;
+        const t = clamp(age / 16000, 0, 1);
+        const alpha = 1 - t;
+        const start = stitch.angle - 0.018;
+        const end = stitch.angle + 0.03;
+        drawArc(start, end, ringRadius + Math.sin(age / 180) * 1.4, `rgba(255, 210, 106, ${0.78 * alpha})`, 4);
+        drawArc(start - 0.008, end + 0.008, ringRadius, `rgba(177, 92, 255, ${0.36 * alpha})`, 11);
+      });
+
+      ctx.restore();
+    }
+
+    function drawPulses(now) {
+      pulses = pulses.filter((pulse) => now - pulse.born < 1180);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      pulses.forEach((pulse) => {
+        const age = now - pulse.born;
+        const t = clamp(age / 900, 0, 1);
+        const point = quadraticPoint(pulse.from, pulse.mid, pulse.to, easeInOut(t));
+        const alpha = Math.sin(Math.min(1, t) * Math.PI);
+
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(255, 156, 47, ${0.3 * alpha})`;
+        ctx.lineWidth = 2;
+        ctx.moveTo(pulse.from.x, pulse.from.y);
+        ctx.quadraticCurveTo(pulse.mid.x, pulse.mid.y, point.x, point.y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255, 210, 106, ${0.9 * alpha})`;
+        ctx.shadowColor = "rgba(255, 156, 47, 0.8)";
+        ctx.shadowBlur = 20;
+        ctx.arc(point.x, point.y, 4 + alpha * 4, 0, TAU);
+        ctx.fill();
+
+        ctx.font = "italic 23px Georgia, Cambria, serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = `rgba(247, 234, 210, ${0.72 * alpha})`;
+        ctx.fillText(pulse.char, point.x, point.y - 18);
+      });
+
+      ctx.restore();
+    }
+
+    function drawGlyphEchoes(now) {
+      glyphEchoes = glyphEchoes.filter((echo) => now - echo.born < 8000);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      glyphEchoes.forEach((echo) => {
+        const age = now - echo.born;
+        const t = clamp(age / 8000, 0, 1);
+        const alpha = 1 - smoothstep(0.45, 1, t);
+        const melt = smoothstep(0.68, 1, t);
+        const r = echo.radius + melt * (ringRadius - echo.radius);
+        const x = center.x + Math.cos(echo.angle) * r;
+        const y = center.y + Math.sin(echo.angle) * r;
+        const size = 22 * (1 - melt) + 4 * melt;
+
+        ctx.font = `italic ${size}px Georgia, Cambria, serif`;
+        ctx.fillStyle = `rgba(247, 234, 210, ${0.54 * alpha})`;
+        ctx.shadowColor = "rgba(255, 210, 106, 0.5)";
+        ctx.shadowBlur = 13 * alpha;
+        ctx.fillText(echo.char, x, y);
+      });
+
+      ctx.restore();
+    }
+
+    function drawParticles(now) {
+      particles = particles.filter((particle) => now - particle.born < particle.life);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      particles.forEach((particle) => {
+        const age = now - particle.born;
+        const t = age / particle.life;
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vx *= 0.985;
+        particle.vy *= 0.985;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255, 210, 106, ${(1 - t) * 0.54})`;
+        ctx.arc(particle.x, particle.y, particle.size * (1 - t * 0.4), 0, TAU);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function makeParticle(origin, now, angle) {
+      const spread = angle + (Math.random() - 0.5) * 1.2;
+      const velocity = 0.35 + Math.random() * 1.3;
+      return {
+        born: now,
+        life: 650 + Math.random() * 900,
+        size: 0.7 + Math.random() * 2.4,
+        vx: Math.cos(spread) * velocity,
+        vy: Math.sin(spread) * velocity,
+        x: origin.x,
+        y: origin.y,
+      };
+    }
+
+    function drawCircleLine(radius, strokeStyle, lineWidth) {
+      ctx.beginPath();
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = lineWidth;
+      ctx.arc(0, 0, radius, 0, TAU);
+      ctx.stroke();
+    }
+
+    function drawArc(start, end, radius, strokeStyle, lineWidth) {
+      ctx.beginPath();
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.arc(0, 0, radius, start, end);
+      ctx.stroke();
+    }
+
+    function quadraticPoint(a, c, b, t) {
+      const mt = 1 - t;
+      return {
+        x: mt * mt * a.x + 2 * mt * t * c.x + t * t * b.x,
+        y: mt * mt * a.y + 2 * mt * t * c.y + t * t * b.y,
+      };
+    }
+
+    function easeInOut(t) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    function smoothstep(edge0, edge1, value) {
+      const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+  </script>
+</body>
+</html>

@@ -198,9 +198,7 @@ async fn protocol_submit_user_id(
     }
 
     crate::routes::auth::authenticated_user_id_from_jar(state, jar).ok_or_else(|| {
-        AppError::Unauthorized(
-            "an authenticated session is required for /api/anky/submit".into(),
-        )
+        AppError::Unauthorized("an authenticated session is required for /api/anky/submit".into())
     })
 }
 
@@ -585,12 +583,13 @@ async fn ensure_protocol_processing_enqueued(
         return Ok(false);
     }
 
-    let is_pro = sqlx::query_scalar::<_, i32>("SELECT COALESCE(is_pro, 0) FROM users WHERE id = $1")
-        .bind(&snapshot.user_id)
-        .fetch_optional(&state.db)
-        .await?
-        .unwrap_or(0)
-        != 0;
+    let is_pro =
+        sqlx::query_scalar::<_, i32>("SELECT COALESCE(is_pro, 0) FROM users WHERE id = $1")
+            .bind(&snapshot.user_id)
+            .fetch_optional(&state.db)
+            .await?
+            .unwrap_or(0)
+            != 0;
 
     match crate::services::redis_queue::enqueue_job(
         &state.config.redis_url,
@@ -682,21 +681,32 @@ async fn emit_protocol_replay_events(
         }
     }
 
-    if matches!(snapshot.solana_status.as_str(), "complete" | "skipped") && !replay_state.solana_sent {
+    if matches!(snapshot.solana_status.as_str(), "complete" | "skipped")
+        && !replay_state.solana_sent
+    {
         if let Some(signature) = snapshot.solana_signature.clone() {
             replay_state.solana_sent = true;
-            send_protocol_message(tx, protocol_event("solana", json!({ "signature": signature })))
-                .await;
+            send_protocol_message(
+                tx,
+                protocol_event("solana", json!({ "signature": signature })),
+            )
+            .await;
         }
     }
 
     if is_protocol_done(snapshot) && !replay_state.done_sent {
         replay_state.done_sent = true;
-        send_protocol_message(tx, protocol_event("done", json!({ "anky_id": snapshot.anky_id })))
-            .await;
+        send_protocol_message(
+            tx,
+            protocol_event("done", json!({ "anky_id": snapshot.anky_id })),
+        )
+        .await;
     }
 
-    if snapshot.last_error_stage.is_some() && !replay_state.error_sent && !is_protocol_done(snapshot) {
+    if snapshot.last_error_stage.is_some()
+        && !replay_state.error_sent
+        && !is_protocol_done(snapshot)
+    {
         replay_state.error_sent = true;
         send_protocol_message(
             tx,
@@ -722,8 +732,13 @@ async fn run_protocol_reflection_generation(
     let (raw_tx, mut raw_rx) = tokio::sync::mpsc::channel::<String>(64);
     let config = state.config.clone();
     let reflection_handle = tokio::spawn(async move {
-        crate::services::claude::stream_title_and_reflection_best(&config, &writing_text, raw_tx, None)
-            .await
+        crate::services::claude::stream_title_and_reflection_best(
+            &config,
+            &writing_text,
+            raw_tx,
+            None,
+        )
+        .await
     });
 
     let mut buffered_title = String::new();
@@ -769,15 +784,19 @@ async fn run_protocol_reflection_generation(
             };
 
             if !title_sent {
-                send_protocol_message(&tx, protocol_event("title", json!({ "title": title.clone() })))
-                    .await;
+                send_protocol_message(
+                    &tx,
+                    protocol_event("title", json!({ "title": title.clone() })),
+                )
+                .await;
             }
 
-            if let Err(err) = complete_protocol_reflection(&state, &anky_id, &title, &reflection).await {
+            if let Err(err) =
+                complete_protocol_reflection(&state, &anky_id, &title, &reflection).await
+            {
                 let _ = fail_protocol_stage(&state, &anky_id, "persist", &err.to_string()).await;
                 return;
             }
-
         }
         Ok(Err(err)) => {
             let _ = fail_protocol_stage(&state, &anky_id, "claude", &err.to_string()).await;
@@ -865,7 +884,9 @@ async fn run_protocol_submit_stream(
                 }
                 Ok(false) => {}
                 Err(err) => {
-                    let _ = fail_protocol_stage(&state, &snapshot.anky_id, "persist", &err.to_string()).await;
+                    let _ =
+                        fail_protocol_stage(&state, &snapshot.anky_id, "persist", &err.to_string())
+                            .await;
                 }
             }
         }
@@ -1028,11 +1049,15 @@ pub async fn resume_protocol_anky_job(
         .await?;
     }
 
-    let Some(snapshot_after_image) = load_protocol_snapshot_by_anky_id(state, anky_id).await? else {
+    let Some(snapshot_after_image) = load_protocol_snapshot_by_anky_id(state, anky_id).await?
+    else {
         return Ok(true);
     };
 
-    if !matches!(snapshot_after_image.solana_status.as_str(), "complete" | "skipped") {
+    if !matches!(
+        snapshot_after_image.solana_status.as_str(),
+        "complete" | "skipped"
+    ) {
         if state.config.solana_mint_worker_url.is_empty() {
             sqlx::query(
                 r#"
@@ -1949,7 +1974,9 @@ mod tests {
         config.solana_mint_worker_url.clear();
         config.solana_mint_worker_secret.clear();
 
-        let db = crate::db::create_pool(TEST_DATABASE_URL).await.expect("db pool");
+        let db = crate::db::create_pool(TEST_DATABASE_URL)
+            .await
+            .expect("db pool");
         let (log_tx, _) = broadcast::channel(64);
         let (live_status_tx, _) = broadcast::channel(16);
         let (live_text_tx, _) = broadcast::channel(16);
@@ -2052,7 +2079,8 @@ mod tests {
         let session = build_session(text);
         let session_hash = format!("{:x}", Sha256::digest(session.as_bytes()));
         let word_count = text.split_whitespace().count() as i32;
-        let duration_seconds = ((text.chars().count().saturating_sub(1) as f64) * 0.1).round() as i64;
+        let duration_seconds =
+            ((text.chars().count().saturating_sub(1) as f64) * 0.1).round() as i64;
 
         AnkyProtocolSubmitRequest {
             session_hash,
@@ -2065,7 +2093,9 @@ mod tests {
         }
     }
 
-    async fn collect_replay_events(snapshot: &ProtocolAnkySnapshot) -> Vec<(String, serde_json::Value)> {
+    async fn collect_replay_events(
+        snapshot: &ProtocolAnkySnapshot,
+    ) -> Vec<(String, serde_json::Value)> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<ProtocolStreamMessage>(16);
         let mut replay_state = ProtocolReplayState::default();
         emit_protocol_replay_events(&tx, &mut replay_state, snapshot).await;
@@ -2080,7 +2110,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn first_submit_creates_one_logical_anky() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2097,13 +2129,14 @@ mod tests {
             .expect("load")
             .expect("snapshot");
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
         let writing_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = $1 AND session_hash = $2",
         )
@@ -2125,7 +2158,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn duplicate_submit_before_completion_reuses_same_anky() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2140,13 +2175,14 @@ mod tests {
             .await
             .expect("second");
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
 
         assert_eq!(first.anky_id, second.anky_id);
         assert_eq!(anky_count, 1);
@@ -2156,7 +2192,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn duplicate_submit_after_completion_replays_stored_artifacts() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2210,7 +2248,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn partial_failure_retry_reenqueues_once_and_resumes_missing_stage() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2264,8 +2304,7 @@ mod tests {
             &parsed.text,
         )
         .await
-        .expect("resume")
-        ;
+        .expect("resume");
 
         let resumed = load_protocol_snapshot(&state, &user_id, &req.session_hash)
             .await
@@ -2282,7 +2321,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn concurrent_duplicate_submits_collapse_to_one_row() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let state = build_test_state().await;
         flush_test_redis().await;
 
@@ -2310,13 +2351,14 @@ mod tests {
         anky_ids.sort();
         anky_ids.dedup();
 
-        let anky_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2")
-                .bind(&user_id)
-                .bind(&req.session_hash)
-                .fetch_one(&state.db)
-                .await
-                .expect("anky count");
+        let anky_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM ankys WHERE user_id = $1 AND session_hash = $2",
+        )
+        .bind(&user_id)
+        .bind(&req.session_hash)
+        .fetch_one(&state.db)
+        .await
+        .expect("anky count");
         let writing_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM writing_sessions WHERE user_id = $1 AND session_hash = $2",
         )

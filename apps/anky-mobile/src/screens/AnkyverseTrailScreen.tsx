@@ -15,7 +15,7 @@ import type { RootStackParamList } from "../../App";
 import { RitualButton } from "../components/anky/RitualButton";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
 import {
-  buildSojournDays,
+  buildLegacySojournDays,
   DAYS_PER_KINGDOM,
   getSojournDayIndex,
   KINGDOM_COLORS,
@@ -37,7 +37,7 @@ export function AnkyverseTrailScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
   const listRef = useRef<FlatList<SojournDay>>(null);
   const nowMs = useMemo(() => Date.now(), []);
-  const days = useMemo(() => buildSojournDays(nowMs), [nowMs]);
+  const days = useMemo(() => buildLegacySojournDays(nowMs), [nowMs]);
   const trailDays = useMemo(() => [...days].reverse(), [days]);
   const todayIndex = getSojournDayIndex(nowMs);
   const today = days.find((day) => day.status === "today") ?? null;
@@ -89,7 +89,7 @@ export function AnkyverseTrailScreen({ navigation }: Props) {
   }
 
   function navigateToTodayWrite(day: SojournDay) {
-    navigation.navigate("Write", {
+    navigation.navigate("ActiveWriting", {
       dayNumber: day.dayNumber,
       isoDate: day.isoDate,
       sojourn: 9,
@@ -292,14 +292,14 @@ const styles = StyleSheet.create({
   headerHint: {
     color: ankyColors.violetBright,
     fontSize: 12,
-    letterSpacing: 0.8,
+    letterSpacing: 0,
     paddingBottom: 3,
     textTransform: "lowercase",
   },
   kingdomText: {
     fontSize: 10,
     left: 0,
-    letterSpacing: 1.4,
+    letterSpacing: 0,
     opacity: 0.52,
     position: "absolute",
     textTransform: "uppercase",
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   noticeText: {
     color: ankyColors.gold,
     fontSize: 12,
-    letterSpacing: 0.9,
+    letterSpacing: 0,
     textTransform: "lowercase",
   },
   subtitle: {

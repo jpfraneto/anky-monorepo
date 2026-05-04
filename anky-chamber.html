@@ -1,0 +1,1281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anky Chamber</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --gold: #dfc47a;
+      --ink: #050505;
+      --paper: #f2ead7;
+      --muted: rgba(242, 234, 215, 0.48);
+      --kingdom: 190 82% 58%;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 50%, hsl(var(--kingdom) / 0.04), transparent 30%),
+        linear-gradient(180deg, #090908 0%, #050505 52%, #020202 100%);
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+      user-select: none;
+    }
+
+    body::before {
+      position: fixed;
+      inset: -20%;
+      pointer-events: none;
+      content: "";
+      background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 100%),
+        radial-gradient(circle, rgba(223, 196, 122, 0.045) 0 1px, transparent 1px 100%);
+      background-position: 0 0, 18px 22px;
+      background-size: 37px 37px, 53px 53px;
+      opacity: 0.12;
+      transform: rotate(-3deg);
+      mix-blend-mode: screen;
+    }
+
+    body::after {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.015) 50%, transparent 50%),
+        radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(0, 0, 0, 0.58) 100%);
+      background-size: 100% 4px, 100% 100%;
+      opacity: 0.42;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .chamber {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .glyph-shell {
+      position: relative;
+      display: grid;
+      width: min(36vmin, 260px);
+      aspect-ratio: 1;
+      place-items: center;
+      border-radius: 999px;
+      filter: drop-shadow(0 0 34px hsl(var(--kingdom) / 0.18));
+    }
+
+    .glyph-shell::before,
+    .glyph-shell::after {
+      position: absolute;
+      inset: 9%;
+      content: "";
+      border: 1px solid rgba(223, 196, 122, 0.17);
+      border-radius: 999px;
+      transform: scale(var(--pulse-scale, 1));
+    }
+
+    .glyph-shell::after {
+      inset: 18%;
+      border-color: hsl(var(--kingdom) / 0.16);
+      transform: scale(calc(var(--pulse-scale, 1) * 0.94));
+    }
+
+    .glyph {
+      position: relative;
+      width: 1.6em;
+      min-height: 1.2em;
+      color: var(--paper);
+      font-size: clamp(72px, 18vmin, 180px);
+      font-weight: 400;
+      line-height: 1;
+      text-align: center;
+      text-shadow:
+        0 0 18px rgba(242, 234, 215, 0.2),
+        0 0 46px hsl(var(--kingdom) / 0.34);
+      transform: translateY(-0.02em) scale(var(--glyph-scale, 1));
+      transition: transform 120ms ease, opacity 220ms ease;
+      opacity: 0;
+    }
+
+    .glyph.empty {
+      opacity: 0.44;
+    }
+
+    .threshold {
+      position: fixed;
+      left: 50%;
+      bottom: max(22px, env(safe-area-inset-bottom));
+      color: rgba(242, 234, 215, 0.28);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      transform: translateX(-50%);
+      transition: opacity 700ms ease;
+    }
+
+    .threshold.hidden {
+      opacity: 0;
+    }
+
+    .focus-catcher {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      box-shadow: inset 0 0 18vmin rgba(0, 0, 0, 0.78);
+    }
+
+    .reveal {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      padding: 8vmin;
+      overflow-y: auto;
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.98);
+      transition: opacity 1200ms ease, transform 1400ms ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+    }
+
+    .reveal-inner {
+      display: grid;
+      max-width: min(76ch, 88vw);
+      justify-items: center;
+      gap: 18px;
+    }
+
+    .reveal-text {
+      color: #ffe8a9;
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+      font-size: clamp(18px, 4vmin, 42px);
+      line-height: 1.55;
+      max-height: min(54vh, 560px);
+      overflow-y: auto;
+      text-align: center;
+      text-shadow:
+        0 0 16px rgba(255, 210, 106, 0.42),
+        0 0 46px rgba(255, 156, 47, 0.26);
+      white-space: pre-wrap;
+    }
+
+    .reveal-text .char {
+      opacity: 0.06;
+      transition: opacity 360ms ease, text-shadow 360ms ease;
+    }
+
+    .reveal-text .char.visible {
+      opacity: 1;
+      text-shadow:
+        0 0 14px rgba(255, 210, 106, 0.48),
+        0 0 38px rgba(255, 156, 47, 0.24);
+    }
+
+    .reveal-meta {
+      min-height: 1.3em;
+      color: rgba(242, 234, 215, 0.46);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: opacity 800ms ease 900ms, transform 800ms ease 900ms;
+    }
+
+    .reveal.visible .reveal-meta {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      opacity: 0;
+      pointer-events: auto;
+      transform: translateY(8px);
+      transition: opacity 800ms ease 1300ms, transform 800ms ease 1300ms;
+    }
+
+    .reveal.visible .reveal-actions {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .chamber-button,
+    .export-art {
+      color: rgba(255, 232, 169, 0.82);
+      background: rgba(4, 4, 4, 0.44);
+      border: 1px solid rgba(255, 210, 106, 0.24);
+      border-radius: 999px;
+      font: 500 12px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: lowercase;
+      cursor: pointer;
+      box-shadow: 0 0 24px rgba(255, 210, 106, 0.06);
+      transition: border-color 180ms ease, color 180ms ease, background 180ms ease, transform 180ms ease;
+    }
+
+    .chamber-button {
+      min-width: 106px;
+      padding: 11px 15px;
+    }
+
+    .chamber-button:hover,
+    .export-art:hover {
+      color: #ffe8a9;
+      background: rgba(20, 15, 8, 0.58);
+      border-color: rgba(255, 210, 106, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .export-art {
+      position: fixed;
+      top: max(18px, env(safe-area-inset-top));
+      right: max(18px, env(safe-area-inset-right));
+      z-index: 6;
+      padding: 9px 12px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .export-art.visible {
+      opacity: 0.7;
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="field"></canvas>
+  <button class="export-art" id="exportArt" type="button">export art</button>
+  <div class="chamber" aria-hidden="true">
+    <div class="glyph-shell" id="glyphShell">
+      <div class="glyph empty" id="glyph">.</div>
+    </div>
+  </div>
+  <div class="threshold" id="threshold">anky</div>
+  <div class="reveal" id="reveal">
+    <div class="reveal-inner">
+      <div class="reveal-text" id="revealText"></div>
+      <div class="reveal-meta" id="revealMeta"></div>
+      <div class="reveal-actions" id="revealActions">
+        <button class="chamber-button" id="copyText" type="button">copy text</button>
+        <button class="chamber-button" id="copyAnky" type="button">copy .anky</button>
+        <button class="chamber-button" id="writeAgain" type="button">write again</button>
+      </div>
+    </div>
+  </div>
+  <textarea class="focus-catcher" id="focusCatcher" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+  <div class="vignette"></div>
+
+  <script>
+    const canvas = document.getElementById("field");
+    const ctx = canvas.getContext("2d", { alpha: true });
+    const glyph = document.getElementById("glyph");
+    const glyphShell = document.getElementById("glyphShell");
+    const threshold = document.getElementById("threshold");
+    const reveal = document.getElementById("reveal");
+    const revealText = document.getElementById("revealText");
+    const revealMeta = document.getElementById("revealMeta");
+    const copyTextButton = document.getElementById("copyText");
+    const copyAnkyButton = document.getElementById("copyAnky");
+    const writeAgainButton = document.getElementById("writeAgain");
+    const exportArtButton = document.getElementById("exportArt");
+    const focusCatcher = document.getElementById("focusCatcher");
+
+    const DURATION_SECONDS = 8 * 60;
+    const ANCHOR_COUNT = 96;
+    const MAX_THREADS = 1400;
+    const TURN_BUCKETS = 8;
+    const MAX_PAUSE_MS = 1800;
+    const ECHO_LIFE_MS = 8000;
+    const END_SILENCE_MS = 8000;
+    const GOLD = [223, 196, 122];
+    const KINGDOMS = [
+      [356, 78, 58],
+      [24, 86, 58],
+      [48, 92, 62],
+      [137, 48, 54],
+      [201, 78, 62],
+      [242, 56, 66],
+      [282, 58, 68],
+      [44, 18, 84],
+    ];
+
+    const today = new Date();
+    const daySeed = Math.floor(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / 86400000);
+    const kingdom = KINGDOMS[daySeed % KINGDOMS.length];
+    document.documentElement.style.setProperty("--kingdom", `${kingdom[0]} ${kingdom[1]}% ${kingdom[2]}%`);
+
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let center = { x: 0, y: 0 };
+    let radius = 0;
+    let voidRadius = 0;
+    let anchors = [];
+    let threads = [];
+    let sparks = [];
+    let breaths = [];
+    let glyphEchoes = [];
+    let writtenText = "";
+    let unravel = null;
+    let revealSpans = [];
+    let revealCount = -1;
+    let lastAnkyArtifact = "";
+    let threadHead = null;
+    let threadAngle = -Math.PI / 2;
+    let previousGlyphCode = 0;
+    let characterCount = 0;
+    let startedAt = 0;
+    let lastInputAt = 0;
+    let lastBreathAt = 0;
+    let pulse = 0;
+    let currentGlyph = ".";
+    let idlePhase = Math.random() * Math.PI * 2;
+
+    resize();
+    requestAnimationFrame(draw);
+    focusCatcher.focus({ preventScroll: true });
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("pointerdown", () => {
+      focusCatcher.focus({ preventScroll: true });
+      createBreath(performance.now(), 0.3);
+    });
+    window.addEventListener("keydown", handleKeyDown);
+    focusCatcher.addEventListener("input", () => {
+      focusCatcher.value = "";
+    });
+    [copyTextButton, copyAnkyButton, writeAgainButton, exportArtButton].forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+      });
+    });
+    copyTextButton.addEventListener("click", () => {
+      copyToClipboard(unravel?.text ?? writtenText);
+    });
+    copyAnkyButton.addEventListener("click", () => {
+      copyToClipboard(lastAnkyArtifact);
+    });
+    writeAgainButton.addEventListener("click", () => {
+      resetChamber();
+      focusCatcher.focus({ preventScroll: true });
+    });
+    exportArtButton.addEventListener("click", exportArtwork);
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      center = { x: width / 2, y: height / 2 };
+      radius = Math.min(width, height) * 0.39;
+      voidRadius = Math.min(width, height) * 0.105;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      anchors = makeAnchors();
+      if (threadHead == null) {
+        threadHead = pointFromAngle(center, -Math.PI / 2, voidRadius * 1.34);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.target instanceof HTMLButtonElement) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      let value = "";
+      if (event.key.length === 1) {
+        value = event.key;
+      } else if (event.key === "Enter") {
+        value = "\n";
+      } else if (event.key === "Tab") {
+        value = "\t";
+      } else if (event.key === "Backspace") {
+        value = "\b";
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      receiveGlyph(value, performance.now());
+    }
+
+    function receiveGlyph(value, now) {
+      if (unravel) {
+        resetChamber();
+      }
+
+      const previousAt = lastInputAt || now;
+      const delta = Math.max(24, now - previousAt);
+      const speed = clamp(1 - delta / 1250, 0, 1);
+
+      if (startedAt === 0) {
+        startedAt = now;
+        threshold.classList.add("hidden");
+      }
+
+      lastInputAt = now;
+      characterCount += 1;
+      pulse = 1;
+
+      const visible = visibleGlyph(value);
+      appendWrittenValue(value);
+      currentGlyph = visible;
+      glyph.textContent = visible;
+      glyph.classList.toggle("empty", visible === ".");
+
+      const thread = createThread(value, characterCount, speed, delta, now);
+      threads.push(thread);
+      glyphEchoes.push(createGlyphEcho(visible, thread, now));
+      while (threads.length > MAX_THREADS) {
+        threads.shift();
+      }
+
+      for (let i = 0; i < 3 + Math.round(speed * 5); i += 1) {
+        sparks.push(createSpark(thread, now, speed));
+      }
+
+      if (delta > 1450) {
+        createBreath(now, clamp(delta / 4500, 0.24, 1));
+      }
+    }
+
+    function appendWrittenValue(value) {
+      if (value === "\b") {
+        writtenText = writtenText.slice(0, -1);
+      } else if (value === "\t") {
+        writtenText += " ";
+      } else {
+        writtenText += value;
+      }
+    }
+
+    function visibleGlyph(value) {
+      if (value === " ") return ".";
+      if (value === "\n") return "|";
+      if (value === "\t") return "-";
+      if (value === "\b") return "<";
+      return value;
+    }
+
+    function makeAnchors() {
+      const points = [];
+      const sides = 8;
+      const perSide = ANCHOR_COUNT / sides;
+      const vertices = Array.from({ length: sides }, (_, index) => {
+        const angle = -Math.PI / 2 + index * (Math.PI * 2 / sides) + Math.PI / 8;
+        return {
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius,
+        };
+      });
+
+      for (let side = 0; side < sides; side += 1) {
+        const a = vertices[side];
+        const b = vertices[(side + 1) % sides];
+        for (let step = 0; step < perSide; step += 1) {
+          const t = (step + 0.5) / perSide;
+          points.push({
+            x: lerp(a.x, b.x, t),
+            y: lerp(a.y, b.y, t),
+          });
+        }
+      }
+
+      return points;
+    }
+
+    function createThread(value, index, speed, delta, now) {
+      const code = glyphCode(value);
+      const a = keepInsideAnnulus(threadHead ?? pointFromAngle(center, -Math.PI / 2, voidRadius * 1.34));
+      const codeDelta = code - previousGlyphCode;
+      const direction = codeDelta === 0 ? (index % 2 === 0 ? 1 : -1) : Math.sign(codeDelta);
+      const pauseRatio = clamp(delta / MAX_PAUSE_MS, 0, 1);
+      const turnBucket = Math.round(pauseRatio * TURN_BUCKETS);
+      const quantizedTurn = turnBucket * (Math.PI / TURN_BUCKETS);
+      const characterBias = clamp(Math.abs(codeDelta) / 56, 0, 1) * (Math.PI / 18);
+      const breathDrift = Math.sin(index * 0.41 + daySeed) * (Math.PI / 72);
+      const length = radius * (0.018 + easeOutCubic(pauseRatio) * 0.15) + Math.min(Math.abs(codeDelta), 72) * 0.09;
+
+      threadAngle += direction * (quantizedTurn + characterBias) + breathDrift;
+
+      let b = pointFromAngle(a, threadAngle, length);
+      if (distance(b, center) > radius * 0.9) {
+        const inward = Math.atan2(center.y - a.y, center.x - a.x);
+        threadAngle = inward + direction * (Math.PI / 14 + characterBias * 0.45);
+        b = pointFromAngle(a, threadAngle, length * 0.74);
+      }
+      if (distance(b, center) < voidRadius * 1.2) {
+        const tangent = Math.atan2(a.y - center.y, a.x - center.x) + direction * Math.PI / 2;
+        threadAngle = tangent + direction * (Math.PI / 18 + pauseRatio * Math.PI / 10);
+        b = pointFromAngle(a, threadAngle, length * 0.92);
+      }
+
+      b = keepInsideAnnulus(b);
+
+      const normal = normalize({ x: -(b.y - a.y), y: b.x - a.x });
+      const curve = direction * length * (0.08 + pauseRatio * 0.34);
+      let control = {
+        x: (a.x + b.x) / 2 + normal.x * curve,
+        y: (a.y + b.y) / 2 + normal.y * curve,
+      };
+      control = keepInsideAnnulus(control);
+      const hue = (kingdom[0] + turnBucket * 8 + codeDelta * 0.28 + speed * 12) % 360;
+
+      threadHead = b;
+      previousGlyphCode = code;
+
+      return {
+        a,
+        b,
+        born: now,
+        control,
+        glow: 0.2 + pauseRatio * 0.35 + speed * 0.18,
+        hue,
+        index,
+        length,
+        pauseRatio,
+        speed,
+        turnBucket,
+        weight: 0.5 + pauseRatio * 0.55 + speed * 0.45,
+      };
+    }
+
+    function createSpark(thread, now, speed) {
+      const t = Math.random();
+      const position = quadraticPoint(thread.a, thread.control, thread.b, t);
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = 0.18 + Math.random() * 0.42 + speed * 0.52;
+
+      return {
+        born: now,
+        hue: thread.hue,
+        life: 640 + Math.random() * 780,
+        size: 0.6 + Math.random() * 1.8,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity,
+        x: position.x,
+        y: position.y,
+      };
+    }
+
+    function createGlyphEcho(value, thread, now) {
+      const position = quadraticPoint(thread.a, thread.control, thread.b, 0.66);
+      const normal = normalize({ x: -(thread.b.y - thread.a.y), y: thread.b.x - thread.a.x });
+      const offset = 8 + thread.pauseRatio * 18;
+
+      return {
+        born: now,
+        hue: thread.hue,
+        text: value,
+        x: position.x + normal.x * offset,
+        y: position.y + normal.y * offset,
+        mergeX: thread.b.x,
+        mergeY: thread.b.y,
+        size: 18 + thread.pauseRatio * 16,
+      };
+    }
+
+    function createBreath(now, intensity) {
+      if (now - lastBreathAt < 600) return;
+      lastBreathAt = now;
+      breaths.push({
+        born: now,
+        hue: kingdom[0],
+        intensity,
+        life: 2600 + intensity * 1800,
+      });
+    }
+
+    function draw(now) {
+      const silence = lastInputAt === 0 ? now : now - lastInputAt;
+      if (!unravel && startedAt !== 0 && silence >= END_SILENCE_MS) {
+        beginUnravel(now);
+      }
+
+      const breath = 0.5 + Math.sin(now / 1700 + idlePhase) * 0.5;
+      pulse = Math.max(0, pulse - 0.035);
+      glyph.style.setProperty("--glyph-scale", 1 + pulse * 0.09);
+      glyphShell.style.setProperty("--pulse-scale", 1 + pulse * 0.11 + breath * 0.018);
+
+      drawBackground(now, silence);
+      if (unravel) {
+        drawUnravel(now);
+      } else {
+        drawLoom(now);
+        drawThreads(now);
+        drawPotential(now, silence);
+        drawGlyphEchoes(now);
+        drawTypedResonance(now);
+        drawSparks(now);
+      }
+      drawVoid(now);
+      if (!unravel) {
+        drawCurrentGlyph(now);
+      }
+      drawVessel(now);
+
+      requestAnimationFrame(draw);
+    }
+
+    function drawBackground(now, silence) {
+      ctx.clearRect(0, 0, width, height);
+
+      const typedGlow = startedAt === 0 ? 0 : Math.max(0, 1 - silence / 1800);
+      const glow = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, radius * 1.55);
+      glow.addColorStop(0, hsla(kingdom[0], kingdom[1], kingdom[2], 0.025 + typedGlow * 0.105));
+      glow.addColorStop(0.42, hsla(kingdom[0], kingdom[1], kingdom[2], 0.01 + typedGlow * 0.04));
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+
+      const stillness = typedGlow;
+      ctx.save();
+      ctx.globalAlpha = stillness * 0.12;
+      ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.5);
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 4; i += 1) {
+        const r = radius * (0.17 + i * 0.17) + Math.sin(now / 2400 + i) * 3;
+        if (r < voidRadius * 1.2) continue;
+        drawOctagon(center.x, center.y, r, Math.PI / 8 + i * 0.003);
+      }
+      ctx.restore();
+    }
+
+    function drawLoom(now) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(223, 196, 122, 0.14)";
+      drawOctagon(center.x, center.y, radius, Math.PI / 8);
+      ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.08);
+      drawOctagon(center.x, center.y, radius * 0.965, Math.PI / 8);
+
+      anchors.forEach((anchor, index) => {
+        const sidePulse = Math.sin(now / 1600 + index * 0.22) * 0.5 + 0.5;
+        ctx.beginPath();
+        ctx.fillStyle = index % 12 === 0
+          ? `rgba(${GOLD[0]}, ${GOLD[1]}, ${GOLD[2]}, ${0.18 + sidePulse * 0.08})`
+          : hsla(kingdom[0], kingdom[1], kingdom[2], 0.10 + sidePulse * 0.04);
+        ctx.arc(anchor.x, anchor.y, index % 12 === 0 ? 1.45 : 0.72, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function drawThreads(now) {
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.globalCompositeOperation = "lighter";
+
+      if (threads.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(threads[0].a.x, threads[0].a.y);
+        threads.forEach((thread) => {
+          ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        });
+        ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.08);
+        ctx.lineWidth = 7.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(threads[0].a.x, threads[0].a.y);
+        threads.forEach((thread) => {
+          ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        });
+        ctx.strokeStyle = "rgba(242, 234, 215, 0.16)";
+        ctx.lineWidth = 1.15;
+        ctx.stroke();
+      }
+
+      threads.forEach((thread) => {
+        const age = now - thread.born;
+        const appear = clamp(age / 520, 0, 1);
+        const settle = 0.34 + Math.min(thread.index, 420) / 1600;
+        const alpha = Math.min(0.48, appear * settle);
+
+        ctx.beginPath();
+        ctx.moveTo(thread.a.x, thread.a.y);
+        ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        ctx.strokeStyle = hsla(thread.hue, 72, 64, alpha * (0.1 + thread.glow * 0.1));
+        ctx.lineWidth = thread.weight + 2.4 * thread.glow;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(thread.a.x, thread.a.y);
+        ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        ctx.strokeStyle = hsla(thread.hue, 68, 72, alpha * 0.34);
+        ctx.lineWidth = thread.weight;
+        ctx.stroke();
+      });
+
+      if (threadHead != null && threads.length > 0) {
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(242, 234, 215, 0.86)";
+        ctx.arc(threadHead.x, threadHead.y, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.42);
+        ctx.lineWidth = 1;
+        ctx.arc(threadHead.x, threadHead.y, 6.5 + Math.sin(now / 220) * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawPotential(now, silence) {
+      if (startedAt === 0 || threadHead == null) {
+        return;
+      }
+
+      const pauseRatio = clamp(silence / MAX_PAUSE_MS, 0, 1);
+      const turnBucket = Math.round(pauseRatio * TURN_BUCKETS);
+      const reach = radius * (0.018 + easeOutCubic(pauseRatio) * 0.15);
+      const drift = Math.sin(now / 900) * (Math.PI / 56);
+      const angle = threadAngle + drift + turnBucket * (Math.PI / TURN_BUCKETS) * 0.12;
+      const end = keepInsideAnnulus(pointFromAngle(threadHead, angle, reach));
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.setLineDash([3, 8]);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(threadHead.x, threadHead.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.05 + pauseRatio * 0.2);
+      ctx.lineWidth = 1 + pauseRatio * 1.4;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    function drawGlyphEchoes(now) {
+      glyphEchoes = glyphEchoes.filter((echo) => now - echo.born < ECHO_LIFE_MS);
+
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "400 22px Georgia, Cambria, 'Times New Roman', serif";
+      ctx.globalCompositeOperation = "lighter";
+
+      glyphEchoes.forEach((echo) => {
+        const age = now - echo.born;
+        const t = clamp(age / ECHO_LIFE_MS, 0, 1);
+        const melt = smoothstep(0.68, 1, t);
+        const appear = smoothstep(0, 0.12, t);
+        const alpha = appear * (1 - smoothstep(0.52, 1, t));
+        const x = lerp(echo.x, echo.mergeX, melt);
+        const y = lerp(echo.y, echo.mergeY, melt);
+        const size = lerp(echo.size, 3, melt);
+
+        ctx.font = `400 ${size}px Georgia, Cambria, 'Times New Roman', serif`;
+        ctx.shadowColor = hsla(echo.hue, 78, 72, 0.38 * alpha);
+        ctx.shadowBlur = 12 * alpha;
+        ctx.fillStyle = `rgba(242, 234, 215, ${0.72 * alpha})`;
+        ctx.fillText(echo.text, x, y);
+
+        if (melt > 0) {
+          ctx.beginPath();
+          ctx.strokeStyle = hsla(echo.hue, 78, 72, 0.18 * melt);
+          ctx.lineWidth = 1;
+          ctx.moveTo(x, y);
+          ctx.lineTo(echo.mergeX, echo.mergeY);
+          ctx.stroke();
+        }
+      });
+
+      ctx.restore();
+    }
+
+    function drawTypedResonance(now) {
+      breaths = breaths.filter((ring) => now - ring.born < ring.life);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      breaths.forEach((ring) => {
+        const age = now - ring.born;
+        const t = age / ring.life;
+        const alpha = Math.sin(t * Math.PI) * ring.intensity;
+        ctx.beginPath();
+        ctx.strokeStyle = hsla(ring.hue, kingdom[1], kingdom[2], alpha * 0.18);
+        ctx.lineWidth = 1 + ring.intensity * 1.2;
+        ctx.arc(center.x, center.y, voidRadius * 1.18 + radius * 0.74 * t, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    function drawCurrentGlyph(now) {
+      if (currentGlyph == null || currentGlyph.length === 0) {
+        return;
+      }
+
+      const age = lastInputAt === 0 ? Infinity : now - lastInputAt;
+      const alpha = lastInputAt === 0 ? 0.38 : 0.95 * (1 - smoothstep(6200, END_SILENCE_MS, age));
+      if (alpha <= 0.01) {
+        return;
+      }
+
+      const size = Math.max(34, voidRadius * 1.18) * (1 + pulse * 0.14);
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = `400 ${size}px Georgia, Cambria, 'Times New Roman', serif`;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.shadowColor = hsla(kingdom[0], 78, 72, 0.48 * alpha);
+      ctx.shadowBlur = 20 + pulse * 20;
+      ctx.fillStyle = `rgba(242, 234, 215, ${alpha})`;
+      drawCenteredGlyph(currentGlyph, center.x, center.y);
+      ctx.restore();
+    }
+
+    function beginUnravel(now) {
+      const safeText = writtenText.trim().length > 0 ? writtenText : " ";
+      const elapsedMs = startedAt === 0 ? 0 : Math.max(0, now - startedAt);
+      unravel = {
+        born: now,
+        duration: 5200,
+        elapsedMs,
+        threads: threads.slice(),
+        text: safeText,
+      };
+      lastAnkyArtifact = buildAnkyArtifact(safeText, elapsedMs);
+      renderRevealText(safeText);
+      revealMeta.textContent = `${formatDuration(elapsedMs)} written / ${formatDuration(DURATION_SECONDS * 1000)} vessel`;
+      reveal.classList.remove("visible");
+      exportArtButton.classList.remove("visible");
+      glyphEchoes = [];
+      sparks = [];
+      breaths = [];
+      threshold.classList.remove("hidden");
+      threshold.textContent = "the thread returns";
+    }
+
+    function drawUnravel(now) {
+      const age = now - unravel.born;
+      const t = clamp(age / unravel.duration, 0, 1);
+      const remaining = 1 - smoothstep(0, 0.92, t);
+      const gold = smoothstep(0, 0.7, t);
+
+      drawFinalThreadArt(now, 0.2 + gold * 0.18);
+
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.globalCompositeOperation = "lighter";
+
+      unravel.threads.forEach((thread, index) => {
+        const localDelay = index / Math.max(1, unravel.threads.length) * 0.36;
+        const local = clamp((t - localDelay) / 0.74, 0, 1);
+        const alpha = (1 - smoothstep(0.68, 1, local)) * (0.08 + gold * 0.28);
+        if (alpha <= 0.002) return;
+
+        ctx.beginPath();
+        ctx.moveTo(thread.a.x, thread.a.y);
+        ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        ctx.strokeStyle = `rgba(255, 210, 106, ${alpha})`;
+        ctx.lineWidth = thread.weight + 1.5 + gold * 2.2;
+        ctx.stroke();
+
+        if (local > 0.12 && local < 0.84 && index % 3 === 0) {
+          const p = quadraticPoint(thread.a, thread.control, thread.b, local);
+          ctx.beginPath();
+          ctx.fillStyle = `rgba(255, 231, 163, ${(1 - local) * 0.55})`;
+          ctx.arc(p.x, p.y, 1.2 + gold * 2.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      const waveRadius = voidRadius * 1.3 + radius * 0.7 * smoothstep(0.05, 0.86, t);
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(255, 210, 106, ${0.42 * remaining})`;
+      ctx.lineWidth = 1 + gold * 3;
+      ctx.arc(center.x, center.y, waveRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      if (t > 0.58) {
+        updateRevealCharacters(smoothstep(0.58, 0.96, t));
+        reveal.classList.add("visible");
+        exportArtButton.classList.add("visible");
+      }
+
+      if (t >= 1) {
+        updateRevealCharacters(1);
+      }
+    }
+
+    function drawFinalThreadArt(now, opacity) {
+      if (!unravel || unravel.threads.length === 0) {
+        return;
+      }
+
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.globalCompositeOperation = "lighter";
+
+      ctx.beginPath();
+      ctx.moveTo(unravel.threads[0].a.x, unravel.threads[0].a.y);
+      unravel.threads.forEach((thread) => {
+        ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+      });
+      ctx.strokeStyle = `rgba(255, 210, 106, ${opacity * 0.3})`;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      unravel.threads.forEach((thread, index) => {
+        const shimmer = 0.72 + Math.sin(now / 1500 + index * 0.13) * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(thread.a.x, thread.a.y);
+        ctx.quadraticCurveTo(thread.control.x, thread.control.y, thread.b.x, thread.b.y);
+        ctx.strokeStyle = index % 3 === 0
+          ? `rgba(255, 210, 106, ${opacity * 0.42 * shimmer})`
+          : hsla(thread.hue, 68, 70, opacity * 0.22 * shimmer);
+        ctx.lineWidth = thread.weight + 0.7;
+        ctx.stroke();
+      });
+
+      ctx.restore();
+    }
+
+    function drawVoid(now) {
+      const inputAge = lastInputAt === 0 ? Infinity : now - lastInputAt;
+      const typePulse = Math.max(0, 1 - inputAge / 900);
+      const innerPulse = typePulse;
+      const haloPulse = typePulse;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+
+      const core = ctx.createRadialGradient(
+        center.x,
+        center.y,
+        0,
+        center.x,
+        center.y,
+        voidRadius * 1.34,
+      );
+      core.addColorStop(0, "rgba(2, 2, 2, 0.98)");
+      core.addColorStop(0.68, "rgba(3, 3, 3, 0.93)");
+      core.addColorStop(1, "rgba(3, 3, 3, 0)");
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, voidRadius * 1.34, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(4, 4, 4, 0.92)";
+      ctx.arc(center.x, center.y, voidRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(${GOLD[0]}, ${GOLD[1]}, ${GOLD[2]}, ${0.16 + innerPulse * 0.24})`;
+      ctx.lineWidth = 1;
+      ctx.arc(center.x, center.y, voidRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.strokeStyle = hsla(kingdom[0], kingdom[1], kingdom[2], 0.06 + haloPulse * 0.16);
+      ctx.lineWidth = 1;
+      ctx.arc(center.x, center.y, voidRadius * 1.16, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawSparks(now) {
+      sparks = sparks.filter((spark) => now - spark.born < spark.life);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      sparks.forEach((spark) => {
+        const age = now - spark.born;
+        const t = age / spark.life;
+        spark.x += spark.vx;
+        spark.y += spark.vy;
+        spark.vx *= 0.992;
+        spark.vy *= 0.992;
+
+        ctx.beginPath();
+        ctx.fillStyle = hsla(spark.hue, 76, 70, (1 - t) * 0.42);
+        ctx.arc(spark.x, spark.y, spark.size * (1 - t * 0.42), 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    function drawVessel(now) {
+      const vesselNow = unravel ? unravel.born : now;
+      const elapsed = startedAt === 0 ? 0 : (vesselNow - startedAt) / 1000;
+      const progress = clamp(elapsed / DURATION_SECONDS, 0, 1);
+      const ringRadius = Math.max(voidRadius * 1.22, radius * 0.63);
+      const breathing = unravel ? 0 : Math.sin(now / 1800) * 0.012;
+
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.rotate(-Math.PI / 2);
+
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(223, 196, 122, 0.12)";
+      ctx.lineWidth = 1.2;
+      ctx.arc(0, 0, ringRadius * (1 + breathing), 0, Math.PI * 2);
+      ctx.stroke();
+
+      if (progress > 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = unravel
+          ? "rgba(255, 210, 106, 0.62)"
+          : hsla(kingdom[0], kingdom[1], kingdom[2], 0.46);
+        ctx.lineWidth = unravel ? 2.8 : 2.2;
+        ctx.arc(0, 0, ringRadius * (1 + breathing), 0, Math.PI * 2 * progress);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawOctagon(x, y, r, rotation) {
+      ctx.beginPath();
+      for (let i = 0; i < 8; i += 1) {
+        const angle = rotation + i * Math.PI * 2 / 8;
+        const px = x + Math.cos(angle) * r;
+        const py = y + Math.sin(angle) * r;
+        if (i === 0) {
+          ctx.moveTo(px, py);
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function drawCenteredGlyph(value, x, y) {
+      const metrics = ctx.measureText(value);
+      const top = metrics.actualBoundingBoxAscent || parseFloat(ctx.font) * 0.72;
+      const bottom = metrics.actualBoundingBoxDescent || parseFloat(ctx.font) * 0.24;
+      const baselineY = y + (top - bottom) / 2;
+      ctx.fillText(value, x, baselineY);
+    }
+
+    function quadraticPoint(a, c, b, t) {
+      const mt = 1 - t;
+      return {
+        x: mt * mt * a.x + 2 * mt * t * c.x + t * t * b.x,
+        y: mt * mt * a.y + 2 * mt * t * c.y + t * t * b.y,
+      };
+    }
+
+    function pointFromAngle(origin, angle, length) {
+      return {
+        x: origin.x + Math.cos(angle) * length,
+        y: origin.y + Math.sin(angle) * length,
+      };
+    }
+
+    function keepInsideAnnulus(point) {
+      const maxDistance = radius * 0.9;
+      const minDistance = voidRadius * 1.2;
+      const currentDistance = distance(point, center);
+      if (currentDistance <= maxDistance && currentDistance >= minDistance) {
+        return point;
+      }
+
+      const angle = Math.atan2(point.y - center.y, point.x - center.x);
+      if (currentDistance < minDistance) {
+        return {
+          x: center.x + Math.cos(angle) * minDistance,
+          y: center.y + Math.sin(angle) * minDistance,
+        };
+      }
+
+      return {
+        x: center.x + Math.cos(angle) * maxDistance,
+        y: center.y + Math.sin(angle) * maxDistance,
+      };
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function easeOutCubic(value) {
+      return 1 - Math.pow(1 - value, 3);
+    }
+
+    function smoothstep(edge0, edge1, value) {
+      const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+
+    function renderRevealText(text) {
+      revealText.textContent = "";
+      revealSpans = [];
+      revealCount = -1;
+
+      Array.from(text).forEach((character) => {
+        const span = document.createElement("span");
+        span.className = "char";
+        span.textContent = character;
+        revealText.appendChild(span);
+        revealSpans.push(span);
+      });
+    }
+
+    function updateRevealCharacters(progress) {
+      const count = Math.floor(revealSpans.length * clamp(progress, 0, 1));
+      if (count === revealCount) {
+        return;
+      }
+
+      revealCount = count;
+      revealSpans.forEach((span, index) => {
+        span.classList.toggle("visible", index < count);
+      });
+    }
+
+    function formatDuration(ms) {
+      const totalSeconds = Math.max(0, Math.round(ms / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = String(totalSeconds % 60).padStart(2, "0");
+      return `${minutes}:${seconds}`;
+    }
+
+    function buildAnkyArtifact(text, elapsedMs) {
+      return [
+        "---",
+        "format: anky-chamber-v0",
+        `duration_ms: ${Math.round(elapsedMs)}`,
+        `duration: ${formatDuration(elapsedMs)}`,
+        `ended_at: ${new Date().toISOString()}`,
+        `characters: ${Array.from(text).length}`,
+        "---",
+        "",
+        text,
+      ].join("\n");
+    }
+
+    async function copyToClipboard(value) {
+      const text = value == null ? "" : String(value);
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (error) {
+        const fallback = document.createElement("textarea");
+        fallback.value = text;
+        fallback.setAttribute("readonly", "");
+        fallback.style.position = "fixed";
+        fallback.style.left = "-9999px";
+        document.body.appendChild(fallback);
+        fallback.select();
+        document.execCommand("copy");
+        document.body.removeChild(fallback);
+      }
+    }
+
+    function exportArtwork() {
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.download = `anky-chamber-${stamp}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    }
+
+    function resetChamber() {
+      threads = [];
+      sparks = [];
+      breaths = [];
+      glyphEchoes = [];
+      writtenText = "";
+      unravel = null;
+      revealSpans = [];
+      revealCount = -1;
+      lastAnkyArtifact = "";
+      threadHead = pointFromAngle(center, -Math.PI / 2, voidRadius * 1.34);
+      threadAngle = -Math.PI / 2;
+      previousGlyphCode = 0;
+      characterCount = 0;
+      startedAt = 0;
+      lastInputAt = 0;
+      currentGlyph = ".";
+      glyph.textContent = ".";
+      reveal.classList.remove("visible");
+      revealText.textContent = "";
+      revealMeta.textContent = "";
+      exportArtButton.classList.remove("visible");
+      threshold.textContent = "anky";
+    }
+
+    function glyphCode(value) {
+      if (value.length === 0) return 0;
+      return value.charCodeAt(0);
+    }
+
+    function normalize(vector) {
+      const length = Math.hypot(vector.x, vector.y) || 1;
+      return {
+        x: vector.x / length,
+        y: vector.y / length,
+      };
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function positiveMod(value, divisor) {
+      return ((value % divisor) + divisor) % divisor;
+    }
+
+    function hsla(h, s, l, a) {
+      return `hsla(${h}, ${s}%, ${l}%, ${a})`;
+    }
+  </script>
+</body>
+</html>

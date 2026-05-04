@@ -2,13 +2,16 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import {
   computeSessionHash,
+  hasTerminalLine,
   parseAnky,
   reconstructText,
   verifyHash,
 } from "./ankyProtocol";
-import { resolveAnkyLocalState, AnkyLocalState } from "./ankyState";
-import { ProcessingArtifact } from "./api/types";
-import { LoomSeal } from "./solana/types";
+import { resolveAnkyLocalState } from "./ankyState";
+import type { AnkyLocalState } from "./ankyState";
+import type { ProcessingArtifact } from "./api/types";
+import type { AnkySolanaCluster } from "./solana/ankySolanaConfig";
+import type { LoomSeal } from "./solana/types";
 
 const ANKY_DIRECTORY = "anky/";
 const ACTIVE_DRAFT_FILE = "active.anky.draft";
@@ -16,6 +19,7 @@ const PENDING_REVEAL_FILE = "pending.anky";
 const HASH_FILE_PATTERN = /^[a-f0-9]{64}\.anky$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const SEAL_FILE_PATTERN = /^[a-f0-9]{64}\.seals\.json$/;
+const SEAL_RECEIPT_FILE_PATTERN = /^[a-f0-9]{64}\.seal\.json$/;
 
 type SidecarArtifactKind =
   | "conversation"
@@ -23,6 +27,7 @@ type SidecarArtifactKind =
   | "full_sojourn_archive"
   | "image"
   | "meta"
+  | "processing"
   | "reflection"
   | "title";
 
@@ -38,6 +43,26 @@ export type SavedAnkyFile = {
   sealCount: number;
   uri: string;
   valid: boolean;
+};
+
+export type AnkySealSidecar = {
+  created_at: string;
+  loom_asset: string;
+  network: AnkySolanaCluster;
+  session_hash: string;
+  signature: string;
+  status: "confirmed";
+  version: 1;
+  writer: string;
+};
+
+export type ProcessingReceiptSidecar = {
+  created_at: string;
+  credits_remaining: number;
+  credits_spent: number;
+  engine: "anky-backend-dev-placeholder" | "local-dev-placeholder";
+  processing_type: "full_anky" | "reflection";
+  version: 1;
 };
 
 export function getAnkyDirectoryUri(): string {
@@ -156,6 +181,24 @@ export async function saveClosedSession(raw: string): Promise<SavedAnkyFile> {
   return toSavedAnkyFile(fileName, raw, true);
 }
 
+export async function stageTerminalDraftForReveal(raw: string): Promise<SavedAnkyFile> {
+  if (!hasTerminalLine(raw)) {
+    throw new Error("Cannot stage a non-terminal active draft for reveal.");
+  }
+
+  const parsed = parseAnky(raw);
+
+  if (!parsed.valid) {
+    throw new Error(`Cannot stage invalid terminal active draft: ${parsed.errors.join(" ")}`);
+  }
+
+  const saved = await saveClosedSession(raw);
+
+  await writePendingReveal(raw);
+
+  return saved;
+}
+
 export async function listSavedAnkyFiles(): Promise<SavedAnkyFile[]> {
   await ensureAnkyDirectory();
 
@@ -209,22 +252,51 @@ export async function appendLoomSeal(seal: LoomSeal): Promise<void> {
   await ensureAnkyDirectory();
 
   const existing = await readLoomSealsForHash(seal.sessionHash);
-  const seals = [...existing, seal];
+  const bySignature = new Map(existing.map((item) => [item.txSignature, item]));
+
+  bySignature.set(seal.txSignature, seal);
+  const seals = [...bySignature.values()];
 
   await FileSystem.writeAsStringAsync(getSealSidecarUri(seal.sessionHash), JSON.stringify(seals), {
     encoding: FileSystem.EncodingType.UTF8,
   });
 }
 
+export async function writeSealSidecar(seal: AnkySealSidecar): Promise<void> {
+  validateHash(seal.session_hash);
+  await ensureAnkyDirectory();
+  await writeUtf8Sidecar(`${seal.session_hash}.seal.json`, JSON.stringify(seal, null, 2));
+}
+
+export async function readSealSidecar(sessionHash: string): Promise<AnkySealSidecar | null> {
+  validateHash(sessionHash);
+  await ensureAnkyDirectory();
+
+  const uri = getSingleSealSidecarUri(sessionHash);
+  const info = await FileSystem.getInfoAsync(uri);
+
+  if (!info.exists) {
+    return null;
+  }
+
+  const raw = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+  const parsed = JSON.parse(raw) as unknown;
+
+  return isAnkySealSidecar(parsed) ? parsed : null;
+}
+
 export async function readLoomSealsForHash(sessionHash: string): Promise<LoomSeal[]> {
   validateHash(sessionHash);
   await ensureAnkyDirectory();
 
+  const singleSeal = await readSealSidecar(sessionHash);
   const uri = getSealSidecarUri(sessionHash);
   const info = await FileSystem.getInfoAsync(uri);
 
   if (!info.exists) {
-    return [];
+    return singleSeal == null ? [] : [toLoomSeal(singleSeal)];
   }
 
   const raw = await FileSystem.readAsStringAsync(uri, {
@@ -236,7 +308,13 @@ export async function readLoomSealsForHash(sessionHash: string): Promise<LoomSea
     return [];
   }
 
-  return parsed.filter(isLoomSeal);
+  const legacySeals = parsed.filter(isLoomSeal);
+
+  if (singleSeal == null) {
+    return legacySeals;
+  }
+
+  return [...legacySeals, toLoomSeal(singleSeal)];
 }
 
 export async function listLocalLoomSeals(): Promise<LoomSeal[]> {
@@ -244,11 +322,25 @@ export async function listLocalLoomSeals(): Promise<LoomSeal[]> {
 
   const fileNames = await FileSystem.readDirectoryAsync(getAnkyDirectoryUri());
   const sealFiles = fileNames.filter((fileName) => SEAL_FILE_PATTERN.test(fileName));
+  const sealReceiptFiles = fileNames.filter((fileName) => SEAL_RECEIPT_FILE_PATTERN.test(fileName));
   const nested = await Promise.all(
     sealFiles.map((fileName) => readLoomSealsForHash(fileName.replace(/\.seals\.json$/, ""))),
   );
+  const singleSeals = await Promise.all(
+    sealReceiptFiles.map((fileName) => readSealSidecar(fileName.replace(/\.seal\.json$/, ""))),
+  );
 
-  return nested.flat();
+  const allSeals = [
+    ...nested.flat(),
+    ...singleSeals.filter((seal): seal is AnkySealSidecar => seal != null).map(toLoomSeal),
+  ];
+  const unique = new Map<string, LoomSeal>();
+
+  allSeals.forEach((seal) => {
+    unique.set(seal.txSignature, seal);
+  });
+
+  return [...unique.values()];
 }
 
 export async function writeProcessingArtifacts(
@@ -346,6 +438,77 @@ export async function listArtifactKindsForHash(
   return getArtifactKindsFromFileNames(sessionHash, fileNames);
 }
 
+export async function writeLocalReflectionSidecars({
+  creditsRemaining,
+  creditsSpent,
+  engine = "local-dev-placeholder",
+  markdown,
+  processingType = "reflection",
+  sessionHash,
+}: {
+  creditsRemaining: number;
+  creditsSpent: number;
+  engine?: ProcessingReceiptSidecar["engine"];
+  markdown: string;
+  processingType?: ProcessingReceiptSidecar["processing_type"];
+  sessionHash: string;
+}): Promise<void> {
+  validateHash(sessionHash);
+  await ensureAnkyDirectory();
+
+  await writeUtf8Sidecar(`${sessionHash}.reflection.md`, markdown);
+  await writeUtf8Sidecar(
+    `${sessionHash}.processing.json`,
+    JSON.stringify(
+      {
+        created_at: new Date().toISOString(),
+        credits_remaining: creditsRemaining,
+        credits_spent: creditsSpent,
+        engine,
+        processing_type: processingType,
+        version: 1,
+      } satisfies ProcessingReceiptSidecar,
+      null,
+      2,
+    ),
+  );
+}
+
+export async function deleteAllLocalAnkyData(): Promise<void> {
+  const uri = getAnkyDirectoryUri();
+  const info = await FileSystem.getInfoAsync(uri);
+
+  if (info.exists) {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  }
+
+  await ensureAnkyDirectory();
+}
+
+export async function readReflectionSidecar(sessionHash: string): Promise<string | null> {
+  validateHash(sessionHash);
+  await ensureAnkyDirectory();
+
+  return readOptionalUtf8Sidecar(`${sessionHash}.reflection.md`);
+}
+
+export async function readProcessingReceipt(
+  sessionHash: string,
+): Promise<ProcessingReceiptSidecar | null> {
+  validateHash(sessionHash);
+  await ensureAnkyDirectory();
+
+  const raw = await readOptionalUtf8Sidecar(`${sessionHash}.processing.json`);
+
+  if (raw == null) {
+    return null;
+  }
+
+  const parsed = JSON.parse(raw) as unknown;
+
+  return isProcessingReceiptSidecar(parsed) ? parsed : null;
+}
+
 async function toSavedAnkyFile(
   fileName: string,
   raw: string,
@@ -383,12 +546,29 @@ function getSealSidecarUri(sessionHash: string): string {
   return `${getAnkyDirectoryUri()}${sessionHash}.seals.json`;
 }
 
+function getSingleSealSidecarUri(sessionHash: string): string {
+  return `${getAnkyDirectoryUri()}${sessionHash}.seal.json`;
+}
+
 async function writeUtf8Sidecar(fileName: string, value: string): Promise<string> {
   await FileSystem.writeAsStringAsync(`${getAnkyDirectoryUri()}${fileName}`, value, {
     encoding: FileSystem.EncodingType.UTF8,
   });
 
   return fileName;
+}
+
+async function readOptionalUtf8Sidecar(fileName: string): Promise<string | null> {
+  const uri = `${getAnkyDirectoryUri()}${fileName}`;
+  const info = await FileSystem.getInfoAsync(uri);
+
+  if (!info.exists) {
+    return null;
+  }
+
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
 }
 
 function validateHash(value: string): void {
@@ -413,6 +593,55 @@ function isLoomSeal(value: unknown): value is LoomSeal {
   );
 }
 
+function isAnkySealSidecar(value: unknown): value is AnkySealSidecar {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  const seal = value as Partial<AnkySealSidecar>;
+
+  return (
+    seal.version === 1 &&
+    (seal.network === "devnet" || seal.network === "mainnet-beta") &&
+    seal.status === "confirmed" &&
+    typeof seal.session_hash === "string" &&
+    HASH_PATTERN.test(seal.session_hash) &&
+    typeof seal.loom_asset === "string" &&
+    typeof seal.writer === "string" &&
+    typeof seal.signature === "string" &&
+    typeof seal.created_at === "string"
+  );
+}
+
+function isProcessingReceiptSidecar(value: unknown): value is ProcessingReceiptSidecar {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  const receipt = value as Partial<ProcessingReceiptSidecar>;
+
+  return (
+    receipt.version === 1 &&
+    (receipt.processing_type === "reflection" || receipt.processing_type === "full_anky") &&
+    (receipt.engine === "local-dev-placeholder" ||
+      receipt.engine === "anky-backend-dev-placeholder") &&
+    typeof receipt.credits_spent === "number" &&
+    typeof receipt.credits_remaining === "number" &&
+    typeof receipt.created_at === "string"
+  );
+}
+
+function toLoomSeal(seal: AnkySealSidecar): LoomSeal {
+  return {
+    createdAt: seal.created_at,
+    loomId: seal.loom_asset,
+    network: seal.network,
+    sessionHash: seal.session_hash,
+    txSignature: seal.signature,
+    writer: seal.writer,
+  };
+}
+
 function getArtifactKindsFromFileNames(
   sessionHash: string,
   fileNames: string[],
@@ -427,6 +656,7 @@ function getArtifactKindsFromFileNames(
       ),
     ],
     ["meta", fileNames.includes(`${sessionHash}.meta.json`)],
+    ["processing", fileNames.includes(`${sessionHash}.processing.json`)],
     ["conversation", fileNames.includes(`${sessionHash}.conversation.json`)],
     ["deep_mirror", fileNames.includes(`${sessionHash}.deep_mirror.md`)],
     ["full_sojourn_archive", fileNames.includes(`${sessionHash}.full_sojourn_archive.md`)],

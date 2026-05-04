@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 
-import { ankyColors, glow, radius, spacing } from "../../theme/tokens";
+import { ankyColors, radius, spacing } from "../../theme/tokens";
 
 type Props = {
   border?: boolean;
@@ -15,7 +15,7 @@ export function GlassCard({
   border = true,
   children,
   contentStyle,
-  glow: glowEnabled = false,
+  glow: _glowEnabled = false,
   style,
 }: Props) {
   return (
@@ -23,7 +23,6 @@ export function GlassCard({
       style={[
         styles.card,
         border && styles.border,
-        glowEnabled && styles.glow,
         style,
       ]}
     >
@@ -42,8 +41,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     padding: spacing.lg,
-  },
-  glow: {
-    ...glow.violet,
   },
 });

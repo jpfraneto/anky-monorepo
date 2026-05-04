@@ -1,3 +1,5 @@
+import { isAcceptedCharacter } from "./ankyProtocol";
+
 export type AnkyInputPolicy = {
   accessibilityInput: string;
   autocorrect: string;
@@ -23,3 +25,50 @@ export const ANKY_INPUT_POLICY: AnkyInputPolicy = {
   textSubstitution: "not intentionally supported; replacements are rejected unless they commit one character",
   voiceInput: "not intentionally supported",
 };
+
+export type AnkyInputDecision =
+  | {
+      accepted: true;
+      char: string;
+    }
+  | {
+      accepted: false;
+      reason:
+        | "deletion"
+        | "multi_character"
+        | "replacement"
+        | "same_value"
+        | "unsupported_character";
+    };
+
+export function getAcceptedInputCharacter(
+  previousValue: string,
+  nextValue: string,
+): AnkyInputDecision {
+  if (nextValue === previousValue) {
+    return { accepted: false, reason: "same_value" };
+  }
+
+  if (nextValue.length < previousValue.length) {
+    return { accepted: false, reason: "deletion" };
+  }
+
+  if (!nextValue.startsWith(previousValue)) {
+    return { accepted: false, reason: "replacement" };
+  }
+
+  const inserted = nextValue.slice(previousValue.length);
+  const characters = Array.from(inserted);
+
+  if (characters.length !== 1 || characters[0] !== inserted) {
+    return { accepted: false, reason: "multi_character" };
+  }
+
+  const char = characters[0];
+
+  if (!isAcceptedCharacter(char)) {
+    return { accepted: false, reason: "unsupported_character" };
+  }
+
+  return { accepted: true, char };
+}

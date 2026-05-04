@@ -392,8 +392,7 @@
     <button class="writing-back" id="writingBack">&times;</button>
   </div>
   <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
-  <div class="writing-prompt" id="writingPrompt">what is alive in you right now?</div>
-  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start writing..."></textarea>
+  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="write for 8 minutes"></textarea>
   <div class="writing-bottom">
     <div class="chakra-bar"><div class="chakra-fill" id="chakraFill"></div></div>
     <div class="bottom-row">
@@ -616,18 +615,27 @@ function loadDrawerAnkys() {
   });
 }
 
-// ── PROMPTS ──
-var defaultPrompts = [
-  'what is alive in you right now?',
-  'what are you afraid to say out loud?',
-  'what do you keep coming back to in your mind?',
-  'what would you tell your younger self?',
-  'what is the thing you never finished saying?',
-  'who are you when nobody is watching?',
-  'what are you carrying today that isn\'t yours?',
-  'what does your body know that your mind won\'t admit?',
-];
-function randomPrompt() { return defaultPrompts[Math.floor(Math.random()*defaultPrompts.length)]; }
+var writingPlaceholderByLang = {
+  en: 'write for 8 minutes',
+  es: 'escribe durante 8 minutos',
+  pt: 'escreva por 8 minutos',
+  fr: 'écris pendant 8 minutes',
+  de: 'schreib 8 minuten',
+  it: 'scrivi per 8 minuti',
+  ja: '8分間書いて',
+  ko: '8분 동안 써 보세요',
+  zh: '写 8 分钟',
+};
+
+function currentLangCode() {
+  var raw = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+  return raw.split('-')[0];
+}
+
+document.getElementById('writingArea').setAttribute(
+  'placeholder',
+  writingPlaceholderByLang[currentLangCode()] || writingPlaceholderByLang.en
+);
 
 // ── FARCASTER SDK INIT ──
 async function init() {
@@ -702,14 +710,8 @@ async function loadChatHistory() {
     var r = await fetch(url);
     var data = await r.json();
     var sessions = data.sessions || [];
-    var nextPrompt = data.next_prompt;
 
-    if (sessions.length === 0) {
-      var name = userName ? '@' + userName + '. ' : '';
-      var prompt = randomPrompt();
-      addChatBubble('anky', 'hey ' + name + 'i\'m anky.\n\ni\'m here to listen. write for 8 minutes without stopping — no backspace, no editing, just forward — and i\'ll reflect back what i see.\n\n*' + prompt + '*');
-      document.getElementById('writingPrompt').textContent = prompt;
-    } else {
+    if (sessions.length !== 0) {
       sessions.forEach(function(s, idx) {
         if (idx > 0) {
           var d = new Date(s.created_at);
@@ -740,19 +742,9 @@ async function loadChatHistory() {
           } catch(e) {}
         }
       });
-      var prompt = nextPrompt || randomPrompt();
-      var div = document.createElement('div');
-      div.className = 'session-divider'; div.innerHTML = '<span>now</span>';
-      chatArea.appendChild(div);
-      addChatBubble('anky', '*' + prompt + '*');
-      document.getElementById('writingPrompt').textContent = prompt;
     }
     scrollChat();
-  } catch(e) {
-    var prompt = randomPrompt();
-    addChatBubble('anky', 'hey. i\'m anky.\n\n*' + prompt + '*');
-    document.getElementById('writingPrompt').textContent = prompt;
-  }
+  } catch(e) {}
 }
 
 init();
@@ -872,7 +864,6 @@ async function sendChatMessage() {
 
   var overlay = document.getElementById('writingOverlay');
   var writingArea = document.getElementById('writingArea');
-  var writingPrompt = document.getElementById('writingPrompt');
   var writingTimer = document.getElementById('writingTimer');
   var chakraFill = document.getElementById('chakraFill');
   var idleBarFill = document.getElementById('idleBarFill');
@@ -900,7 +891,6 @@ async function sendChatMessage() {
     chakraFill.style.width = '0%';
     idleBarFill.style.width = '0%'; idleBarFill.classList.remove('warning');
     sendBtn.classList.remove('visible');
-    writingPrompt.classList.remove('faded');
     sessionId = genId(); sessionToken = null;
     keystrokeDeltas = []; lastKeystrokeAt = null;
   }
@@ -929,7 +919,7 @@ async function sendChatMessage() {
   writingArea.addEventListener('keydown', function(e) {
     if (state === 'sent') { e.preventDefault(); return; }
     if (state === 'ready') {
-      if (e.key.length === 1) { beginSession(); writingPrompt.classList.add('faded'); }
+      if (e.key.length === 1) { beginSession(); }
     } else if (state === 'paused') {
       if (e.key === 'Enter') { e.preventDefault(); doSend(); return; }
       if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); return; }
@@ -1049,7 +1039,7 @@ async function sendChatMessage() {
       });
       var data = await resp.json();
       if (data.error) { finishAnkyBubble(data.error); return; }
-      pollForAnkyPrompt(sessionId);
+      pollForAnkyStatus(sessionId);
       if (data.ankyId) {
         currentAnkyId = data.ankyId;
         streamReflection(data.ankyId);
@@ -1067,7 +1057,7 @@ async function sendChatMessage() {
     }
   }
 
-  function pollForAnkyPrompt(sid) {
+  function pollForAnkyStatus(sid) {
     var attempts = 0;
     var poll = setInterval(async function() {
       attempts++;
@@ -1075,11 +1065,7 @@ async function sendChatMessage() {
       try {
         var r = await fetch('/api/writing/'+sid+'/status');
         if (!r.ok) return;
-        var s = await r.json();
-        if (s.nextPrompt) {
-          document.getElementById('writingPrompt').textContent = s.nextPrompt;
-          clearInterval(poll);
-        }
+        await r.json();
       } catch(e) {}
     }, 2000);
   }
@@ -1148,6 +1134,8 @@ async function sendChatMessage() {
       overlay.style.height = window.visualViewport.height + 'px';
     });
   }
+
+  try { localStorage.removeItem('anky_last_prompt'); } catch (e) {}
 })();
 </script>
 </body>

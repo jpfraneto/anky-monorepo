@@ -32,11 +32,7 @@ async fn process_gpu_job(state: &AppState, job: &state::GpuJob) -> Result<(), Ap
             writing,
         } => {
             if crate::routes::writing::resume_protocol_anky_job(
-                state,
-                anky_id,
-                session_id,
-                user_id,
-                writing,
+                state, anky_id, session_id, user_id, writing,
             )
             .await?
             {

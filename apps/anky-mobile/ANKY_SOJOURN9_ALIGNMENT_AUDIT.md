@@ -18,7 +18,7 @@ Implemented:
 - UTF-8 hashing is computed locally from the raw `.anky` string encoded as UTF-8 bytes.
 - First accepted character writes `{epoch_ms} {character}`.
 - Subsequent accepted characters write zero-padded 4-digit deltas capped at `7999`.
-- Literal typed spaces are preserved as separator space plus typed space.
+- Typed spaces are encoded as the exact `SPACE` token.
 - Terminal marker is now exactly the final line `8000` with no trailing newline or text.
 - Parser rejects CRLF, missing terminal marker, extra text after terminal marker, invalid deltas, invalid characters, and BOM.
 - Reconstruction returns only typed characters.
@@ -49,10 +49,17 @@ Remaining risk:
 ## 4. Current seal/Solana behavior
 
 - Real Solana sealing is not implemented.
+- The mobile app now points at the checked-in Sojourn 9 program id
+  `2VfB7nvV2SZuCpK2DurRgJLfw57TCt2g9VJXACo5h8aK` for status/config awareness.
+- Devnet RPC returned no account for that program id on 2026-04-28, and the checked-in
+  `sojourn9/deployments/devnet.json` manifest has no deployed program id.
 - A clean adapter boundary exists:
   - `src/lib/solana/types.ts`
   - `src/lib/solana/loomClient.ts`
   - `src/lib/solana/loomClient.mock.ts`
+- `src/lib/solana/loomClient.program.ts` fails clearly if selected, because the current on-chain
+  `seal_anky` instruction still requires the legacy vessel proof and daily seal PDA rather than the
+  hash-only loom seal surface.
 - Screens call `sealAnky({ sessionHash, loomId })` and do not know whether the adapter is mocked or real.
 - The mock client enforces a valid 32-byte lowercase hex session hash and ownership of a mock `Anky Sojourn 9 Loom`.
 - The mock supports infinite seals conceptually; no daily or wallet seal limit exists.
@@ -60,12 +67,15 @@ Remaining risk:
 
 Remaining gap:
 
-- Replace the mock adapter with a devnet/mainnet Solana implementation before claiming public on-chain anchoring.
+- Add/update the on-chain instruction for hash-only loom sealing, then replace the mock adapter with
+  a wallet-backed devnet/mainnet Solana implementation before claiming public on-chain anchoring.
 
 ## 5. Current backend/API behavior
 
 - Raw `fetch` calls are isolated in `src/lib/api/ankyApi.ts`.
 - API contract types live in `src/lib/api/types.ts`.
+- The monorepo Rust backend now exposes the Expo Sojourn 9 contract in
+  `src/routes/mobile_sojourn.rs`.
 - Implemented wrappers:
   - `GET /api/v1/config`
   - `GET /api/v1/credits/balance`
@@ -74,10 +84,13 @@ Remaining gap:
   - `POST /api/v1/processing/run`
   - `GET /api/v1/seals?...`
 - Credit receipts are validated client-side before processing calls proceed.
+- Backend processing is a dev placeholder when `ALLOW_DEV_PLAINTEXT_PROCESSING=true`; it verifies
+  carpet hashes and returns sidecar artifacts without storing the carpet as an archive.
 
 Remaining gap:
 
 - `CreditsScreen` reads `EXPO_PUBLIC_ANKY_API_URL`; without that value it shows that backend processing is unavailable and does not spend credits.
+- Real credit accounting/checkout and production processing are still not implemented.
 
 ## 6. Current AI processing behavior
 
@@ -96,9 +109,11 @@ Remaining gap:
 ## 7. Gaps against this spec
 
 - Real Solana transaction construction/signing is mocked.
+- The current checked-in Sojourn 9 program is not deployed at the configured devnet id.
 - Real loom ownership discovery is mocked.
 - Encrypted carpet processing is not implemented.
-- Backend base URL and production processing service are not configured in this repo.
+- Mobile backend endpoints exist locally, but production credit checkout/accounting and processing
+  service integration are not configured.
 - App background/crash recovery is improved by active draft and pending reveal files, but there is no separate transaction journal or fsync-level guarantee.
 - Device-level testing is still needed for platform keyboard edge cases: autocorrect, smart punctuation, IME composition, voice input, and accessibility input.
 
@@ -115,7 +130,7 @@ Completed in this alignment pass:
 - Store seal lineage locally as sidecars without modifying `.anky`.
 - Add typed credit products, receipts, API client wrappers, carpet builder, and sidecar artifact storage.
 - Add minimal credits/mirror UI.
-- Add tests for protocol parsing/reconstruction/hash, literal spaces, terminal validation, carpets, credit costs/receipt validation, artifact sidecars, and mock loom sealing.
+- Add tests for protocol parsing/reconstruction/hash, `SPACE` token handling, terminal validation, carpets, credit costs/receipt validation, artifact sidecars, and mock loom sealing.
 
 Next implementation steps:
 

@@ -35,7 +35,10 @@ pub async fn settings_page(
     ctx.insert("keyboard_layout", &settings.keyboard_layout);
     ctx.insert("preferred_model", &settings.preferred_model);
     ctx.insert("logged_in", &true);
-    ctx.insert("display_name", &user.display_name.as_deref().unwrap_or("YOU"));
+    ctx.insert(
+        "display_name",
+        &user.display_name.as_deref().unwrap_or("YOU"),
+    );
     ctx.insert(
         "profile_image_url",
         &user.profile_image_url.as_deref().unwrap_or(""),

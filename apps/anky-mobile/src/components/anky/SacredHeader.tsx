@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     color: ankyColors.violetBright,
     fontSize: fontSize.xs,
     fontWeight: "800",
-    letterSpacing: 1.8,
+    letterSpacing: 0,
     marginBottom: spacing.sm,
     textTransform: "uppercase",
   },
@@ -57,10 +57,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    color: ankyColors.gold,
+    color: ankyColors.text,
     fontSize: fontSize.xxl,
     fontWeight: "600",
-    letterSpacing: 0.9,
+    letterSpacing: 0,
     lineHeight: 46,
   },
   titleCompact: {

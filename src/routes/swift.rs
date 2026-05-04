@@ -1288,7 +1288,8 @@ async fn get_local_first_writing_status(
         let solana_status: String = row.get(10);
         let done_at: Option<String> = row.get(11);
         let status = if done_at.is_some()
-            || (image_status == "complete" && matches!(solana_status.as_str(), "complete" | "skipped"))
+            || (image_status == "complete"
+                && matches!(solana_status.as_str(), "complete" | "skipped"))
         {
             "complete".to_string()
         } else {

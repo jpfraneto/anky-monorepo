@@ -1,0 +1,8 @@
+{
+  "cluster": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "coreCollection": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
+  "sealProgramId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "updatedAt": "2026-04-29T14:38:53.020Z",
+  "sourceCollectionCreatedAt": "2026-04-29T14:32:31.044Z"
+}

@@ -71,6 +71,11 @@ assets/icon.png
 assets/adaptive-icon.png
 assets/splash-icon.png
 assets/favicon.png
+assets/logo-1024.png
+assets/logo-512.png
+assets/logo-256.png
+assets/logo-128.png
+assets/logo-64.png
 ```
 
 After replacing `anky-logo-source.png`, regenerate the PNGs with:
@@ -80,4 +85,11 @@ magick assets/anky-logo-source.png -resize 1024x1024^ -gravity center -extent 10
 magick -size 1024x1024 canvas:none \( assets/anky-logo-source.png -resize 850x850 \) -gravity center -compose over -composite -strip assets/adaptive-icon.png
 magick -size 1024x1024 canvas:none \( assets/anky-logo-source.png -resize 720x720 \) -gravity center -compose over -composite -strip assets/splash-icon.png
 magick assets/anky-logo-source.png -resize 48x48^ -gravity center -extent 48x48 -strip assets/favicon.png
+magick assets/anky-logo-source.png -resize 1024x1024 -strip assets/logo-1024.png
+magick assets/anky-logo-source.png -resize 512x512 -strip assets/logo-512.png
+magick assets/anky-logo-source.png -resize 256x256 -strip assets/logo-256.png
+magick assets/anky-logo-source.png -resize 128x128 -strip assets/logo-128.png
+magick assets/anky-logo-source.png -resize 64x64 -strip assets/logo-64.png
 ```
+
+Splash and adaptive icon backgrounds are configured as black in `app.json`.

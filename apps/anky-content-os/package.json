@@ -1,0 +1,10 @@
+{
+  "name": "anky-content-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "calendar:generate": "node --experimental-strip-types scripts/generate-calendar.ts",
+    "metrics:score": "node --experimental-strip-types scripts/resonance-score.ts"
+  }
+}

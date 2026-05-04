@@ -172,6 +172,7 @@ The iOS app uses `/swift/v2/*` endpoints with Bearer token auth:
 - `cargo fmt` and `cargo check` must pass before any session ends.
 - Never hardcode credentials. Read from environment variables or config struct.
 - **Documentation is first-class.** Always update `CURRENT_STATE.md`, `CLAUDE.md`, and changelog when making changes.
+- Public markdown routes are product surface. Keep `/sojourn9.md` aligned with the current Sojourn 9 constitutional text.
 
 ## Deployment
 

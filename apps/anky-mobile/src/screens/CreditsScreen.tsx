@@ -7,49 +7,29 @@ import { GlassCard } from "../components/anky/GlassCard";
 import { RitualButton } from "../components/anky/RitualButton";
 import { SacredHeader } from "../components/anky/SacredHeader";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
-import { createAnkyApiClient } from "../lib/api/ankyApi";
+import { CREDIT_COSTS, PROCESSING_TYPES, ProcessingType } from "../lib/api/types";
+import { listSavedAnkyFiles, SavedAnkyFile } from "../lib/ankyStorage";
+import { hasConfiguredBackend } from "../lib/auth/backendSession";
 import {
-  AppConfigResponse,
-  CREDIT_COSTS,
-  CreditReceipt,
-  PROCESSING_TYPES,
-  ProcessingType,
-} from "../lib/api/types";
-import {
-  buildCarpetFromAnkyStrings,
-  createProcessingCarpetPayload,
-  createProcessingTicketRequest,
-} from "../lib/processing/carpet";
-import {
-  listSavedAnkyFiles,
-  readAnkyFile,
-  SavedAnkyFile,
-  writeProcessingArtifacts,
-} from "../lib/ankyStorage";
+  getReflectionCreditBalance,
+  processReflectionWithMode,
+} from "../lib/credits/processAnky";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Credits">;
+type RunState = "loading" | "ready" | "running" | "done" | "error";
 
-type RunState = "idle" | "loading" | "ready" | "running" | "done" | "error";
-
-declare const process:
-  | {
-      env?: Record<string, string | undefined>;
-    }
-  | undefined;
-
-const API_BASE_URL =
-  typeof process === "undefined" ? "" : (process.env?.EXPO_PUBLIC_ANKY_API_URL ?? "");
-
-export function CreditsScreen({ route }: Props) {
-  const [balance, setBalance] = useState<number | null>(null);
-  const [config, setConfig] = useState<AppConfigResponse | null>(null);
+export function CreditsScreen({ navigation, route }: Props) {
+  const [balance, setBalance] = useState<number>(0);
   const [files, setFiles] = useState<SavedAnkyFile[]>([]);
   const [message, setMessage] = useState("");
   const [processingType, setProcessingType] = useState<ProcessingType>(
     route.params?.processingType ?? "reflection",
   );
-  const [receipt, setReceipt] = useState<CreditReceipt | null>(null);
+  const [receipt, setReceipt] = useState<{
+    creditsRemaining: number;
+    creditsSpent: number;
+  } | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(
     route.params?.fileName ?? null,
   );
@@ -59,50 +39,32 @@ export function CreditsScreen({ route }: Props) {
     () => files.find((file) => file.fileName === selectedFileName) ?? files[0] ?? null,
     [files, selectedFileName],
   );
-  const selectedFiles =
-    processingType === "full_sojourn_archive" ? files : selectedFile == null ? [] : [selectedFile];
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
-      setState("loading");
-
       try {
-        const localFiles = await listSavedAnkyFiles();
+        setState("loading");
+        const [nextFiles, nextBalance] = await Promise.all([
+          listSavedAnkyFiles(),
+          getReflectionCreditBalance(),
+        ]);
 
         if (!mounted) {
           return;
         }
 
-        setFiles(localFiles);
-
-        if (selectedFileName == null && localFiles[0] != null) {
-          setSelectedFileName(localFiles[0].fileName);
+        setFiles(nextFiles);
+        setBalance(nextBalance);
+        if (selectedFileName == null && nextFiles[0] != null) {
+          setSelectedFileName(nextFiles[0].fileName);
         }
-
-        if (API_BASE_URL.length === 0) {
-          setMessage("backend not configured; credit processing is unavailable");
-          setState("ready");
-          return;
-        }
-
-        const api = createAnkyApiClient({ baseUrl: API_BASE_URL });
-        const [nextConfig, nextBalance] = await Promise.all([
-          api.getConfig(),
-          api.getCreditBalance(),
-        ]);
-
-        if (mounted) {
-          setConfig(nextConfig);
-          setBalance(nextBalance.creditsRemaining);
-          setState("ready");
-        }
+        setState("ready");
       } catch (error) {
         console.error(error);
-
         if (mounted) {
-          setMessage("could not load credit state");
+          setMessage("Reflection failed. Your .anky is unchanged.");
           setState("error");
         }
       }
@@ -116,63 +78,74 @@ export function CreditsScreen({ route }: Props) {
   }, [selectedFileName]);
 
   async function handleRunProcessing() {
-    if (selectedFiles.length === 0 || state === "running") {
+    if (selectedFile == null || state === "running") {
       return;
     }
 
-    if (API_BASE_URL.length === 0 || config == null) {
-      setMessage("backend not configured; no credits were spent");
+    if (!hasConfiguredBackend()) {
+      setMessage("reflection needs the backend API URL. writing and copy still work locally.");
+      return;
+    }
+
+    if (processingType !== "reflection" && processingType !== "full_anky") {
+      setMessage("this mirror is not available in this build.");
+      return;
+    }
+
+    if (balance < CREDIT_COSTS[processingType]) {
+      setMessage("Not enough credits. Credits pay for mirrors, not for truth.");
       return;
     }
 
     try {
       setState("running");
       setMessage("");
-
-      const rawEntries = await Promise.all(
-        selectedFiles.map((file) => readAnkyFile(file.fileName)),
+      const result = await processReflectionWithMode(
+        selectedFile.fileName,
+        processingType === "full_anky" ? "full" : "simple",
       );
-      const carpet = buildCarpetFromAnkyStrings(processingType, rawEntries);
-      const carpetPayload = createProcessingCarpetPayload(carpet, config.processing);
-      const api = createAnkyApiClient({ baseUrl: API_BASE_URL });
-      const ticket = await api.createProcessingTicket(createProcessingTicketRequest(carpet));
 
-      setReceipt(ticket.receipt);
-      setBalance(ticket.receipt.creditsRemaining);
-
-      const response = await api.runProcessing({
-        encryptedCarpet: carpetPayload.encryptedCarpet,
-        encryptionScheme: carpetPayload.encryptionScheme,
-        receipt: ticket.receipt,
+      setBalance(result.creditsRemaining);
+      setReceipt({
+        creditsRemaining: result.creditsRemaining,
+        creditsSpent: result.creditsSpent,
       });
-
-      await writeProcessingArtifacts(response.artifacts);
-      setMessage("derived artifacts saved beside local .anky files");
+      setMessage("reflection saved beside this local anky.");
       setState("done");
     } catch (error) {
       console.error(error);
-      setMessage("processing did not complete");
+      setMessage(
+        error instanceof Error ? error.message : "Reflection failed. Your .anky is unchanged.",
+      );
       setState("error");
     }
   }
 
+  async function handleRefreshCredits() {
+    const nextBalance = await getReflectionCreditBalance();
+    setBalance(nextBalance);
+    setMessage("credit balance refreshed.");
+  }
+
   return (
-    <ScreenBackground variant="cosmic">
+    <ScreenBackground variant="plain">
       <ScrollView contentContainerStyle={styles.content}>
         <SacredHeader
           compact
-          subtitle="credits pay for mirrors, not the canonical archive"
+          subtitle="Credits pay for mirrors, not for truth."
           title="credits"
         />
 
         <GlassCard style={styles.card}>
           <Text style={styles.label}>balance</Text>
-          <Text style={styles.balance}>{balance == null ? "not loaded" : `${balance} credits`}</Text>
-          <Text style={styles.note}>processing sends a temporary carpet only after this action.</Text>
+          <Text style={styles.balance}>Credits: {balance}</Text>
+          <Text style={styles.note}>
+            Credits are server-backed when the API URL is configured. Native purchases are not configured in this build.
+          </Text>
         </GlassCard>
 
         <GlassCard style={styles.card}>
-          <Text style={styles.label}>processing</Text>
+          <Text style={styles.label}>processing options</Text>
           <View style={styles.options}>
             {PROCESSING_TYPES.map((type) => (
               <Pressable
@@ -182,7 +155,10 @@ export function CreditsScreen({ route }: Props) {
                 style={[styles.option, processingType === type && styles.optionSelected]}
               >
                 <Text style={styles.optionText}>{labelForProcessingType(type)}</Text>
-                <Text style={styles.optionCost}>{CREDIT_COSTS[type]} credits</Text>
+                <Text style={styles.optionCost}>
+                  {CREDIT_COSTS[type]} credits
+                  {type === "reflection" || type === "full_anky" ? "" : " · unavailable"}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -191,11 +167,7 @@ export function CreditsScreen({ route }: Props) {
         <GlassCard style={styles.card}>
           <Text style={styles.label}>selected .anky</Text>
           <Text style={styles.note}>
-            {processingType === "full_sojourn_archive"
-              ? `${files.length} local .anky files`
-              : selectedFile == null
-                ? "no local .anky file"
-                : selectedFile.fileName}
+            {selectedFile == null ? "no local .anky file" : selectedFile.fileName}
           </Text>
           <Text style={styles.cost}>
             {CREDIT_COSTS[processingType]} credits will be spent
@@ -203,9 +175,15 @@ export function CreditsScreen({ route }: Props) {
         </GlassCard>
 
         <RitualButton
-          disabled={selectedFiles.length === 0 || state === "running"}
-          label={state === "running" ? "processing" : "spend credits and mirror"}
-          onPress={handleRunProcessing}
+          disabled={selectedFile == null || state === "running"}
+          label={state === "running" ? "reflecting" : "spend credits and mirror"}
+          onPress={() => void handleRunProcessing()}
+        />
+        <RitualButton
+          label="refresh balance"
+          onPress={() => void handleRefreshCredits()}
+          style={styles.secondaryButton}
+          variant="secondary"
         />
 
         {receipt == null ? null : (
@@ -216,6 +194,15 @@ export function CreditsScreen({ route }: Props) {
           </GlassCard>
         )}
 
+        {selectedFile != null && state === "done" ? (
+          <View style={styles.doneActions}>
+            <RitualButton
+              label="View entry"
+              onPress={() => navigation.navigate("Entry", { fileName: selectedFile.fileName })}
+            />
+          </View>
+        ) : null}
+
         {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
       </ScrollView>
     </ScreenBackground>
@@ -225,15 +212,15 @@ export function CreditsScreen({ route }: Props) {
 function labelForProcessingType(type: ProcessingType): string {
   switch (type) {
     case "reflection":
-      return "reflection";
+      return "Reflection";
     case "image":
-      return "image";
+      return "Image";
     case "full_anky":
-      return "full anky";
+      return "Full Anky";
     case "deep_mirror":
-      return "deep mirror";
+      return "Deep Mirror";
     case "full_sojourn_archive":
-      return "full sojourn archive";
+      return "Full Sojourn";
   }
 }
 
@@ -257,11 +244,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: spacing.md,
   },
+  doneActions: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
   label: {
-    color: ankyColors.violetBright,
+    color: ankyColors.gold,
     fontSize: fontSize.xs,
     fontWeight: "800",
-    letterSpacing: 1.3,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   message: {
@@ -295,7 +286,6 @@ const styles = StyleSheet.create({
     color: ankyColors.text,
     fontSize: fontSize.md,
     fontWeight: "700",
-    textTransform: "lowercase",
   },
   options: {
     gap: spacing.sm,
@@ -306,5 +296,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     lineHeight: 23,
     marginTop: spacing.sm,
+  },
+  secondaryButton: {
+    marginTop: spacing.md,
   },
 });

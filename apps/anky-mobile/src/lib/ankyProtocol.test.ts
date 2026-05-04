@@ -33,13 +33,13 @@ describe(".anky protocol", () => {
     expect(next.raw).toBe("1000 a\n7999 b\n");
   });
 
-  it("stores literal space as separator space plus typed space", () => {
-    expect(appendFirstCharacter(" ", 1000)).toBe("1000  \n");
+  it("stores typed spaces as the SPACE token", () => {
+    expect(appendFirstCharacter(" ", 1000)).toBe("1000 SPACE\n");
 
     const raw = appendFirstCharacter("a", 1000);
     const next = appendCharacter(raw, " ", 1007, 1000);
 
-    expect(next.raw).toBe("1000 a\n0007  \n");
+    expect(next.raw).toBe("1000 a\n0007 SPACE\n");
   });
 
   it("closeSession appends terminal `8000` with no trailing text", () => {
@@ -50,7 +50,7 @@ describe(".anky protocol", () => {
   });
 
   it("parseAnky accepts valid files", () => {
-    const raw = closeSession("1000 a\n0042  \n0000 b\n");
+    const raw = closeSession("1000 a\n0042 SPACE\n0000 b\n");
     const parsed = parseAnky(raw);
 
     expect(parsed.valid).toBe(true);
@@ -72,7 +72,7 @@ describe(".anky protocol", () => {
   });
 
   it("reconstructText returns only typed characters", () => {
-    const raw = closeSession("1000 a\n0042  \n0000 b\n");
+    const raw = closeSession("1000 a\n0042 SPACE\n0000 b\n");
 
     expect(reconstructText(raw)).toBe("a b");
   });
@@ -115,8 +115,15 @@ describe(".anky protocol", () => {
     expect(parsed.errors).toContain("File must not start with a BOM.");
   });
 
+  it("rejects legacy literal-space records", () => {
+    const parsed = parseAnky("1000 a\n0042  \n8000");
+
+    expect(parsed.valid).toBe(false);
+    expect(parsed.errors).toContain("Line 2: Space must be encoded as SPACE.");
+  });
+
   it("derives replay words from the .anky string", () => {
-    const raw = closeSession("1000 h\n0010 i\n0005  \n0020 a\n");
+    const raw = closeSession("1000 h\n0010 i\n0005 SPACE\n0020 a\n");
 
     expect(getReplayWords(raw)).toEqual([
       {

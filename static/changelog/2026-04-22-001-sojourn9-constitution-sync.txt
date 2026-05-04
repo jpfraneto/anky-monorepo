@@ -1,0 +1,1 @@
+/sojourn9.md now serves the current Sojourn 9 constitutional text instead of the older draft, matching `sojourn9/constitution/SOJOURN_9.md`.

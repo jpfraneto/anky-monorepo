@@ -44,9 +44,12 @@ import {
   clearPendingReveal,
   appendLoomSeal,
   listSavedAnkyFiles,
+  readActiveDraft,
   readAnkyFile,
   readPendingReveal,
   saveClosedSession,
+  stageTerminalDraftForReveal,
+  writeActiveDraft,
   writePendingReveal,
   writeProcessingArtifacts,
 } from "./ankyStorage";
@@ -86,6 +89,18 @@ describe(".anky storage", () => {
 
     expect(saved.fileName).toBe(`${hash}.anky`);
     expect(saved.localState).toBe("verified");
+    await expect(readAnkyFile(saved.fileName)).resolves.toBe(raw);
+  });
+
+  it("stages a terminal active draft for reveal without clearing the draft first", async () => {
+    const raw = closeSession("1000 a\n0042 b\n");
+
+    await writeActiveDraft(raw);
+
+    const saved = await stageTerminalDraftForReveal(raw);
+
+    await expect(readActiveDraft()).resolves.toBe(raw);
+    await expect(readPendingReveal()).resolves.toBe(raw);
     await expect(readAnkyFile(saved.fileName)).resolves.toBe(raw);
   });
 

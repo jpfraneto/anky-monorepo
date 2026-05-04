@@ -753,6 +753,74 @@ pub async fn chat_about_writing_best(
     .map(|result| result.text)
 }
 
+/// General user-facing chat path using the same local-first provider chain as
+/// Anky conversation routes: Mind → OpenRouter → Anthropic.
+pub async fn chat_with_system_best(
+    config: &Config,
+    system: &str,
+    history: &[(String, String)],
+    max_tokens: u32,
+) -> Result<String> {
+    let mind_messages: Vec<(String, String)> =
+        std::iter::once(("system".into(), system.to_string()))
+            .chain(history.iter().cloned())
+            .collect();
+
+    if !config.mind_url.is_empty() {
+        match crate::services::mind::chat(&config.mind_url, &mind_messages, max_tokens).await {
+            Ok(result) if !result.trim().is_empty() => return Ok(result),
+            Ok(_) => tracing::warn!("Mind chat returned empty text, falling back to cloud"),
+            Err(_err) => tracing::warn!("Mind chat failed, falling back to cloud"),
+        }
+    }
+
+    let openrouter_messages: Vec<crate::services::openrouter::OpenRouterMessage> = history
+        .iter()
+        .map(|(role, content)| crate::services::openrouter::OpenRouterMessage::new(role, content))
+        .collect();
+
+    if !config.openrouter_api_key.is_empty() && !config.openrouter_anky_model.is_empty() {
+        match crate::services::openrouter::call_openrouter_messages(
+            &config.openrouter_api_key,
+            &config.openrouter_anky_model,
+            system,
+            openrouter_messages.clone(),
+            max_tokens,
+            90,
+        )
+        .await
+        {
+            Ok(result) => return Ok(result.text),
+            Err(_err) => {
+                tracing::warn!("OpenRouter chat failed, falling back to Anthropic");
+            }
+        }
+    }
+
+    if config.anthropic_api_key.is_empty() {
+        anyhow::bail!("no mobile thread model provider configured");
+    }
+
+    let claude_messages: Vec<ClaudeMessage> = history
+        .iter()
+        .map(|(role, content)| ClaudeMessage {
+            role: role.clone(),
+            content: content.clone(),
+        })
+        .collect();
+
+    call_claude_with_messages(
+        &config.anthropic_api_key,
+        &config.conversation_model,
+        Some(HAIKU_MODEL),
+        system,
+        claude_messages,
+        max_tokens,
+    )
+    .await
+    .map(|result| result.text)
+}
+
 pub async fn chat_about_partial_writing_best(
     config: &Config,
     writing: &str,

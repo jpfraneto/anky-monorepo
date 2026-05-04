@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   hash: {
     color: ankyColors.gold,
     fontSize: 11,
-    letterSpacing: 1,
+    letterSpacing: 0,
     marginTop: spacing.sm,
   },
   preview: {
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     color: ankyColors.success,
     fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   subtitle: {

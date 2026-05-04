@@ -1,0 +1,25 @@
+{
+  "name": "Anky Sojourn 9 Loom #0001",
+  "description": "Mainnet Loom metadata for mobile minting and .anky hash sealing.",
+  "image": "https://anky.app/static/anky-collection.png",
+  "external_url": "https://anky.app/sojourn9",
+  "attributes": [
+    {
+      "trait_type": "Network",
+      "value": "mainnet-beta"
+    },
+    {
+      "trait_type": "Sojourn",
+      "value": "9"
+    }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://anky.app/static/anky-collection.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

@@ -20,33 +20,6 @@ fn video_public_url(path: &str) -> String {
     }
 }
 
-fn default_inquiry_for_lang(lang: &str) -> &'static str {
-    match lang {
-        "es" => "¿Qué estás evitando sentir ahora mismo?",
-        "fr" => "Qu'est-ce que tu évites de ressentir en ce moment ?",
-        "pt" => "O que você está evitando sentir agora?",
-        "de" => "Was vermeidest du gerade zu fühlen?",
-        "it" => "Cosa stai evitando di sentire adesso?",
-        "ja" => "今、何を感じることを避けていますか？",
-        "ko" => "지금 어떤 감정을 피하고 있나요?",
-        "zh" => "你现在在回避什么感受？",
-        _ => "What are you avoiding feeling right now?",
-    }
-}
-
-fn parse_accept_language(header: Option<&str>) -> String {
-    if let Some(val) = header {
-        // Parse first language code from Accept-Language header
-        // e.g. "es-MX,es;q=0.9,en;q=0.8" → "es"
-        if let Some(first) = val.split(',').next() {
-            let lang = first.split(';').next().unwrap_or("en").trim();
-            // Extract primary subtag: "es-MX" → "es"
-            return lang.split('-').next().unwrap_or("en").to_lowercase();
-        }
-    }
-    "en".to_string()
-}
-
 #[derive(Serialize, Clone)]
 struct LandingCollageMedia {
     url: String,
@@ -225,6 +198,16 @@ static ALTAR_HTML: &str = include_str!("../../templates/altar.html");
 /// Login bridge HTML served at /login for phone-seal handoff.
 static LOGIN_HTML: &str = include_str!("../../templates/login.html");
 
+pub async fn load_newlanding_html() -> String {
+    tokio::fs::read_to_string("static/newlanding/index.html")
+        .await
+        .unwrap_or_else(|_| include_str!("../../static/newlanding/index.html").to_string())
+}
+
+pub async fn newlanding_page() -> Html<String> {
+    Html(load_newlanding_html().await)
+}
+
 #[derive(Deserialize)]
 pub struct SealBridgeQuery {
     pub challenge: Option<String>,
@@ -313,6 +296,7 @@ pub async fn home(
     ctx.insert("profile_image_url", &profile_image_url);
     ctx.insert("username", &username);
     ctx.insert("wallet_address", &wallet_address);
+    ctx.insert("install_url", &state.config.ios_app_url);
     let html = state.tera.render("landing.html", &ctx)?;
     Ok((jar, Html(html)))
 }
@@ -346,7 +330,7 @@ pub async fn write_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
-    Query(query): Query<WriteQuery>,
+    Query(_query): Query<WriteQuery>,
 ) -> Result<(CookieJar, Html<String>), AppError> {
     // If training, redirect to sleeping page
     {
@@ -371,39 +355,6 @@ pub async fn write_page(
 
     let cookie_user_id = crate::routes::auth::visitor_id_from_jar(&jar);
 
-    // Resolve prompt: ?p={uuid} looks up DB, ?prompt={text} uses raw text
-    let resolved_prompt = if let Some(ref uuid) = query.p {
-        let db = crate::db::conn(&state.db)?;
-        crate::db::queries::get_prompt_by_id(&db, uuid)
-            .ok()
-            .flatten()
-            .map(|p| p.prompt_text)
-    } else {
-        None
-    };
-    let prompt_text = resolved_prompt.or_else(|| query.prompt.clone());
-
-    let (inquiry_id, inquiry_question) = if let Some(ref prompt_text) = prompt_text {
-        (String::new(), prompt_text.clone())
-    } else {
-        let lang =
-            parse_accept_language(headers.get("accept-language").and_then(|v| v.to_str().ok()));
-        if let Some(ref uid) = cookie_user_id {
-            let db = crate::db::conn(&state.db)?;
-            match crate::db::queries::get_current_inquiry(&db, uid) {
-                Ok(Some((id, question))) => (id, question),
-                _ => {
-                    let question = default_inquiry_for_lang(&lang).to_string();
-                    let id = crate::db::queries::create_inquiry(&db, uid, &question, &lang)
-                        .unwrap_or_default();
-                    (id, question)
-                }
-            }
-        } else {
-            (String::new(), default_inquiry_for_lang(&lang).to_string())
-        }
-    };
-
     let mut ctx = tera::Context::new();
     crate::i18n::inject_into_context(&state.i18n, &mut ctx, &headers, &jar, None);
     if let Some(ref uname) = username {
@@ -414,8 +365,6 @@ pub async fn write_page(
     if let Some(ref uid) = cookie_user_id {
         ctx.insert("user_token", uid);
     }
-    ctx.insert("inquiry_id", &inquiry_id);
-    ctx.insert("inquiry_question", &inquiry_question);
 
     // Recent ankys for "your threads" on the write page
     let recent_ankys = if let Some(ref uid) = cookie_user_id {
@@ -1007,9 +956,7 @@ pub async fn you_page(
         ctx.insert("display_name", &u.display_name.as_deref().unwrap_or("anon"));
         ctx.insert(
             "profile_image_url",
-            &u.profile_image_url
-                .as_deref()
-                .unwrap_or(""),
+            &u.profile_image_url.as_deref().unwrap_or(""),
         );
         ctx.insert("email", &u.email.as_deref().unwrap_or(""));
     } else if let Some(visitor_id) = crate::routes::auth::visitor_id_from_jar(&jar) {

@@ -1,4 +1,5 @@
 import type { LoomSeal } from "../solana/types";
+import type { ThreadMode, ThreadRole } from "../thread/types";
 
 export type ProcessingType =
   | "reflection"
@@ -60,6 +61,13 @@ export type AppConfigResponse = {
   solana: {
     ankyProgramId?: string;
     cluster: "devnet" | "mainnet-beta";
+    collectionUri?: string;
+    coreCollection?: string;
+    coreProgramId?: string;
+    loomMetadataBaseUrl?: string;
+    rpcUrl?: string;
+    sealProgramId?: string;
+    sealVerification?: string;
   };
 };
 
@@ -128,6 +136,209 @@ export type RunProcessingResponse = {
 
 export type SealLookupResponse = {
   seals: LoomSeal[];
+};
+
+export type MobileSolanaConfigResponse = {
+  cluster: "devnet" | "mainnet-beta";
+  collectionUri: string;
+  coreCollection: string;
+  coreProgramId: string;
+  loomMetadataBaseUrl: string;
+  network: "devnet" | "mainnet-beta";
+  rpcUrl: string;
+  sealProgramId: string;
+  sealVerification: string;
+};
+
+export type MobileCreditAccount = {
+  createdAt: string;
+  creditsRemaining: number;
+  identityId: string;
+  updatedAt: string;
+};
+
+export type MobileCreditResponse = {
+  account: MobileCreditAccount;
+  initialCredits: number;
+};
+
+export type MobileSpendCreditsRequest = {
+  amount: number;
+  identityId: string;
+  metadata?: unknown;
+  reason: string;
+  relatedId?: string;
+};
+
+export type MobileSpendCreditsResponse = {
+  account: MobileCreditAccount;
+  creditsSpent: number;
+};
+
+export type MobileMintAuthorizationRequest = {
+  collection?: string;
+  inviteCode?: string;
+  loomIndex: number;
+  payer?: string;
+  wallet: string;
+};
+
+export type MobileMintAuthorizationResponse = {
+  allowed: boolean;
+  authorizationId: string;
+  collection: string;
+  expiresAt: string;
+  loomIndex: number;
+  mode: "self_funded" | "invite_code";
+  owner: string;
+  payer: string;
+  reason?: string;
+  signature: string;
+  sponsor: boolean;
+  sponsorPayer?: string;
+};
+
+export type PrepareMobileLoomMintRequest = {
+  authorizationId: string;
+  collection?: string;
+  loomIndex: number;
+  metadataUri?: string;
+  payer?: string;
+  wallet: string;
+};
+
+export type PrepareMobileLoomMintResponse = {
+  asset: string;
+  authorizationId: string;
+  blockhash: string;
+  collection: string;
+  collectionAuthority: string;
+  lastValidBlockHeight: number;
+  loomIndex: number;
+  mode: "self_funded" | "invite_code";
+  name: string;
+  owner: string;
+  payer: string;
+  transactionBase64: string;
+  uri: string;
+};
+
+export type RecordMobileLoomMintRequest = {
+  coreCollection: string;
+  loomAsset: string;
+  loomIndex?: number;
+  metadataUri?: string;
+  mintMode?: string;
+  signature: string;
+  status?: "confirmed" | "finalized" | "processed" | "pending" | "failed";
+  wallet: string;
+};
+
+export type MobileLoomMint = {
+  coreCollection: string;
+  createdAt: string;
+  id: string;
+  loomAsset: string;
+  loomIndex?: number;
+  metadataUri?: string;
+  mintMode?: string;
+  network: "devnet" | "mainnet-beta";
+  signature: string;
+  status: string;
+  wallet: string;
+};
+
+export type RecordMobileLoomMintResponse = {
+  loom: MobileLoomMint;
+  recorded: boolean;
+};
+
+export type MobileLoomLookupResponse = {
+  looms: MobileLoomMint[];
+};
+
+export type MobileReflectionRequest = {
+  anky: string;
+  identityId: string;
+  processingType?: "full_anky" | "reflection";
+  sessionHash: string;
+};
+
+export type MobileReflectionJob = {
+  createdAt: string;
+  creditsSpent: number;
+  error?: string;
+  id: string;
+  identityId: string;
+  processingType: string;
+  request?: unknown;
+  result?: unknown;
+  sessionHash: string;
+  status: string;
+  updatedAt: string;
+};
+
+export type MobileReflectionResponse = {
+  artifacts: ProcessingArtifact[];
+  creditsRemaining: number;
+  creditsSpent: number;
+  job: MobileReflectionJob;
+};
+
+export type MobileReflectionJobResponse = {
+  job: MobileReflectionJob;
+};
+
+export type RecordMobileSealRequest = {
+  blockTime?: number;
+  coreCollection: string;
+  loomAsset: string;
+  sessionHash: string;
+  signature: string;
+  slot?: number;
+  status?: "confirmed" | "finalized" | "processed" | "pending" | "failed";
+  wallet: string;
+};
+
+export type RecordMobileSealResponse = {
+  recorded: boolean;
+  seal: LoomSeal;
+};
+
+export type ThreadApiMessage = {
+  role: ThreadRole;
+  content: string;
+  createdAt: string;
+  id?: string;
+};
+
+export type SendThreadMessageRequest = {
+  existingReflection?: string;
+  messages: ThreadApiMessage[];
+  mode: ThreadMode;
+  rawAnky: string;
+  reconstructedText: string;
+  sessionHash: string;
+  userMessage: string;
+};
+
+export type SendThreadMessageResponse = {
+  message: ThreadApiMessage & {
+    role: "anky";
+  };
+};
+
+export type PrivyAuthRequest = {
+  auth_token: string;
+};
+
+export type BackendAuthResponse = {
+  email?: string;
+  ok: boolean;
+  session_token: string;
+  user_id: string;
+  username?: string;
+  wallet_address?: string;
 };
 
 export type SealLookupQuery =

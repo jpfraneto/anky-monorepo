@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anky Realtime Loom</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --day-color: #ff3b30;
+        --bg: #030307;
+        --ink: #f7f3ea;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          ui-serif,
+          Georgia,
+          Cambria,
+          "Times New Roman",
+          serif;
+      }
+
+      body {
+        display: grid;
+        place-items: stretch;
+      }
+
+      .chamber {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        min-height: 520px;
+        overflow: hidden;
+        outline: none;
+        background:
+          radial-gradient(circle at center, color-mix(in srgb, var(--day-color) 18%, transparent), transparent 36%),
+          radial-gradient(circle at center, #151326 0%, #090812 52%, #020207 100%);
+      }
+
+      .chamber::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+        background-size: 44px 44px;
+        opacity: 0.16;
+        mask-image: radial-gradient(circle at center, black 0%, black 55%, transparent 86%);
+        pointer-events: none;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .presence {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+      }
+
+      .vessel {
+        position: relative;
+        width: min(34vw, 280px);
+        height: min(34vw, 280px);
+        min-width: 180px;
+        min-height: 180px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        border: 1px solid color-mix(in srgb, var(--day-color) 36%, transparent);
+        box-shadow:
+          0 0 55px color-mix(in srgb, var(--day-color) 18%, transparent),
+          inset 0 0 50px rgba(255, 255, 255, 0.035);
+      }
+
+      .vessel::before,
+      .vessel::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .vessel::before {
+        inset: 18%;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+
+      .vessel::after {
+        inset: 38%;
+        background: color-mix(in srgb, var(--day-color) 26%, transparent);
+        filter: blur(24px);
+        opacity: var(--pulse, 0.3);
+      }
+
+      .glyph {
+        position: relative;
+        min-width: 0;
+        max-width: 72%;
+        font-size: clamp(4.5rem, 13vw, 10rem);
+        line-height: 0.9;
+        text-align: center;
+        color: var(--ink);
+        text-shadow:
+          0 0 22px color-mix(in srgb, var(--day-color) 48%, transparent),
+          0 0 58px color-mix(in srgb, var(--day-color) 24%, transparent);
+        opacity: 0.96;
+        transform: scale(var(--glyph-scale, 1));
+        transition:
+          transform 160ms ease,
+          opacity 260ms ease;
+        overflow-wrap: anywhere;
+      }
+
+      .witness {
+        position: absolute;
+        top: 25%;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ink);
+        box-shadow:
+          0 0 16px var(--ink),
+          0 0 36px var(--day-color);
+        opacity: 0.58;
+        animation: breathe 5.8s ease-in-out infinite;
+      }
+
+      .controls {
+        position: absolute;
+        right: 22px;
+        bottom: 22px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      button {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.055);
+        color: rgba(255, 255, 255, 0.78);
+        font: 600 1rem/1 system-ui, sans-serif;
+        cursor: pointer;
+        backdrop-filter: blur(16px);
+      }
+
+      button:hover {
+        border-color: color-mix(in srgb, var(--day-color) 72%, white 10%);
+        color: white;
+      }
+
+      button.active {
+        border-color: color-mix(in srgb, var(--day-color) 80%, white 16%);
+        background: color-mix(in srgb, var(--day-color) 18%, rgba(255, 255, 255, 0.055));
+        color: white;
+      }
+
+      .focus-catcher {
+        position: fixed;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      @keyframes breathe {
+        0%,
+        100% {
+          transform: translateY(0) scale(0.78);
+          opacity: 0.32;
+        }
+
+        50% {
+          transform: translateY(-2px) scale(1.2);
+          opacity: 0.72;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .chamber {
+          min-height: 100vh;
+        }
+
+        .vessel {
+          width: min(58vw, 260px);
+          height: min(58vw, 260px);
+        }
+
+        .controls {
+          right: 14px;
+          bottom: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="chamber" id="chamber" tabindex="0" aria-label="Realtime loom chamber">
+      <canvas id="threadLayer" aria-hidden="true"></canvas>
+      <canvas id="fxLayer" aria-hidden="true"></canvas>
+      <div class="presence" aria-hidden="true">
+        <div class="vessel" id="vessel">
+          <div class="witness"></div>
+          <div class="glyph" id="glyph">*</div>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="reveal" type="button" title="Reveal weave" aria-label="Reveal weave">&#9675;</button>
+        <button id="reset" type="button" title="Reset" aria-label="Reset">&#8634;</button>
+      </div>
+      <input class="focus-catcher" id="focusCatcher" autocomplete="off" inputmode="text" aria-hidden="true" />
+    </main>
+
+    <script>
+      (() => {
+        const SIDE_COUNT = 8;
+        const ANCHORS_PER_SIDE = 12;
+        const TOTAL_ANCHORS = SIDE_COUNT * ANCHORS_PER_SIDE;
+        const SIDE_COLORS = ["#ff3b30", "#ff8a00", "#ffd60a", "#34c759", "#0a84ff", "#5e5ce6", "#bf5af2", "#f2f2f7"];
+
+        const chamber = document.getElementById("chamber");
+        const threadCanvas = document.getElementById("threadLayer");
+        const fxCanvas = document.getElementById("fxLayer");
+        const threadCtx = threadCanvas.getContext("2d");
+        const fxCtx = fxCanvas.getContext("2d");
+        const ctx = fxCtx;
+        const glyphEl = document.getElementById("glyph");
+        const vessel = document.getElementById("vessel");
+        const revealButton = document.getElementById("reveal");
+        const resetButton = document.getElementById("reset");
+        const focusCatcher = document.getElementById("focusCatcher");
+
+        const dayIndex = dayIndexForToday();
+        const homeColor = SIDE_COLORS[(dayIndex - 1) % SIDE_COUNT];
+        document.documentElement.style.setProperty("--day-color", homeColor);
+
+        let pixelRatio = 1;
+        let width = 0;
+        let height = 0;
+        let center = { x: 0, y: 0 };
+        let outerRadius = 0;
+        let forbiddenRadius = 0;
+        let bendRadius = 0;
+        let framePoints = [];
+        let anchors = [];
+        let threadHead = null;
+        let threadAngle = -Math.PI / 2;
+        let settledSegments = [];
+        let activeWeaves = [];
+        let queuedWeaves = [];
+        let pulses = [];
+        let keyCount = 0;
+        let lastTime = 0;
+        let sessionStart = 0;
+        let currentGlyph = "";
+        let direction = dayIndex % 2 === 0 ? 1 : -1;
+        let animationFrame = 0;
+        let revealMode = false;
+        let rollingSeed = 0;
+        let settledLayerIntensity = -1;
+        let previousDelta = 260;
+
+        resize();
+        resetSession();
+
+        window.addEventListener("resize", resize);
+        window.addEventListener("keydown", handleKeydown, { capture: true });
+        chamber.addEventListener("pointerdown", focusInput);
+        revealButton.addEventListener("click", () => {
+          setRevealMode(!revealMode);
+          repaintSettledThreads(fieldIntensityFor(performance.now()), true);
+          focusInput();
+        });
+        resetButton.addEventListener("click", () => {
+          resetSession();
+          focusInput();
+        });
+
+        function focusInput() {
+          chamber.focus({ preventScroll: true });
+          focusCatcher.focus({ preventScroll: true });
+        }
+
+        function handleKeydown(event) {
+          if (event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+          }
+
+          const glyph = glyphForEvent(event);
+          if (!glyph) {
+            return;
+          }
+
+          event.preventDefault();
+          const now = performance.now();
+          const delta = lastTime === 0 ? 260 : clamp(now - lastTime, 24, 7999);
+          lastTime = now;
+          setRevealMode(false);
+          if (sessionStart === 0) {
+            sessionStart = now;
+          }
+
+          if (currentGlyph) {
+            weavePreviousGlyph(currentGlyph, delta, now);
+          }
+          currentGlyph = glyph;
+          renderGlyph(glyph, delta);
+          focusCatcher.value = "";
+        }
+
+        function weavePreviousGlyph(glyph, delta, now) {
+          const beat = clamp(delta / 1800, 0, 1);
+          const velocity = clamp(1000 / delta / 11, 0, 1);
+          const glyphImpulse = hashString(glyph + ":" + keyCount);
+          rollingSeed = evolveSeed(rollingSeed, glyphImpulse, delta, keyCount);
+          const from = keepInsideAnnulus(threadHead ?? pointFromAngle(center, -Math.PI / 2, forbiddenRadius * 1.36));
+          const pauseRatio = clamp(delta / 1800, 0, 1);
+          const speed = clamp(1 - delta / 1250, 0, 1);
+          const glyphTurn = (((rollingSeed >>> 9) % 9) - 4) * (Math.PI / 360);
+          const rhythmTurn = direction * (Math.PI / 42 + smoothstep(pauseRatio) * Math.PI / 7);
+          const breathTurn = Math.sin(keyCount * 0.37 + (rollingSeed % 97)) * (Math.PI / 90);
+          const length = outerRadius * (0.018 + smoothstep(pauseRatio) * 0.105) + speed * 10;
+
+          if (keyCount > 0 && Math.abs(delta - previousDelta) > 520) {
+            direction *= -1;
+          }
+
+          if (keyCount > 0 && keyCount % 37 === 0 && rollingSeed % 3 === 0) {
+            direction *= -1;
+          }
+
+          threadAngle += rhythmTurn + glyphTurn + breathTurn;
+          let to = pointFromAngle(from, threadAngle, length);
+          if (distanceBetween(to, center) > outerRadius * 0.9) {
+            const inward = Math.atan2(center.y - from.y, center.x - from.x);
+            threadAngle = inward + direction * (Math.PI / 15 + smoothstep(pauseRatio) * Math.PI / 16);
+            to = pointFromAngle(from, threadAngle, length * 0.74);
+          }
+          if (distanceBetween(to, center) < forbiddenRadius * 1.32) {
+            const tangent = Math.atan2(from.y - center.y, from.x - center.x) + direction * Math.PI / 2;
+            threadAngle = tangent + direction * (Math.PI / 22 + smoothstep(pauseRatio) * Math.PI / 12);
+            to = pointFromAngle(from, threadAngle, length * 0.9);
+          }
+          to = keepInsideAnnulus(to);
+
+          const stroke = colorForWeave(velocity, pauseRatio);
+          const path = organicCurve(from, to, keyCount, pauseRatio);
+          const opacity = clamp(0.14 + velocity * 0.14 + beat * 0.09, 0.12, 0.34);
+          const width = 0.58 + velocity * 0.95 + beat * 0.28;
+          const weave = {
+            path,
+            glyph,
+            color: stroke,
+            opacity,
+            width,
+            born: now,
+            duration: clamp(1180 + beat * 820 + distanceBetween(from, to) * 5.2, 1120, 2300),
+            delta,
+          };
+
+          queuedWeaves.push(weave);
+          activateQueuedWeaves(now);
+          pulses.push({ anchor: to, color: stroke, born: now, strength: 0.28 + velocity * 0.52 });
+          if (queuedWeaves.length > 32) {
+            settleWeave(queuedWeaves.shift());
+          }
+          if (pulses.length > 80) {
+            pulses = pulses.slice(-80);
+          }
+
+          threadHead = to;
+          previousDelta = delta;
+          keyCount += 1;
+        }
+
+        function renderGlyph(glyph, delta) {
+          glyphEl.textContent = glyph;
+          const velocity = clamp(1000 / delta / 9, 0, 1);
+          document.documentElement.style.setProperty("--glyph-scale", String(1 + velocity * 0.14));
+          vessel.style.setProperty("--pulse", String(0.24 + velocity * 0.5));
+          window.setTimeout(() => {
+            document.documentElement.style.setProperty("--glyph-scale", "1");
+            vessel.style.setProperty("--pulse", "0.3");
+          }, 140);
+        }
+
+        function draw() {
+          animationFrame = requestAnimationFrame(draw);
+          const now = performance.now();
+          refreshSettledLayer(now);
+          ctx.clearRect(0, 0, width, height);
+          drawAtmosphere(now);
+          drawCycleGuides(now);
+          drawPins(now);
+          drawTimeVessel(now);
+          drawCenterVoid();
+          drawActiveWeaves(now);
+        }
+
+        function drawAtmosphere(now) {
+          const breath = 0.5 + Math.sin(now / 3200) * 0.5;
+          const field = fieldIntensityFor(now);
+          const gradient = ctx.createRadialGradient(center.x, center.y, forbiddenRadius * 0.5, center.x, center.y, outerRadius * 1.45);
+          gradient.addColorStop(0, hexToRgba(homeColor, 0.055 + breath * 0.025 + field * 0.045));
+          gradient.addColorStop(0.45, "rgba(12, 10, 24, 0.22)");
+          gradient.addColorStop(1, "rgba(2, 2, 7, 0)");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        function drawCycleGuides(now) {
+          const field = fieldIntensityFor(now);
+          ctx.save();
+          ctx.lineWidth = 0.8;
+          for (let pin = 1; pin <= ANCHORS_PER_SIDE; pin += 1) {
+            const points = anchors.filter((anchor) => anchor.sideAnchorIndex === pin);
+            ctx.beginPath();
+            points.forEach((point, index) => {
+              if (index === 0) ctx.moveTo(point.x, point.y);
+              else ctx.lineTo(point.x, point.y);
+            });
+            ctx.closePath();
+            ctx.strokeStyle = `rgba(255,255,255,${(0.008 + pin * 0.001) * (0.55 + field)})`;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        function drawActiveWeaves(now) {
+          activateQueuedWeaves(now);
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          const stillActive = [];
+          for (const weave of activeWeaves) {
+            const age = now - weave.born;
+            if (age < 0) {
+              stillActive.push(weave);
+              continue;
+            }
+            const t = clamp(age / weave.duration, 0, 1);
+            const eased = easeOutCubic(t);
+            drawPartialThread(ctx, weave, eased, 1);
+            drawShuttleGlyph(ctx, weave, eased);
+            if (t >= 1) {
+              settleWeave(weave);
+            } else {
+              stillActive.push(weave);
+            }
+          }
+          activeWeaves = stillActive;
+          ctx.restore();
+        }
+
+        function activateQueuedWeaves(now) {
+          const activeLimit = revealMode ? 4 : 2;
+          while (activeWeaves.length < activeLimit && queuedWeaves.length > 0) {
+            const weave = queuedWeaves.shift();
+            weave.born = now + activeWeaves.length * 120;
+            activeWeaves.push(weave);
+          }
+        }
+
+        function settleWeave(weave) {
+          if (!weave) return;
+          settledSegments.push(weave);
+          drawSettledThread(weave, Math.max(0.16, settledLayerIntensity));
+          if (settledSegments.length > 180) {
+            settledSegments = settledSegments.slice(-140);
+            repaintSettledThreads(fieldIntensityFor(performance.now()), true);
+          } else if (settledSegments.length % 44 === 0) {
+            veilThreadLayer(0.055);
+          }
+        }
+
+        function drawSettledThread(weave, intensity) {
+          threadCtx.save();
+          threadCtx.globalCompositeOperation = "lighter";
+          drawPartialThread(threadCtx, weave, 1, intensity);
+          threadCtx.restore();
+        }
+
+        function repaintSettledThreads(intensity = settledLayerIntensity, force = false) {
+          if (!force && Math.abs(intensity - settledLayerIntensity) < 0.035) {
+            return;
+          }
+
+          settledLayerIntensity = intensity;
+          threadCtx.clearRect(0, 0, width, height);
+          for (const weave of settledSegments) {
+            drawSettledThread(weave, intensity);
+          }
+        }
+
+        function refreshSettledLayer(now) {
+          repaintSettledThreads(fieldIntensityFor(now));
+        }
+
+        function veilThreadLayer(alpha) {
+          threadCtx.save();
+          threadCtx.globalCompositeOperation = "source-over";
+          threadCtx.fillStyle = `rgba(3, 3, 7, ${alpha})`;
+          threadCtx.fillRect(0, 0, width, height);
+          threadCtx.restore();
+        }
+
+        function drawPartialThread(targetCtx, weave, progress, opacityMultiplier) {
+          const steps = Math.max(4, Math.ceil(28 * progress));
+          targetCtx.save();
+          targetCtx.beginPath();
+          for (let index = 0; index <= steps; index += 1) {
+            const point = pointOnPath(weave.path, (progress * index) / steps);
+            if (index === 0) targetCtx.moveTo(point.x, point.y);
+            else targetCtx.lineTo(point.x, point.y);
+          }
+          targetCtx.strokeStyle = hexToRgba(weave.color, weave.opacity * opacityMultiplier);
+          targetCtx.lineWidth = weave.width;
+          targetCtx.lineCap = "round";
+          targetCtx.lineJoin = "round";
+          targetCtx.shadowBlur = opacityMultiplier > 0.55 ? 4 : 0;
+          targetCtx.shadowColor = hexToRgba(weave.color, 0.3);
+          targetCtx.stroke();
+          targetCtx.restore();
+        }
+
+        function drawShuttleGlyph(targetCtx, weave, progress) {
+          const pathPoint = pointOnPath(weave.path, progress);
+          const entrance = progress < 0.22 ? progress / 0.22 : 1;
+          const point = {
+            x: lerp(center.x, pathPoint.x, easeOutCubic(entrance)),
+            y: lerp(center.y, pathPoint.y, easeOutCubic(entrance)),
+          };
+          const fade = 1 - progress;
+
+          targetCtx.save();
+          targetCtx.globalCompositeOperation = "lighter";
+          targetCtx.font = `${Math.max(18, Math.min(42, outerRadius * 0.065))}px Georgia, serif`;
+          targetCtx.textAlign = "center";
+          targetCtx.textBaseline = "middle";
+          targetCtx.fillStyle = hexToRgba("#fff6ed", 0.78 * fade);
+          targetCtx.shadowBlur = 18;
+          targetCtx.shadowColor = hexToRgba(weave.color, 0.62 * fade);
+          targetCtx.fillText(weave.glyph, point.x, point.y);
+
+          targetCtx.beginPath();
+          targetCtx.moveTo(center.x, center.y);
+          targetCtx.lineTo(point.x, point.y);
+          targetCtx.strokeStyle = hexToRgba(weave.color, 0.12 * fade);
+          targetCtx.lineWidth = 0.8;
+          targetCtx.stroke();
+          targetCtx.restore();
+        }
+
+        function drawPins(now) {
+          const field = fieldIntensityFor(now);
+          ctx.save();
+          for (const anchor of anchors) {
+            const isHome = anchor.anchorIndex === getAnchorByDayIndex(dayIndex).anchorIndex;
+            ctx.beginPath();
+            ctx.arc(anchor.x, anchor.y, isHome ? 5.8 : 2.2, 0, Math.PI * 2);
+            ctx.strokeStyle = hexToRgba(anchor.color, isHome ? 0.46 + field * 0.16 : 0.08 + field * 0.1);
+            ctx.lineWidth = isHome ? 1.4 : 0.9;
+            ctx.stroke();
+            if (isHome) {
+              ctx.fillStyle = hexToRgba(anchor.color, 0.22 + field * 0.1);
+              ctx.fill();
+            }
+          }
+
+          pulses = pulses.filter((pulse) => now - pulse.born < 1500);
+          for (const pulse of pulses) {
+            const age = now - pulse.born;
+            const t = clamp(age / 1500, 0, 1);
+            ctx.beginPath();
+            ctx.arc(pulse.anchor.x, pulse.anchor.y, 4 + t * 10, 0, Math.PI * 2);
+            ctx.strokeStyle = hexToRgba(pulse.color, (1 - t) * 0.24 * pulse.strength);
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        function drawTimeVessel(now) {
+          const started = sessionStart > 0;
+          const duration = 8 * 60 * 1000;
+          const progress = started ? clamp((now - sessionStart) / duration, 0, 1) : 0;
+          const radius = Math.min(width, height) * 0.18;
+
+          ctx.save();
+          ctx.translate(center.x, center.y);
+          ctx.rotate(-Math.PI / 2);
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255,255,255,0.055)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2 * progress);
+          ctx.strokeStyle = hexToRgba(homeColor, 0.22);
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        function drawCenterVoid() {
+          const gradient = ctx.createRadialGradient(center.x, center.y, forbiddenRadius * 0.2, center.x, center.y, forbiddenRadius);
+          gradient.addColorStop(0, "rgba(3,3,8,0.96)");
+          gradient.addColorStop(1, "rgba(5,5,11,0.78)");
+          ctx.beginPath();
+          ctx.arc(center.x, center.y, forbiddenRadius, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.09)";
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+
+        function resize() {
+          pixelRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+          width = window.innerWidth;
+          height = window.innerHeight;
+          for (const layer of [threadCanvas, fxCanvas]) {
+            layer.width = Math.floor(width * pixelRatio);
+            layer.height = Math.floor(height * pixelRatio);
+            layer.style.width = `${width}px`;
+            layer.style.height = `${height}px`;
+          }
+          threadCtx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+          ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+          buildGeometry();
+          repaintSettledThreads(fieldIntensityFor(performance.now()), true);
+        }
+
+        function buildGeometry() {
+          center = { x: width / 2, y: height / 2 };
+          const scale = Math.min(width, height) / 1200;
+          outerRadius = Math.min(width, height) * 0.38;
+          forbiddenRadius = Math.max(72, 136 * scale);
+          bendRadius = Math.max(forbiddenRadius + 42, 180 * scale);
+          const sideAngles = Array.from({ length: SIDE_COUNT }, (_, index) => -112.5 + index * 45);
+          framePoints = sideAngles.map((angle) => polar(center, angle, outerRadius));
+          anchors = [];
+          for (let sideIndex = 0; sideIndex < SIDE_COUNT; sideIndex += 1) {
+            const from = framePoints[sideIndex];
+            const to = framePoints[(sideIndex + 1) % SIDE_COUNT];
+            for (let sideAnchorIndex = 0; sideAnchorIndex < ANCHORS_PER_SIDE; sideAnchorIndex += 1) {
+              const t = (sideAnchorIndex + 1) / (ANCHORS_PER_SIDE + 1);
+              const point = {
+                x: lerp(from.x, to.x, t),
+                y: lerp(from.y, to.y, t),
+              };
+              const day = sideAnchorIndex * SIDE_COUNT + sideIndex + 1;
+              anchors.push({
+                anchorIndex: anchors.length,
+                dayIndex: day,
+                sideIndex,
+                sideAnchorIndex: sideAnchorIndex + 1,
+                color: SIDE_COLORS[sideIndex],
+                x: point.x,
+                y: point.y,
+              });
+            }
+          }
+          if (!threadHead) {
+            threadHead = pointFromAngle(center, -Math.PI / 2, forbiddenRadius * 1.36);
+          } else {
+            threadHead = keepInsideAnnulus(threadHead);
+          }
+        }
+
+        function resetSession() {
+          cancelAnimationFrame(animationFrame);
+          settledSegments = [];
+          activeWeaves = [];
+          queuedWeaves = [];
+          pulses = [];
+          keyCount = 0;
+          lastTime = 0;
+          sessionStart = 0;
+          currentGlyph = "";
+          rollingSeed = hashString(`${dayIndex}:${Date.now()}`);
+          settledLayerIntensity = -1;
+          setRevealMode(false);
+          direction = dayIndex % 2 === 0 ? 1 : -1;
+          threadAngle = -Math.PI / 2 + ((rollingSeed % 9) - 4) * (Math.PI / 120);
+          threadHead = pointFromAngle(center, threadAngle, forbiddenRadius * 1.36);
+          glyphEl.textContent = "*";
+          threadCtx.clearRect(0, 0, width, height);
+          ctx.clearRect(0, 0, width, height);
+          draw();
+          focusInput();
+        }
+
+        function organicCurve(a, b, index, pauseRatio) {
+          const normal = normalize({ x: -(b.y - a.y), y: b.x - a.x });
+          const length = distanceBetween(a, b);
+          const curve = direction * length * (0.08 + pauseRatio * 0.28 + ((rollingSeed >>> 7) % 9) * 0.006);
+          let control = {
+            x: (a.x + b.x) / 2 + normal.x * curve,
+            y: (a.y + b.y) / 2 + normal.y * curve,
+          };
+          control = keepInsideAnnulus(control);
+
+          return {
+            type: "q",
+            a,
+            b,
+            c: control,
+          };
+        }
+
+        function fieldIntensityFor(now) {
+          if (revealMode) {
+            return 0.92;
+          }
+
+          if (lastTime === 0) {
+            return 0.18;
+          }
+
+          const idle = now - lastTime;
+          const pause = smoothstep(clamp((idle - 1400) / 2600, 0, 1));
+          return 0.16 + pause * 0.34;
+        }
+
+        function setRevealMode(value) {
+          revealMode = value;
+          revealButton.classList.toggle("active", revealMode);
+        }
+
+        function evolveSeed(seed, glyphImpulse, delta, index) {
+          let next = seed ^ glyphImpulse ^ Math.round(delta * 31) ^ Math.imul(index + 1, 2654435761);
+          next = Math.imul(next ^ (next >>> 16), 2246822507);
+          next = Math.imul(next ^ (next >>> 13), 3266489909);
+          return (next ^ (next >>> 16)) >>> 0;
+        }
+
+        function pointOnPath(path, t) {
+          const clamped = clamp(t, 0, 1);
+          if (path.type === "q") {
+            return quadraticPoint(path.a, path.c, path.b, clamped);
+          }
+          return cubicPoint(path.a, path.c1, path.c2, path.b, clamped);
+        }
+
+        function quadraticPoint(a, c, b, t) {
+          const mt = 1 - t;
+          return {
+            x: mt * mt * a.x + 2 * mt * t * c.x + t * t * b.x,
+            y: mt * mt * a.y + 2 * mt * t * c.y + t * t * b.y,
+          };
+        }
+
+        function cubicPoint(a, c1, c2, b, t) {
+          const mt = 1 - t;
+          return {
+            x: mt * mt * mt * a.x + 3 * mt * mt * t * c1.x + 3 * mt * t * t * c2.x + t * t * t * b.x,
+            y: mt * mt * mt * a.y + 3 * mt * mt * t * c1.y + 3 * mt * t * t * c2.y + t * t * t * b.y,
+          };
+        }
+
+        function easeOutCubic(t) {
+          return 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+        }
+
+        function smoothstep(t) {
+          const clamped = clamp(t, 0, 1);
+          return clamped * clamped * (3 - 2 * clamped);
+        }
+
+        function colorForWeave(velocity, pauseRatio) {
+          const neighboringColor = SIDE_COLORS[(dayIndex + Math.floor(rollingSeed % 3) + SIDE_COUNT) % SIDE_COUNT];
+          const complement = SIDE_COLORS[((dayIndex - 1) % SIDE_COUNT + 4) % SIDE_COUNT];
+          const breathColor = pauseRatio > 0.65 ? complement : neighboringColor;
+          return mixHex(homeColor, breathColor, 0.08 + pauseRatio * 0.14 + velocity * 0.05);
+        }
+
+        function glyphForEvent(event) {
+          if (event.key.length === 1) {
+            return event.key === " " ? "\u00b7" : event.key;
+          }
+          if (event.key === "Enter") return "\u21b5";
+          if (event.key === "Backspace") return "\u232b";
+          if (event.key === "Tab") return "\u21e5";
+          return "";
+        }
+
+        function dayIndexForToday() {
+          const now = new Date();
+          const start = Date.UTC(now.getUTCFullYear(), 0, 0);
+          const dayOfYear = Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start) / 86400000);
+          return ((dayOfYear - 1) % TOTAL_ANCHORS) + 1;
+        }
+
+        function getAnchorByDayIndex(day) {
+          return anchors.find((anchor) => anchor.dayIndex === day) || anchors[0];
+        }
+
+        function pointFromAngle(origin, angle, length) {
+          return {
+            x: origin.x + Math.cos(angle) * length,
+            y: origin.y + Math.sin(angle) * length,
+          };
+        }
+
+        function keepInsideAnnulus(point) {
+          const maxDistance = outerRadius * 0.9;
+          const minDistance = forbiddenRadius * 1.32;
+          const currentDistance = distanceBetween(point, center);
+          if (currentDistance <= maxDistance && currentDistance >= minDistance) {
+            return point;
+          }
+
+          const angle = Math.atan2(point.y - center.y, point.x - center.x);
+          const radius = currentDistance < minDistance ? minDistance : maxDistance;
+          return {
+            x: center.x + Math.cos(angle) * radius,
+            y: center.y + Math.sin(angle) * radius,
+          };
+        }
+
+        function normalize(vector) {
+          const length = Math.hypot(vector.x, vector.y) || 1;
+          return {
+            x: vector.x / length,
+            y: vector.y / length,
+          };
+        }
+
+        function distanceBetween(a, b) {
+          return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function polar(origin, angleDegrees, radius) {
+          const angleRadians = (angleDegrees * Math.PI) / 180;
+          return {
+            x: origin.x + radius * Math.cos(angleRadians),
+            y: origin.y + radius * Math.sin(angleRadians),
+          };
+        }
+
+        function clamp(value, min, max) {
+          return Math.min(max, Math.max(min, value));
+        }
+
+        function lerp(from, to, t) {
+          return from + (to - from) * t;
+        }
+
+        function hashString(value) {
+          let hash = 2166136261;
+          for (let index = 0; index < value.length; index += 1) {
+            hash ^= value.charCodeAt(index);
+            hash = Math.imul(hash, 16777619);
+          }
+          return hash >>> 0;
+        }
+
+        function hexToRgba(hex, alpha) {
+          const rgb = hexToRgb(hex);
+          return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${clamp(alpha, 0, 1)})`;
+        }
+
+        function mixHex(from, to, amount) {
+          const a = hexToRgb(from);
+          const b = hexToRgb(to);
+          const t = clamp(amount, 0, 1);
+          return `#${a
+            .map((channel, index) => Math.round(channel + (b[index] - channel) * t).toString(16).padStart(2, "0"))
+            .join("")}`;
+        }
+
+        function hexToRgb(hex) {
+          const normalized = hex.replace("#", "");
+          return [
+            Number.parseInt(normalized.slice(0, 2), 16),
+            Number.parseInt(normalized.slice(2, 4), 16),
+            Number.parseInt(normalized.slice(4, 6), 16),
+          ];
+        }
+      })();
+    </script>
+  </body>
+</html>

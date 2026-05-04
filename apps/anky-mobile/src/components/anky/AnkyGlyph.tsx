@@ -1,14 +1,14 @@
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
-import { ankyColors, glow } from "../../theme/tokens";
+import { ankyColors } from "../../theme/tokens";
 
 type Props = {
   glow?: boolean;
   size?: number;
 };
 
-export function AnkyGlyph({ glow: glowEnabled = true, size = 34 }: Props) {
+export function AnkyGlyph({ glow: _glowEnabled = true, size = 34 }: Props) {
   return (
     <View
       style={[
@@ -18,21 +18,20 @@ export function AnkyGlyph({ glow: glowEnabled = true, size = 34 }: Props) {
           height: size,
           width: size,
         },
-        glowEnabled && styles.glow,
       ]}
     >
       <Svg height={size} viewBox="0 0 48 48" width={size}>
         <Circle
           cx="24"
           cy="24"
-          fill="rgba(155, 92, 255, 0.12)"
+          fill={ankyColors.card}
           r="18"
           stroke={ankyColors.borderStrong}
           strokeWidth="1.2"
         />
         <Path
           d="M24 8 C33 17 33 28 24 40 C15 28 15 17 24 8 Z"
-          fill="rgba(99, 230, 255, 0.10)"
+          fill={ankyColors.bg3}
           stroke={ankyColors.violetBright}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -52,9 +51,6 @@ export function AnkyGlyph({ glow: glowEnabled = true, size = 34 }: Props) {
 }
 
 const styles = StyleSheet.create({
-  glow: {
-    ...glow.violet,
-  },
   wrap: {
     alignItems: "center",
     justifyContent: "center",

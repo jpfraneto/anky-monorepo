@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+
+<defs>
+  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="3" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <linearGradient id="ring" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#B966FF"/>
+    <stop offset="1" stop-color="#5B2A7D"/>
+  </linearGradient>
+  <linearGradient id="gold" x1="20" y1="8" x2="76" y2="88" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#F8DCA0"/>
+    <stop offset="0.55" stop-color="#D89B4C"/>
+    <stop offset="1" stop-color="#80572A"/>
+  </linearGradient>
+</defs>
+
+
+
+<path d="M52 82c17-8 23-23 14-39-2 8-7 11-12 13 4-18-5-29-18-42 2 16-10 24-13 38-3 15 7 27 29 30z" fill="url(#gold)" opacity="0.88"/>
+<path d="M45 75c8-5 12-12 7-22-4 6-8 8-14 11-1 6 1 10 7 11z" fill="#201224" opacity="0.45"/>
+
+</svg>

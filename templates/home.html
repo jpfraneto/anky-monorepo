@@ -3,15 +3,15 @@
 {% block title %}anky — write{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="anky — {{ inquiry_question }}">
+<meta property="og:title" content="anky — {{ t(key='writing.placeholder', lang=lang) }}">
 <meta property="og:description" content="8 minutes. no stopping. no performing.">
-<meta property="og:image" content="https://anky.app/api/og/write?prompt={{ inquiry_question | urlencode }}">
+<meta property="og:image" content="https://anky.app/api/og/write?prompt={{ t(key='writing.placeholder', lang=lang) | urlencode }}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://anky.app/write">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="anky — {{ inquiry_question }}">
+<meta name="twitter:title" content="anky — {{ t(key='writing.placeholder', lang=lang) }}">
 <meta name="twitter:description" content="8 minutes. no stopping. no performing.">
-<meta name="twitter:image" content="https://anky.app/api/og/write?prompt={{ inquiry_question | urlencode }}">
+<meta name="twitter:image" content="https://anky.app/api/og/write?prompt={{ t(key='writing.placeholder', lang=lang) | urlencode }}">
 <style>
   .navbar, .drawer, .drawer-overlay, .bottom-live-bar,
   .mobile-nav { display: none !important; }
@@ -376,8 +376,7 @@
   <!-- TOP: idle countdown bar -->
   <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
 
-  <div class="writing-prompt" id="writingPrompt">{{ inquiry_question }}</div>
-  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start writing..."></textarea>
+  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="{{ t(key='writing.placeholder', lang=lang) }}"></textarea>
 
   <!-- BOTTOM: chakra bar + timer + send button -->
   <div class="writing-bottom" id="writingBottom">
@@ -460,7 +459,6 @@ const ankySession = (() => {
   const CHECKPOINT_INTERVAL = 30000;
 
   const writingArea = document.getElementById('writingArea');
-  const writingPrompt = document.getElementById('writingPrompt');
   const writingTimer = document.getElementById('writingTimer');
   const chakraFill = document.getElementById('chakraFill');
   const idleBarFill = document.getElementById('idleBarFill');
@@ -634,7 +632,6 @@ const ankySession = (() => {
     if (state === 'ready') {
       if (!rejected) {
         beginSession();
-        writingPrompt.classList.add('faded');
       }
     } else if (state === 'paused') {
       if (e.key === 'Enter') {
@@ -790,7 +787,6 @@ const ankySession = (() => {
 
     // Hide writing UI
     writingArea.style.display = 'none';
-    writingPrompt.style.display = 'none';
     writingBottom.style.display = 'none';
     document.querySelector('.idle-bar-wrap').style.display = 'none';
     document.getElementById('writingSurface').classList.add('scrollable');
@@ -956,8 +952,7 @@ const ankySession = (() => {
         return;
       }
 
-      // Poll for ankyResponse + nextPrompt in background
-      pollForAnkyPrompt(protocolSession.hash);
+      pollForAnkyStatus(protocolSession.hash);
 
       if (data.ankyId) {
         setThinkingLabel('anky is reflecting on your words...');
@@ -984,8 +979,7 @@ const ankySession = (() => {
     }
   }
 
-  // Poll status endpoint until we get ankyResponse + nextPrompt, then save to localStorage
-  function pollForAnkyPrompt(sid) {
+  function pollForAnkyStatus(sid) {
     let attempts = 0;
     const maxAttempts = 30; // ~60 seconds
     const poll = setInterval(async function() {
@@ -997,10 +991,6 @@ const ankySession = (() => {
         const s = await r.json();
         if (s.ankyResponse) {
           localStorage.setItem('anky_last_response', s.ankyResponse);
-        }
-        if (s.nextPrompt) {
-          localStorage.setItem('anky_last_prompt', s.nextPrompt);
-          clearInterval(poll);
         }
         if (s.mood) {
           localStorage.setItem('anky_last_mood', s.mood);
@@ -1199,11 +1189,7 @@ const ankySession = (() => {
     });
   }
 
-  // If Anky left a prompt from a previous session, show it instead of the server default
-  const savedPrompt = localStorage.getItem('anky_last_prompt');
-  if (savedPrompt) {
-    writingPrompt.textContent = savedPrompt;
-  }
+  try { localStorage.removeItem('anky_last_prompt'); } catch (e) {}
 
   writingArea.focus();
 

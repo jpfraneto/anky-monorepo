@@ -5,6 +5,7 @@ const TERMINAL_LINE = "8000";
 const TERMINAL_RECORD = `\n${TERMINAL_LINE}`;
 const MAX_DELTA_MS = 7999;
 const DELTA_WIDTH = 4;
+const SPACE_TOKEN = "SPACE";
 
 export type ParsedAnkyEvent = {
   acceptedAt: number;
@@ -49,7 +50,7 @@ export function appendFirstCharacter(char: string, now: number): string {
   assertAcceptedCharacter(char);
   assertTimestamp(now, "now");
 
-  return `${now} ${char}\n`;
+  return `${now} ${serializeCharacter(char)}\n`;
 }
 
 export function appendCharacter(
@@ -79,7 +80,7 @@ export function appendCharacter(
   const padded = String(capped).padStart(DELTA_WIDTH, "0");
 
   return {
-    raw: `${raw}${padded} ${char}\n`,
+    raw: `${raw}${padded} ${serializeCharacter(char)}\n`,
     acceptedAt: now,
   };
 }
@@ -320,14 +321,16 @@ function parseFirstLine(
   }
 
   const epoch = line.slice(0, separatorIndex);
-  const char = line.slice(separatorIndex + 1);
+  const token = line.slice(separatorIndex + 1);
 
   if (!/^\d+$/.test(epoch)) {
     return { ok: false, error: "Epoch must contain only digits." };
   }
 
-  if (!isAcceptedCharacter(char)) {
-    return { ok: false, error: "Character is not an accepted single character." };
+  const parsedChar = parseCharacterToken(token);
+
+  if (!parsedChar.ok) {
+    return { ok: false, error: parsedChar.error };
   }
 
   const epochMs = Number(epoch);
@@ -336,7 +339,7 @@ function parseFirstLine(
     return { ok: false, error: "Epoch is not a safe integer." };
   }
 
-  return { ok: true, epochMs, char };
+  return { ok: true, epochMs, char: parsedChar.char };
 }
 
 function parseDeltaLine(
@@ -347,7 +350,7 @@ function parseDeltaLine(
   }
 
   const delta = line.slice(0, DELTA_WIDTH);
-  const char = line.slice(DELTA_WIDTH + 1);
+  const token = line.slice(DELTA_WIDTH + 1);
 
   if (!/^\d{4}$/.test(delta)) {
     return { ok: false, error: "Delta must be exactly four digits." };
@@ -359,11 +362,35 @@ function parseDeltaLine(
     return { ok: false, error: "Delta must be capped at 7999." };
   }
 
-  if (!isAcceptedCharacter(char)) {
-    return { ok: false, error: "Character is not an accepted single character." };
+  const parsedChar = parseCharacterToken(token);
+
+  if (!parsedChar.ok) {
+    return { ok: false, error: parsedChar.error };
   }
 
-  return { ok: true, deltaMs, char };
+  return { ok: true, deltaMs, char: parsedChar.char };
+}
+
+function serializeCharacter(char: string): string {
+  return char === " " ? SPACE_TOKEN : char;
+}
+
+function parseCharacterToken(
+  token: string,
+): { ok: true; char: string } | { ok: false; error: string } {
+  if (token === SPACE_TOKEN) {
+    return { ok: true, char: " " };
+  }
+
+  if (token === " ") {
+    return { ok: false, error: "Space must be encoded as SPACE." };
+  }
+
+  if (!isAcceptedCharacter(token)) {
+    return { ok: false, error: "Character is not an accepted single character or SPACE token." };
+  }
+
+  return { ok: true, char: token };
 }
 
 function assertAcceptedCharacter(char: string): void {

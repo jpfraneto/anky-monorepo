@@ -1,0 +1,21 @@
+[package]
+name = "anky_seal_program"
+version = "0.1.0"
+description = "Hash-only Loom seal program for Anky .anky sessions"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "anky_seal_program"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+
+[dependencies]
+anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }

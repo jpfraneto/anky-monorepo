@@ -1,0 +1,10 @@
+{
+  "network": "mainnet-beta",
+  "rpcUrl": "https://api.mainnet-beta.solana.com",
+  "coreCollection": "REPLACE_WITH_MAINNET_CORE_COLLECTION_PUBKEY",
+  "collectionName": "Anky Sojourn 9 Looms",
+  "collectionUri": "https://anky.app/mainnet/metadata/sojourn-9-looms.json",
+  "sealProgramId": "REPLACE_AFTER_ANCHOR_DEPLOY",
+  "createdAt": "REPLACE_WITH_ISO_TIMESTAMP",
+  "signature": "REPLACE_WITH_CREATE_COLLECTION_SIGNATURE"
+}

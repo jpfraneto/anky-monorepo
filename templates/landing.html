@@ -1,1468 +1,610 @@
-<!DOCTYPE html>
-<html lang="{{ lang | default(value='en') }}">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <script>
-    window.__LANG__ = {{ lang | default(value='en') | json_encode() | safe }};
-    {% if i18n_js %}window.__I18N__ = {{ i18n_js | json_encode() | safe }};{% else %}window.__I18N__ = {};{% endif %}
-    window.t = function(k){return (window.__I18N__ && window.__I18N__[k]) || k;};
-  </script>
-  <title>Anky</title>
-  <link rel="manifest" href="/static/manifest.json">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="anky">
-  <meta name="theme-color" content="#0a0a0a">
-  <meta property="og:title" content="Anky">
-  <meta property="og:description" content="Eight minutes. No backspace. No audience. Just you, moving forward, not stopping.">
-  <meta property="og:image" content="https://anky.app/static/og-black.svg">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://anky.app/">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Anky">
-  <meta name="twitter:description" content="Eight minutes. No backspace. No audience. Just you, moving forward, not stopping.">
-  <meta name="twitter:image" content="https://anky.app/static/og-black.svg">
-  <meta name="fc:frame" content='{"version":"next","imageUrl":"https://anky.app/image.png","button":{"title":"open anky","action":{"type":"launch_frame","name":"anky","url":"https://anky.app","splashImageUrl":"https://anky.app/splash.png","splashBackgroundColor":"#000000"}}}' />
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b18">
+  <title>Anky - Write for 8 minutes</title>
+  <meta name="description" content="Anky is a private writing ritual. No editing. No performance. Write for 8 minutes and listen to yourself again.">
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%; height: 100%;
-      background: #0a0a0a; color: #e0e0e0;
-      font-family: system-ui, -apple-system, sans-serif;
-      overflow: hidden; position: fixed;
+    :root { --obsidian:#060812; --navy:#0b1024; --deep:#10172f; --violet:#7c3cff; --blue:#2d7dff; --gold:#f0bf72; --gold-soft:#ffe2a6; --cream:#fff8e7; --white:#fff8e7; --text:#f6efe4; --muted:rgba(246,239,228,.72); --soft:rgba(246,239,228,.56); --line:rgba(240,191,114,.22); --glass:rgba(14,19,42,.72); --glass-strong:rgba(18,25,52,.9); --shadow:0 30px 90px rgba(0,0,0,.46); --radius:24px; --fs-hero:clamp(82px,82px,82px); --fs-hero-tablet:clamp(68px,68px,68px); --fs-hero-mobile:clamp(42px,42px,42px); --fs-h2:clamp(54px,54px,54px); --fs-h2-mobile:clamp(34px,34px,34px); --fs-body:clamp(18px,18px,18px); --fs-body-mobile:clamp(16px,16px,16px); }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; background:#05070f; }
+    body { width:100%; min-height:100dvh; margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at 84% 4%,rgba(124,60,255,.28),transparent 34rem),radial-gradient(circle at 10% 18%,rgba(45,125,255,.22),transparent 30rem),radial-gradient(circle at 76% 86%,rgba(240,191,114,.16),transparent 28rem),linear-gradient(180deg,var(--obsidian),#070917 44%,#05070f); overflow-x:hidden; }
+    body:before { content:""; position:fixed; inset:0; z-index:-2; background:linear-gradient(90deg,rgba(240,191,114,.035) 1px,transparent 1px),linear-gradient(180deg,rgba(124,60,255,.035) 1px,transparent 1px); background-size:88px 88px; mask-image:linear-gradient(180deg,rgba(0,0,0,.9),rgba(0,0,0,.22)); pointer-events:none; }
+    body:after { content:""; position:fixed; inset:0; z-index:-1; background:radial-gradient(circle at 50% 12%,transparent,rgba(3,5,12,.52) 72%),url('/static/images/anky/decorative/thread-divider.svg') center top 52vh / min(920px,90vw) auto no-repeat; opacity:.7; pointer-events:none; }
+    a { color:inherit; text-decoration:none; }
+    button { font:inherit; }
+    img { max-width:100%; display:block; }
+    .wrap { width:min(1180px,calc(100vw - 40px)); margin:0 auto; }
+    .site-header { position:sticky; top:0; z-index:20; backdrop-filter:blur(18px); background:linear-gradient(180deg,rgba(6,8,18,.86),rgba(6,8,18,.56)); border-bottom:1px solid rgba(240,191,114,.1); }
+    .nav { display:flex; justify-content:space-between; align-items:center; gap:22px; min-width:0; min-height:82px; }
+    .brand { display:flex; align-items:center; gap:12px; font-family:Georgia,"Times New Roman",serif; font-size:34px; line-height:1; color:var(--gold-soft); }
+    .brand-mark { width:42px; height:42px; display:grid; place-items:center; border-radius:50%; border:1px solid rgba(240,191,114,.56); background:rgba(240,191,114,.08); box-shadow:0 0 34px rgba(240,191,114,.22); overflow:hidden; }
+    .brand-mark img { width:31px; height:31px; opacity:.92; }
+    .nav-links { display:flex; align-items:center; gap:28px; min-width:0; color:var(--muted); font-size:15px; font-weight:650; }
+    .nav-links a:not(.button):hover { color:var(--gold-soft); }
+    .mobile-menu { display:none; position:relative; }
+    .menu-button { display:none; width:46px; height:46px; border:1px solid rgba(240,191,114,.3); border-radius:50%; background:rgba(8,12,28,.62); color:var(--gold-soft); place-items:center; gap:4px; padding:0; cursor:pointer; list-style:none; }
+    .menu-button::-webkit-details-marker { display:none; }
+    .menu-button span { width:18px; height:2px; border-radius:999px; background:currentColor; }
+    .mobile-menu-panel { position:absolute; top:56px; right:0; width:210px; padding:12px; border:1px solid rgba(240,191,114,.22); border-radius:18px; background:rgba(7,10,24,.98); box-shadow:0 22px 70px rgba(0,0,0,.42); }
+    .mobile-menu-panel a { display:block; padding:13px 12px; border-radius:12px; color:var(--muted); font-weight:750; }
+    .mobile-menu-panel a:hover { color:var(--gold-soft); background:rgba(240,191,114,.08); }
+    .button { display:inline-flex; align-items:center; justify-content:center; max-width:100%; min-height:50px; border-radius:999px; padding:14px 22px; border:1px solid transparent; cursor:pointer; font-weight:800; letter-spacing:0; transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background .16s ease; white-space:nowrap; }
+    .button:hover { transform:translateY(-2px); }
+    .primary { color:#150d24; background:linear-gradient(135deg,var(--gold),#fff0b8 48%,#7b45ff); box-shadow:0 18px 56px rgba(124,60,255,.26),0 0 28px rgba(240,191,114,.18); }
+    .secondary { color:var(--gold-soft); background:rgba(8,12,28,.52); border-color:rgba(240,191,114,.34); }
+    .secondary:hover { border-color:rgba(240,191,114,.62); background:rgba(20,25,52,.7); }
+    .small { min-height:42px; padding:10px 16px; font-size:14px; }
+    .tiny { min-height:38px; padding:9px 13px; font-size:13px; }
+    .block { width:100%; }
+    .hero { display:grid; grid-template-columns:minmax(0,1fr) minmax(430px,.92fr); gap:34px; align-items:center; min-height:calc(100dvh - 82px); padding:58px 0 68px; }
+    .eyebrow { display:inline-flex; gap:10px; align-items:center; padding:9px 13px; border-radius:999px; border:1px solid rgba(240,191,114,.24); background:rgba(240,191,114,.08); color:var(--gold-soft); font-size:14px; font-weight:750; margin-bottom:20px; }
+    .eyebrow:before { content:""; width:8px; height:8px; border-radius:999px; background:var(--blue); box-shadow:0 0 20px rgba(45,125,255,.85); }
+    h1,h2,h3 { font-family:Georgia,"Times New Roman",serif; font-weight:500; letter-spacing:0; }
+    h1 { margin:0; max-width:760px; font-size:var(--fs-hero); line-height:.98; overflow-wrap:break-word; }
+    .mobile-only { display:none; }
+    .hero-copy p { margin:24px 0 0; max-width:650px; color:var(--muted); font-size:var(--fs-body); line-height:1.58; letter-spacing:0; }
+    .hero-actions { display:flex; flex-wrap:wrap; gap:14px; width:100%; margin-top:32px; align-items:center; }
+    .hero-note { margin-top:24px; color:var(--soft); font-size:15px; }
+    .hero-visual { position:relative; min-height:690px; display:grid; grid-template-columns:1fr; place-items:center; isolation:isolate; }
+    .hero-visual:before { content:""; position:absolute; inset:10% -7% 8% 2%; z-index:-2; border-radius:999px; background:radial-gradient(circle,rgba(124,60,255,.26),transparent 64%); filter:blur(10px); }
+    .hero-visual:after { content:""; position:absolute; inset:2% -4% 4% 0; z-index:-1; background:url('/static/images/anky/decorative/anky-spiral-seal.svg') center / 82% auto no-repeat; opacity:.16; filter:drop-shadow(0 0 30px rgba(124,60,255,.42)); }
+    .hero-anky { position:relative; z-index:2; align-self:center; margin:0; }
+    .hero-anky img { width:min(620px,100%); border-radius:var(--radius); filter:drop-shadow(0 30px 70px rgba(0,0,0,.62)); }
+    .phone-wrap { min-height:620px; display:none; place-items:center; position:relative; z-index:3; }
+    .modal-close { display:none; }
+    .visual-caption { display:none; position:absolute; left:54%; bottom:34px; z-index:4; width:min(280px,42%); padding:14px 16px; border:1px solid rgba(240,191,114,.24); border-radius:18px; background:rgba(6,8,18,.64); color:var(--muted); font-size:13px; line-height:1.45; box-shadow:0 18px 50px rgba(0,0,0,.28); backdrop-filter:blur(14px); }
+    .writing-open { overflow:hidden; background:#050505; }
+    .writing-open .site-header,
+    .writing-open .hero-copy,
+    .writing-open .hero-anky,
+    .writing-open .visual-caption,
+    .writing-open .landing-section,
+    .writing-open .final-cta,
+    .writing-open footer { display:none !important; }
+    .writing-open > .wrap { width:100%; height:var(--writer-height,100dvh); }
+    .writing-open .hero { display:block; height:var(--writer-height,100dvh); padding:0; }
+    .writing-open .hero-visual { display:block; height:var(--writer-height,100dvh); min-height:var(--writer-height,100dvh); }
+    .writing-open .phone-wrap {
+      position:fixed;
+      top:var(--writer-top,0px);
+      right:0;
+      bottom:auto;
+      left:0;
+      z-index:1000;
+      display:grid;
+      height:var(--writer-height,100dvh);
+      min-height:0;
+      padding:0;
+      background:#050505;
     }
-
-    /* ── APP SHELL ── */
-    .app {
-      display: flex; flex-direction: column;
-      height: 100dvh; width: 100%;
-      max-width: 640px; margin: 0 auto;
-      background: #0a0a0a;
+    .writing-open .modal-close {
+      display:grid;
+      position:fixed;
+      top:max(14px, env(safe-area-inset-top));
+      right:max(14px, env(safe-area-inset-right));
+      z-index:1010;
+      width:42px;
+      height:42px;
+      border-radius:50%;
+      border:1px solid rgba(255,250,240,.18);
+      background:rgba(255,250,240,.08);
+      color:var(--cream);
+      place-items:center;
+      font-size:24px;
+      line-height:1;
+      cursor:pointer;
     }
-
-    /* ── TOP NAV ── */
-    .top-nav {
-      flex-shrink: 0; height: 52px;
-      display: flex; align-items: center;
-      padding: 0 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
+    .writing-open.writing-started .modal-close { display:none; }
+    .writing-open.writing-finished .modal-close { display:grid; }
+    .phone { position:relative; width:310px; height:620px; border-radius:42px; padding:10px; background:linear-gradient(155deg,#11172d,#03050c); border:1px solid rgba(240,191,114,.24); box-shadow:var(--shadow),0 0 70px rgba(45,125,255,.22); cursor:text; overflow:hidden; }
+    .phone:before { content:""; position:absolute; top:18px; left:50%; width:78px; height:18px; transform:translateX(-50%); border-radius:999px; background:#05070f; z-index:4; border:1px solid rgba(255,255,255,.08); }
+    .writing-open .phone { width:100%; height:var(--writer-height,100dvh); border-radius:0; box-shadow:none; background:#050505; }
+    .writing-open .phone:before { display:none; }
+    .screen { height:100%; border-radius:32px; overflow:hidden; color:var(--cream); display:grid; grid-template-rows:auto 1fr auto; background:radial-gradient(circle at 50% 38%,rgba(124,60,255,.36),transparent 13rem),radial-gradient(circle at 52% 62%,rgba(45,125,255,.24),transparent 14rem),linear-gradient(180deg,#111836,#05070f 72%); }
+    .writing-open .screen { border-radius:0; background:#050505; grid-template-rows:minmax(0,1fr) auto; }
+    .screen.finished { grid-template-rows:auto 1fr; }
+    .screen.finished .ritual-area { display:none; }
+    .screen.finished .reveal.visible { min-height:0; overflow:auto; align-content:start; padding:16px; border-top:0; background:transparent; }
+    .writing-open .screen.finished .reveal.visible { min-height:var(--writer-height,100dvh); padding:max(64px, env(safe-area-inset-top)) min(24px,5vw) max(24px, env(safe-area-inset-bottom)); }
+    .screen.finished .reveal-status,.screen.finished .reveal-label { display:none; }
+    .screen.finished .reveal-card { background:transparent; border:0; padding:0; }
+    .screen.finished .reveal-text { max-height:min(560px,68dvh); font-size:16px; line-height:1.7; }
+    .phone-top { display:flex; justify-content:space-between; align-items:center; padding:42px 20px 8px; color:rgba(255,248,231,.68); font-size:11px; font-weight:800; }
+    .writing-open .phone-top { display:none; }
+    .ritual-area { position:relative; display:grid; place-items:center; padding:26px 18px 24px; min-height:520px; overflow:hidden; }
+    .writing-open .ritual-area { height:auto; min-height:0; padding:0; }
+    .thread-window { position:absolute; inset:0; overflow:hidden; pointer-events:none; opacity:.72; z-index:1; }
+    .writing-open .thread-window { display:none; }
+    .thread-line { position:absolute; right:50%; top:50%; transform:translateY(-50%); white-space:nowrap; padding-right:28px; font-size:18px; font-weight:900; letter-spacing:0; color:rgba(255,248,231,.66); text-shadow:0 0 14px rgba(255,248,231,.22),0 0 34px rgba(45,125,255,.28); }
+    .thread-line:after { content:""; display:inline-block; width:42px; height:1px; margin-left:12px; background:linear-gradient(90deg,rgba(255,250,240,.46),transparent); vertical-align:middle; }
+    .circle-wrap { position:relative; z-index:2; width:230px; height:230px; display:grid; place-items:center; }
+    .writing-open .circle-wrap { width:var(--writer-circle,min(86vmin,620px)); height:var(--writer-circle,min(86vmin,620px)); }
+    .timer-svg { position:absolute; inset:0; transform:rotate(-90deg); filter:drop-shadow(0 0 20px rgba(255,250,240,.13)); }
+    .writing-open .timer-svg { display:block; }
+    .timer-bg { fill:none; stroke:rgba(255,250,240,.16); stroke-width:7; }
+    .timer-progress { fill:none; stroke:rgba(255,250,240,.92); stroke-width:7; stroke-linecap:round; stroke-dasharray:754; stroke-dashoffset:754; transition:stroke-dashoffset .16s linear; }
+    .last-word { position:relative; z-index:3; max-width:200px; text-align:center; font-size:76px; line-height:1; font-weight:950; letter-spacing:0; word-break:break-word; min-height:108px; display:flex; align-items:center; justify-content:center; color:#fff8e7; }
+    .writing-open .last-word { max-width:min(88vw,820px); min-height:1em; font-size:168px; }
+    .last-char { display:inline-block; min-width:.62em; color:#fff; text-shadow:0 0 12px rgba(255,250,240,.95),0 0 30px rgba(255,250,240,.5),0 0 58px rgba(7,7,255,.85); transition:opacity .12s linear; }
+    .ritual-meta { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); width:210px; display:flex; justify-content:center; color:rgba(255,250,240,.58); font-size:11px; font-weight:800; letter-spacing:0; text-transform:uppercase; }
+    .writing-open .ritual-meta { bottom:max(28px, env(safe-area-inset-bottom)); width:auto; font-size:14px; color:rgba(255,250,240,.46); }
+    #silenceLabel { display:none; }
+    .phone-copy { margin-top:18px; max-width:230px; text-align:center; color:rgba(255,250,240,.62); font-size:12px; line-height:1.35; }
+    .writing-open .phone-copy { display:none; }
+    .keyboard { display:none; }
+    .key-row { display:flex; justify-content:center; gap:6px; }
+    .key { min-width:28px; height:36px; padding:0 8px; display:inline-flex; justify-content:center; align-items:center; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.13); color:rgba(255,250,240,.86); font-size:12px; font-weight:850; user-select:none; transition:transform .08s ease,background .08s ease,color .08s ease; }
+    .key.space { width:170px; }
+    .key.wide { min-width:62px; }
+    .key.active { background:var(--white); color:var(--blue); transform:translateY(1px) scale(.98); }
+    .reveal { display:none; padding:12px; border-top:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.07); gap:10px; }
+    .reveal.visible { display:grid; }
+    .reveal-status { font-size:12px; font-weight:850; letter-spacing:0; text-transform:uppercase; color:rgba(255,250,240,.62); }
+    .reveal-card { border-radius:18px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.10); padding:12px; }
+    .reveal-label { font-size:10px; text-transform:uppercase; letter-spacing:0; color:rgba(255,250,240,.56); font-weight:850; margin-bottom:8px; }
+    .reveal-text { margin:0; color:rgba(255,250,240,.92); font-size:13px; line-height:1.45; max-height:190px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+    .reveal-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .copy-status { min-height:16px; font-size:12px; color:rgba(255,250,240,.66); padding-left:2px; }
+    .landing-section { padding:76px 0; position:relative; }
+    .section-head { max-width:760px; margin-bottom:30px; }
+    .section-head.center { margin-inline:auto; text-align:center; }
+    .kicker { color:var(--gold); font-size:12px; font-weight:900; letter-spacing:0; text-transform:uppercase; margin-bottom:12px; }
+    h2 { margin:0; font-size:var(--fs-h2); line-height:1.02; }
+    .section-head p,.section-copy { margin:18px 0 0; max-width:720px; color:var(--muted); font-size:var(--fs-body); line-height:1.58; letter-spacing:0; }
+    .promise { padding:36px 0 42px; text-align:center; border-top:1px solid rgba(240,191,114,.14); border-bottom:1px solid rgba(240,191,114,.14); background:linear-gradient(90deg,transparent,rgba(240,191,114,.06),transparent); }
+    .promise p { margin:0; font-family:Georgia,"Times New Roman",serif; color:var(--cream); font-size:34px; line-height:1.18; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+    .card,.mini-card,.gift-card { border:1px solid var(--line); background:linear-gradient(180deg,rgba(18,25,52,.82),rgba(9,13,29,.78)); border-radius:var(--radius); box-shadow:0 18px 70px rgba(0,0,0,.24); }
+    .card { padding:28px; min-height:240px; position:relative; overflow:hidden; }
+    .card:before,.mini-card:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(240,191,114,.12),transparent 38%,rgba(124,60,255,.1)); opacity:.7; pointer-events:none; }
+    .num { width:48px; height:48px; border-radius:50%; border:1px solid rgba(240,191,114,.52); color:var(--gold-soft); display:grid; place-items:center; font-family:Georgia,"Times New Roman",serif; font-size:22px; margin-bottom:46px; background:rgba(240,191,114,.08); box-shadow:0 0 35px rgba(240,191,114,.12); }
+    .card h3,.mini-card h3 { position:relative; margin:0 0 12px; color:var(--gold-soft); font-size:26px; line-height:1.1; }
+    .card p,.mini-card p { position:relative; margin:0; color:var(--muted); font-size:16px; line-height:1.56; }
+    .meet { display:grid; grid-template-columns:.86fr 1fr; gap:42px; align-items:center; border:1px solid rgba(240,191,114,.24); border-radius:30px; padding:30px; background:linear-gradient(130deg,rgba(18,25,52,.88),rgba(7,9,21,.72)); overflow:hidden; }
+    .meet img,.circle-panel img { width:100%; height:auto; border-radius:22px; border:1px solid rgba(240,191,114,.18); box-shadow:0 28px 80px rgba(0,0,0,.38); }
+    .meet-copy p { margin:20px 0 0; color:var(--muted); font-family:Georgia,"Times New Roman",serif; font-size:29px; line-height:1.34; }
+    .gift-card { position:relative; display:grid; grid-template-columns:auto 1fr auto; gap:28px; align-items:center; padding:34px; overflow:hidden; }
+    .gift-card:before { content:""; position:absolute; inset:auto -12% -45% 42%; height:240px; background:radial-gradient(circle,rgba(240,191,114,.2),transparent 62%); pointer-events:none; }
+    .gift-badge { width:112px; height:112px; border-radius:50%; display:grid; place-items:center; color:#120c21; background:linear-gradient(145deg,#fff0b8,var(--gold)); box-shadow:0 0 50px rgba(240,191,114,.24); font-family:Georgia,"Times New Roman",serif; font-size:46px; }
+    .gift-card h2 { font-size:44px; }
+    .gift-card p { margin:12px 0 0; color:var(--muted); font-size:18px; line-height:1.55; }
+    .privacy { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+    .mini-card { position:relative; padding:26px; min-height:190px; overflow:hidden; }
+    .archive-tools { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:24px; color:var(--soft); font-size:13px; }
+    .archive-button { padding:0; border:0; background:transparent; color:var(--gold-soft); font-size:13px; font-weight:800; text-decoration:underline; text-underline-offset:5px; cursor:pointer; }
+    .archive-button:hover { color:var(--cream); }
+    .archive-status { color:var(--soft); font-size:12px; }
+    .circle-panel { display:grid; grid-template-columns:1fr .86fr; gap:40px; align-items:center; }
+    .circle-panel .section-copy { margin-top:0; }
+    .circle-note { margin-top:18px; color:var(--gold-soft); font-weight:750; }
+    .final-cta { margin:70px auto 0; padding:62px; position:relative; overflow:hidden; border:1px solid rgba(240,191,114,.28); border-radius:32px; background:linear-gradient(110deg,rgba(18,25,52,.92),rgba(7,9,21,.78)); box-shadow:0 35px 100px rgba(0,0,0,.34); }
+    .final-cta:before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(6,8,18,.82) 0%,rgba(6,8,18,.76) 52%,rgba(6,8,18,.3) 100%),url('/static/images/anky/anky-cta.webp') right center / auto 100% no-repeat; pointer-events:none; }
+    .final-cta-content { position:relative; max-width:620px; }
+    .final-cta h2 { max-width:620px; color:var(--cream); }
+    .final-cta p { max-width:560px; margin:18px 0 30px; color:var(--muted); font-size:18px; line-height:1.55; }
+    footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:14px; padding:30px 0 46px; color:var(--soft); font-size:13px; }
+    @media (max-width:1040px) {
+      .hero { grid-template-columns:1fr; min-height:auto; padding-top:44px; }
+      h1 { font-size:var(--fs-hero-tablet); }
+      .hero-visual { max-width:720px; min-height:650px; margin:0 auto; }
+      .grid-3,.privacy { grid-template-columns:1fr; }
+      .meet,.circle-panel { grid-template-columns:1fr; }
+      .gift-card { grid-template-columns:1fr; }
+      .gift-card .button { width:max-content; }
     }
-    .nav-hamburger {
-      background: none; border: none; padding: 8px; cursor: pointer;
-      display: flex; flex-direction: column; gap: 4px;
+    @media (max-width:760px) {
+      .wrap { width:calc(100vw - 28px); }
+      body:before,body:after { display:none; }
+      .site-header { position:relative; backdrop-filter:none; background:rgba(6,8,18,.96); }
+      .nav { min-height:74px; }
+      .brand { font-size:29px; }
+      .nav-links { display:none; }
+      .mobile-menu { display:block; }
+      .menu-button { display:grid; }
+      .mobile-only { display:block; }
+      h1 { font-size:var(--fs-hero-mobile); line-height:1.06; }
+      h2 { font-size:var(--fs-h2-mobile); }
+      .hero { display:flex; flex-direction:column; min-height:calc(100svh - 74px); padding:24px 0 46px; gap:22px; justify-content:start; }
+      .hero-copy { order:2; }
+      .hero-copy p,.section-head p,.section-copy { font-size:var(--fs-body-mobile); }
+      .hero-actions .button,.final-cta .button { width:100%; }
+      .button { min-height:54px; padding:16px 20px; }
+      .hero-visual { order:1; display:block; width:100%; min-height:0; margin:0; }
+      .hero-visual:before,.hero-visual:after { display:none; }
+      .hero-anky { margin:0; width:100%; }
+      .hero-anky img { width:100%; max-height:42svh; border-radius:22px; object-fit:cover; object-position:center 30%; }
+      .phone-wrap { min-height:auto; width:100%; display:none; }
+      .phone { width:min(100%,330px); height:610px; }
+      .visual-caption { display:none; }
+      .promise p { font-size:27px; }
+      .landing-section { padding:48px 0; }
+      #credits { display:none; }
+      .grid-3,.privacy { gap:12px; }
+      .card,.mini-card { min-height:0; padding:22px; border-radius:20px; box-shadow:none; }
+      .card:before,.mini-card:before { opacity:.45; }
+      .num { width:38px; height:38px; margin-bottom:24px; font-size:18px; }
+      .meet,.gift-card,.final-cta { padding:22px; border-radius:24px; box-shadow:none; }
+      .meet img { display:none; }
+      .meet-copy p { font-size:23px; }
+      .meet-copy p br { display:none; }
+      .gift-badge { width:88px; height:88px; font-size:38px; }
+      .gift-card h2 { font-size:35px; }
+      .gift-card .button { width:100%; }
+      .circle-panel img { display:none; }
+      .final-cta { margin-top:40px; }
+      .final-cta:before { display:none; }
+      .archive-tools,.desktop-demo-link { display:none; }
+      .writing-open .last-word { font-size:96px; }
+      .reveal-text { max-height:48dvh; }
     }
-    .nav-hamburger span {
-      display: block; width: 18px; height: 2px;
-      background: rgba(255,255,255,0.5); border-radius: 1px;
+    @media (max-width:420px) {
+      h1 { font-size:43px; }
+      .button { white-space:normal; text-align:center; }
+      .nav { gap:12px; }
+      .nav-links .button { min-height:40px; padding:9px 12px; font-size:13px; white-space:nowrap; }
+      .phone { width:100%; height:570px; }
+      .circle-wrap { width:210px; height:210px; }
+      .last-word { font-size:64px; }
     }
-    .nav-hamburger:hover span { background: rgba(255,255,255,0.8); }
-    .nav-spacer { flex: 1; }
-
-    /* ── DRAWER ── */
-    .drawer-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      z-index: 200; display: none;
-    }
-    .drawer-backdrop.open { display: block; }
-    .drawer {
-      position: fixed; top: 0; left: 0; bottom: 0;
-      width: min(300px, 80vw); z-index: 210;
-      background: #111; border-right: 1px solid rgba(255,255,255,0.06);
-      display: flex; flex-direction: column;
-      transform: translateX(-100%); transition: transform 0.25s ease;
-      padding-top: max(12px, env(safe-area-inset-top));
-    }
-    .drawer.open { transform: translateX(0); }
-    .drawer-header {
-      flex-shrink: 0; padding: 16px 16px 12px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      display: flex; align-items: center; gap: 12px;
-    }
-    .drawer-pfp {
-      width: 40px; height: 40px; border-radius: 50%;
-      object-fit: cover; border: 1px solid rgba(255,255,255,0.1);
-      flex-shrink: 0;
-    }
-    .drawer-user-info { flex: 1; min-width: 0; }
-    .drawer-username {
-      font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.85);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .drawer-subtitle {
-      font-size: 11px; color: rgba(255,255,255,0.25); margin-top: 2px;
-    }
-    .drawer-wallet {
-      font-size: 11px; color: rgba(123,47,247,0.7); margin-top: 2px;
-      font-family: 'SF Mono','Fira Code',monospace;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .drawer-section-label {
-      font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
-      color: rgba(255,255,255,0.2); padding: 12px 16px 6px;
-    }
-    .drawer-ankys {
-      flex: 1; overflow-y: auto; padding: 0 8px 16px;
-    }
-    .drawer-ankys::-webkit-scrollbar { width: 0; }
-    .drawer-anky-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 8px; border-radius: 10px; cursor: pointer;
-      text-decoration: none; color: inherit; transition: background 0.15s;
-    }
-    .drawer-anky-item:hover { background: rgba(255,255,255,0.04); }
-    .drawer-anky-thumb {
-      width: 40px; height: 40px; border-radius: 8px;
-      object-fit: cover; background: rgba(255,255,255,0.04); flex-shrink: 0;
-    }
-    .drawer-anky-info { flex: 1; min-width: 0; }
-    .drawer-anky-title {
-      font-size: 13px; color: rgba(255,255,255,0.75);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .drawer-anky-date {
-      font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 2px;
-    }
-    .drawer-empty {
-      padding: 24px 16px; text-align: center;
-      font-size: 13px; color: rgba(255,255,255,0.2);
-    }
-    .drawer-seal-btn {
-      display: block; margin: 12px 16px; padding: 10px;
-      background: rgba(123,47,247,0.15); border: 1px solid rgba(123,47,247,0.3);
-      border-radius: 10px; color: rgba(179,102,255,0.8);
-      font-size: 13px; text-align: center; cursor: pointer;
-      text-decoration: none; transition: background 0.2s;
-    }
-    .drawer-seal-btn:hover { background: rgba(123,47,247,0.25); }
-
-    /* ── CHAT AREA ── */
-    .chat-area {
-      flex: 1; min-height: 0; overflow-y: auto;
-      padding: 16px; display: flex; flex-direction: column; gap: 12px;
-      -webkit-overflow-scrolling: touch;
-    }
-    .chat-area::before { content: ''; flex: 1; }
-    .chat-area::-webkit-scrollbar { width: 0; }
-
-    .chat-bubble {
-      max-width: 85%; border-radius: 18px;
-      padding: 14px 18px; font-size: 15px; line-height: 1.7;
-      word-wrap: break-word; overflow-wrap: break-word;
-      animation: bubbleIn 0.3s ease-out;
-    }
-    @keyframes bubbleIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .chat-bubble.user {
-      align-self: flex-end; background: #1a1a2e;
-      border: 1px solid rgba(123,47,247,0.15);
-      border-bottom-right-radius: 4px; color: #c0c0c0; white-space: pre-wrap;
-    }
-    .chat-bubble.user.collapsed {
-      max-height: 120px; overflow: hidden; position: relative; cursor: pointer;
-    }
-    .chat-bubble.user.collapsed::after {
-      content: 'tap to expand'; position: absolute;
-      bottom: 0; left: 0; right: 0; height: 40px;
-      background: linear-gradient(transparent, #1a1a2e);
-      display: flex; align-items: flex-end; justify-content: center;
-      font-size: 11px; color: rgba(255,255,255,0.3); padding-bottom: 4px;
-    }
-    .chat-bubble.anky {
-      align-self: flex-start; background: #141414;
-      border: 1px solid rgba(255,255,255,0.06);
-      border-bottom-left-radius: 4px; color: rgba(255,255,255,0.8);
-    }
-    .chat-bubble .msg-content p { margin: 0 0 12px 0; }
-    .chat-bubble .msg-content p:last-child { margin-bottom: 0; }
-    .chat-bubble .msg-content h3 { font-size: 17px; font-weight: 500; color: rgba(255,255,255,0.85); margin: 16px 0 6px; }
-    .chat-bubble .msg-content h4 { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.76); margin: 14px 0 6px; }
-    .chat-bubble .msg-content h3:first-child, .chat-bubble .msg-content h4:first-child { margin-top: 0; }
-    .chat-bubble .msg-content strong { color: rgba(255,255,255,0.9); }
-    .chat-bubble .msg-content em { color: rgba(255,255,255,0.65); font-style: italic; }
-    .chat-bubble .msg-content blockquote { border-left: 2px solid rgba(255,255,255,0.1); margin: 12px 0; padding: 4px 12px; color: rgba(255,255,255,0.5); }
-    .chat-bubble .msg-content hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 16px 0; }
-    .chat-bubble .msg-content ul, .chat-bubble .msg-content ol { margin: 0 0 12px 20px; padding: 0; }
-    .chat-bubble .msg-content li { margin: 0 0 6px; }
-    .chat-bubble .msg-content code { font-family: 'SF Mono','Fira Code',monospace; font-size: 0.9em; padding: 2px 5px; border-radius: 6px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.88); }
-    .chat-bubble .msg-content pre { margin: 0 0 12px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.05); overflow-x: auto; }
-    .chat-bubble .msg-content pre code { padding: 0; background: transparent; }
-    .chat-bubble .msg-content a { color: #c9abff; text-decoration: underline; text-underline-offset: 2px; }
-
-    .session-divider {
-      display: flex; align-items: center; gap: 12px; padding: 8px 0;
-    }
-    .session-divider::before, .session-divider::after {
-      content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.06);
-    }
-    .session-divider span {
-      font-size: 10px; color: rgba(255,255,255,0.2); white-space: nowrap; letter-spacing: 0.5px;
-    }
-
-    .thinking-dots {
-      display: flex; gap: 6px; padding: 6px 4px; align-items: center;
-    }
-    .thinking-dots span {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: rgba(255,255,255,0.35); animation: dotFade 1.4s ease-in-out infinite;
-    }
-    .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes dotFade { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 0.8; } }
-    .thinking-label { display: none; }
-    .stream-cursor {
-      display: inline-block; width: 2px; height: 1em;
-      background: #7b2ff7; margin-left: 2px; vertical-align: text-bottom;
-      animation: blink 1s step-end infinite;
-    }
-    @keyframes blink { 50% { opacity: 0; } }
-
-    /* ── BOTTOM BAR ── */
-    .bottom-bar {
-      flex-shrink: 0; display: flex; align-items: flex-end; gap: 8px;
-      padding: 8px 12px; padding-bottom: max(8px, env(safe-area-inset-bottom));
-      border-top: 1px solid rgba(255,255,255,0.06);
-      background: #0a0a0a;
-    }
-    .bell-btn, .anky-btn {
-      flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%;
-      border: 1px solid rgba(255,255,255,0.12); background: transparent;
-      color: rgba(255,255,255,0.5); font-size: 18px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s; -webkit-tap-highlight-color: transparent;
-    }
-    .bell-btn:hover, .anky-btn:hover {
-      border-color: rgba(255,255,255,0.25); color: rgba(255,255,255,0.8);
-    }
-    .anky-btn {
-      background: rgba(123,47,247,0.15); border-color: rgba(123,47,247,0.3); color: rgba(179,102,255,0.8);
-      animation: ankyGlow 2s ease-in-out infinite;
-    }
-    .anky-btn:hover { background: rgba(123,47,247,0.25); color: #b366ff; }
-    @keyframes ankyGlow {
-      0%, 100% { box-shadow: 0 0 8px rgba(123,47,247,0.4), 0 0 20px rgba(123,47,247,0.2); border-color: rgba(123,47,247,0.3); }
-      50% { box-shadow: 0 0 16px rgba(123,47,247,0.7), 0 0 36px rgba(123,47,247,0.35); border-color: rgba(123,47,247,0.6); }
-    }
-    .chat-input-wrap {
-      flex: 1; display: flex; align-items: flex-end;
-    }
-    .chat-input {
-      width: 100%; background: #141414;
-      border: 1px solid rgba(255,255,255,0.1); border-radius: 20px;
-      padding: 10px 16px; color: #d0d0d0; font-size: 15px;
-      font-family: system-ui, -apple-system, sans-serif;
-      line-height: 1.4; resize: none; outline: none;
-      max-height: 120px; min-height: 40px;
-    }
-    .chat-input::placeholder { color: rgba(255,255,255,0.2); }
-
-    /* ── WRITING OVERLAY ── */
-    .writing-overlay {
-      position: fixed;
-      z-index: 50; background: #0a0a0a;
-      display: flex; flex-direction: column;
-      overflow: hidden;
-    }
-    .writing-overlay.morph-ready {
-      top: 0; left: 50%; transform: translateX(-50%);
-      width: min(640px, 100%); height: 100dvh;
-      border-radius: 0; opacity: 1;
-    }
-    .idle-bar-wrap {
-      flex-shrink: 0;
-      height: 3px;
-      width: 100%;
-      display: block;
-      background: rgba(255,255,255,0.05);
-    }
-    .idle-bar-fill {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, #ff9a3d 0%, #ff4444 100%);
-      transition: width 0.1s linear; opacity: 0; margin-left: auto;
-    }
-    .idle-bar-fill.warning {
-      opacity: 1;
-      box-shadow: 0 0 12px rgba(255, 92, 68, 0.35);
-    }
-    .writing-top-bar {
-      position: absolute; bottom: max(8px, env(safe-area-inset-bottom));
-      right: 12px; z-index: 2;
-    }
-    .writing-back {
-      width: 44px; height: 44px; border-radius: 50%;
-      background: rgba(255,68,68,0.15); border: 1px solid rgba(255,68,68,0.3);
-      color: rgba(255,68,68,0.8); font-size: 20px;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: opacity 0.6s ease;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .writing-back:hover { background: rgba(255,68,68,0.25); color: #ff4444; }
-    .writing-prompt {
-      padding: 12px 16px 0; font-size: 17px; line-height: 1.6;
-      color: #b366ff; font-style: italic; flex-shrink: 0;
-      transition: color 0.6s, opacity 1.5s ease;
-    }
-    .writing-prompt.faded { color: rgba(179,102,255,0.35); }
-    .writing-prompt.gone { opacity: 0; }
-    .writing-textarea {
-      flex: 1; min-height: 0; margin: 12px 16px 0; padding: 0;
-      background: transparent; border: none; outline: none; resize: none;
-      font-size: 16px; line-height: 1.7; color: #d0d0d0;
-      font-family: system-ui, -apple-system, sans-serif;
-      word-wrap: break-word; overflow-wrap: break-word;
-      caret-color: #7b2ff7; overflow-y: auto;
-      transition: caret-color 0.3s;
-    }
-    .writing-textarea::placeholder {
-      color: rgba(255,255,255,0.15);
-      animation: placeholderBreathe 4s ease-in-out infinite;
-    }
-    @keyframes placeholderBreathe {
-      0%, 100% { opacity: 0.1; }
-      50% { opacity: 0.22; }
-    }
-    .writing-textarea::-webkit-scrollbar { width: 0; }
-    .writing-bottom {
-      flex-shrink: 0; padding: 8px 16px;
-      padding-bottom: max(8px, env(safe-area-inset-bottom));
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .chakra-bar { height: 3px; width: 100%; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
-    .chakra-fill { height: 100%; width: 0%; transition: width 0.1s linear; }
-    .bottom-row {
-      display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 36px;
-    }
-    .writing-timer {
-      font-family: 'SF Mono','Fira Code',monospace; font-size: 18px;
-      color: #666; font-variant-numeric: tabular-nums;
-      transition: opacity 1s ease;
-    }
-    .writing-timer.past-zero { color: #c4a0ff; opacity: 1 !important; }
-    /* ── TIMER OVERLAY ── */
-    .timer-overlay {
-      position: fixed; top: 0; left: 0; right: 0; height: 100dvh;
-      z-index: 50; background: #0a0a0a;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      max-width: 640px; margin: 0 auto;
-    }
-    .timer-display {
-      font-family: 'SF Mono','Fira Code',monospace;
-      font-size: 72px; font-weight: 300; color: rgba(255,255,255,0.85);
-      font-variant-numeric: tabular-nums; letter-spacing: 4px;
-    }
-    .timer-display.done { color: #b366ff; }
-    .timer-chakra-bar {
-      width: 200px; height: 3px; background: #1a1a1a;
-      border-radius: 2px; overflow: hidden; margin-top: 32px;
-    }
-    .timer-chakra-fill { height: 100%; width: 0%; transition: width 0.1s linear; }
-    .timer-cancel {
-      margin-top: 48px; background: none; border: 1px solid rgba(255,255,255,0.1);
-      color: rgba(255,255,255,0.35); border-radius: 8px;
-      padding: 10px 32px; font-size: 14px; cursor: pointer;
-      transition: all 0.2s;
-    }
-    .timer-cancel:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); }
-    .timer-done-msg {
-      margin-top: 24px; font-size: 16px; color: rgba(179,102,255,0.7);
-      display: none;
-    }
-
-
-
-    .copy-btn {
-      align-self: flex-end; background: none;
-      border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.35);
-      border-radius: 8px; padding: 6px 16px; font-size: 12px;
-      cursor: pointer; transition: all 0.2s; margin-top: 4px;
-    }
-    .copy-btn:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
-    .copy-btn.copied { color: rgba(179,102,255,0.7); border-color: rgba(179,102,255,0.3); }
-
-    /* ── MOBILE ── */
-    @media (max-width: 480px) {
-      .timer-display { font-size: 56px; }
-    }
+    .native-input { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:.01; color:transparent; background:transparent; border:0; padding:0; resize:none; pointer-events:none; }
   </style>
 </head>
 <body>
-
-<div class="app" id="app">
-  <!-- Top nav -->
-  <nav class="top-nav">
-    <button class="nav-hamburger" id="navHamburger" aria-label="you" title="you"><span></span><span></span><span></span></button>
-    <div class="nav-spacer"></div>
-  </nav>
-
-  <!-- Drawer -->
-  <div class="drawer-backdrop" id="drawerBackdrop"></div>
-  <div class="drawer" id="drawer">
-    <div class="drawer-header">
-      {% if logged_in | default(value=false) %}
-      <img class="drawer-pfp" src="{{ profile_image_url | default(value='/static/icon-192.png') }}" alt="">
-      <div class="drawer-user-info">
-        <div class="drawer-username" id="drawerUsername">{{ username | default(value="anon") }}</div>
-        <div class="drawer-subtitle">{{ t(key="nav.logged_in", lang=lang) }}</div>
-        {% if wallet_address | default(value="") != "" %}
-        <div class="drawer-wallet" title="{{ wallet_address }}">{{ wallet_address }}</div>
-        {% endif %}
-      </div>
-      {% else %}
-      <img class="drawer-pfp" src="/static/icon-192.png" alt="">
-      <div class="drawer-user-info">
-        <div class="drawer-username" id="drawerUsername">{{ t(key="nav.guest", lang=lang) }}</div>
-        <div class="drawer-subtitle">{{ t(key="nav.not_logged_in", lang=lang) }}</div>
-      </div>
-      {% endif %}
+  <span id="countdownText" hidden>loading...</span>
+  <header class="site-header">
+    <div class="wrap">
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="Anky home"><span class="brand-mark"><img src="/static/images/anky/decorative/anky-spiral-seal.svg" alt=""></span><span>anky</span></a>
+        <div class="nav-links">
+          <a href="#how">how it works</a>
+          <a href="#privacy">privacy</a>
+          <a href="#download">download app</a>
+          <a href="{{ install_url | default(value='/mobile') }}" class="button primary small">download app</a>
+        </div>
+        <details class="mobile-menu">
+          <summary class="menu-button" aria-label="Open menu"><span></span><span></span><span></span></summary>
+          <div class="mobile-menu-panel">
+            <a href="#how">how it works</a>
+            <a href="#meet">meet anky</a>
+            <a href="#privacy">privacy</a>
+            <a href="#download">download app</a>
+          </div>
+        </details>
+      </nav>
     </div>
-    {% if not logged_in | default(value=false) %}
-    <button type="button" class="drawer-seal-btn" id="drawerSealBtn">{{ t(key="nav.login_cta", lang=lang) }}</button>
-    {% endif %}
-    <div class="drawer-section-label">{{ t(key="nav.your_ankys", lang=lang) }}</div>
-    <div class="drawer-ankys" id="drawerAnkys">
-      <div class="drawer-empty">{{ t(key="nav.loading", lang=lang) }}</div>
-    </div>
+  </header>
+  <div class="wrap">
+    <main id="top">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">a private writing practice</div>
+          <h1>write for 8 <br class="mobile-only">minutes. listen to <br class="mobile-only">yourself again.</h1>
+          <p>Anky is a private writing ritual. No editing. No performance. Just 8 minutes to let what is alive in you come through — and a gentle mirror that helps you see what was there.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="{{ install_url | default(value='/mobile') }}">download the app</a>
+            <a class="button secondary" href="#write">write 8 minutes</a>
+          </div>
+          <div class="hero-note">private by default · your writing stays yours</div>
+        </div>
+        <div class="hero-visual" aria-label="Anky, the writing guide">
+          <div class="hero-anky">
+            <img src="/static/images/anky/anky-hero.webp" alt="Anky, the writing guide">
+          </div>
+          <div class="phone-wrap" id="write">
+            <button class="modal-close" id="closeDemo" type="button" aria-label="Close writing demo">×</button>
+            <div class="phone" id="phoneDemo" tabindex="0" role="button" aria-label="Open the Anky writing demo">
+              <div class="screen">
+                <div class="phone-top"><span>08:00</span><span id="statusText">tap + type</span></div>
+                <div class="ritual-area">
+                  <div class="thread-window"><div class="thread-line" id="threadLine"></div></div>
+                  <div class="circle-wrap">
+                    <svg class="timer-svg" viewBox="0 0 260 260" aria-hidden="true"><circle class="timer-bg" cx="130" cy="130" r="120"></circle><circle class="timer-progress" id="timerProgress" cx="130" cy="130" r="120"></circle></svg>
+                    <div class="last-word" id="lastWord"><span style="color:rgba(255,250,240,.42);font-size:24px;letter-spacing:0;">write</span></div>
+                    <div class="ritual-meta"><span id="timerLabel">8:00</span><span id="silenceLabel">8s</span></div>
+                  </div>
+                  <div class="phone-copy" id="phoneCopy">first character begins the session</div>
+                </div>
+                <div class="reveal" id="revealPane">
+                  <div class="reveal-status" id="resultStatus">short writing</div>
+                  <div class="reveal-card"><div class="reveal-label">your writing</div><pre class="reveal-text" id="rawTextOut"></pre></div>
+                  <pre id="ankyOut" hidden></pre>
+                  <div class="reveal-actions"><button class="button secondary tiny" id="copyTextBtn" type="button">Copy raw text</button><button class="button secondary tiny" id="copyAnkyBtn" type="button">Copy .anky</button><button class="button secondary tiny" id="exportArchiveBtn" type="button">Export full .ankys</button><button class="button primary tiny" id="writeAgainBtn" type="button">Write again</button></div>
+                  <div class="copy-status" id="copyStatus"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="visual-caption">tap the phone to try the 8-minute writing surface</div>
+        </div>
+      </header>
+      <section class="promise" aria-label="Emotional promise"><p>not a journal. a mirror.</p></section>
+      <section class="landing-section" id="how">
+        <div class="section-head center"><div class="kicker">how it works</div></div>
+        <div class="grid-3">
+          <article class="card"><div class="num">1</div><h3>write forward</h3><p>No backspace. No polishing. Let the thread come out.</p></article>
+          <article class="card"><div class="num">2</div><h3>receive a mirror</h3><p>Anky reflects the themes, emotions, and movement inside your writing.</p></article>
+          <article class="card"><div class="num">3</div><h3>keep what is real</h3><p>Your archive stays with you. Share only what you choose.</p></article>
+        </div>
+      </section>
+      <section class="landing-section" id="meet">
+        <div class="meet">
+          <img src="/static/images/anky/anky-mirror.webp" alt="Anky calmly holding a phone as a writing mirror">
+          <div class="meet-copy">
+            <div class="kicker">meet anky</div>
+            <h2>meet anky</h2>
+            <p>Anky is the guide, the witness, and the mirror. <br>Not a judge. Not a feed. <br>A gentle presence that helps you hear what was already moving inside you.</p>
+          </div>
+        </div>
+      </section>
+      <section class="landing-section" id="credits">
+        <div class="gift-card">
+          <div class="gift-badge" aria-hidden="true">8</div>
+          <div>
+            <div class="kicker">first credits gift</div>
+            <h2>your first 8 credits are a gift</h2>
+            <p>Install Anky and receive 8 free credits to try the mirror before paying anything.</p>
+          </div>
+          <a class="button primary" href="{{ install_url | default(value='/mobile') }}">download app</a>
+        </div>
+      </section>
+      <section class="landing-section" id="privacy">
+        <div class="section-head center">
+          <div class="kicker">privacy</div>
+          <h2>the archive lives with the writer</h2>
+        </div>
+        <div class="privacy">
+          <article class="mini-card"><h3>local archive</h3><p>Your .anky files live on your device.</p></article>
+          <article class="mini-card"><h3>chosen reflection</h3><p>AI only sees what you choose to process.</p></article>
+          <article class="mini-card"><h3>optional public proof</h3><p>If you seal, only a proof is public — never the writing itself.</p></article>
+        </div>
+        <div class="archive-tools">
+          <button class="archive-button" id="exportArchiveTopBtn" type="button">Export full .ankys</button>
+          <span class="archive-status" id="archiveExportStatus"></span>
+        </div>
+      </section>
+      <section class="landing-section" id="circles">
+        <div class="circle-panel">
+          <div>
+            <div class="kicker">people and circles</div>
+            <h2>for people and circles</h2>
+            <p class="section-copy">For founders, artists, mothers, therapists, and anyone who needs a way to hear themselves again.</p>
+            <p class="circle-note">easy to share as a practice with groups.</p>
+          </div>
+          <img src="/static/images/anky/anky-circle.webp" alt="Anky guiding a calm group writing practice">
+        </div>
+      </section>
+      <section class="final-cta" id="download">
+        <div class="final-cta-content">
+          <h2>open the loom. write what moves.</h2>
+          <p>Download the app and begin with your first 8-minute session.</p>
+          <div class="hero-actions" style="margin-top:0;"><a class="button primary" href="{{ install_url | default(value='/mobile') }}">download the mobile app</a><a class="button secondary desktop-demo-link" href="#write">try the writing demo</a></div>
+        </div>
+      </section>
+    </main>
+    <footer><span>© Anky, Inc.</span><span>The writing is the seed. Everything else is fruit.</span></footer>
   </div>
-
-  <!-- Chat area — always visible -->
-  <div class="chat-area" id="chatArea"></div>
-
-  <!-- Bottom bar: bell | input | anky -->
-  <div class="bottom-bar" id="bottomBar">
-    <button class="bell-btn" id="bellBtn" title="{{ t(key='chat.bell_tooltip', lang=lang) }}">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-    </button>
-    <div class="chat-input-wrap">
-      <textarea class="chat-input" id="chatInput" rows="1" placeholder="{{ t(key='chat.input_placeholder', lang=lang) }}" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
-    </div>
-    <button class="anky-btn" id="ankyBtn" title="{{ t(key='chat.anky_btn_tooltip', lang=lang) }}">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-    </button>
-  </div>
-</div>
-
-<!-- Writing overlay -->
-<div class="writing-overlay" id="writingOverlay" style="display:none;">
-  <div class="writing-top-bar">
-    <button class="writing-back" id="writingBack" title="{{ t(key='writing.back_to_chat', lang=lang) }}">&times;</button>
-  </div>
-  <div class="idle-bar-wrap"><div class="idle-bar-fill" id="idleBarFill"></div></div>
-  <div class="writing-prompt" id="writingPrompt">{{ t(key='writing.default_prompt', lang=lang) }}</div>
-  <textarea class="writing-textarea" id="writingArea" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="{{ t(key='writing.placeholder', lang=lang) }}"></textarea>
-  <div class="writing-bottom">
-    <div class="chakra-bar"><div class="chakra-fill" id="chakraFill"></div></div>
-    <div class="bottom-row">
-      <span class="writing-timer" id="writingTimer">8:00</span>
-    </div>
-  </div>
-</div>
-
-<!-- Timer overlay -->
-<div class="timer-overlay" id="timerOverlay" style="display:none;">
-  <div class="timer-display" id="timerDisplay">8:00</div>
-  <div class="timer-chakra-bar"><div class="timer-chakra-fill" id="timerChakraFill"></div></div>
-  <div class="timer-done-msg" id="timerDoneMsg">{{ t(key='timer.done_msg', lang=lang) }}</div>
-  <button class="timer-cancel" id="timerCancel">{{ t(key='timer.close', lang=lang) }}</button>
-</div>
-
-<script>
-// ── VIEWPORT ──
-(function() {
-  function sync() {
-    if (window.visualViewport) {
-      document.getElementById('app').style.height = window.visualViewport.height + 'px';
+  <script>
+    const target = new Date('2026-05-08T00:00:00Z').getTime();
+    const countdownText = document.getElementById('countdownText');
+    const phone = document.getElementById('phoneDemo');
+    const screenEl = phone.querySelector('.screen');
+    const lastWordEl = document.getElementById('lastWord');
+    const threadLineEl = document.getElementById('threadLine');
+    const timerProgressEl = document.getElementById('timerProgress');
+    const timerLabelEl = document.getElementById('timerLabel');
+    const silenceLabelEl = document.getElementById('silenceLabel');
+    const statusTextEl = document.getElementById('statusText');
+    const phoneCopyEl = document.getElementById('phoneCopy');
+    const revealPaneEl = document.getElementById('revealPane');
+    const resultStatusEl = document.getElementById('resultStatus');
+    const rawTextOutEl = document.getElementById('rawTextOut');
+    const ankyOutEl = document.getElementById('ankyOut');
+    const copyStatusEl = document.getElementById('copyStatus');
+    const copyTextBtn = document.getElementById('copyTextBtn');
+    const copyAnkyBtn = document.getElementById('copyAnkyBtn');
+    const exportArchiveBtn = document.getElementById('exportArchiveBtn');
+    const exportArchiveTopBtn = document.getElementById('exportArchiveTopBtn');
+    const archiveExportStatusEl = document.getElementById('archiveExportStatus');
+    const writeAgainBtn = document.getElementById('writeAgainBtn');
+    const closeDemoBtn = document.getElementById('closeDemo');
+    const nativeInputEl = document.createElement('textarea');
+    nativeInputEl.className = 'native-input';
+    nativeInputEl.setAttribute('aria-label', 'Anky writing input');
+    nativeInputEl.setAttribute('autocomplete', 'off');
+    nativeInputEl.setAttribute('autocorrect', 'off');
+    nativeInputEl.setAttribute('autocapitalize', 'off');
+    nativeInputEl.setAttribute('spellcheck', 'false');
+    document.body.appendChild(nativeInputEl);
+    const totalMs = 480000;
+    const silenceMs = 8000;
+    const circumference = 754;
+    const lineBreak = String.fromCharCode(10);
+    const archiveKey = 'anky_landing_archive';
+    const state = { active:false, started:false, closed:false, finishedAsAnky:false, savedToArchive:false, rawText:'', currentWord:'', lastChar:'', threadText:'', ankyLines:[], startTime:0, lastKeyTime:0, lastInputAt:0, tick:null, silenceTimeout:null };
+    function countdown() { let diff = target - Date.now(); if (diff <= 0) { countdownText.textContent = 'mint is live now'; return; } const d = Math.floor(diff / 86400000); diff = diff - d * 86400000; const h = Math.floor(diff / 3600000); diff = diff - h * 3600000; const m = Math.floor(diff / 60000); diff = diff - m * 60000; const s = Math.floor(diff / 1000); countdownText.textContent = d + 'd ' + String(h).padStart(2,'0') + 'h ' + String(m).padStart(2,'0') + 'm ' + String(s).padStart(2,'0') + 's'; }
+    function safe(str) { return str.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
+    function encodeAnkyChar(char) { return char === ' ' ? 'SPACE' : char; }
+    function decodeAnkyChar(token) { return token === 'SPACE' ? ' ' : token; }
+    function canonicalAnkyLine(line, index) {
+      if (line === '8000') return line;
+      const separatorIndex = index === 0 ? line.indexOf(' ') : 4;
+      if (separatorIndex <= 0 || line[separatorIndex] !== ' ') return line;
+      const left = line.slice(0, separatorIndex);
+      const token = line.slice(separatorIndex + 1);
+      return left + ' ' + (token === ' ' ? 'SPACE' : token);
     }
-  }
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', sync);
-    sync();
-  }
-})();
-
-// ── HELPERS ──
-function escapeHtml(text) {
-  return String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-function sanitizeUrl(url) {
-  if (!url) return '';
-  var t = String(url).trim();
-  return /^(https?:\/\/|\/)/i.test(t) ? t : '';
-}
-function renderInlineMarkdown(text) {
-  var h = escapeHtml(text);
-  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
-  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, url) {
-    var safe = sanitizeUrl(url);
-    if (!safe) return escapeHtml(label);
-    var attrs = safe.charAt(0)==='/' ? '' : ' target="_blank" rel="noopener noreferrer"';
-    return '<a href="'+safe+'"'+attrs+'>'+escapeHtml(label)+'</a>';
-  });
-  h = h.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
-  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  h = h.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-  h = h.replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
-  h = h.replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
-  return h;
-}
-function renderMarkdown(text) {
-  var lines = String(text||'').replace(/\r/g,'').split('\n');
-  var html=[], paragraph=[], listItems=[], inCode=false, codeLines=[];
-  function flushP() { if(!paragraph.length) return; html.push('<p>'+paragraph.map(renderInlineMarkdown).join('<br>')+'</p>'); paragraph=[]; }
-  function flushL() { if(!listItems.length) return; html.push('<ul>'+listItems.map(function(i){return '<li>'+renderInlineMarkdown(i)+'</li>';}).join('')+'</ul>'); listItems=[]; }
-  function flushC() { if(!codeLines.length) return; html.push('<pre><code>'+escapeHtml(codeLines.join('\n'))+'</code></pre>'); codeLines=[]; }
-  lines.forEach(function(line) {
-    line = line || '';
-    if (line.trim().slice(0,3)==='```') { flushP(); flushL(); if(inCode){flushC();inCode=false;}else{inCode=true;} return; }
-    if (inCode) { codeLines.push(line); return; }
-    if (!line.trim()) { flushP(); flushL(); return; }
-    var heading = line.match(/^(#{1,4})\s+(.+)$/);
-    if (heading) { flushP(); flushL(); var lvl=Math.min(heading[1].length+1,4); html.push('<h'+lvl+'>'+renderInlineMarkdown(heading[2])+'</h'+lvl+'>'); return; }
-    if (/^---+$/.test(line.trim())) { flushP(); flushL(); html.push('<hr>'); return; }
-    var quote = line.match(/^>\s?(.*)$/);
-    if (quote) { flushP(); flushL(); html.push('<blockquote>'+renderInlineMarkdown(quote[1])+'</blockquote>'); return; }
-    var bullet = line.match(/^\s*[-*]\s+(.+)$/);
-    if (bullet) { flushP(); listItems.push(bullet[1]); return; }
-    flushL(); paragraph.push(line);
-  });
-  flushP(); flushL(); flushC();
-  return html.join('');
-}
-
-// ── CHAT ──
-var chatArea = document.getElementById('chatArea');
-var chatInput = document.getElementById('chatInput');
-var chatHistory = [];
-var currentAnkyId = null;
-var currentWritingText = '';
-
-var userScrolledUp = false;
-chatArea.addEventListener('scroll', function() {
-  var distFromBottom = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight;
-  userScrolledUp = distFromBottom > 150;
-});
-function scrollChat(force) {
-  if (force || !userScrolledUp) {
-    setTimeout(function() { chatArea.scrollTop = chatArea.scrollHeight; }, 50);
-  }
-}
-
-function addChatBubble(role, text, collapsed) {
-  var bubble = document.createElement('div');
-  bubble.className = 'chat-bubble ' + role;
-  if (role === 'user') {
-    bubble.textContent = text;
-    if (collapsed && text.length > 300) {
-      bubble.classList.add('collapsed');
-      bubble.addEventListener('click', function() { bubble.classList.toggle('collapsed'); });
+    function lastCharOpacity(now) { if (!state.started || !state.lastInputAt) return 1; return Math.max(0, Math.min(1, 1 - ((now || Date.now()) - state.lastInputAt) / silenceMs)); }
+    function renderWord(now) { if (state.closed) { lastWordEl.innerHTML = '<span style="font-size:22px;color:rgba(255,250,240,.78);letter-spacing:0;">revealed</span>'; return; } if (!state.lastChar) { lastWordEl.innerHTML = state.started ? '<span style="color:rgba(255,250,240,.16);font-size:36px;">·</span>' : '<span style="color:rgba(255,250,240,.42);font-size:24px;letter-spacing:0;">write</span>'; return; } const visible = state.lastChar === ' ' ? '·' : state.lastChar; lastWordEl.innerHTML = '<span class="last-char" style="opacity:' + lastCharOpacity(now).toFixed(3) + '">' + safe(visible) + '</span>'; }
+    function renderThread() { threadLineEl.textContent = state.threadText; }
+    function renderTimer() { if (!state.started || state.closed) { if (!state.started) { timerLabelEl.textContent = '8:00'; silenceLabelEl.textContent = '8s'; timerProgressEl.style.strokeDashoffset = circumference; } return; } const now = Date.now(); const elapsed = Math.min(totalMs, now - state.startTime); const remaining = Math.max(0, totalMs - elapsed); const mins = Math.floor(remaining / 60000); const secs = Math.floor((remaining % 60000) / 1000); timerLabelEl.textContent = mins + ':' + String(secs).padStart(2,'0'); timerProgressEl.style.strokeDashoffset = circumference * (1 - elapsed / totalMs); const sr = Math.max(0, silenceMs - (now - state.lastInputAt)); silenceLabelEl.textContent = Math.ceil(sr / 1000) + 's'; renderWord(now); if (remaining <= 0) finishSession(); }
+    function render() { renderWord(); renderThread(); renderTimer(); if (state.closed) { const label = state.finishedAsAnky ? 'anky complete' : 'short writing'; statusTextEl.textContent = label; resultStatusEl.textContent = label; phoneCopyEl.textContent = state.finishedAsAnky ? '8 minutes complete' : 'saved locally. 8 minutes makes an anky'; } else if (state.started) { statusTextEl.textContent = 'writing'; phoneCopyEl.textContent = 'only the latest character stays visible'; } else if (state.active) { statusTextEl.textContent = 'ready'; phoneCopyEl.textContent = 'first accepted character begins the session'; } else { statusTextEl.textContent = 'tap + type'; phoneCopyEl.textContent = 'tap here and type'; } }
+    function focusWriting() { try { nativeInputEl.focus({ preventScroll:true }); } catch (err) { nativeInputEl.focus(); } }
+    function syncWriterViewport() {
+      const viewport = window.visualViewport;
+      const height = viewport ? viewport.height : window.innerHeight;
+      const top = viewport ? viewport.offsetTop : 0;
+      const circle = Math.max(190, Math.min(620, Math.round(height * 0.62), Math.round(window.innerWidth * 0.86)));
+      document.documentElement.style.setProperty('--writer-height', Math.max(320, Math.round(height)) + 'px');
+      document.documentElement.style.setProperty('--writer-circle', circle + 'px');
+      document.documentElement.style.setProperty('--writer-top', Math.round(top) + 'px');
     }
-  } else {
-    var content = document.createElement('div');
-    content.className = 'msg-content';
-    content.innerHTML = renderMarkdown(text);
-    bubble.appendChild(content);
-  }
-  chatArea.appendChild(bubble);
-  scrollChat();
-  return bubble;
-}
-
-function addThinkingBubble() {
-  var bubble = document.createElement('div');
-  bubble.className = 'chat-bubble anky';
-  bubble.id = 'currentThinking';
-  bubble.innerHTML = '<div class="thinking-dots" id="thinkingDots"><span></span><span></span><span></span><span class="thinking-label">' + window.t('chat.anky_thinking') + '</span></div><div class="msg-content" id="streamTarget"></div>';
-  chatArea.appendChild(bubble);
-  scrollChat();
-  return bubble;
-}
-
-function removeThinking() {
-  var dots = document.getElementById('thinkingDots');
-  if (dots) dots.style.display = 'none';
-}
-
-function finishAnkyBubble(text) {
-  removeThinking();
-  var target = document.getElementById('streamTarget');
-  if (target) target.innerHTML = renderMarkdown(text);
-  var thinking = document.getElementById('currentThinking');
-  if (thinking) thinking.removeAttribute('id');
-  var st = document.getElementById('streamTarget');
-  if (st) st.removeAttribute('id');
-  scrollChat();
-}
-
-function setThinkingLabel(msg) {
-  var label = document.querySelector('#currentThinking .thinking-label');
-  if (label) { label.style.display = 'inline'; label.textContent = msg; }
-}
-
-function assistantMessagesFromData(data) {
-  if (Array.isArray(data.messages) && data.messages.length) {
-    var structured = data.messages
-      .map(function(m) {
-        return {
-          role: m && m.role ? m.role : 'assistant',
-          content: m && typeof m.content === 'string' ? m.content.trim() : '',
-          purpose: m && m.purpose ? m.purpose : null,
-        };
-      })
-      .filter(function(m) { return m.role === 'assistant' && m.content; });
-    if (structured.length) return structured;
-  }
-  var reply = typeof data.response === 'string' ? data.response.trim() : '';
-  if (!reply) throw new Error('anky returned an empty reply. try again.');
-  return [{ role: 'assistant', content: reply, purpose: null }];
-}
-
-function renderAssistantMessages(messages) {
-  var thinking = document.getElementById('currentThinking');
-  if (thinking) thinking.remove();
-  messages.forEach(function(message, idx) {
-    setTimeout(function() {
-      chatHistory.push({ role: 'assistant', content: message.content, purpose: message.purpose || null });
-      addChatBubble('anky', message.content);
-    }, idx * 800);
-  });
-}
-
-// ── DRAWER ──
-var isLoggedIn = {% if logged_in | default(value=false) %}true{% else %}false{% endif %};
-var drawer = document.getElementById('drawer');
-var drawerBackdrop = document.getElementById('drawerBackdrop');
-var drawerAnkys = document.getElementById('drawerAnkys');
-
-function openDrawer() {
-  drawer.classList.add('open');
-  drawerBackdrop.classList.add('open');
-}
-function closeDrawer() {
-  drawer.classList.remove('open');
-  drawerBackdrop.classList.remove('open');
-}
-
-document.getElementById('navHamburger').addEventListener('click', function() {
-  window.location.href = '/you';
-});
-drawerBackdrop.addEventListener('click', closeDrawer);
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
-});
-
-// Seal button for guests — close drawer, then open the QR auth panel
-var sealBtn = document.getElementById('drawerSealBtn');
-if (sealBtn) {
-  sealBtn.addEventListener('click', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    closeDrawer();
-    // Defer opening the auth panel until after the drawer-close click cycle finishes,
-    // otherwise the same click bubbles to document/backdrop handlers and closes the panel immediately.
-    setTimeout(function() {
-      if (window.ankyAuth && typeof window.ankyAuth.login === 'function') {
-        window.ankyAuth.login();
-      } else {
-        window.location.href = '/login';
+    function activate() { state.active = true; syncWriterViewport(); document.body.classList.add('writing-open'); document.body.classList.remove('demo-open'); window.scrollTo({ top:0, behavior:'auto' }); focusWriting(); setTimeout(syncWriterViewport, 80); render(); }
+    function closeModal() { if (state.started && !state.closed) return; document.body.classList.remove('writing-open', 'writing-started', 'writing-finished', 'demo-open'); state.active = false; render(); }
+    function startSession(char) { const now = Date.now(); state.started = true; state.closed = false; state.finishedAsAnky = false; state.savedToArchive = false; state.startTime = now; state.lastKeyTime = now; state.lastInputAt = now; document.body.classList.add('writing-open', 'writing-started'); document.body.classList.remove('writing-finished'); state.ankyLines.push(String(now) + ' ' + encodeAnkyChar(char)); clearInterval(state.tick); state.tick = setInterval(renderTimer, 100); }
+    function addAnky(char) { const now = Date.now(); if (!state.started) { startSession(char); return; } const delta = Math.min(7999, now - state.lastKeyTime); state.ankyLines.push(String(delta).padStart(4,'0') + ' ' + encodeAnkyChar(char)); state.lastKeyTime = now; state.lastInputAt = now; }
+    function finishWord() { if (!state.currentWord) return; state.threadText = state.threadText + state.currentWord + ' '; state.currentWord = ''; }
+    function backupWriting() { try { localStorage.setItem('anky_landing_latest_raw', state.rawText); localStorage.setItem('anky_landing_latest_anky', rawAnky()); } catch (err) {} }
+    function setArchiveStatus(text) { copyStatusEl.textContent = text; archiveExportStatusEl.textContent = text; }
+    function canonicalAnkyText(text) {
+      const value = String(text || '').replace(/\r\n/g, lineBreak).replace(/\r/g, lineBreak).replace(/\n+$/, '');
+      return value.split(lineBreak).map(canonicalAnkyLine).join(lineBreak);
+    }
+    function estimatedDurationMsFromAnky(text) {
+      const lines = canonicalAnkyText(text).split(lineBreak).filter(Boolean);
+      let total = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (line === '8000') { total += 8000; continue; }
+        const delta = parseInt(line.split(' ')[0], 10);
+        if (Number.isFinite(delta)) total += delta;
       }
-    }, 50);
-  });
-}
-
-function renderDrawerAnkyList(ankys) {
-  drawerAnkys.innerHTML = '';
-  ankys.forEach(function(a) {
-    var item = document.createElement('a');
-    item.className = 'drawer-anky-item';
-    item.href = a.href || ('/anky/' + a.id);
-    var thumb = '';
-    if (a.imageUrl) {
-      thumb = '<img class="drawer-anky-thumb" src="' + escapeHtml(a.imageUrl) + '" alt="">';
-    } else {
-      thumb = '<div class="drawer-anky-thumb"></div>';
+      return total;
     }
-    var title = a.title || 'untitled';
-    var date = '';
-    if (a.created_at) {
-      var d = new Date(a.created_at);
-      date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    function isFullAnkyItem(item) {
+      if (!item || !item.anky) return false;
+      if (item.is_anky === false) return false;
+      if (item.is_anky === true) return true;
+      const duration = Number(item.duration_ms || 0);
+      return duration >= totalMs || estimatedDurationMsFromAnky(item.anky) >= totalMs;
     }
-    item.innerHTML = thumb +
-      '<div class="drawer-anky-info">' +
-        '<div class="drawer-anky-title">' + escapeHtml(title) + '</div>' +
-        '<div class="drawer-anky-date">' + date + '</div>' +
-      '</div>';
-    drawerAnkys.appendChild(item);
-  });
-}
-
-// Load ankys into drawer
-if (isLoggedIn) {
-  fetch('/api/my-ankys', { credentials: 'include' }).then(function(r) {
-    if (!r.ok) throw new Error('not ok');
-    return r.json();
-  }).then(function(ankys) {
-    if (!ankys || ankys.length === 0) {
-      drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_no_ankys') + '</div>';
-      return;
-    }
-    renderDrawerAnkyList(ankys);
-  }).catch(function() {
-    drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_write_here') + '</div>';
-  });
-} else {
-  // Guest: show locally stored writings
-  try {
-    var local = JSON.parse(localStorage.getItem('anky_local_writings') || '[]');
-    if (local.length > 0) {
-      renderDrawerAnkyList(local.map(function(w) {
-        return { id: w.id || '', title: w.title || 'untitled', created_at: w.created_at, imageUrl: '', href: w.id ? '/anky/' + w.id : '#' };
-      }));
-    } else {
-      drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_writings_will_appear') + '</div>';
-    }
-  } catch(e) {
-    drawerAnkys.innerHTML = '<div class="drawer-empty">' + window.t('drawer.empty_writings_will_appear') + '</div>';
-  }
-}
-
-// ── PROMPTS ──
-var defaultPrompts = [
-  'what is alive in you right now?',
-  'what are you afraid to say out loud?',
-  'what do you keep coming back to in your mind?',
-  'what would you tell your younger self?',
-  'what is the thing you never finished saying?',
-  'who are you when nobody is watching?',
-  'what are you carrying today that isn\'t yours?',
-  'what does your body know that your mind won\'t admit?',
-];
-function randomPrompt() { return defaultPrompts[Math.floor(Math.random()*defaultPrompts.length)]; }
-
-// ── LOAD CHAT HISTORY ──
-fetch('/api/chat-history').then(function(r){return r.json();}).then(function(data) {
-  var sessions = data.sessions || [];
-  var nextPrompt = data.next_prompt;
-  if (sessions.length === 0) {
-    addChatBubble('anky', 'hey. i\'m anky.\n\ni\'m here to listen. write for 8 minutes without stopping — no backspace, no editing, just forward — and i\'ll reflect back what i see.\n\n*' + randomPrompt() + '*');
-  } else {
-    sessions.forEach(function(s, idx) {
-      if (idx > 0) {
-        var d = new Date(s.created_at);
-        var label = d.toLocaleDateString(undefined, {month:'short',day:'numeric'});
-        var div = document.createElement('div');
-        div.className = 'session-divider';
-        div.innerHTML = '<span>'+label+'</span>';
-        chatArea.appendChild(div);
-      }
-      // User's writing
-      var userBubble = document.createElement('div');
-      userBubble.className = 'chat-bubble user';
-      userBubble.textContent = s.writing_preview;
-      chatArea.appendChild(userBubble);
-      // Anky response
-      var ankyText = '';
-      if (s.is_anky && s.reflection) {
-        ankyText = (s.anky_title ? '**'+s.anky_title+'**\n\n' : '') + s.reflection;
-      } else if (s.quick_response) {
-        ankyText = s.quick_response;
-      }
-      if (ankyText) addChatBubble('anky', ankyText);
-      // Follow-up conversation
-      if (s.conversation_json) {
-        try {
-          var conv = JSON.parse(s.conversation_json);
-          (conv.messages||[]).forEach(function(m) {
-            addChatBubble(m.role==='user'?'user':'anky', m.content);
-          });
-        } catch(e) {}
-      }
-    });
-    // Next prompt
-    var prompt = nextPrompt || randomPrompt();
-    var div = document.createElement('div');
-    div.className = 'session-divider'; div.innerHTML = '<span>' + window.t('chat.session_divider_now') + '</span>';
-    chatArea.appendChild(div);
-    addChatBubble('anky', '*' + prompt + '*');
-    document.getElementById('writingPrompt').textContent = prompt;
-  }
-  scrollChat();
-}).catch(function() {
-  var prompt = randomPrompt();
-  addChatBubble('anky', 'hey. i\'m anky.\n\n*' + prompt + '*');
-  document.getElementById('writingPrompt').textContent = prompt;
-});
-
-// ── CHAT INPUT (short messages) ──
-chatInput.addEventListener('input', function() {
-  chatInput.style.height = 'auto';
-  chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
-});
-chatInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    if (chatInput.value.trim()) sendChatMessage();
-  }
-});
-
-async function sendChatMessage() {
-  var msg = chatInput.value.trim();
-  if (!msg) return;
-  chatInput.value = '';
-  chatInput.style.height = 'auto';
-  addChatBubble('user', msg, false);
-  chatHistory.push({ role: 'user', content: msg });
-  scrollChat(true);
-  addThinkingBubble();
-  try {
-    var endpoint = currentAnkyId ? '/api/chat' : '/api/chat-quick';
-    var body = currentAnkyId
-      ? { anky_id: currentAnkyId, message: msg, history: chatHistory.slice(0,-1) }
-      : { writing: currentWritingText, message: msg, history: chatHistory.slice(0,-1) };
-    var resp = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    var data;
-    try {
-      data = await resp.json();
-    } catch (_) {
-      data = {};
-    }
-    if (!resp.ok || data.error) {
-      throw new Error(data.error || 'something broke. try again.');
-    }
-    renderAssistantMessages(assistantMessagesFromData(data));
-  } catch(e) {
-    chatHistory.pop();
-    var thinking = document.getElementById('currentThinking');
-    if (thinking) thinking.remove();
-    addChatBubble('anky', e && e.message ? e.message : 'something broke. your words are safe.');
-  }
-}
-
-// ── BELL TIMER ──
-(function() {
-  var overlay = document.getElementById('timerOverlay');
-  var display = document.getElementById('timerDisplay');
-  var chakraFill = document.getElementById('timerChakraFill');
-  var doneMsg = document.getElementById('timerDoneMsg');
-  var cancelBtn = document.getElementById('timerCancel');
-  var CHAKRA_COLORS = ["#ff0000","#ff6600","#ffcc00","#33cc33","#3399ff","#6633cc","#9933ff","#ffffff"];
-  var interval = null;
-  var startedAt = null;
-  var DURATION = 480;
-  var bell = new Audio('/static/anky_bell.wav');
-  bell.preload = 'auto';
-
-  function playBell() {
-    bell.currentTime = 0;
-    bell.play().catch(function(){});
-  }
-
-  function open() {
-    overlay.style.display = 'flex';
-    display.classList.remove('done');
-    doneMsg.style.display = 'none';
-    cancelBtn.textContent = 'cancel';
-    startedAt = Date.now();
-    chakraFill.style.width = '0%';
-    playBell();
-    interval = setInterval(tick, 100);
-  }
-
-  function close() {
-    overlay.style.display = 'none';
-    if (interval) { clearInterval(interval); interval = null; }
-  }
-
-  function tick() {
-    var elapsed = (Date.now() - startedAt) / 1000;
-    var remaining = DURATION - elapsed;
-    if (remaining <= 0) {
-      display.textContent = '0:00';
-      display.classList.add('done');
-      doneMsg.style.display = 'block';
-      cancelBtn.textContent = 'close';
-      chakraFill.style.width = '100%';
-      clearInterval(interval); interval = null;
-      playBell();
-      return;
-    }
-    var mins = Math.floor(remaining / 60);
-    var secs = Math.floor(remaining % 60);
-    display.textContent = mins + ':' + String(secs).padStart(2, '0');
-    var progress = Math.min(elapsed / DURATION, 1);
-    var colorIdx = Math.min(Math.floor(progress * 8), 7);
-    var stops = [];
-    for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
-    chakraFill.style.background = stops.length === 1 ? stops[0] : 'linear-gradient(to right,'+stops.join(',')+')';
-    chakraFill.style.width = (progress * 100) + '%';
-  }
-
-  document.getElementById('bellBtn').addEventListener('click', open);
-  cancelBtn.addEventListener('click', close);
-})();
-
-// ── ANKY WRITING SESSION ──
-(function() {
-  var CHAKRA_COLORS = ["#ff0000","#ff6600","#ffcc00","#33cc33","#3399ff","#6633cc","#9933ff","#ffffff"];
-  var IDLE_TIMEOUT = 8.0;
-  var IDLE_VISIBLE_AFTER = 3.0;
-  var SESSION_DURATION = 480.0;
-
-  var state = 'ready';
-  var sessionStarted = null;
-  var lastInputAt = null;
-  var activeTime = 0;
-  var pausedAtActive = 0;
-  var tickInterval = null;
-  var keystrokeDeltas = [];
-  var lastKeystrokeAt = null;
-  var checkpointTimer = null;
-  var sessionId = null;
-  var sessionToken = null;
-  var CHECKPOINT_INTERVAL = 30000;
-
-  var overlay = document.getElementById('writingOverlay');
-  var writingArea = document.getElementById('writingArea');
-  var writingPrompt = document.getElementById('writingPrompt');
-  var writingTimer = document.getElementById('writingTimer');
-  var chakraFill = document.getElementById('chakraFill');
-  var idleBarFill = document.getElementById('idleBarFill');
-  var writingBackBtn = document.getElementById('writingBack');
-
-  function genId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      var r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
-    });
-  }
-
-  function saveCheckpoint() {
-    if (!writingArea.value || !sessionId) return;
-    fetch('/api/checkpoint', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ session_id: sessionId, text: writingArea.value, elapsed: activeTime, session_token: sessionToken })
-    }).then(function(r){return r.json();}).then(function(d){ if(d.session_token) sessionToken=d.session_token; }).catch(function(){});
-  }
-
-  function setAnkyModeParam(on) {
-    var url = new URL(window.location);
-    if (on) {
-      url.searchParams.set('ankymode', 'true');
-    } else {
-      url.searchParams.set('ankymode', 'false');
-    }
-    history.replaceState(null, '', url);
-  }
-
-  var ankyBtn = document.getElementById('ankyBtn');
-  var isAnimating = false;
-  var timerFadeTimeout = null;
-  var promptFadeTimeout = null;
-  var timerHidden = false;
-
-  function resetOverlayState() {
-    writingArea.value = '';
-    state = 'ready';
-    activeTime = 0;
-    pausedAtActive = 0;
-    writingTimer.textContent = '8:00';
-    writingTimer.classList.remove('past-zero');
-    writingTimer.style.opacity = '';
-    timerHidden = false;
-    chakraFill.style.width = '0%';
-    idleBarFill.style.width = '0%';
-    idleBarFill.classList.remove('warning');
-    writingBackBtn.style.opacity = '1';
-    writingBackBtn.style.pointerEvents = '';
-    writingPrompt.classList.remove('faded');
-    writingPrompt.classList.remove('gone');
-    writingPrompt.style.opacity = '';
-    writingArea.style.caretColor = '#7b2ff7';
-    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
-    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
-    sessionId = genId();
-    sessionToken = null;
-    keystrokeDeltas = [];
-    lastKeystrokeAt = null;
-  }
-
-  function openWriting(skipAnimation) {
-    if (isAnimating) return;
-    setAnkyModeParam(true);
-    resetOverlayState();
-
-    // Hide children during morph
-    var children = overlay.children;
-    for (var i = 0; i < children.length; i++) children[i].style.opacity = skipAnimation ? '' : '0';
-
-    if (skipAnimation) {
-      overlay.style.display = 'flex';
-      overlay.className = 'writing-overlay morph-ready';
-      overlay.style.cssText = 'display:flex;';
-      overlay.className = 'writing-overlay morph-ready';
-      writingArea.focus();
-      setTimeout(function() { writingArea.focus(); }, 100);
-      return;
-    }
-
-    // Get button position
-    var btnRect = ankyBtn.getBoundingClientRect();
-    overlay.style.display = 'flex';
-    overlay.classList.remove('morph-ready');
-    overlay.style.top = btnRect.top + 'px';
-    overlay.style.left = btnRect.left + 'px';
-    overlay.style.width = btnRect.width + 'px';
-    overlay.style.height = btnRect.height + 'px';
-    overlay.style.borderRadius = '50%';
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'none';
-    overlay.style.transform = 'none';
-
-    isAnimating = true;
-
-    requestAnimationFrame(function() {
-      requestAnimationFrame(function() {
-        // Target: full screen, centered like morph-ready
-        var targetW = Math.min(640, window.innerWidth);
-        var targetL = (window.innerWidth - targetW) / 2;
-        var targetH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-        overlay.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-        overlay.style.top = '0px';
-        overlay.style.left = targetL + 'px';
-        overlay.style.width = targetW + 'px';
-        overlay.style.height = targetH + 'px';
-        overlay.style.borderRadius = '0';
-        overlay.style.opacity = '1';
-
-        function onDone() {
-          overlay.removeEventListener('transitionend', onDone);
-          isAnimating = false;
-          // Clean up inline styles → let morph-ready class take over
-          overlay.style.cssText = 'display:flex;';
-          overlay.className = 'writing-overlay morph-ready';
-          // Fade children in
-          for (var i = 0; i < children.length; i++) {
-            children[i].style.transition = 'opacity 0.2s ease';
-            children[i].style.opacity = '';
-          }
-          setTimeout(function() {
-            for (var i = 0; i < children.length; i++) children[i].style.transition = '';
-          }, 250);
-          writingArea.focus();
-          setTimeout(function() { writingArea.focus(); }, 100);
-        }
-        overlay.addEventListener('transitionend', onDone);
-        // Safety fallback
-        setTimeout(function() { if (isAnimating) onDone(); }, 500);
-      });
-    });
-  }
-
-  function closeWriting(skipAnimation, cb) {
-    setAnkyModeParam(false);
-    if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
-    if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
-    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
-    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
-
-    if (skipAnimation || isAnimating) {
-      overlay.style.display = 'none';
-      overlay.style.cssText = 'display:none;';
-      overlay.classList.remove('morph-ready');
-      state = 'ready';
-      if (cb) cb();
-      return;
-    }
-
-    isAnimating = true;
-
-    // Fade out children first
-    var children = overlay.children;
-    for (var i = 0; i < children.length; i++) {
-      children[i].style.transition = 'opacity 0.15s ease';
-      children[i].style.opacity = '0';
-    }
-
-    setTimeout(function() {
-      // Get current overlay rect and button rect
-      var btnRect = ankyBtn.getBoundingClientRect();
-      var overlayRect = overlay.getBoundingClientRect();
-
-      // Pin overlay at current position with inline styles
-      overlay.classList.remove('morph-ready');
-      overlay.style.top = overlayRect.top + 'px';
-      overlay.style.left = overlayRect.left + 'px';
-      overlay.style.width = overlayRect.width + 'px';
-      overlay.style.height = overlayRect.height + 'px';
-      overlay.style.borderRadius = '0';
-      overlay.style.opacity = '1';
-      overlay.style.transform = 'none';
-      overlay.style.transition = 'none';
-
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          overlay.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-          overlay.style.top = btnRect.top + 'px';
-          overlay.style.left = btnRect.left + 'px';
-          overlay.style.width = btnRect.width + 'px';
-          overlay.style.height = btnRect.height + 'px';
-          overlay.style.borderRadius = '50%';
-          overlay.style.opacity = '0';
-
-          function onDone() {
-            overlay.removeEventListener('transitionend', onDone);
-            overlay.style.display = 'none';
-            overlay.style.cssText = 'display:none;';
-            overlay.classList.remove('morph-ready');
-            for (var i = 0; i < children.length; i++) {
-              children[i].style.transition = '';
-              children[i].style.opacity = '';
-            }
-            isAnimating = false;
-            state = 'ready';
-            if (cb) cb();
-          }
-          overlay.addEventListener('transitionend', onDone);
-          setTimeout(function() { if (isAnimating) onDone(); }, 600);
-        });
-      });
-    }, 150);
-  }
-
-  function beginSession() {
-    sessionStarted = Date.now();
-    lastInputAt = Date.now();
-    activeTime = 0;
-    pausedAtActive = 0;
-    state = 'writing';
-    writingBackBtn.style.opacity = '0';
-    writingBackBtn.style.pointerEvents = 'none';
-    tickInterval = setInterval(tick, 100);
-    checkpointTimer = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL);
-
-    // Timer fades out after 30s of writing
-    timerFadeTimeout = setTimeout(function() {
-      if (state === 'writing' && !timerHidden) {
-        writingTimer.style.opacity = '0';
-        timerHidden = true;
-      }
-    }, 30000);
-
-    // Prompt fully disappears after 60s
-    promptFadeTimeout = setTimeout(function() {
-      if (state === 'writing') {
-        writingPrompt.classList.add('gone');
-      }
-    }, 60000);
-  }
-
-  writingArea.addEventListener('keydown', function(e) {
-    if (state === 'sent') { e.preventDefault(); return; }
-    if (state === 'ready') {
-      if (e.key.length === 1) { beginSession(); writingPrompt.classList.add('faded'); }
-    }
-    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter') { e.preventDefault(); return; }
-    if (state === 'writing' && e.key.length === 1) {
-      var now = Date.now();
-      lastInputAt = now;
-      if (lastKeystrokeAt) keystrokeDeltas.push(now - lastKeystrokeAt);
-      lastKeystrokeAt = now;
-      writingArea.style.caretColor = '#7b2ff7';
-    }
-  });
-
-  writingArea.addEventListener('input', function() {
-    if (writingArea.value.includes('\n')) {
-      var pos = writingArea.selectionStart;
-      writingArea.value = writingArea.value.replace(/\n/g, ' ');
-      writingArea.selectionStart = writingArea.selectionEnd = pos;
-    }
-    if (state === 'writing') lastInputAt = Date.now();
-  });
-
-  writingArea.addEventListener('paste', function(e) { e.preventDefault(); });
-
-  function tick() {
-    if (state !== 'writing') return;
-    var now = Date.now();
-    activeTime = (now - sessionStarted) / 1000;
-    var idleElapsed = (now - lastInputAt) / 1000;
-
-    // Caret color: interpolate purple → red as idle goes from 3s to 8s
-    if (idleElapsed > IDLE_VISIBLE_AFTER && writingArea.value.length > 0) {
-      var p = Math.min((idleElapsed - IDLE_VISIBLE_AFTER) / (IDLE_TIMEOUT - IDLE_VISIBLE_AFTER), 1);
-      var r = Math.round(123 + (255 - 123) * p);
-      var g = Math.round(47 + (68 - 47) * p);
-      var b = Math.round(247 + (68 - 247) * p);
-      writingArea.style.caretColor = 'rgb(' + r + ',' + g + ',' + b + ')';
-    }
-
-    if (idleElapsed >= IDLE_TIMEOUT && writingArea.value.length > 0) { doSend(); return; }
-
-    // Timer reappears when past 8 minutes
-    if (timerHidden && activeTime >= SESSION_DURATION) {
-      writingTimer.style.opacity = '1';
-      timerHidden = false;
-    }
-
-    updateTimerDisplay();
-    updateChakra();
-  }
-
-  function updateTimerDisplay() {
-    var remaining = SESSION_DURATION - activeTime;
-    if (remaining >= 0) {
-      writingTimer.textContent = Math.floor(remaining/60)+':'+String(Math.floor(remaining%60)).padStart(2,'0');
-      writingTimer.classList.remove('past-zero');
-    } else {
-      var over = Math.abs(remaining);
-      writingTimer.textContent = '+'+Math.floor(over/60)+':'+String(Math.floor(over%60)).padStart(2,'0');
-      writingTimer.classList.add('past-zero');
-    }
-  }
-
-  function updateChakra() {
-    var progress = Math.min(activeTime / SESSION_DURATION, 1);
-    var colorIdx = Math.min(Math.floor(progress * 8), 7);
-    var stops = [];
-    for (var i = 0; i <= colorIdx; i++) stops.push(CHAKRA_COLORS[i]);
-    chakraFill.style.background = stops.length===1 ? stops[0] : 'linear-gradient(to right,'+stops.join(',')+')';
-    chakraFill.style.width = (progress * 100) + '%';
-  }
-
-  function calcFlowScore() {
-    if (keystrokeDeltas.length < 5) return 0;
-    var mean = keystrokeDeltas.reduce(function(a,b){return a+b;},0) / keystrokeDeltas.length;
-    var variance = keystrokeDeltas.reduce(function(a,d){return a+(d-mean)*(d-mean);},0) / keystrokeDeltas.length;
-    var std = Math.sqrt(variance);
-    var cv = mean > 0 ? std / mean : 1;
-    var stability = Math.max(0, 1 - cv) * 0.45;
-    var totalPause = keystrokeDeltas.filter(function(d){return d>2000;}).reduce(function(a,d){return a+d;},0) / 1000;
-    var continuity = Math.max(0, 1 - totalPause / Math.max(activeTime, 1)) * 0.30;
-    var density = Math.min(keystrokeDeltas.length / 700, 1) * 0.25;
-    return Math.min(1, Math.max(0, stability + continuity + density));
-  }
-
-  function doSend() {
-    state = 'sent';
-    var text = writingArea.value;
-    currentWritingText = text;
-
-    // Stop timers
-    if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
-    if (checkpointTimer) { clearInterval(checkpointTimer); checkpointTimer = null; }
-    if (timerFadeTimeout) { clearTimeout(timerFadeTimeout); timerFadeTimeout = null; }
-    if (promptFadeTimeout) { clearTimeout(promptFadeTimeout); promptFadeTimeout = null; }
-    setAnkyModeParam(false);
-
-    // Fade overlay out
-    overlay.style.transition = 'opacity 0.6s ease';
-    overlay.style.opacity = '0';
-
-    function onFadeDone() {
-      overlay.removeEventListener('transitionend', onFadeDone);
-      overlay.style.display = 'none';
-      overlay.style.cssText = 'display:none;';
-      overlay.classList.remove('morph-ready');
-      overlay.style.opacity = '';
-      isAnimating = false;
-      state = 'ready';
-    }
-    overlay.addEventListener('transitionend', onFadeDone);
-    setTimeout(function() { if (overlay.style.opacity === '0') onFadeDone(); }, 700);
-
-    // Wait for fade, then show bubble and send
-    setTimeout(function() {
-      addChatBubble('user', text);
-      scrollChat(true);
-      setTimeout(function() {
-        addThinkingBubble();
-        sendToAnky(text);
-      }, 400);
-    }, 600);
-  }
-
-  async function sendToAnky(text) {
-    var flowScore = calcFlowScore();
-    try {
-      var resp = await fetch('/write', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          text: text, duration: activeTime, user_token: '',
-          flow_score: flowScore, session_id: sessionId,
-          session_token: sessionToken, keystroke_deltas: keystrokeDeltas,
-        }),
-      });
-      var data = await resp.json();
-      if (data.error) { finishAnkyBubble(data.error); return; }
-
-      pollForAnkyPrompt(sessionId);
-
-      if (data.ankyId) {
-        currentAnkyId = data.ankyId;
-        // Add copy button for real ankys
-        var copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-btn';
-        copyBtn.textContent = 'copy writing';
-        copyBtn.addEventListener('click', function() {
-          navigator.clipboard.writeText(text).then(function() {
-            copyBtn.textContent = 'copied';
-            copyBtn.classList.add('copied');
-            setTimeout(function(){ copyBtn.textContent='copy writing'; copyBtn.classList.remove('copied'); }, 2000);
-          });
-        });
-        // Insert before the thinking bubble
-        var thinking = document.getElementById('currentThinking');
-        if (thinking) chatArea.insertBefore(copyBtn, thinking);
-        else chatArea.appendChild(copyBtn);
-        streamReflection(data.ankyId);
-      } else {
-        var messages = assistantMessagesFromData(data);
-        finishAnkyBubble(messages[0].content);
-        chatHistory.push({ role: 'assistant', content: messages[0].content, purpose: messages[0].purpose || null });
-        messages.slice(1).forEach(function(msg, idx) {
-          setTimeout(function() {
-            chatHistory.push({ role: 'assistant', content: msg.content, purpose: msg.purpose || null });
-            addChatBubble('anky', msg.content);
-          }, (idx + 1) * 800);
-        });
-      }
-    } catch(e) {
-      finishAnkyBubble('something went wrong. your writing is saved.');
-    }
-  }
-
-  function pollForAnkyPrompt(sid) {
-    var attempts = 0;
-    var poll = setInterval(async function() {
-      attempts++;
-      if (attempts > 30) { clearInterval(poll); return; }
+    function readArchive() { try { const saved = JSON.parse(localStorage.getItem(archiveKey) || '[]'); return Array.isArray(saved) ? saved : []; } catch (err) { return []; } }
+    function writeArchive(items) { localStorage.setItem(archiveKey, JSON.stringify(items)); }
+    function seedArchiveFromLatest() {
       try {
-        var r = await fetch('/api/writing/'+sid+'/status');
-        if (!r.ok) return;
-        var s = await r.json();
-        if (s.ankyResponse) localStorage.setItem('anky_last_response', s.ankyResponse);
-        if (s.nextPrompt) {
-          localStorage.setItem('anky_last_prompt', s.nextPrompt);
-          document.getElementById('writingPrompt').textContent = s.nextPrompt;
-          clearInterval(poll);
-        }
-        if (s.mood) localStorage.setItem('anky_last_mood', s.mood);
-      } catch(e) {}
-    }, 2000);
-  }
-
-  function streamReflection(ankyId, attempt) {
-    attempt = attempt || 1;
-    var rawText = '';
-    var streamDone = false;
-    var chunkCount = 0;
-    var firstChunkAt = null;
-
-    var progressMessages = [
-      { at: 3000, msg: 'anky is reading your words...' },
-      { at: 8000, msg: 'anky is sitting with what you wrote...' },
-      { at: 15000, msg: 'anky is finding the right words...' },
-      { at: 25000, msg: 'almost there...' },
-      { at: 40000, msg: 'this one goes deep...' },
-      { at: 60000, msg: 'still working...' },
-    ];
-    var progressTimers = progressMessages.map(function(p) {
-      return setTimeout(function() {
-        if (!firstChunkAt && !streamDone) setThinkingLabel(p.msg);
-      }, p.at);
-    });
-
-    var es = new EventSource('/api/stream-reflection/' + ankyId);
-
-    var safetyTimeout = setTimeout(function() {
-      if (!streamDone) {
-        streamDone = true;
-        progressTimers.forEach(clearTimeout);
-        es.close();
-        finishAnkyBubble(rawText || 'anky is still processing. check back soon.');
-      }
-    }, 90000);
-
-    var streamTarget = document.getElementById('streamTarget');
-
-    es.onmessage = function(e) {
-      if (e.data === 'keep-alive') return;
-      chunkCount++;
-      if (!firstChunkAt) {
-        firstChunkAt = Date.now();
-        progressTimers.forEach(clearTimeout);
-        removeThinking();
-      }
-      rawText += e.data;
-      if (streamTarget) {
-        streamTarget.innerHTML = renderMarkdown(rawText) + '<span class="stream-cursor"></span>';
-      }
-      scrollChat();
-    };
-
-    es.addEventListener('done', function() {
-      if (streamDone) return;
-      streamDone = true;
-      progressTimers.forEach(clearTimeout);
-      clearTimeout(safetyTimeout);
-      es.close();
-      chatHistory.push({ role: 'assistant', content: rawText, purpose: null });
-      if (streamTarget) {
-        var cursor = streamTarget.querySelector('.stream-cursor');
-        if (cursor) cursor.remove();
-      }
-      var thinking = document.getElementById('currentThinking');
-      if (thinking) thinking.removeAttribute('id');
-      if (streamTarget) streamTarget.removeAttribute('id');
-      streamTarget = null;
-      scrollChat();
-    });
-
-    es.onerror = function() {
-      if (streamDone) return;
-      streamDone = true;
-      progressTimers.forEach(clearTimeout);
-      clearTimeout(safetyTimeout);
-      es.close();
-      if (!rawText && attempt < 3) {
-        setThinkingLabel('reconnecting... (attempt '+(attempt+1)+')');
-        setTimeout(function(){ streamReflection(ankyId, attempt+1); }, attempt*3000);
+        const latestAnky = canonicalAnkyText(localStorage.getItem('anky_landing_latest_anky') || '');
+        if (!latestAnky.endsWith(lineBreak + '8000')) return;
+        const durationMs = estimatedDurationMsFromAnky(latestAnky);
+        if (durationMs < totalMs) return;
+        const items = readArchive();
+        if (items.some(function(item){ return canonicalAnkyText(item.anky) === latestAnky; })) return;
+        const latestRaw = localStorage.getItem('anky_landing_latest_raw') || '';
+        const firstLine = latestAnky.split(lineBreak)[0] || '';
+        const startedAt = parseInt(firstLine.split(' ')[0], 10);
+        const createdAt = Number.isFinite(startedAt) ? new Date(startedAt).toISOString() : new Date().toISOString();
+        items.push({ id:'anky-' + (Number.isFinite(startedAt) ? startedAt : Date.now()) + '-latest', created_at:createdAt, finished_at:new Date().toISOString(), raw_text:latestRaw, anky:latestAnky, is_anky:true, duration_ms:durationMs });
+        writeArchive(items);
+      } catch (err) {}
+    }
+    function archiveSession() {
+      if (state.savedToArchive || !state.rawText) return;
+      const durationMs = Date.now() - state.startTime;
+      if (!state.finishedAsAnky) {
+        state.savedToArchive = true;
+        setArchiveStatus('short writing kept here. full .anky export starts at 8 minutes');
         return;
       }
-      finishAnkyBubble(rawText || 'anky couldn\'t connect right now. your writing is saved.');
-    };
-  }
-
-  document.getElementById('ankyBtn').addEventListener('click', function() { openWriting(false); });
-  document.getElementById('writingBack').addEventListener('click', function() {
-    if (state === 'ready') closeWriting(false);
-  });
-
-  // Auto-open anky mode: default is true (path of least resistance)
-  var urlParams = new URLSearchParams(window.location.search);
-  var ankyModeParam = urlParams.get('ankymode');
-  // Open if param is absent (default) or explicitly 'true' — skip animation on load
-  if (ankyModeParam === null || ankyModeParam === 'true') {
-    openWriting(true);
-  }
-
-  // Viewport sync for writing overlay
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', function() {
-      overlay.style.height = window.visualViewport.height + 'px';
+      const item = { id:'anky-' + state.startTime, created_at:new Date(state.startTime).toISOString(), finished_at:new Date().toISOString(), raw_text:state.rawText, anky:rawAnky(), is_anky:true, duration_ms:durationMs };
+      try { const items = readArchive(); items.push(item); writeArchive(items); state.savedToArchive = true; const fullCount = items.filter(isFullAnkyItem).length; setArchiveStatus('saved locally as full .' + 'anky #' + fullCount); } catch (err) { setArchiveStatus('local archive failed'); }
+    }
+    const crcTable = (function(){ const table = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; table[n] = c >>> 0; } return table; })();
+    function crc32(bytes) { let crc = 0xffffffff; for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xff]; return (crc ^ 0xffffffff) >>> 0; }
+    function write16(view, offset, value) { view.setUint16(offset, value, true); }
+    function write32(view, offset, value) { view.setUint32(offset, value >>> 0, true); }
+    function dosDateTime(value) {
+      const parsed = new Date(value);
+      const date = Number.isFinite(parsed.getTime()) ? parsed : new Date();
+      const year = Math.max(1980, Math.min(2107, date.getFullYear()));
+      return { date:((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(), time:(date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2) };
+    }
+    async function sha256Hex(bytes) {
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(digest)).map(function(byte){ return byte.toString(16).padStart(2, '0'); }).join('');
+    }
+    async function createArchiveZip(items) {
+      const encoder = new TextEncoder();
+      const fileParts = [];
+      const centralParts = [];
+      let offset = 0;
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const dataBytes = encoder.encode(canonicalAnkyText(item.anky));
+        const hash = await sha256Hex(dataBytes);
+        const nameBytes = encoder.encode(hash + '.anky');
+        const checksum = crc32(dataBytes);
+        const dos = dosDateTime(item.created_at);
+        const local = new Uint8Array(30 + nameBytes.length);
+        const localView = new DataView(local.buffer);
+        write32(localView, 0, 0x04034b50); write16(localView, 4, 20); write16(localView, 6, 0); write16(localView, 8, 0); write16(localView, 10, dos.time); write16(localView, 12, dos.date); write32(localView, 14, checksum); write32(localView, 18, dataBytes.length); write32(localView, 22, dataBytes.length); write16(localView, 26, nameBytes.length); write16(localView, 28, 0); local.set(nameBytes, 30);
+        const central = new Uint8Array(46 + nameBytes.length);
+        const centralView = new DataView(central.buffer);
+        write32(centralView, 0, 0x02014b50); write16(centralView, 4, 20); write16(centralView, 6, 20); write16(centralView, 8, 0); write16(centralView, 10, 0); write16(centralView, 12, dos.time); write16(centralView, 14, dos.date); write32(centralView, 16, checksum); write32(centralView, 20, dataBytes.length); write32(centralView, 24, dataBytes.length); write16(centralView, 28, nameBytes.length); write16(centralView, 30, 0); write16(centralView, 32, 0); write16(centralView, 34, 0); write16(centralView, 36, 0); write32(centralView, 38, 0); write32(centralView, 42, offset); central.set(nameBytes, 46);
+        fileParts.push(local, dataBytes);
+        centralParts.push(central);
+        offset = offset + local.length + dataBytes.length;
+      }
+      const centralOffset = offset;
+      const centralSize = centralParts.reduce(function(total, part){ return total + part.length; }, 0);
+      const end = new Uint8Array(22);
+      const endView = new DataView(end.buffer);
+      write32(endView, 0, 0x06054b50); write16(endView, 4, 0); write16(endView, 6, 0); write16(endView, 8, items.length); write16(endView, 10, items.length); write32(endView, 12, centralSize); write32(endView, 16, centralOffset); write16(endView, 20, 0);
+      return new Blob(fileParts.concat(centralParts, [end]), { type:'application/zip' });
+    }
+    async function exportArchive() {
+      const stored = readArchive();
+      const items = stored.filter(isFullAnkyItem);
+      if (!items.length) { setArchiveStatus(stored.length ? 'only short writings found. write 8 minutes to export a full .anky' : 'no full .ankys yet'); return; }
+      setArchiveStatus('preparing zip...');
+      let blob;
+      try { blob = await createArchiveZip(items); } catch (err) { setArchiveStatus('zip export failed'); return; }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'anky-full-archive.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+      setArchiveStatus(items.length + ' full .anky' + (items.length === 1 ? '' : 's') + ' exported as zip');
+    }
+    function finishSession() { if (!state.started || state.closed) return; finishWord(); state.finishedAsAnky = Date.now() - state.startTime >= totalMs; state.closed = true; state.ankyLines.push('8000'); clearTimeout(state.silenceTimeout); clearInterval(state.tick); document.body.classList.remove('writing-started'); document.body.classList.add('writing-open', 'writing-finished'); screenEl.classList.add('finished'); revealPaneEl.classList.add('visible'); rawTextOutEl.textContent = state.rawText; if (ankyOutEl) ankyOutEl.textContent = displayAnky(); backupWriting(); archiveSession(); render(); }
+    function resetSilence() { clearTimeout(state.silenceTimeout); state.silenceTimeout = setTimeout(finishSession, silenceMs); }
+    function acceptChar(char) { if (state.closed) return; addAnky(char); state.rawText = state.rawText + char; state.lastChar = char; if (char === ' ') finishWord(); else state.currentWord = state.currentWord + char; backupWriting(); resetSilence(); render(); }
+    function resetDemo(event) { if (event) event.preventDefault(); clearTimeout(state.silenceTimeout); clearInterval(state.tick); state.active = true; state.started = false; state.closed = false; state.finishedAsAnky = false; state.savedToArchive = false; state.rawText = ''; state.currentWord = ''; state.lastChar = ''; state.threadText = ''; state.ankyLines = []; state.startTime = 0; state.lastKeyTime = 0; state.lastInputAt = 0; nativeInputEl.value = ''; syncWriterViewport(); document.body.classList.add('writing-open'); document.body.classList.remove('writing-started', 'writing-finished'); setArchiveStatus(''); screenEl.classList.remove('finished'); revealPaneEl.classList.remove('visible'); focusWriting(); setTimeout(syncWriterViewport, 80); render(); }
+    function displayAnky() { return state.ankyLines.map(function(line, index){ const canonical = canonicalAnkyLine(line, index); if (canonical === '8000') return '8000'; const i = canonical.indexOf(' '); const left = canonical.slice(0, i); const right = canonical.slice(i + 1); return left + ' ' + (decodeAnkyChar(right) === ' ' ? 'SPACE' : right); }).join(lineBreak); }
+    function rawAnky() { return canonicalAnkyText(state.ankyLines.join(lineBreak)); }
+    async function copy(text, label) { try { await navigator.clipboard.writeText(text); copyStatusEl.textContent = label + ' copied'; } catch (err) { copyStatusEl.textContent = 'copy failed'; } }
+    function rejected(key) { return ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter','Tab'].includes(key); }
+    function interactiveTarget(target) { return target && target.closest && target.closest('a,button,input,textarea,select,summary,[contenteditable="true"]'); }
+    function writableKey(event) { if (event.metaKey || event.ctrlKey || event.altKey) return false; if (rejected(event.key) || event.key === 'Escape') return false; return event.key.length === 1; }
+    phone.addEventListener('click', activate); writeAgainBtn.addEventListener('click', resetDemo); closeDemoBtn.addEventListener('click', closeModal); copyTextBtn.addEventListener('click', function(){ copy(state.rawText, 'raw text'); }); copyAnkyBtn.addEventListener('click', function(){ copy(rawAnky(), '.anky'); }); exportArchiveBtn.addEventListener('click', exportArchive); exportArchiveTopBtn.addEventListener('click', exportArchive);
+    nativeInputEl.addEventListener('beforeinput', function(event){ if (!state.active || state.closed) return; const type = event.inputType || ''; if (type.indexOf('delete') === 0 || type === 'insertFromPaste' || type === 'insertLineBreak') event.preventDefault(); });
+    nativeInputEl.addEventListener('input', function(){ if (!state.active || state.closed) { nativeInputEl.value = ''; return; } const value = nativeInputEl.value.replace(/\n/g, ' '); nativeInputEl.value = ''; Array.from(value).forEach(acceptChar); });
+    document.addEventListener('paste', function(event){ if (!state.active || state.closed) return; event.preventDefault(); });
+    document.addEventListener('keydown', function(event){
+      if (!state.active) {
+        if (interactiveTarget(event.target) || !writableKey(event)) return;
+        event.preventDefault();
+        activate();
+        acceptChar(event.key);
+        return;
+      }
+      if (event.key === 'Escape' && (!state.started || state.closed)) { event.preventDefault(); closeModal(); return; }
+      if (state.closed && event.key !== 'Escape') return;
+      if (event.target === nativeInputEl) { if (event.key === 'Escape') { event.preventDefault(); return; } if ((event.metaKey || event.ctrlKey) && ['v','z','x','c','a'].includes(event.key.toLowerCase())) { event.preventDefault(); return; } if (rejected(event.key)) event.preventDefault(); return; }
+      if ((event.metaKey || event.ctrlKey) && ['v','z','x','c','a'].includes(event.key.toLowerCase())) { event.preventDefault(); return; }
+      if (rejected(event.key)) { event.preventDefault(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); return; }
+      if (event.key.length !== 1) return;
+      event.preventDefault();
+      acceptChar(event.key);
     });
-  }
-})();
-
-// ── FARCASTER MINIAPP FALLBACK ──
-(async () => {
-  try { const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk'); sdk.actions.ready(); } catch(e) {}
-})();
-</script>
+    document.querySelectorAll('a[href="#phoneDemo"],a[href="#write"]').forEach(function(link){ link.addEventListener('click', function(event){ event.preventDefault(); setTimeout(activate, 80); }); });
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', syncWriterViewport); window.visualViewport.addEventListener('scroll', syncWriterViewport); }
+    window.addEventListener('resize', syncWriterViewport);
+    syncWriterViewport(); timerProgressEl.style.strokeDasharray = circumference; timerProgressEl.style.strokeDashoffset = circumference; seedArchiveFromLatest(); countdown(); setInterval(countdown, 1000); render();
+  </script>
 </body>
 </html>

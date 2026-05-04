@@ -8,6 +8,7 @@ import { SacredHeader } from "../components/anky/SacredHeader";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
 import { TraceCard } from "../components/anky/TraceCard";
 import { listSavedAnkyFiles, SavedAnkyFile } from "../lib/ankyStorage";
+import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Past">;
@@ -27,6 +28,14 @@ export function PastScreen({ navigation }: Props) {
 
         if (mounted) {
           setFiles(nextFiles);
+        }
+
+        await hydrateMobileSealReceiptsForHashes(nextFiles.map((file) => file.hash));
+
+        const hydratedFiles = await listSavedAnkyFiles();
+
+        if (mounted) {
+          setFiles(hydratedFiles);
         }
       } catch (error) {
         console.error(error);
@@ -77,20 +86,25 @@ export function PastScreen({ navigation }: Props) {
         ListFooterComponent={
           <Text style={styles.footer}>sealed means a hash anchor, not an upload</Text>
         }
-        renderItem={({ item }) => (
-          <TraceCard
-            hash={item.hash.slice(0, 12)}
-            onPress={() => navigation.navigate("Entry", { fileName: item.fileName })}
-            preview={item.preview.length > 0 ? item.preview : "No visible text."}
-            status={item.localState}
-            subtitle={
-              item.valid && item.hashMatches
-                ? `${item.sealCount} seals · ${item.artifactKinds.length} artifacts`
-                : "invalid .anky"
-            }
-            title={`trace ${item.hash.slice(0, 8)}`}
-          />
-        )}
+        renderItem={({ item }) => {
+          const badges = [
+            "local",
+            item.sealCount > 0 ? "sealed" : null,
+            item.artifactKinds.includes("reflection") ? "mirrored" : null,
+            item.artifactKinds.includes("conversation") ? "keep writing" : null,
+          ].filter(Boolean).join(" · ");
+
+          return (
+            <TraceCard
+              hash={item.hash.slice(0, 12)}
+              onPress={() => navigation.navigate("Entry", { fileName: item.fileName })}
+              preview={item.preview.length > 0 ? item.preview : "No visible text."}
+              status={item.localState}
+              subtitle={item.valid && item.hashMatches ? badges : "invalid .anky"}
+              title={`trace ${item.hash.slice(0, 8)}`}
+            />
+          );
+        }}
       />
     </ScreenBackground>
   );

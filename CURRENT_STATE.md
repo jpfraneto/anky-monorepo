@@ -1,5 +1,11 @@
 # Anky Backend — Current State
-Last updated: 2026-04-12 (session 20 — i18n phase 1: automatic device-language detection across main flow)
+Last updated: 2026-04-22 (session 21 — Sojourn 9 constitution synced to `/sojourn9.md`)
+
+## Session 21 (2026-04-22) — Sojourn 9 constitution sync
+
+### What shipped
+- `/sojourn9.md` now serves the current canonical Sojourn 9 constitution instead of the older draft text.
+- The hosted markdown matches `sojourn9/constitution/SOJOURN_9.md`, so the public URL and the constitutional source are aligned again.
 
 ## Session 20 (2026-04-12) — i18n infrastructure + 9 languages
 

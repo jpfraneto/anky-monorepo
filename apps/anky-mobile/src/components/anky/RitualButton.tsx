@@ -1,8 +1,7 @@
 import { ReactNode } from "react";
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
-import { ankyColors, glow, radius, spacing } from "../../theme/tokens";
+import { ankyColors, radius, spacing } from "../../theme/tokens";
 
 type Props = {
   disabled?: boolean;
@@ -23,8 +22,6 @@ export function RitualButton({
   style,
   variant = "primary",
 }: Props) {
-  const isPrimary = variant === "primary";
-
   return (
     <Pressable
       accessibilityRole="button"
@@ -38,20 +35,9 @@ export function RitualButton({
         style,
       ]}
     >
-      {isPrimary ? (
-        <LinearGradient
-          colors={[ankyColors.violet, ankyColors.magenta]}
-          end={{ x: 1, y: 1 }}
-          start={{ x: 0, y: 0 }}
-          style={styles.fill}
-        >
-          <ButtonContent label={label} left={left} right={right} variant={variant} />
-        </LinearGradient>
-      ) : (
-        <View style={styles.fill}>
-          <ButtonContent label={label} left={left} right={right} variant={variant} />
-        </View>
-      )}
+      <View style={styles.fill}>
+        <ButtonContent label={label} left={left} right={right} variant={variant} />
+      </View>
     </Pressable>
   );
 }
@@ -84,7 +70,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   danger: {
-    backgroundColor: "rgba(255, 124, 159, 0.08)",
+    backgroundColor: "transparent",
+    borderColor: ankyColors.danger,
+    borderWidth: 1,
   },
   dangerLabel: {
     color: ankyColors.danger,
@@ -94,8 +82,8 @@ const styles = StyleSheet.create({
   },
   fill: {
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: 16,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
   },
   ghost: {
     backgroundColor: "transparent",
@@ -105,8 +93,8 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontWeight: "700",
+    letterSpacing: 0,
     textTransform: "lowercase",
   },
   pressable: {
@@ -114,21 +102,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   pressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.99 }],
+    opacity: 0.72,
   },
   primary: {
-    ...glow.magenta,
+    backgroundColor: ankyColors.text,
   },
   primaryLabel: {
-    color: ankyColors.text,
+    color: ankyColors.bg,
   },
   secondary: {
-    backgroundColor: "rgba(155, 92, 255, 0.10)",
+    backgroundColor: "transparent",
     borderColor: ankyColors.border,
     borderWidth: 1,
   },
   secondaryLabel: {
-    color: ankyColors.violetBright,
+    color: ankyColors.text,
   },
 });

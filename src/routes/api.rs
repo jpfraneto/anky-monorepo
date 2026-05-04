@@ -1017,8 +1017,10 @@ pub async fn web_me(State(state): State<AppState>, jar: CookieJar) -> Json<serde
         (completed, flow_bonus)
     };
 
-    let points =
-        (total_ankys * 100) + (completed_ankys * 100) + flow_bonus_sum + (completed_ankys * current_streak * 10);
+    let points = (total_ankys * 100)
+        + (completed_ankys * 100)
+        + flow_bonus_sum
+        + (completed_ankys * current_streak * 10);
     let level = ((points / 500) + 1).clamp(1, 8);
 
     Json(json!({
@@ -1961,12 +1963,13 @@ pub async fn stream_reflection(
                             }
                         }
                         if reflection_saved {
-                            let _ = crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
-                                &state_clone,
-                                &anky_id,
-                                &writing_text,
-                            )
-                            .await;
+                            let _ =
+                                crate::routes::writing::maybe_enqueue_protocol_processing_for_anky(
+                                    &state_clone,
+                                    &anky_id,
+                                    &writing_text,
+                                )
+                                .await;
                         }
                         state_clone.emit_log(
                             "INFO",

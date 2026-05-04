@@ -21,6 +21,7 @@ export type SealAnkyInput = {
 export type SealAnkyResult = {
   blockTime?: number;
   loomId: string;
+  network?: "devnet" | "mainnet-beta";
   sessionHash: string;
   slot?: number;
   txSignature: string;

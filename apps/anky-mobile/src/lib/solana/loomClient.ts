@@ -1,4 +1,14 @@
-// Swap this module to a real Solana adapter when devnet/mainnet sealing is implemented.
-// Screens import from here so they do not know whether the loom client is mocked or real.
-export { getOwnedLooms, getSelectedLoom, sealAnky } from "./loomClient.mock";
+import { createMockLoomClient } from "./loomClient.mock";
+import { createProgramLoomClient } from "./loomClient.program";
+import { getSojourn9ProgramConfig } from "./sojourn9Program";
+
+const loomClient =
+  getSojourn9ProgramConfig().sealAdapterMode === "program"
+    ? createProgramLoomClient()
+    : createMockLoomClient();
+
+export const getOwnedLooms = loomClient.getOwnedLooms;
+export const getSelectedLoom = loomClient.getSelectedLoom;
+export const sealAnky = loomClient.sealAnky;
+
 export type { LoomClient, SealAnkyInput, SealAnkyResult } from "./types";

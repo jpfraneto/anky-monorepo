@@ -9,6 +9,7 @@ pub mod generations;
 pub mod health;
 pub mod interview;
 pub mod live;
+pub mod mobile_sojourn;
 pub mod notification;
 pub mod now;
 pub mod pages;
@@ -129,6 +130,19 @@ async fn faq_md() -> ([(axum::http::HeaderName, &'static str); 1], &'static str)
             "text/markdown; charset=utf-8",
         )],
         include_str!("../../FAQ.md"),
+    )
+}
+
+async fn sojourn9_md() -> ([(axum::http::HeaderName, String); 1], String) {
+    let content = tokio::fs::read_to_string("static/sojourn9.md")
+        .await
+        .unwrap_or_else(|_| include_str!("../../static/sojourn9.md").to_string());
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/markdown; charset=utf-8".to_string(),
+        )],
+        content,
     )
 }
 
@@ -269,9 +283,21 @@ async fn station_review_comments_get(
 async fn station_review_comment_post(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let block_id = body.get("block_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let text = body.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let block_id = body
+        .get("block_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let text = body
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let block_text = body
         .get("block_text")
         .and_then(|v| v.as_str())
@@ -319,8 +345,16 @@ async fn station_review_comment_delete(
 async fn station_review_evolve(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let lang = body.get("lang").and_then(|v| v.as_str()).unwrap_or("en").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let lang = body
+        .get("lang")
+        .and_then(|v| v.as_str())
+        .unwrap_or("en")
+        .to_string();
     if episode.is_empty() {
         return axum::Json(serde_json::json!({ "ok": false, "error": "episode required" }));
     }
@@ -363,7 +397,11 @@ async fn station_review_evolve(
         .map(|c| {
             let block = c.get("block_text").and_then(|v| v.as_str()).unwrap_or("");
             let text = c.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            format!("  - On this line: \"{}\"\n    Feedback: {}", block.chars().take(140).collect::<String>(), text)
+            format!(
+                "  - On this line: \"{}\"\n    Feedback: {}",
+                block.chars().take(140).collect::<String>(),
+                text
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -371,8 +409,10 @@ async fn station_review_evolve(
     let history_block = if history_tail.is_empty() {
         String::new()
     } else {
-        format!("\nRECENT REVIEW HISTORY (for context, do not duplicate):\n{}\n",
-            history_tail.join("\n"))
+        format!(
+            "\nRECENT REVIEW HISTORY (for context, do not duplicate):\n{}\n",
+            history_tail.join("\n")
+        )
     };
 
     let meta = format!(
@@ -412,7 +452,11 @@ Output JSON only, no other text:
         script = script,
         comments_bullets = comments_bullets,
         history_block = history_block,
-        current_notes = if current_notes.trim().is_empty() { "(empty — first evolution)" } else { current_notes.trim() }
+        current_notes = if current_notes.trim().is_empty() {
+            "(empty — first evolution)"
+        } else {
+            current_notes.trim()
+        }
     );
 
     // Call Qwen
@@ -453,8 +497,9 @@ Output JSON only, no other text:
                     (Some(s), Some(e)) if e > s => &cleaned[s..=e],
                     _ => cleaned,
                 };
-                serde_json::from_str::<serde_json::Value>(json_str)
-                    .unwrap_or_else(|_| serde_json::json!({ "proposed_notes": [], "rationale": content }))
+                serde_json::from_str::<serde_json::Value>(json_str).unwrap_or_else(
+                    |_| serde_json::json!({ "proposed_notes": [], "rationale": content }),
+                )
             }
             Err(e) => serde_json::json!({ "error": format!("bad llm response: {}", e) }),
         },
@@ -485,13 +530,25 @@ fn extract_learned_notes(src: &str) -> String {
 async fn station_review_apply(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> axum::Json<serde_json::Value> {
-    let episode = body.get("episode").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let episode = body
+        .get("episode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let notes_to_add: Vec<String> = body
         .get("notes")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
-    let rationale = body.get("rationale").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let rationale = body
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if notes_to_add.is_empty() {
         return axum::Json(serde_json::json!({ "ok": false, "error": "no notes provided" }));
     }
@@ -779,6 +836,12 @@ pub fn build_router(state: AppState) -> Router {
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
         .allow_credentials(false);
 
+    let mobile_sojourn_cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_credentials(false);
+
     // Paid generate routes (optional API key — payment handled in handler)
     let generate_routes = Router::new()
         .route(
@@ -840,6 +903,8 @@ pub fn build_router(state: AppState) -> Router {
             state.clone(),
             middleware::api_auth::optional_api_key,
         ));
+
+    let mobile_sojourn_routes = mobile_sojourn::routes().layer(mobile_sojourn_cors);
 
     // Swift / Mobile API routes under /swift/v1/
     let swift_routes = Router::new()
@@ -1022,6 +1087,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/feed", axum::routing::get(pages::feed_page))
         .route("/help", axum::routing::get(pages::help))
         .route("/mobile", axum::routing::get(pages::mobile))
+        .route("/newlanding", axum::routing::get(pages::newlanding_page))
+        .route("/newlanding/", axum::routing::get(pages::newlanding_page))
         .route("/dca", axum::routing::get(pages::dca_dashboard))
         .route("/dca-bot-code", axum::routing::get(pages::dca_bot_code))
         .route("/login", axum::routing::get(pages::login_page))
@@ -1050,8 +1117,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/api/station/review/comments",
-            axum::routing::get(station_review_comments_get)
-                .post(station_review_comment_post),
+            axum::routing::get(station_review_comments_get).post(station_review_comment_post),
         )
         .route(
             "/api/station/review/comments/{episode}/{id}",
@@ -1550,9 +1616,15 @@ pub fn build_router(state: AppState) -> Router {
         .route("/MANIFESTO.md", axum::routing::get(manifesto_md))
         .route("/PROMPT.md", axum::routing::get(prompt_md))
         .route("/SOUL.md", axum::routing::get(soul_md))
+        .route("/terms-and-conditions", axum::routing::get(terms_md))
+        .route("/terms-of-service", axum::routing::get(terms_md))
         .route("/terms-of-service.md", axum::routing::get(terms_md))
+        .route("/privacy-policy", axum::routing::get(privacy_md))
         .route("/privacy-policy.md", axum::routing::get(privacy_md))
         .route("/faq.md", axum::routing::get(faq_md))
+        .route("/sojourn9", axum::routing::get(sojourn9_md))
+        .route("/sojourn9.md", axum::routing::get(sojourn9_md))
+        .route("/SOJOURN9.md", axum::routing::get(sojourn9_md))
         .route("/spec.md", axum::routing::get(spec_md))
         .route("/SPEC.md", axum::routing::get(spec_md))
         .route("/protocol", axum::routing::get(protocol_md))
@@ -1730,6 +1802,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/health", axum::routing::get(health::health_check))
         // Swift / Mobile API
         .merge(swift_routes)
+        // Expo Sojourn 9 mobile API
+        .merge(mobile_sojourn_routes)
         // Extension API (authed)
         .merge(extension_routes)
         // Paid generate API (optional auth)
@@ -1740,6 +1814,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(media_factory_routes)
         // Static files
         .nest_service("/agent-skills", ServeDir::new("agent-skills"))
+        .nest_service("/devnet/metadata", ServeDir::new("static/devnet/metadata"))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service(
             "/data/images",

@@ -1,0 +1,15 @@
+{
+  "name": "Anky Sojourn 9 Looms",
+  "description": "Mainnet metadata for the Anky Sojourn 9 Looms Core collection. Looms are minted by the mobile app and used to seal .anky session hashes.",
+  "image": "https://anky.app/static/anky-collection.png",
+  "external_url": "https://anky.app/sojourn9",
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://anky.app/static/anky-collection.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

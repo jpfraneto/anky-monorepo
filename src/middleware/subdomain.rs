@@ -71,6 +71,29 @@ pub async fn pitch_subdomain(req: Request, next: Next) -> Response {
         return axum::response::Html(html).into_response();
     }
 
+    if host == "newlanding.anky.app" || host == "www.newlanding.anky.app" {
+        let path = req.uri().path();
+
+        if path.starts_with("/newlanding")
+            || path.starts_with("/static/")
+            || path.starts_with("/data/")
+            || path.starts_with("/api/")
+            || path.starts_with("/mobile")
+            || path.starts_with("/favicon")
+            || path.starts_with("/.well-known/")
+            || path == "/sw.js"
+            || path == "/health"
+            || path == "/api/health"
+            || path == "/image.png"
+            || path == "/splash.png"
+        {
+            return next.run(req).await;
+        }
+
+        let html = crate::routes::pages::load_newlanding_html().await;
+        return axum::response::Html(html).into_response();
+    }
+
     if host.starts_with("pitch.anky.app") {
         // For the PDF route itself, let it through
         if req.uri().path() == "/pitch-deck.pdf" {
