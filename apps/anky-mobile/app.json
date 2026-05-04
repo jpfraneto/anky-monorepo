@@ -17,6 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.jpfraneto.Anky",
       "buildNumber": "36",
+      "usesIcloudStorage": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -33,6 +34,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-document-picker",
       "expo-secure-store",
       "expo-web-browser"
     ],

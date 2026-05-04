@@ -80,13 +80,54 @@ export async function addAnkySessionSummary(summary: AnkySessionSummary): Promis
 
   byId.set(id, normalizeSummary({ ...existing, ...summary, id }));
 
-  const ordered = [...byId.values()].sort(
-    (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
-  );
+  await writeStoredSummaries([...byId.values()]);
+}
 
-  await FileSystem.writeAsStringAsync(getIndexUri(), JSON.stringify(ordered, null, 2), {
-    encoding: FileSystem.EncodingType.UTF8,
+export async function mergeAnkySessionIndexFromRaw(raw: string): Promise<number> {
+  const restored = parseStoredSummaries(raw);
+
+  if (restored.length === 0) {
+    return 0;
+  }
+
+  const stored = await readStoredSummaries();
+  const byId = new Map(stored.map((item) => [item.id, item]));
+  const idByHash = new Map(
+    stored
+      .filter((summary) => summary.sessionHash != null)
+      .map((summary) => [summary.sessionHash!, summary.id]),
+  );
+  let added = 0;
+
+  restored.forEach((summary) => {
+    const existingIdForHash =
+      summary.sessionHash == null ? undefined : idByHash.get(summary.sessionHash);
+    const id = existingIdForHash ?? summary.id;
+
+    if (byId.has(id)) {
+      return;
+    }
+
+    const normalized = normalizeSummary({ ...summary, id });
+
+    byId.set(id, normalized);
+    if (normalized.sessionHash != null) {
+      idByHash.set(normalized.sessionHash, id);
+    }
+    added += 1;
   });
+
+  await writeStoredSummaries([...byId.values()]);
+
+  return added;
+}
+
+export async function rebuildAnkySessionIndex(): Promise<number> {
+  const summaries = await listAnkySessionSummaries();
+
+  await writeStoredSummaries(summaries);
+
+  return summaries.length;
 }
 
 async function readStoredSummaries(): Promise<AnkySessionSummary[]> {
@@ -103,6 +144,26 @@ async function readStoredSummaries(): Promise<AnkySessionSummary[]> {
     encoding: FileSystem.EncodingType.UTF8,
   });
 
+  if (raw.trim().length === 0) {
+    return [];
+  }
+
+  return parseStoredSummaries(raw);
+}
+
+async function writeStoredSummaries(summaries: AnkySessionSummary[]): Promise<void> {
+  await ensureAnkyDirectory();
+
+  const ordered = summaries
+    .map(normalizeSummary)
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+
+  await FileSystem.writeAsStringAsync(getIndexUri(), JSON.stringify(ordered, null, 2), {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+}
+
+function parseStoredSummaries(raw: string): AnkySessionSummary[] {
   if (raw.trim().length === 0) {
     return [];
   }

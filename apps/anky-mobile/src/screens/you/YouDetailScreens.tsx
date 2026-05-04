@@ -14,24 +14,26 @@ import {
   View,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import * as Clipboard from "expo-clipboard";
 import { usePrivy } from "@privy-io/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../../App";
 import { ScreenBackground } from "../../components/anky/ScreenBackground";
 import { SubtleIconButton } from "../../components/navigation/SubtleIconButton";
+import {
+  exportAnkyBackupArchive,
+  pickAndRestoreAnkyBackup,
+  type AnkyBackupRestoreResult,
+} from "../../lib/ankyBackup";
 import { listAnkySessionSummaries } from "../../lib/ankySessionIndex";
 import {
   deleteAllLocalAnkyData,
   listLocalLoomSeals,
   listSavedAnkyFiles,
   readProcessingReceipt,
-  readReflectionSidecar,
   type ProcessingReceiptSidecar,
   type SavedAnkyFile,
 } from "../../lib/ankyStorage";
-import { reconstructText } from "../../lib/ankyProtocol";
 import {
   clearBackendAuthSession,
   getStoredBackendAuthSession,
@@ -305,7 +307,7 @@ export function PrivacyScreen({ navigation }: PrivacyProps) {
         <YouInfoRow
           icon={assets.icons.exportData}
           onPress={() => navigation.navigate("ExportData")}
-          subtitle="copy a complete local archive or delete local data deliberately."
+          subtitle="backup, restore, or delete local data deliberately."
           title="export and delete controls"
         />
       </View>
@@ -317,14 +319,15 @@ export function PrivacyScreen({ navigation }: PrivacyProps) {
 }
 
 export function ExportDataScreen({ navigation }: ExportDataProps) {
+  const [busyAction, setBusyAction] = useState<"delete" | "export" | "restore" | null>(null);
   const [message, setMessage] = useState("");
   const [summary, setSummary] = useState<ArchiveSummary>({
     ankyFiles: 0,
     completeAnkys: 0,
     keepWritingThreads: 0,
-    reconstructedText: 0,
     reflections: 0,
     sealReceipts: 0,
+    sessionIndexEntries: 0,
   });
 
   useEffect(() => {
@@ -355,20 +358,69 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
     setSummary(nextSummary);
   }
 
-  async function requestCompleteExport() {
+  function requestBackupExport() {
+    Alert.alert(
+      "export backup?",
+      "this zip may include plaintext writing, reflections, keep-writing conversations, images, and local metadata. save it somewhere you trust.",
+      [
+        { style: "cancel", text: "cancel" },
+        {
+          onPress: () => {
+            void confirmBackupExport();
+          },
+          text: "export backup",
+        },
+      ],
+    );
+  }
+
+  async function confirmBackupExport() {
     try {
-      const archive = await buildCompleteArchiveText();
+      setBusyAction("export");
+      const backup = await exportAnkyBackupArchive();
 
-      if (archive.trim().length === 0) {
-        setMessage("no local writing to export yet.");
-        return;
-      }
-
-      await Clipboard.setStringAsync(archive);
-      setMessage("complete local archive copied.");
+      setMessage(`backup opened: ${backup.fileName} with ${backup.fileCount} local files.`);
     } catch (error) {
       console.error(error);
       setMessage(error instanceof Error ? error.message : "export failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function requestBackupRestore() {
+    Alert.alert(
+      "restore backup?",
+      "choose an anky backup zip. restore merges files into this device, skips newer local files, and does not delete local data.",
+      [
+        { style: "cancel", text: "cancel" },
+        {
+          onPress: () => {
+            void confirmBackupRestore();
+          },
+          text: "restore backup",
+        },
+      ],
+    );
+  }
+
+  async function confirmBackupRestore() {
+    try {
+      setBusyAction("restore");
+      const result = await pickAndRestoreAnkyBackup();
+
+      if (result == null) {
+        setMessage("restore canceled.");
+        return;
+      }
+
+      await refreshSummary();
+      setMessage(formatRestoreMessage(result));
+    } catch (error) {
+      console.error(error);
+      setMessage(error instanceof Error ? error.message : "restore failed.");
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -391,12 +443,15 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
 
   async function confirmDeleteAll() {
     try {
+      setBusyAction("delete");
       await deleteAllLocalAnkyData();
       await refreshSummary();
       setMessage("local anky data deleted from this device.");
     } catch (error) {
       console.error(error);
       setMessage(error instanceof Error ? error.message : "delete failed.");
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -408,9 +463,9 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
     >
       <YouHeroCard
         icon={assets.icons.exportData}
-        status={`${summary.ankyFiles} files`}
-        subtitle="your local archive can be prepared for backup or transfer."
-        title="your archive summary"
+        status={`${summary.ankyFiles} .anky`}
+        subtitle="Ankys live on this device. Deleting the app deletes local ankys unless you export them."
+        title="local archive"
       >
         <MetricGrid
           metrics={[
@@ -430,10 +485,10 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
           title=".anky files"
         />
         <ExportItemRow
-          count={summary.reconstructedText}
+          count={summary.sessionIndexEntries}
           icon={assets.icons.account}
-          subtitle="readable text of your entries."
-          title="reconstructed text"
+          subtitle="local map and entry lookup state."
+          title="session index entries"
         />
         <ExportItemRow
           count={summary.reflections}
@@ -457,18 +512,26 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
 
       <View style={styles.actions}>
         <YouActionButton
-          label="copy complete archive"
-          onPress={() => void requestCompleteExport()}
+          disabled={busyAction != null}
+          label={busyAction === "export" ? "preparing backup" : "export backup"}
+          onPress={requestBackupExport}
         />
         <YouActionButton
-          label="delete all local data"
+          disabled={busyAction != null}
+          label={busyAction === "restore" ? "restoring backup" : "restore backup"}
+          onPress={requestBackupRestore}
+          variant="secondary"
+        />
+        <YouActionButton
+          disabled={busyAction != null}
+          label={busyAction === "delete" ? "deleting local data" : "delete local data"}
           onPress={requestDeleteAll}
           variant="danger"
         />
       </View>
 
       <InlineMessage text={message} />
-      <OwnershipCard text="export copies one complete local archive. deletion affects this device only." />
+      <OwnershipCard text="your backup is a zip you manage. no plaintext is sent to anky for backup." />
     </YouDetailShell>
   );
 }
@@ -983,9 +1046,9 @@ type ArchiveSummary = {
   ankyFiles: number;
   completeAnkys: number;
   keepWritingThreads: number;
-  reconstructedText: number;
   reflections: number;
   sealReceipts: number;
+  sessionIndexEntries: number;
 };
 
 async function loadArchiveSummary(): Promise<ArchiveSummary> {
@@ -1008,63 +1071,26 @@ async function loadArchiveSummary(): Promise<ArchiveSummary> {
     ankyFiles: files.length,
     completeAnkys: countCompleteAnkys(files),
     keepWritingThreads: Math.max(threads.length, sidecarThreadCount, sessionThreadCount),
-    reconstructedText: files.length,
     reflections: Math.max(sidecarReflectionCount, sessionReflectionCount),
     sealReceipts: seals.length,
+    sessionIndexEntries: sessions.length,
   };
-}
-
-async function buildCompleteArchiveText(): Promise<string> {
-  const [files, threads] = await Promise.all([listSavedAnkyFiles(), listThreads()]);
-
-  if (files.length === 0 && threads.length === 0) {
-    return "";
-  }
-
-  const sections = await Promise.all(
-    files.map(async (file) => {
-      const reflection = await readReflectionSidecar(file.hash);
-      const receipt = await readProcessingReceipt(file.hash);
-      const kind = isCompleteRawAnky(file.raw) ? "complete anky" : "fragment";
-
-      return [
-        `file: ${file.fileName}`,
-        `kind: ${kind}`,
-        receipt == null ? null : `reflection credits spent: ${receipt.credits_spent}`,
-        "",
-        "writing:",
-        reconstructText(file.raw),
-        "",
-        "raw .anky:",
-        file.raw,
-        reflection == null ? null : "",
-        reflection == null ? null : "anky reflection:",
-        reflection,
-      ]
-        .filter((line): line is string => line != null)
-        .join("\n");
-    }),
-  );
-
-  const threadSections = threads.map((thread) =>
-    [
-      `thread: ${thread.sessionHash}`,
-      `mode: ${thread.mode}`,
-      ...thread.messages.map((message) => `${message.role}: ${message.content}`),
-    ].join("\n"),
-  );
-
-  return [
-    "anky local archive",
-    `exported: ${new Date().toISOString()}`,
-    "",
-    ...sections,
-    ...threadSections,
-  ].join("\n\n---\n\n");
 }
 
 function countCompleteAnkys(files: SavedAnkyFile[]): number {
   return files.filter((file) => isCompleteRawAnky(file.raw)).length;
+}
+
+function formatRestoreMessage(result: AnkyBackupRestoreResult): string {
+  const changed = result.added + result.overwritten + result.mergedIndexEntries;
+  const skipped = result.duplicates + result.skippedNewer + result.conflicts + result.invalid;
+
+  return [
+    `restore complete: ${changed} item${changed === 1 ? "" : "s"} merged.`,
+    skipped === 0 ? null : `${skipped} skipped or already present.`,
+  ]
+    .filter((line): line is string => line != null)
+    .join(" ");
 }
 
 function buildLoomState(

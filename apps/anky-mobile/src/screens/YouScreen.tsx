@@ -164,7 +164,7 @@ export function YouScreen({ navigation }: Props) {
               <MenuRow
                 icon="export"
                 onPress={() => navigation.navigate("ExportData")}
-                subtitle="open your local archive and export paths."
+                subtitle="backup, restore, or delete your local archive."
                 title="export data"
               />
               <MenuRow
