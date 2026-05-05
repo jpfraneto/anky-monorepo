@@ -7,6 +7,7 @@ export type SojournMapAnky = {
   fileName?: string;
   firstLine: string;
   id: string;
+  kind: "anky" | "fragment";
   sessionHash?: string;
   title: string;
 };
@@ -15,6 +16,7 @@ export type SojournMapDay = {
   ankyCount: number;
   ankys: SojournMapAnky[];
   day: number;
+  fragmentCount?: number;
   isCurrent?: boolean;
   isFuture?: boolean;
 };

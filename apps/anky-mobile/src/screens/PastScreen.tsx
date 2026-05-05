@@ -9,6 +9,7 @@ import { ScreenBackground } from "../components/anky/ScreenBackground";
 import { TraceCard } from "../components/anky/TraceCard";
 import { listSavedAnkyFiles, SavedAnkyFile } from "../lib/ankyStorage";
 import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Past">;
@@ -16,6 +17,12 @@ type Props = NativeStackScreenProps<RootStackParamList, "Past">;
 export function PastScreen({ navigation }: Props) {
   const [files, setFiles] = useState<SavedAnkyFile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useAnkyPresenceScreen({
+    emotion: "idle",
+    preferredMode: "sigil",
+    sequence: "seated",
+  });
 
   useEffect(() => {
     let mounted = true;

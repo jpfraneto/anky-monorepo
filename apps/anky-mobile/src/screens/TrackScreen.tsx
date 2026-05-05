@@ -17,6 +17,7 @@ import {
   SOJOURN_LENGTH_DAYS,
   type AnkySessionSummary,
 } from "../lib/sojourn";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Track">;
 
@@ -31,6 +32,12 @@ export function TrackScreen({ navigation }: Props) {
     () => buildSojournMapDays({ currentDay, days: sojournDays, files }),
     [currentDay, files, sojournDays],
   );
+
+  useAnkyPresenceScreen({
+    emotion: "walking",
+    preferredMode: "sigil",
+    sequence: "walk_right",
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -78,11 +85,11 @@ export function TrackScreen({ navigation }: Props) {
     }
 
     if (tab === "Write") {
-      navigation.replace("Write");
+      navigation.navigate("Write");
       return;
     }
 
-    navigation.replace("You");
+    navigation.navigate("You");
   }
 
   return (

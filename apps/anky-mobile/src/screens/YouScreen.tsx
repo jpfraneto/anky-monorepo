@@ -6,7 +6,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,6 +15,7 @@ import { usePrivy } from "@privy-io/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../App";
+import { useAuthModal } from "../auth/AuthModalContext";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
 import { RootTabBar, RootTabName } from "../components/navigation/RootTabBar";
 import { parseAnky } from "../lib/ankyProtocol";
@@ -30,6 +30,7 @@ import {
   getRiteDurationMs,
   isCompleteRawAnky,
 } from "../lib/thread/threadLogic";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "You">;
@@ -64,6 +65,7 @@ const PRIVACY_POLICY_URL = "https://www.anky.app/privacy-policy.md";
 export function YouScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { user } = usePrivy();
+  const { openAuthModal } = useAuthModal();
   const wallet = useAnkyPrivyWallet();
   const [credits, setCredits] = useState(0);
   const [files, setFiles] = useState<SavedAnkyFile[]>([]);
@@ -75,6 +77,12 @@ export function YouScreen({ navigation }: Props) {
       : user == null
         ? "local-first. no login required to write."
         : `connected ${shortAddress(user.id, 8)}`;
+
+  useAnkyPresenceScreen({
+    emotion: "idle",
+    preferredMode: "sigil",
+    sequence: "idle_blink",
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -114,11 +122,11 @@ export function YouScreen({ navigation }: Props) {
     }
 
     if (tab === "Write") {
-      navigation.replace("Write");
+      navigation.navigate("Write");
       return;
     }
 
-    navigation.replace("Track");
+    navigation.navigate("Track");
   }
 
   return (
@@ -126,7 +134,7 @@ export function YouScreen({ navigation }: Props) {
       <ImageBackground resizeMode="cover" source={assets.background} style={styles.screen}>
         <View pointerEvents="none" style={styles.cosmosWash} />
         <View style={[styles.shell, { paddingTop: insets.top + 10 }]}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
             <View style={styles.topRow}>
               <View style={styles.topSide} />
               <View style={styles.titleBlock}>
@@ -149,7 +157,16 @@ export function YouScreen({ navigation }: Props) {
             <View style={styles.menuCard}>
               <MenuRow
                 icon="account"
-                onPress={() => navigation.navigate("Account")}
+                onPress={() => {
+                  if (user == null) {
+                    openAuthModal({
+                      reason: "account features are optional. writing stays local.",
+                    });
+                    return;
+                  }
+
+                  navigation.navigate("Account");
+                }}
                 subtitle={accountLabel}
                 title="account"
               />
@@ -202,12 +219,8 @@ export function YouScreen({ navigation }: Props) {
               </View>
             </View>
 
-            <View style={styles.bottomOrnament}>
-              <View style={styles.bottomLine} />
-              <View style={styles.bottomDiamond} />
-              <View style={styles.bottomLine} />
-            </View>
-          </ScrollView>
+            
+          </View>
 
           <RootTabBar active="You" onSelect={selectTab} />
         </View>
@@ -591,6 +604,7 @@ const styles = StyleSheet.create({
   screen: {
     backgroundColor: "#070812",
     flex: 1,
+    
   },
   shell: {
     flex: 1,
@@ -636,6 +650,7 @@ const styles = StyleSheet.create({
   titleBlock: {
     alignItems: "center",
     flex: 1,
+    marginBottom: 16,
   },
   topRow: {
     alignItems: "flex-start",

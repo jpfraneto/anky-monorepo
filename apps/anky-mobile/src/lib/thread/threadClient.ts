@@ -15,6 +15,7 @@ export async function sendThreadMessage({
   mode,
   rawAnky,
   reconstructedText,
+  reflectionKind,
   sessionHash,
   userMessage,
 }: {
@@ -23,6 +24,7 @@ export async function sendThreadMessage({
   mode: ThreadMode;
   rawAnky: string;
   reconstructedText: string;
+  reflectionKind?: "full" | "quick";
   sessionHash: string;
   userMessage: string;
 }): Promise<ThreadMessage> {
@@ -42,6 +44,7 @@ export async function sendThreadMessage({
     mode,
     rawAnky,
     reconstructedText,
+    reflectionKind,
     sessionHash,
     userMessage,
   });

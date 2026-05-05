@@ -103,12 +103,7 @@ export function AnkySessionSurface({
             </Text>
           </View>
         ) : isComplete ? (
-          <View style={styles.consentCard}>
-            <Text style={styles.consentTitle}>send this to anky</Text>
-            <Text style={styles.consentText}>
-              your writing stays here unless you ask anky to respond.
-            </Text>
-          </View>
+          <></>
         ) : (
           <View style={styles.consentCard}>
             <Text style={styles.consentTitle}>a fragment arrived</Text>

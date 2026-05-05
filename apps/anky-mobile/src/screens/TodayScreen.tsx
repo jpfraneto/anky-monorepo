@@ -16,6 +16,7 @@ import {
   getNextSessionKindForToday,
   SOJOURN_LENGTH_DAYS,
 } from "../lib/sojourn";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Today">;
@@ -29,6 +30,12 @@ export function TodayScreen({ navigation }: Props) {
   const today = days[currentDay - 1];
   const todaySealed = today.status === "today_sealed";
   const nextKind = getNextSessionKindForToday(sessions, now);
+
+  useAnkyPresenceScreen({
+    emotion: todaySealed ? "idle" : "welcome",
+    preferredMode: "sigil",
+    sequence: todaySealed ? "idle_front" : "wave_front",
+  });
 
   useEffect(() => {
     let mounted = true;

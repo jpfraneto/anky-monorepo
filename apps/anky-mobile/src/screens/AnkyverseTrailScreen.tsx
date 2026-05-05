@@ -22,6 +22,7 @@ import {
   SOJOURN_LENGTH_DAYS,
   SojournDay,
 } from "../lib/sojourn";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AnkyverseTrail">;
@@ -48,6 +49,12 @@ export function AnkyverseTrailScreen({ navigation }: Props) {
         ? SOJOURN_LENGTH_DAYS - 1
         : 0;
   const [notice, setNotice] = useState("");
+
+  useAnkyPresenceScreen({
+    emotion: "walking",
+    preferredMode: "companion",
+    sequence: "walk_right",
+  });
 
   useEffect(() => {
     if (today == null) {

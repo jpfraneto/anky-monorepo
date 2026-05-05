@@ -318,6 +318,7 @@ export type SendThreadMessageRequest = {
   mode: ThreadMode;
   rawAnky: string;
   reconstructedText: string;
+  reflectionKind?: "full" | "quick";
   sessionHash: string;
   userMessage: string;
 };

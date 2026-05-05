@@ -14,7 +14,6 @@ import { AnkyverseTrailScreen } from './src/screens/AnkyverseTrailScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { CreditsScreen } from './src/screens/CreditsScreen';
 import { DayChamberScreen } from './src/screens/DayChamberScreen';
-import { EntryScreen } from './src/screens/EntryScreen';
 import { LoomScreen } from './src/screens/LoomScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { PastScreen } from './src/screens/PastScreen';
@@ -27,6 +26,9 @@ import { YouScreen } from './src/screens/YouScreen';
 import { WriteRootScreen } from './src/screens/WriteRootScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { AnkyPrivyProvider } from './src/lib/privy/PrivyProvider';
+import { AuthModalProvider } from './src/auth/AuthModalContext';
+import { AnkyPresenceProvider } from './src/presence/AnkyPresenceContext';
+import { AnkyPresenceOverlay } from './src/presence/AnkyPresenceOverlay';
 import { ankyColors } from './src/theme/tokens';
 import type { ThreadMode } from './src/lib/thread/types';
 
@@ -89,89 +91,94 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AnkyPrivyProvider>
-        <NavigationContainer theme={navigationTheme}>
-          <StatusBar style="light" />
-          <Stack.Navigator
-            initialRouteName="Write"
-            screenOptions={{
-              contentStyle: { backgroundColor: ankyColors.bg },
-              headerShadowVisible: false,
-              headerStyle: { backgroundColor: ankyColors.bg },
-              headerTintColor: ankyColors.gold,
-              headerTitleStyle: { color: ankyColors.text },
-            }}
-          >
-            <Stack.Screen
-              component={WriteRootScreen}
-              name="Write"
-              options={{ animation: "none", headerShown: false }}
-            />
-            <Stack.Screen
-              component={TrackScreen}
-              name="Track"
-              options={{ animation: "none", headerShown: false }}
-            />
-            <Stack.Screen
-              component={YouScreen}
-              name="You"
-              options={{ animation: "none", headerShown: false }}
-            />
-            <Stack.Screen
-              component={AccountScreen}
-              name="Account"
-              options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
-            />
-            <Stack.Screen
-              component={PrivacyScreen}
-              name="Privacy"
-              options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
-            />
-            <Stack.Screen
-              component={ExportDataScreen}
-              name="ExportData"
-              options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
-            />
-            <Stack.Screen
-              component={CreditsInfoScreen}
-              name="CreditsInfo"
-              options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
-            />
-            <Stack.Screen
-              component={LoomInfoScreen}
-              name="LoomInfo"
-              options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
-            />
-            <Stack.Screen
-              component={WriteScreen}
-              name="ActiveWriting"
-              options={{ animation: "none", headerShown: false }}
-            />
-            <Stack.Screen component={TodayScreen} name="Today" options={{ headerShown: false }} />
-            <Stack.Screen
-              component={OnboardingScreen}
-              name="Onboarding"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen component={AuthScreen} name="Auth" options={{ headerShown: false }} />
-            <Stack.Screen component={LoomScreen} name="Loom" options={{ headerShown: false }} />
-            <Stack.Screen component={TrailScreen} name="Trail" options={{ headerShown: false }} />
-            <Stack.Screen
-              component={DayChamberScreen}
-              name="DayChamber"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              component={AnkyverseTrailScreen}
-              name="AnkyverseTrail"
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen component={RevealScreen} name="Reveal" options={{ headerShown: false }} />
-            <Stack.Screen component={ThreadScreen} name="Thread" options={{ headerShown: false }} />
-            <Stack.Screen component={PastScreen} name="Past" options={{ title: 'Local Archive' }} />
-            <Stack.Screen component={CreditsScreen} name="Credits" options={{ title: 'Credits' }} />
-            <Stack.Screen component={EntryScreen} name="Entry" options={{ headerShown: false }} />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <AuthModalProvider>
+          <AnkyPresenceProvider>
+            <NavigationContainer theme={navigationTheme}>
+              <StatusBar style="light" />
+              <Stack.Navigator
+                initialRouteName="Write"
+                screenOptions={{
+                  contentStyle: { backgroundColor: ankyColors.bg },
+                  headerShadowVisible: false,
+                  headerStyle: { backgroundColor: ankyColors.bg },
+                  headerTintColor: ankyColors.gold,
+                  headerTitleStyle: { color: ankyColors.text },
+                }}
+              >
+              <Stack.Screen
+                component={WriteRootScreen}
+                name="Write"
+                options={{ animation: "none", headerShown: false }}
+              />
+              <Stack.Screen
+                component={TrackScreen}
+                name="Track"
+                options={{ animation: "none", headerShown: false }}
+              />
+              <Stack.Screen
+                component={YouScreen}
+                name="You"
+                options={{ animation: "none", headerShown: false }}
+              />
+              <Stack.Screen
+                component={AccountScreen}
+                name="Account"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={PrivacyScreen}
+                name="Privacy"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={ExportDataScreen}
+                name="ExportData"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={CreditsInfoScreen}
+                name="CreditsInfo"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={LoomInfoScreen}
+                name="LoomInfo"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={WriteScreen}
+                name="ActiveWriting"
+                options={{ animation: "none", headerShown: false }}
+              />
+              <Stack.Screen component={TodayScreen} name="Today" options={{ headerShown: false }} />
+              <Stack.Screen
+                component={OnboardingScreen}
+                name="Onboarding"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen component={AuthScreen} name="Auth" options={{ headerShown: false }} />
+              <Stack.Screen component={LoomScreen} name="Loom" options={{ headerShown: false }} />
+              <Stack.Screen component={TrailScreen} name="Trail" options={{ headerShown: false }} />
+              <Stack.Screen
+                component={DayChamberScreen}
+                name="DayChamber"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                component={AnkyverseTrailScreen}
+                name="AnkyverseTrail"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen component={RevealScreen} name="Reveal" options={{ headerShown: false }} />
+              <Stack.Screen component={ThreadScreen} name="Thread" options={{ headerShown: false }} />
+              <Stack.Screen component={PastScreen} name="Past" options={{ title: 'Local Archive' }} />
+              <Stack.Screen component={CreditsScreen} name="Credits" options={{ title: 'Credits' }} />
+              <Stack.Screen component={RevealScreen} name="Entry" options={{ headerShown: false }} />
+              </Stack.Navigator>
+            </NavigationContainer>
+            <AnkyPresenceOverlay />
+          </AnkyPresenceProvider>
+        </AuthModalProvider>
       </AnkyPrivyProvider>
     </SafeAreaProvider>
   );

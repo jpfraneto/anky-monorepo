@@ -5,6 +5,7 @@ import {
   ImageBackground,
   ImageSourcePropType,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,8 +17,11 @@ import {
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { usePrivy } from "@privy-io/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
+import * as WebBrowser from "expo-web-browser";
 
 import type { RootStackParamList } from "../../../App";
+import { useAuthModal } from "../../auth/AuthModalContext";
 import { ScreenBackground } from "../../components/anky/ScreenBackground";
 import { SubtleIconButton } from "../../components/navigation/SubtleIconButton";
 import {
@@ -34,6 +38,7 @@ import {
   type ProcessingReceiptSidecar,
   type SavedAnkyFile,
 } from "../../lib/ankyStorage";
+import { getAnkyApiClient } from "../../lib/api/client";
 import {
   clearBackendAuthSession,
   getStoredBackendAuthSession,
@@ -42,7 +47,16 @@ import {
 } from "../../lib/auth/backendSession";
 import { useExternalSolanaWallet } from "../../lib/privy/ExternalSolanaWalletProvider";
 import { getReflectionCreditBalance } from "../../lib/credits/processAnky";
+import { CREDIT_PRODUCTS, type CreditProduct } from "../../lib/credits/products";
+import { getPublicEnv } from "../../lib/config/env";
 import { useAnkyPrivyWallet } from "../../lib/privy/useAnkyPrivyWallet";
+import { NotificationSettingsModal } from "../../notifications/NotificationSettingsModal";
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  formatReminderTime,
+  loadNotificationSettings,
+  type AnkyNotificationSettings,
+} from "../../notifications/notificationSettings";
 import {
   buildSojournDays,
   getCurrentSojournDay,
@@ -69,6 +83,11 @@ type LoomInfoProps = NativeStackScreenProps<RootStackParamList, "LoomInfo">;
 type IconName = "account" | "credits" | "exportData" | "loom" | "privacy";
 type RowVariant = "danger" | "highlight" | "normal";
 type ActionVariant = "danger" | "primary" | "secondary";
+type RecentCreditUsage = {
+  fileName: string;
+  receipt: ProcessingReceiptSidecar;
+  sessionHash: string;
+};
 
 const assets = {
   avatar: require("../../../assets/anky-you/avatar-anky.png"),
@@ -94,19 +113,30 @@ const PRIVACY_POLICY_URL = "https://www.anky.app/privacy-policy.md";
 
 export function AccountScreen({ navigation }: AccountProps) {
   const { logout, user } = usePrivy();
+  const { openAuthModal } = useAuthModal();
   const externalWallet = useExternalSolanaWallet();
   const wallet = useAnkyPrivyWallet();
   const [backendSession, setBackendSession] = useState<BackendAuthSession | null>(null);
   const [message, setMessage] = useState("");
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState<AnkyNotificationSettings>(
+    DEFAULT_NOTIFICATION_SETTINGS,
+  );
+  const [walletExportVisible, setWalletExportVisible] = useState(false);
+  const walletExportUrl = getPublicEnv("EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL") ?? "";
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
-      const session = await getStoredBackendAuthSession();
+      const [session, reminders] = await Promise.all([
+        getStoredBackendAuthSession(),
+        loadNotificationSettings(),
+      ]);
 
       if (mounted) {
         setBackendSession(session);
+        setNotificationSettings(reminders);
       }
     }
 
@@ -128,6 +158,9 @@ export function AccountScreen({ navigation }: AccountProps) {
       ? "optional"
       : `${wallet.walletLabel ?? "wallet"} ${shortAddress(wallet.publicKey, 6)}`;
   const identityTitle = wallet.hasWallet ? "wallet connected" : connected ? "signed in" : "local account";
+  const notificationSubtitle = notificationSettings.enabled
+    ? `daily reminder at ${formatReminderTime(notificationSettings.hour, notificationSettings.minute)}`
+    : "choose when anky should quietly remind you.";
 
   async function disconnectAccount() {
     try {
@@ -183,18 +216,37 @@ export function AccountScreen({ navigation }: AccountProps) {
           title="wallet"
         />
         <YouInfoRow
-          badge="not configured"
           icon={assets.icons.privacy}
-          subtitle="this build does not include native reminder permissions."
+          onPress={() => setNotificationModalVisible(true)}
+          rightText={notificationSettings.enabled ? "on" : "off"}
+          subtitle={notificationSubtitle}
           title="notifications"
         />
+        {wallet.hasEmbeddedWallet ? (
+          <YouInfoRow
+            badge={walletExportUrl.length === 0 ? "needs url" : undefined}
+            disabled={walletExportUrl.length === 0}
+            icon={assets.icons.loom}
+            onPress={() => setWalletExportVisible(true)}
+            subtitle={
+              walletExportUrl.length === 0
+                ? "wallet export needs EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL."
+                : "opens the secure hosted privy export page."
+            }
+            title="export wallet"
+          />
+        ) : null}
     
       </View>
 
       <View style={styles.actions}>
         <YouActionButton
           label={connected ? "manage login" : "log in / connect"}
-          onPress={() => navigation.navigate("Auth")}
+          onPress={() =>
+            openAuthModal({
+              reason: "account features are optional. writing stays local.",
+            })
+          }
         />
         {connected ? (
           <YouActionButton
@@ -205,10 +257,47 @@ export function AccountScreen({ navigation }: AccountProps) {
         ) : null}
       </View>
 
+      <SectionTitle label="danger zone" />
+      <YouInfoRow
+        badge="disabled"
+        icon={assets.icons.privacy}
+        onPress={requestDestroyAccount}
+        subtitle="requires a backend and privy deletion path before it can run."
+        title="destroy account forever"
+        variant="danger"
+      />
+
       <InlineMessage text={message} />
       <OwnershipCard text="your writing stays on your device. account features are optional." />
+      <NotificationSettingsModal
+        onClose={() => setNotificationModalVisible(false)}
+        onSaved={setNotificationSettings}
+        visible={notificationModalVisible}
+      />
+      <WalletExportModal
+        onClose={() => setWalletExportVisible(false)}
+        url={walletExportUrl}
+        visible={walletExportVisible}
+      />
     </YouDetailShell>
   );
+
+  function requestDestroyAccount() {
+    Alert.alert(
+      "destroy account forever?",
+      "this cannot run from the app until a verified backend and privy deletion endpoint exists. your local writing is not deleted here.",
+      [
+        { style: "cancel", text: "cancel" },
+        {
+          onPress: () => {
+            setMessage("account destruction is not wired in this build.");
+          },
+          style: "destructive",
+          text: "i understand",
+        },
+      ],
+    );
+  }
 }
 
 export function PrivacyScreen({ navigation }: PrivacyProps) {
@@ -539,7 +628,8 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
 export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const [balance, setBalance] = useState(0);
   const [message, setMessage] = useState("");
-  const [recentUsage, setRecentUsage] = useState<ProcessingReceiptSidecar[]>([]);
+  const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
+  const [recentUsage, setRecentUsage] = useState<RecentCreditUsage[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -549,10 +639,25 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         getReflectionCreditBalance(),
         listSavedAnkyFiles(),
       ]);
-      const receipts = await Promise.all(files.map((file) => readProcessingReceipt(file.hash)));
+      const receipts = await Promise.all(
+        files.map(async (file) => ({
+          file,
+          receipt: await readProcessingReceipt(file.hash),
+        })),
+      );
       const sortedReceipts = receipts
-        .filter((receipt): receipt is ProcessingReceiptSidecar => receipt != null)
-        .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+        .filter((item): item is { file: SavedAnkyFile; receipt: ProcessingReceiptSidecar } =>
+          item.receipt != null,
+        )
+        .map((item) => ({
+          fileName: item.file.fileName,
+          receipt: item.receipt,
+          sessionHash: item.file.hash,
+        }))
+        .sort(
+          (left, right) =>
+            Date.parse(right.receipt.created_at) - Date.parse(left.receipt.created_at),
+        );
 
       if (mounted) {
         setBalance(nextBalance);
@@ -571,9 +676,36 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     };
   }, [navigation]);
 
-  function restorePurchases() {
-    // TODO: connect restore purchases when mobile IAP exists.
-    setMessage("restore purchases is not wired in this build.");
+  async function startPurchase(product: CreditProduct) {
+    if (purchaseBusyId != null) {
+      return;
+    }
+
+    setPurchaseBusyId(product.id);
+    setMessage("");
+
+    try {
+      const api = getAnkyApiClient();
+
+      if (api == null) {
+        setMessage("purchases need a configured backend or native iap build.");
+        return;
+      }
+
+      const checkout = await api.createCheckoutSession({ packageId: product.id });
+
+      await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
+      setMessage("checkout opened. credits update after the backend validates purchase.");
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "purchase is not configured in this build.",
+      );
+    } finally {
+      setPurchaseBusyId(null);
+    }
   }
 
   return (
@@ -590,9 +722,14 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       />
 
       <View style={styles.stack}>
-        <CreditTierRow amount={10} />
-        <CreditTierRow amount={25} />
-        <CreditTierRow amount={50} />
+        {CREDIT_PRODUCTS.map((product) => (
+          <CreditProductRow
+            busy={purchaseBusyId === product.id}
+            key={product.id}
+            onPress={() => void startPurchase(product)}
+            product={product}
+          />
+        ))}
       </View>
 
       <SectionTitle label="recent usage" />
@@ -607,19 +744,15 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
           {recentUsage.map((receipt) => (
             <YouInfoRow
               icon={assets.icons.credits}
-              key={receipt.created_at}
-              rightText={`${receipt.credits_spent}`}
-              subtitle={`${formatShortDate(receipt.created_at)} · ${receipt.credits_remaining} remaining`}
-              title="reflection"
+              key={`${receipt.sessionHash}-${receipt.receipt.created_at}`}
+              onPress={() => navigation.navigate("Entry", { fileName: receipt.fileName })}
+              rightText={`${receipt.receipt.credits_spent}`}
+              subtitle={`${formatShortDate(receipt.receipt.created_at)} · ${receipt.receipt.credits_remaining} remaining`}
+              title={receipt.receipt.processing_type === "full_anky" ? "full reflection" : "reflection"}
             />
           ))}
         </View>
       )}
-
-      <View style={styles.actions}>
-        <YouActionButton label="open credit tools" onPress={() => navigation.navigate("Credits")} />
-        <YouActionButton label="restore purchases" onPress={restorePurchases} variant="secondary" />
-      </View>
 
       <InlineMessage text={message} />
       <OwnershipCard text="credits are only for optional processing. writing is always free." />
@@ -719,7 +852,7 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
 
       <View style={styles.actions}>
         <YouActionButton
-          label="open loom"
+          label={selectedLoom == null ? "mint loom" : "view loom"}
           onPress={() => navigation.navigate("Loom")}
         />
       </View>
@@ -955,6 +1088,48 @@ function YouActionButton({
   );
 }
 
+function WalletExportModal({
+  onClose,
+  url,
+  visible,
+}: {
+  onClose: () => void;
+  url: string;
+  visible: boolean;
+}) {
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
+      <ScreenBackground variant="plain">
+        <View style={styles.walletExportHeader}>
+          <SubtleIconButton accessibilityLabel="go back" icon="←" onPress={onClose} />
+          <View style={styles.walletExportHeaderCopy}>
+            <Text style={styles.walletExportTitle}>export wallet</Text>
+            <Text style={styles.walletExportSubtitle}>
+              secure export opens in a hosted privy page.
+            </Text>
+          </View>
+          <View style={styles.headerSide} />
+        </View>
+        {url.length === 0 ? (
+          <View style={styles.walletExportEmpty}>
+            <Text style={styles.rowTitle}>wallet export needs configuration</Text>
+            <Text style={styles.rowSubtitle}>
+              set EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL to a hosted React Privy export page.
+            </Text>
+          </View>
+        ) : (
+          // Privy embedded wallet key export needs a secure hosted browser context.
+          // Do not attempt to export private keys directly from native code.
+          <WebView
+            source={{ uri: url }}
+            style={styles.walletExportWebView}
+          />
+        )}
+      </ScreenBackground>
+    </Modal>
+  );
+}
+
 function ExportItemRow({
   count,
   icon,
@@ -976,14 +1151,24 @@ function ExportItemRow({
   );
 }
 
-function CreditTierRow({ amount }: { amount: number }) {
+function CreditProductRow({
+  busy,
+  onPress,
+  product,
+}: {
+  busy: boolean;
+  onPress: () => void;
+  product: CreditProduct;
+}) {
   return (
     <YouInfoRow
-      badge="coming soon"
-      disabled
+      badge={product.priceLabel}
       icon={assets.icons.credits}
-      subtitle="native purchases are not configured in this build."
-      title={`${amount} credits`}
+      onPress={onPress}
+      rightText={busy ? "opening" : product.kind === "subscription" ? "monthly" : undefined}
+      subtitle={product.description}
+      title={product.title}
+      variant={product.kind === "subscription" ? "highlight" : "normal"}
     />
   );
 }
@@ -1554,6 +1739,46 @@ const styles = StyleSheet.create({
   },
   rowTitleDanger: {
     color: DANGER,
+  },
+  walletExportEmpty: {
+    backgroundColor: PANEL,
+    borderColor: "rgba(233, 190, 114, 0.28)",
+    borderRadius: 12,
+    borderWidth: 1,
+    margin: 20,
+    padding: 16,
+  },
+  walletExportHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    minHeight: 70,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+  },
+  walletExportHeaderCopy: {
+    alignItems: "center",
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  walletExportSubtitle: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  walletExportTitle: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 24,
+    lineHeight: 30,
+    textTransform: "lowercase",
+  },
+  walletExportWebView: {
+    backgroundColor: "#080713",
+    flex: 1,
   },
   screen: {
     backgroundColor: "#070812",

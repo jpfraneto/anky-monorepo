@@ -28,7 +28,8 @@ export function buildSojournMapDays({
     const completeSessions = [day.dailySeal, ...day.extraThreads].filter(
       (session): session is AnkySessionSummary => session != null,
     );
-    const ankys = completeSessions
+    const allSessions = [...completeSessions, ...day.fragments];
+    const ankys = allSessions
       .map((session, index) =>
         mapSessionToAnky({
           day: day.day,
@@ -40,9 +41,10 @@ export function buildSojournMapDays({
       .filter((anky): anky is SojournMapAnky => anky != null);
 
     return {
-      ankyCount: ankys.length,
+      ankyCount: ankys.filter((anky) => anky.kind === "anky").length,
       ankys,
       day: day.day,
+      fragmentCount: ankys.filter((anky) => anky.kind === "fragment").length,
       isCurrent: day.day === currentDay,
       isFuture: day.day > currentDay,
     };
@@ -60,19 +62,15 @@ function mapSessionToAnky({
   index: number;
   session: AnkySessionSummary;
 }): SojournMapAnky | null {
-  if (session.kind === "fragment") {
-    return null;
-  }
-
   const durationMs =
     file == null ? undefined : getRiteDurationMs(parseAnky(file.raw)) ?? undefined;
 
-  if (file != null && !isCompleteRawAnky(file.raw)) {
-    return null;
-  }
+  const isFragment = session.kind === "fragment" || (file != null && !isCompleteRawAnky(file.raw));
 
   const sessionHash = session.sessionHash ?? file?.hash;
-  const firstLine = firstVisibleLine(file?.preview) ?? "open this anky to remember what was written.";
+  const firstLine =
+    firstVisibleLine(file?.preview) ??
+    (isFragment ? "open this fragment to remember what arrived." : "open this anky to remember what was written.");
   const durationLabel = buildDurationLabel({ durationMs, session });
 
   return {
@@ -82,6 +80,7 @@ function mapSessionToAnky({
     fileName: file?.fileName,
     firstLine,
     id: sessionHash ?? session.id,
+    kind: isFragment ? "fragment" : "anky",
     sessionHash,
     title: buildTitle({ firstLine, index, session }),
   };
@@ -97,7 +96,8 @@ function buildDurationLabel({
   const minutes =
     durationMs == null ? 8 : Math.max(1, Math.round(durationMs / 60000));
   const status = [
-    `${minutes} min`,
+    session.kind === "fragment" ? "fragment" : `${minutes} min`,
+    session.kind === "fragment" ? `${minutes} min` : null,
     session.sealedOnchain === true ? "sealed" : "local",
     session.reflectionId != null ? "reflected" : null,
   ]
@@ -118,6 +118,10 @@ function buildTitle({
 }): string {
   if (session.reflectionId != null) {
     return "reflected anky";
+  }
+
+  if (session.kind === "fragment") {
+    return "fragment";
   }
 
   const words = firstLine

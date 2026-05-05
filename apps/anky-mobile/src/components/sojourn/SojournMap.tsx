@@ -139,26 +139,40 @@ function DayRow({
   onPress: () => void;
 }) {
   const { color } = getMapKingdomForDay(day.day);
+  const fragmentCount = day.fragmentCount ?? 0;
   const hasAnkys = day.ankyCount > 0;
+  const hasFragments = fragmentCount > 0;
+  const hasAnyWriting = hasAnkys || hasFragments;
   const isFuture = day.day > currentDay;
   const size = isSelected
     ? sojournMapTokens.dayNode.sizeSelected
     : hasAnkys
       ? sojournMapTokens.dayNode.sizeWritten
+      : hasFragments
+        ? sojournMapTokens.dayNode.sizeWritten - 10
       : sojournMapTokens.dayNode.sizeFuture;
 
   return (
     <View style={styles.dayRow}>
-      <AnkyCountLabel color={color} count={day.ankyCount} selected={isSelected} />
+      <AnkyCountLabel
+        color={color}
+        count={day.ankyCount}
+        fragmentCount={fragmentCount}
+        selected={isSelected}
+      />
 
       <Pressable
-        accessibilityLabel={`day ${day.day}${hasAnkys ? `, ${day.ankyCount} ankys` : ", no ankys"}`}
+        accessibilityLabel={`day ${day.day}${
+          hasAnyWriting
+            ? `, ${day.ankyCount} ankys, ${fragmentCount} fragments`
+            : ", no ankys"
+        }`}
         accessibilityRole="button"
         onPress={onPress}
         style={({ pressed }) => [
           styles.dayNode,
           {
-            borderColor: withAlpha(color, hasAnkys || isSelected ? "E6" : "52"),
+            borderColor: withAlpha(color, hasAnyWriting || isSelected ? "E6" : "52"),
             height: size,
             shadowColor: color,
             width: size,
@@ -168,7 +182,13 @@ function DayRow({
             shadowOpacity: 0.55,
             shadowRadius: 12,
           },
-          isFuture && !hasAnkys && styles.futureDay,
+          !hasAnkys && hasFragments && {
+            backgroundColor: withAlpha(color, "09"),
+            opacity: 0.72,
+            shadowOpacity: 0.22,
+            shadowRadius: 8,
+          },
+          isFuture && !hasAnyWriting && styles.futureDay,
           isSelected && {
             backgroundColor: withAlpha(color, "24"),
             shadowOpacity: 0.95,
@@ -190,10 +210,12 @@ function DayRow({
 function AnkyCountLabel({
   color,
   count,
+  fragmentCount,
   selected,
 }: {
   color: string;
   count: number;
+  fragmentCount: number;
   selected: boolean;
 }) {
   return (
@@ -202,6 +224,8 @@ function AnkyCountLabel({
         <Text style={[styles.ankyCount, { color, transform: [{ scale: selected ? 1.08 : 1 }] }]}>
           {count}
         </Text>
+      ) : fragmentCount > 0 ? (
+        <Text style={[styles.fragmentCount, { color }]}>•</Text>
       ) : null}
     </View>
   );
@@ -221,7 +245,7 @@ function SelectedDayPanel({
       <View style={styles.panelTopDiamond} />
       <Text style={styles.panelTitle}>Day {day.day}</Text>
       <Text style={styles.panelSubtitle}>
-        {day.ankyCount} {day.ankyCount === 1 ? "anky" : "ankys"}
+        {formatPanelCount(day)}
       </Text>
 
       {day.ankys.length === 0 ? (
@@ -240,9 +264,17 @@ function SelectedDayPanel({
               accessibilityRole="button"
               key={anky.id}
               onPress={() => onPressAnky?.(anky)}
-              style={({ pressed }) => [styles.ankyCard, pressed && styles.ankyCardPressed]}
+              style={({ pressed }) => [
+                styles.ankyCard,
+                anky.kind === "fragment" && styles.fragmentCard,
+                pressed && styles.ankyCardPressed,
+              ]}
             >
-              <Image accessibilityIgnoresInvertColors source={anky.avatar} style={styles.ankyAvatar} />
+              <Image
+                accessibilityIgnoresInvertColors
+                source={anky.avatar}
+                style={[styles.ankyAvatar, anky.kind === "fragment" && styles.fragmentAvatar]}
+              />
               <View style={styles.ankyTextBlock}>
                 <Text numberOfLines={1} style={styles.ankyTitle}>
                   {anky.title}
@@ -261,6 +293,18 @@ function SelectedDayPanel({
       )}
     </View>
   );
+}
+
+function formatPanelCount(day: SojournMapDay): string {
+  const fragmentCount = day.fragmentCount ?? 0;
+  const parts = [
+    `${day.ankyCount} ${day.ankyCount === 1 ? "anky" : "ankys"}`,
+    fragmentCount > 0
+      ? `${fragmentCount} ${fragmentCount === 1 ? "fragment" : "fragments"}`
+      : null,
+  ].filter((part): part is string => part != null);
+
+  return parts.join(" · ");
 }
 
 function withAlpha(hex: string, alpha: string) {
@@ -318,6 +362,24 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textShadowColor: "rgba(0,0,0,0.45)",
     textShadowRadius: 3,
+  },
+  fragmentAvatar: {
+    height: sojournMapTokens.card.avatar - 10,
+    opacity: 0.58,
+    width: sojournMapTokens.card.avatar - 10,
+  },
+  fragmentCard: {
+    backgroundColor: "rgba(18, 16, 34, 0.42)",
+    borderColor: "rgba(216,176,107,0.22)",
+    minHeight: sojournMapTokens.card.minHeight - 12,
+    opacity: 0.78,
+  },
+  fragmentCount: {
+    fontFamily: SERIF,
+    fontSize: 22,
+    fontWeight: "700",
+    lineHeight: 22,
+    opacity: 0.58,
   },
   ankyList: {
     maxHeight: 288,

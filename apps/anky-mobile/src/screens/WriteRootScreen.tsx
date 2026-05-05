@@ -49,7 +49,8 @@ export function WriteRootScreen({ navigation, route }: Props) {
       const shouldShowOnboarding =
         !hasValidPendingReveal &&
         !hasValidTerminalDraft &&
-        (route.params?.replayOnboarding === true || !hasShownOpeningOnboardingRef.current);
+        route.params?.replayOnboarding === true &&
+        !hasShownOpeningOnboardingRef.current;
 
       setToday(now);
       setSessionKind(nextSessionKind);

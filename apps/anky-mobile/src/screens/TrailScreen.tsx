@@ -14,6 +14,7 @@ import {
   getCurrentSojournDay,
   SOJOURN_LENGTH_DAYS,
 } from "../lib/sojourn";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Trail">;
@@ -27,6 +28,12 @@ export function TrailScreen({ navigation }: Props) {
   const trailDays = useMemo(() => [...days].reverse(), [days]);
   const currentDay = getCurrentSojournDay(now);
   const today = days[currentDay - 1];
+
+  useAnkyPresenceScreen({
+    emotion: "walking",
+    preferredMode: "companion",
+    sequence: "walk_right",
+  });
 
   useEffect(() => {
     let mounted = true;

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   AppState,
+  Easing,
   InteractionManager,
   Keyboard,
   NativeSyntheticEvent,
@@ -45,6 +47,7 @@ import {
   writePendingReveal,
 } from "../lib/ankyStorage";
 import { getAcceptedInputCharacter } from "../lib/inputPolicy";
+import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ActiveWriting">;
@@ -124,6 +127,29 @@ export function WriteScreen({ navigation, route }: Props) {
   const [riteElapsedMs, setRiteElapsedMs] = useState(0);
   const [silenceMs, setSilenceMs] = useState(0);
   const [typedText, setTypedText] = useState("");
+  const hasWritten = typedText.length > 0;
+
+  useAnkyPresenceScreen(
+    hasWritten
+      ? {
+          avoidKeyboard: true,
+          emotion: "listening",
+          intensity: "minimal",
+          maxMode: "hidden",
+          placement: "left",
+          preferredMode: "hidden",
+          sequence: "shy_listening",
+        }
+      : {
+          avoidKeyboard: true,
+          emotion: "welcome",
+          intensity: "minimal",
+          maxMode: "sigil",
+          placement: "left",
+          preferredMode: "sigil",
+          sequence: "finding_thread",
+        },
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -519,7 +545,6 @@ export function WriteScreen({ navigation, route }: Props) {
   }
 
   const visibleLastCharacter = lastCharacter == null ? "" : visibleCharacter(lastCharacter);
-  const hasWritten = typedText.length > 0;
   const isRevealed = revealPhase === "revealed";
   const isShowingClosedWriting = revealPhase !== "active";
   const estimatedKeyboardHeight = getEstimatedKeyboardHeight(height);
@@ -528,7 +553,7 @@ export function WriteScreen({ navigation, route }: Props) {
   const workspaceBottom = isShowingClosedWriting || isExiting ? 0 : effectiveKeyboardHeight;
   const visibleHeight = Math.max(320, height - workspaceBottom);
   const backgroundPaddingTop = insets.top + 42;
-  const backgroundPaddingBottom = isShowingClosedWriting ? insets.bottom + 72 : insets.bottom + 34;
+  const backgroundPaddingBottom = isShowingClosedWriting ? insets.bottom + 72 : 0;
   const backgroundPlaneMinHeight = Math.max(
     240,
     visibleHeight - backgroundPaddingTop - backgroundPaddingBottom,
@@ -540,7 +565,7 @@ export function WriteScreen({ navigation, route }: Props) {
   const backgroundTextOpacity = isShowingClosedWriting ? 0.24 + revealProgress * 0.72 : 0.17;
   const backgroundPlaneScale = isShowingClosedWriting ? 1 - revealProgress * 0.035 : 1;
   const ringSize = Math.max(176, Math.min(268, width * 0.62, visibleHeight * 0.5));
-  const showWritingCircle = revealPhase === "active" && hasWritten && !isExiting;
+  const showWritingCircle = revealPhase === "active" && !isExiting;
 
   return (
     <ScreenBackground safe={false} variant="plain">
@@ -577,7 +602,6 @@ export function WriteScreen({ navigation, route }: Props) {
               <Text style={[styles.backgroundWriting, { opacity: backgroundTextOpacity }]}>
                 {typedText}
               </Text>
-              <WovenPlaneThreads visible={hasWritten} />
             </View>
           </ScrollView>
 
@@ -604,12 +628,16 @@ export function WriteScreen({ navigation, route }: Props) {
                   visible={silenceMs >= SILENCE_WARNING_MS}
                 />
                 <View style={styles.writingCircleCore} />
-                <LastCharacterGlyph
-                  opacity={letterOpacity}
-                  silenceProgress={silenceProgress}
-                  size={ringSize}
-                  value={visibleLastCharacter}
-                />
+                {hasWritten ? (
+                  <LastCharacterGlyph
+                    opacity={letterOpacity}
+                    silenceProgress={silenceProgress}
+                    size={ringSize}
+                    value={visibleLastCharacter}
+                  />
+                ) : (
+                  <WritingCursor size={ringSize} />
+                )}
                 {riteThresholdPassed ? <RiteThresholdCue size={ringSize} /> : null}
               </View>
             </View>
@@ -675,29 +703,6 @@ export function WriteScreen({ navigation, route }: Props) {
         />
       </View>
     </ScreenBackground>
-  );
-}
-
-function WovenPlaneThreads({ visible }: { visible: boolean }) {
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <View pointerEvents="none" style={styles.wovenThreads}>
-      {Array.from({ length: 18 }).map((_, index) => (
-        <View
-          key={index}
-          style={[
-            styles.wovenThreadLine,
-            {
-              opacity: index % 3 === 0 ? 0.36 : 0.18,
-              top: `${5 + index * 5.35}%`,
-            },
-          ]}
-        />
-      ))}
-    </View>
   );
 }
 
@@ -887,6 +892,46 @@ function LastCharacterGlyph({
   );
 }
 
+function WritingCursor({ size }: { size: number }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          duration: 620,
+          easing: Easing.inOut(Easing.quad),
+          toValue: 0.16,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          duration: 620,
+          easing: Easing.inOut(Easing.quad),
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+
+    return () => animation.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.writingCursor,
+        {
+          height: size * 0.22,
+          opacity,
+        },
+      ]}
+    />
+  );
+}
+
 function RiteThresholdCue({ size }: { size: number }) {
   return (
     <View pointerEvents="none" style={[styles.riteThresholdCue, { bottom: size * 0.16 }]}>
@@ -1009,6 +1054,7 @@ const styles = StyleSheet.create({
   },
   backgroundWritingScroll: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000000",
     zIndex: 0,
   },
   backgroundWritingShadow: {
@@ -1074,7 +1120,7 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   lastCharacterEraser: {
-    backgroundColor: "rgba(5, 5, 11, 0.96)",
+    backgroundColor: "rgba(0, 0, 0, 0.96)",
     left: 0,
     position: "absolute",
     right: 0,
@@ -1119,10 +1165,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   root: {
-    backgroundColor: ankyColors.bg,
+    backgroundColor: "#000000",
     flex: 1,
   },
   workspace: {
+    backgroundColor: "#000000",
     left: 0,
     position: "absolute",
     right: 0,
@@ -1133,7 +1180,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   writingCircleCore: {
-    backgroundColor: "rgba(5, 5, 11, 0.96)",
+    backgroundColor: "rgba(0, 0, 0, 0.96)",
     borderColor: "rgba(255, 240, 201, 0.08)",
     borderRadius: 999,
     borderWidth: 1,
@@ -1144,15 +1191,14 @@ const styles = StyleSheet.create({
     top: "18%",
     zIndex: 1,
   },
-  wovenThreadLine: {
-    backgroundColor: "rgba(255, 240, 201, 0.2)",
-    height: StyleSheet.hairlineWidth,
-    left: 0,
-    position: "absolute",
-    right: 0,
-  },
-  wovenThreads: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.03)",
+  writingCursor: {
+    backgroundColor: "rgba(244, 241, 234, 0.86)",
+    borderRadius: 999,
+    shadowColor: "#F4F1EA",
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    width: 3,
+    zIndex: 3,
   },
 });
