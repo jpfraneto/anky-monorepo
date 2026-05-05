@@ -118,6 +118,7 @@ function AuthModal({
   const siws = useLoginWithSiws();
   const externalWallet = useExternalSolanaWallet();
   const privyWallet = useAnkyPrivyWallet();
+  const attemptedWalletLoginRef = useRef<string | null>(null);
   const walletLoginInFlight = useRef(false);
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
@@ -191,28 +192,41 @@ function AuthModal({
       setMessage("");
       setPendingWallet(null);
       setWorking(false);
+      attemptedWalletLoginRef.current = null;
     }
   }, [visible]);
 
   useEffect(() => {
-    if (pendingWallet == null) {
+    if (!visible || !isReady || user != null || walletLoginInFlight.current) {
       return;
     }
 
-    const wallet = externalWallet.wallets[pendingWallet];
+    const wallet =
+      pendingWallet == null
+        ? externalWallet.activeWallet
+        : externalWallet.wallets[pendingWallet];
 
     if (wallet == null) {
       return;
     }
 
-    if (user != null) {
-      setMessage(`${wallet.label} connected for loom signing.`);
-      setPendingWallet(null);
+    const loginKey = getWalletLoginKey(wallet.provider, wallet.address);
+
+    if (pendingWallet == null && attemptedWalletLoginRef.current === loginKey) {
       return;
     }
 
-    void completeWalletLogin(pendingWallet, wallet.address, wallet.signMessage);
-  }, [completeWalletLogin, externalWallet.wallets, pendingWallet, user]);
+    attemptedWalletLoginRef.current = loginKey;
+    void completeWalletLogin(wallet.provider, wallet.address, wallet.signMessage);
+  }, [
+    completeWalletLogin,
+    externalWallet.activeWallet,
+    externalWallet.wallets,
+    isReady,
+    pendingWallet,
+    user,
+    visible,
+  ]);
 
   const connectedExternalWallet = externalWallet.activeWallet;
   const isBusy =
@@ -222,6 +236,7 @@ function AuthModal({
     emailLogin.state.status === "submitting-code" ||
     pendingWallet != null;
   const isLoggedIn = user != null;
+  const needsWalletLogin = !isLoggedIn && connectedExternalWallet != null;
 
   async function handleOAuth(provider: OAuthProvider) {
     setWorking(true);
@@ -288,6 +303,24 @@ function AuthModal({
   }
 
   async function handleWalletConnect(provider: WalletProvider) {
+    const connectedWallet = externalWallet.wallets[provider];
+
+    if (connectedWallet != null) {
+      externalWallet.setActiveProvider(provider);
+
+      if (user == null) {
+        attemptedWalletLoginRef.current = getWalletLoginKey(
+          provider,
+          connectedWallet.address,
+        );
+        await completeWalletLogin(provider, connectedWallet.address, connectedWallet.signMessage);
+        return;
+      }
+
+      setMessage(`${connectedWallet.label} connected.`);
+      return;
+    }
+
     setWorking(true);
     setPendingWallet(provider);
     setMessage(`opening ${provider}.`);
@@ -433,10 +466,14 @@ function AuthModal({
                   variant="secondary"
                 />
                 <AuthButton
-                  disabled={isBusy || connectedExternalWallet?.provider === "phantom"}
+                  disabled={
+                    isBusy || (isLoggedIn && connectedExternalWallet?.provider === "phantom")
+                  }
                   label={
                     connectedExternalWallet?.provider === "phantom"
-                      ? "phantom connected"
+                      ? isLoggedIn
+                        ? "phantom connected"
+                        : "finish phantom login"
                       : "connect phantom"
                   }
                   onPress={() => void handleWalletConnect("phantom")}
@@ -448,7 +485,9 @@ function AuthModal({
             {connectedExternalWallet == null ? null : (
               <Text style={styles.note}>
                 {connectedExternalWallet.label} {shortAddress(connectedExternalWallet.address, 6)}{" "}
-                is ready for loom actions.
+                {needsWalletLogin
+                  ? "connected. sign once to finish login."
+                  : "is ready for loom actions."}
               </Text>
             )}
             {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
@@ -491,6 +530,10 @@ function AuthButton({
       </Text>
     </Pressable>
   );
+}
+
+function getWalletLoginKey(provider: WalletProvider, address: string): string {
+  return `${provider}:${address}`;
 }
 
 const styles = StyleSheet.create({

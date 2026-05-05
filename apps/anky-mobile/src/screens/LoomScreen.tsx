@@ -438,7 +438,13 @@ export function LoomScreen({ navigation }: Props) {
             {!walletState.authenticated || !walletState.hasWallet ? (
               <RitualButton
                 disabled={mintBusy}
-                label={walletState.authenticated ? "create embedded wallet" : "login / connect wallet"}
+                label={
+                  walletState.hasWallet
+                    ? "finish wallet login"
+                    : walletState.authenticated
+                      ? "create embedded wallet"
+                      : "login / connect wallet"
+                }
                 onPress={() => void handleWalletAction()}
               />
             ) : (

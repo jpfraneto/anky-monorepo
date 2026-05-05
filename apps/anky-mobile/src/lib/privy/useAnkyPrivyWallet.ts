@@ -110,7 +110,7 @@ export function useAnkyPrivyWallet(): AnkyPrivyWalletState {
   }, [externalWallet.activeWallet, solanaWallet, user]);
 
   return {
-    authenticated: user != null || activeExternalWallet != null,
+    authenticated: user != null,
     canCreateEmbeddedWallet: user != null,
     createWallet,
     embeddedPublicKey: embeddedWallet?.address,

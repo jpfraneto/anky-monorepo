@@ -612,6 +612,7 @@ export function RevealScreen({ navigation, route }: Props) {
                 canRequestReflection={canRequestReflection}
                 creditBalance={creditBalance}
                 fullCost={fullReflectionCost}
+                hasConnectedWallet={wallet.hasExternalWallet}
                 isLoggedIn={isLoggedIn}
                 isFullAnky={isFullAnky}
                 onBuyCredits={handleBuyCredits}
@@ -623,6 +624,7 @@ export function RevealScreen({ navigation, route }: Props) {
                 quickCost={quickReflectionCost}
                 sealed={didSeal}
                 sealing={actionState === "sealing"}
+                walletLabel={wallet.walletLabel}
               />
             ) : (
               <RevealChat
@@ -709,6 +711,7 @@ function ReviewActions({
   canRequestReflection,
   creditBalance,
   fullCost,
+  hasConnectedWallet,
   isLoggedIn,
   isFullAnky,
   onBuyCredits,
@@ -720,12 +723,14 @@ function ReviewActions({
   quickCost,
   sealed,
   sealing,
+  walletLabel,
 }: {
   canCopy: boolean;
   canSealWithLoom: boolean;
   canRequestReflection: boolean;
   creditBalance: number | null;
   fullCost: number;
+  hasConnectedWallet: boolean;
   isLoggedIn: boolean;
   isFullAnky: boolean;
   onBuyCredits: () => void;
@@ -737,6 +742,7 @@ function ReviewActions({
   quickCost: number;
   sealed: boolean;
   sealing: boolean;
+  walletLabel?: string;
 }) {
   const notEnoughForQuick = isLoggedIn && creditBalance != null && creditBalance < quickCost;
   const notEnoughForFull = isLoggedIn && creditBalance != null && creditBalance < fullCost;
@@ -744,6 +750,8 @@ function ReviewActions({
   const fullDisabled = !canRequestReflection || (isLoggedIn && notEnoughForFull);
   const statusLine = !isFullAnky
     ? "write 8 minutes to ask anky for reflection"
+    : !isLoggedIn && hasConnectedWallet
+      ? `finish ${(walletLabel ?? "wallet").toLowerCase()} login to ask anky for a reflection`
     : !isLoggedIn
       ? "login to ask anky for a reflection"
       : creditBalance == null

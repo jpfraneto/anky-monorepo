@@ -1,6 +1,6 @@
 {
   "name": "anky-mobile",
-  "version": "1.0.0",
+  "version": "0.0.8",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -31,6 +31,7 @@
     "expo-apple-authentication": "~8.0.8",
     "expo-application": "~7.0.8",
     "expo-clipboard": "~8.0.8",
+    "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.9",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.22",
