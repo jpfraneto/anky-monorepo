@@ -1,9 +1,12 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
+  Easing,
   Image,
   ImageBackground,
   ImageSourcePropType,
+  type LayoutRectangle,
   Linking,
   Modal,
   Platform,
@@ -33,15 +36,16 @@ import {
   deleteAllLocalAnkyData,
   listLocalLoomSeals,
   listSavedAnkyFiles,
-  readProcessingReceipt,
-  type ProcessingReceiptSidecar,
   type SavedAnkyFile,
 } from "../../lib/ankyStorage";
+import { getAnkyApiClient } from "../../lib/api/client";
+import type { CreditLedgerEntry } from "../../lib/api/types";
 import {
   clearBackendAuthSession,
   getStoredBackendAuthSession,
   type BackendAuthSession,
 } from "../../lib/auth/backendSession";
+import { getMobileApiIdentityId } from "../../lib/auth/mobileIdentity";
 import { useExternalSolanaWallet } from "../../lib/privy/ExternalSolanaWalletProvider";
 import { getReflectionCreditBalance } from "../../lib/credits/processAnky";
 import { CREDIT_PRODUCTS, type CreditProduct } from "../../lib/credits/products";
@@ -57,6 +61,7 @@ import {
 } from "../../lib/credits/revenueCatCredits";
 import { getPublicEnv } from "../../lib/config/env";
 import { useAnkyPrivyWallet } from "../../lib/privy/useAnkyPrivyWallet";
+import * as Haptics from "expo-haptics";
 import { NotificationSettingsModal } from "../../notifications/NotificationSettingsModal";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -90,10 +95,11 @@ type LoomInfoProps = NativeStackScreenProps<RootStackParamList, "LoomInfo">;
 type IconName = "account" | "credits" | "exportData" | "loom" | "privacy";
 type RowVariant = "danger" | "highlight" | "normal";
 type ActionVariant = "danger" | "primary" | "secondary";
-type RecentCreditUsage = {
-  fileName: string;
-  receipt: ProcessingReceiptSidecar;
-  sessionHash: string;
+type CreditProductVisualState = "dimmed" | "idle" | "processing" | "success";
+type CreditTransferRun = {
+  from: LayoutRectangle;
+  productId: string;
+  to: LayoutRectangle;
 };
 
 const assets = {
@@ -634,36 +640,66 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
 
 export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const [balance, setBalance] = useState(0);
+  const [displayBalance, setDisplayBalance] = useState(0);
+  const balanceValue = useRef(new Animated.Value(0)).current;
+  const displayBalanceRef = useRef(0);
+  const transferProgress = useRef(new Animated.Value(0)).current;
   const [message, setMessage] = useState("");
   const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
   const [purchaseStatus, setPurchaseStatus] =
     useState<RevenueCatCreditStatus>(getRevenueCatCreditStatus());
-  const [recentUsage, setRecentUsage] = useState<RecentCreditUsage[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<CreditLedgerEntry[]>([]);
+  const [successProductId, setSuccessProductId] = useState<string | null>(null);
+  const [transferRun, setTransferRun] = useState<CreditTransferRun | null>(null);
+  const [heroLayout, setHeroLayout] = useState<LayoutRectangle | null>(null);
+  const [packListLayout, setPackListLayout] = useState<LayoutRectangle | null>(null);
+  const [cardLayouts, setCardLayouts] = useState<Record<string, LayoutRectangle>>({});
   const [storePackages, setStorePackages] = useState<
     Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>>
   >({});
 
   useEffect(() => {
+    const listenerId = balanceValue.addListener(({ value }) => {
+      const rounded = Math.max(0, Math.round(value));
+      displayBalanceRef.current = rounded;
+      setDisplayBalance(rounded);
+    });
+
+    return () => {
+      balanceValue.removeListener(listenerId);
+    };
+  }, [balanceValue]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function load() {
-      const [localBalance, files] = await Promise.all([
+      const [localBalance, session, identityId] = await Promise.all([
         getReflectionCreditBalance(),
-        listSavedAnkyFiles(),
+        getStoredBackendAuthSession(),
+        getMobileApiIdentityId(),
       ]);
       let nextBalance = localBalance;
+      let nextLedgerEntries: CreditLedgerEntry[] = [];
       let nextStorePackages: Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>> = {};
       let nextMessage = "";
+      const api = getAnkyApiClient();
 
       await configureRevenueCat().catch((error: unknown) => {
         console.warn("RevenueCat credits unavailable.", error);
       });
 
+      if (api != null && session != null) {
+        await api.claimWelcomeCreditGift(session.sessionToken).catch((error: unknown) => {
+          console.warn("Welcome credits grant failed.", error);
+        });
+      }
+
       if (getRevenueCatCreditStatus() === "available") {
         try {
           const [packages, revenueCatBalance] = await Promise.all([
             getCreditsOfferingPackages(),
-            getRevenueCatCreditBalance(),
+            getRevenueCatCreditBalance({ forceRefresh: session != null }),
           ]);
 
           nextBalance = revenueCatBalance;
@@ -680,31 +716,25 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         }
       }
 
-      const receipts = await Promise.all(
-        files.map(async (file) => ({
-          file,
-          receipt: await readProcessingReceipt(file.hash),
-        })),
-      );
-      const sortedReceipts = receipts
-        .filter((item): item is { file: SavedAnkyFile; receipt: ProcessingReceiptSidecar } =>
-          item.receipt != null,
-        )
-        .map((item) => ({
-          fileName: item.file.fileName,
-          receipt: item.receipt,
-          sessionHash: item.file.hash,
-        }))
-        .sort(
-          (left, right) =>
-            Date.parse(right.receipt.created_at) - Date.parse(left.receipt.created_at),
-        );
+      if (api != null) {
+        nextLedgerEntries = await api
+          .getCreditLedgerHistory({
+            identityId,
+            sessionToken: session?.sessionToken,
+          })
+          .then((response) => response.entries)
+          .catch((error: unknown) => {
+            console.warn("Credit history load failed.", error);
+            return [];
+          });
+      }
 
       if (mounted) {
         setBalance(nextBalance);
+        setBalanceImmediately(nextBalance);
         setMessage(nextMessage);
         setPurchaseStatus(getRevenueCatCreditStatus());
-        setRecentUsage(sortedReceipts.slice(0, 3));
+        setLedgerEntries(nextLedgerEntries);
         setStorePackages(nextStorePackages);
       }
     }
@@ -740,12 +770,12 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     setMessage("");
 
     if (purchaseStatus === "pending") {
-      setMessage("iap is still loading.");
+      setMessage("credits are still loading.");
       return;
     }
 
     if (purchaseStatus !== "available") {
-      setMessage("iap unavailable in this build.");
+      setMessage("purchases unavailable in this build.");
       return;
     }
 
@@ -754,32 +784,34 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       return;
     }
 
-    Alert.alert("buy credits?", getCreditPurchaseConfirmationMessage(product), [
-      { style: "cancel", text: "cancel" },
-      {
-        onPress: () => {
-          void performPurchase(product);
-        },
-        text: "continue",
-      },
-    ]);
+    void triggerSelectionHaptic();
+    void performPurchase(product);
   }
 
   async function performPurchase(product: CreditProduct) {
     setPurchaseBusyId(product.id);
+    setSuccessProductId(null);
     setMessage("");
 
     try {
       const result = await purchaseCreditsPackage(product.revenueCatPackageId);
 
       if (result.status === "completed") {
-        const nextBalance = await getRevenueCatCreditBalance().catch(() => balance);
+        await syncSuccessfulPurchase(product, result).catch((error: unknown) => {
+          console.warn("Credit purchase history sync failed.", error);
+        });
+        const nextBalance = await getRevenueCatCreditBalance({ forceRefresh: true }).catch(
+          () => balance + product.totalCredits,
+        );
         setMessage("credits added.");
         setBalance(nextBalance);
+        runPurchaseSuccess(product.id, nextBalance);
+        await triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
         return;
       }
 
       setMessage(result.message);
+      await triggerSelectionHaptic();
     } catch (error) {
       console.error(error);
       setMessage(
@@ -787,9 +819,94 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
           ? error.message
           : "purchase failed.",
       );
+      await triggerNotificationHaptic(Haptics.NotificationFeedbackType.Error);
     } finally {
       setPurchaseBusyId(null);
     }
+  }
+
+  async function syncSuccessfulPurchase(
+    product: CreditProduct,
+    result: Extract<Awaited<ReturnType<typeof purchaseCreditsPackage>>, { status: "completed" }>,
+  ) {
+    const [identityId, session] = await Promise.all([
+      getMobileApiIdentityId(),
+      getStoredBackendAuthSession(),
+    ]);
+    const api = getAnkyApiClient();
+
+    if (api == null) {
+      return;
+    }
+
+    const transactionId =
+      result.transactionId.trim().length > 0
+        ? result.transactionId
+        : `${result.productId}:${result.purchasedAt}`;
+    const response = await api.syncCreditPurchaseHistory(
+      {
+        identityId,
+        packageId: product.id,
+        productId: result.productId,
+        purchaseToken: result.purchaseToken,
+        purchasedAt: result.purchasedAt,
+        transactionId,
+      },
+      session?.sessionToken,
+    );
+
+    setLedgerEntries(response.entries);
+  }
+
+  function setBalanceImmediately(nextBalance: number) {
+    displayBalanceRef.current = nextBalance;
+    setDisplayBalance(nextBalance);
+    balanceValue.setValue(nextBalance);
+  }
+
+  function animateBalanceTo(nextBalance: number) {
+    balanceValue.stopAnimation();
+    balanceValue.setValue(displayBalanceRef.current);
+    Animated.timing(balanceValue, {
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      toValue: nextBalance,
+      useNativeDriver: false,
+    }).start(() => {
+      displayBalanceRef.current = nextBalance;
+      setDisplayBalance(nextBalance);
+    });
+  }
+
+  function runPurchaseSuccess(productId: string, nextBalance: number) {
+    setSuccessProductId(productId);
+    animateBalanceTo(nextBalance);
+
+    const cardLayout = cardLayouts[productId];
+    const from =
+      cardLayout != null
+        ? {
+            ...cardLayout,
+            x: cardLayout.x + (packListLayout?.x ?? 0),
+            y: cardLayout.y + (packListLayout?.y ?? 0),
+          }
+        : null;
+    if (from != null && heroLayout != null) {
+      setTransferRun({ from, productId, to: heroLayout });
+      transferProgress.setValue(0);
+      Animated.timing(transferProgress, {
+        duration: 940,
+        easing: Easing.inOut(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: true,
+      }).start(() => {
+        setTransferRun(null);
+      });
+    }
+
+    setTimeout(() => {
+      setSuccessProductId((current) => (current === productId ? null : current));
+    }, 1800);
   }
 
   return (
@@ -798,51 +915,54 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       subtitle="fuel reflections and deeper mirrors."
       title="credits"
     >
-      <YouHeroCard
-        icon={assets.icons.credits}
-        status={getPurchaseStatusLabel(purchaseStatus)}
-        subtitle="write freely. spend credits only when you ask anky to reflect."
-        title={`${balance} available`}
-      />
-
-      <CreditCostCard />
-
-      <View style={styles.stack}>
-        {CREDIT_PRODUCTS.map((product) => (
-          <CreditProductRow
-            busy={purchaseBusyId === product.id}
-            key={product.id}
-            onPress={() => startPurchase(product)}
-            product={product}
-            storePackage={storePackages[product.revenueCatPackageId]}
+      <View style={styles.creditsScene}>
+        <View onLayout={(event) => setHeroLayout(event.nativeEvent.layout)}>
+          <YouHeroCard
+            icon={assets.icons.credits}
+            subtitle="write freely. spend credits only when you ask anky to reflect."
+            title={`${displayBalance} available`}
           />
-        ))}
+        </View>
+
+        <CreditTransferTrail progress={transferProgress} run={transferRun} />
+
+        <CreditCostCard />
+
+        <View
+          onLayout={(event) => setPackListLayout(event.nativeEvent.layout)}
+          style={styles.stack}
+        >
+          {CREDIT_PRODUCTS.map((product) => (
+            <CreditProductRow
+              key={product.id}
+              onLayout={(layout) => {
+                setCardLayouts((current) => ({ ...current, [product.id]: layout }));
+              }}
+              onPress={() => startPurchase(product)}
+              product={product}
+              state={getCreditProductVisualState({
+                busyId: purchaseBusyId,
+                productId: product.id,
+                successId: successProductId,
+              })}
+              storePackage={storePackages[product.revenueCatPackageId]}
+            />
+          ))}
+        </View>
       </View>
 
-      <SectionTitle label="recent usage" />
-      {recentUsage.length === 0 ? (
-        <YouInfoRow
-          icon={assets.icons.privacy}
-          subtitle="no credits spent yet."
-          title="quiet so far"
-        />
+      <SectionTitle label="history" />
+      {ledgerEntries.length === 0 ? (
+        <Text style={styles.creditHistoryEmpty}>no credit history yet.</Text>
       ) : (
         <View style={styles.stack}>
-          {recentUsage.map((receipt) => (
-            <YouInfoRow
-              icon={assets.icons.credits}
-              key={`${receipt.sessionHash}-${receipt.receipt.created_at}`}
-              onPress={() => navigation.navigate("Entry", { fileName: receipt.fileName })}
-              rightText={`${receipt.receipt.credits_spent}`}
-              subtitle={`${formatShortDate(receipt.receipt.created_at)} · ${receipt.receipt.credits_remaining} remaining`}
-              title={receipt.receipt.processing_type === "full_anky" ? "full reflection" : "reflection"}
-            />
+          {ledgerEntries.map((entry) => (
+            <CreditHistoryRow entry={entry} key={entry.id} />
           ))}
         </View>
       )}
 
       <InlineMessage text={message} />
-      <OwnershipCard text="mobile credits use the app store or play store. writing is always free." />
     </YouDetailShell>
   );
 }
@@ -1239,34 +1359,109 @@ function ExportItemRow({
 }
 
 function CreditProductRow({
-  busy,
+  onLayout,
   onPress,
   product,
+  state,
   storePackage,
 }: {
-  busy: boolean;
+  onLayout?: (layout: LayoutRectangle) => void;
   onPress: () => void;
   product: CreditProduct;
+  state: CreditProductVisualState;
   storePackage?: AnkyCreditStorePackage;
 }) {
+  const active = state === "processing";
+  const dimmed = state === "dimmed";
+  const success = state === "success";
+  const pulse = useRef(new Animated.Value(0)).current;
   const priceLabel = storePackage?.priceLabel ?? product.fallbackPriceLabel;
-  const creditsLine =
-    product.bonusCredits > 0
-      ? `${product.totalCredits} total · ${product.bonusCredits} bonus`
-      : `${product.totalCredits} total`;
+
+  useEffect(() => {
+    if (!active) {
+      pulse.stopAnimation();
+      pulse.setValue(success ? 1 : 0);
+      return;
+    }
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          duration: 820,
+          easing: Easing.inOut(Easing.quad),
+          toValue: 1,
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulse, {
+          duration: 820,
+          easing: Easing.inOut(Easing.quad),
+          toValue: 0,
+          useNativeDriver: false,
+        }),
+      ]),
+    );
+
+    animation.start();
+
+    return () => {
+      animation.stop();
+    };
+  }, [active, pulse, success]);
 
   return (
-    <YouInfoRow
-      badge={product.recommended ? "recommended" : priceLabel}
-      icon={assets.icons.credits}
-      onPress={onPress}
-      rightText={busy ? "buying" : product.recommended ? priceLabel : undefined}
-      subtitle={product.description}
-      title={product.title}
-      variant={product.recommended ? "highlight" : "normal"}
+    <Animated.View
+      onLayout={(event) => onLayout?.(event.nativeEvent.layout)}
+      style={[
+        styles.creditProductShell,
+        dimmed && styles.creditProductDimmed,
+        {
+          shadowOpacity: pulse.interpolate({
+            inputRange: [0, 1],
+            outputRange: success ? [0.18, 0.3] : [0.1, 0.28],
+          }),
+          transform: [
+            {
+              scale: pulse.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, active ? 1.01 : 1],
+              }),
+            },
+          ],
+        },
+      ]}
     >
-      <Text style={styles.creditProductMeta}>{creditsLine}</Text>
-    </YouInfoRow>
+      <Pressable
+        accessibilityRole="button"
+        disabled={active || dimmed}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.creditProductPanel,
+          product.recommended && styles.creditProductRecommended,
+          active && styles.creditProductProcessing,
+          success && styles.creditProductSuccess,
+          pressed && !active && !dimmed && styles.pressed,
+        ]}
+      >
+        <View pointerEvents="none" style={styles.creditProductAura} />
+        {active ? <Animated.View pointerEvents="none" style={[styles.creditProductShimmer, {
+          opacity: pulse.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.18, 0.5],
+          }),
+        }]} /> : null}
+        <View style={styles.creditProductIconFrame}>
+          <Image accessibilityIgnoresInvertColors source={assets.icons.credits} style={styles.rowIcon} />
+        </View>
+        <View style={styles.creditProductCopy}>
+          <View style={styles.creditProductTitleRow}>
+            <Text style={styles.creditProductTitle}>{product.title}</Text>
+            {product.recommended ? <Pill label="recommended" variant="highlight" /> : null}
+          </View>
+          <Text style={styles.creditProductSubtitle}>{product.description}</Text>
+        </View>
+        <Text style={styles.creditProductPrice}>{priceLabel}</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -1276,7 +1471,6 @@ function CreditCostCard() {
       {[
         "1 credit = simple mirror",
         "5 credits = full mirror",
-        "8 credits = deep mirror later",
         "writing is always free",
       ].map((line) => (
         <View key={line} style={styles.creditCostLine}>
@@ -1288,26 +1482,107 @@ function CreditCostCard() {
   );
 }
 
-function getCreditPurchaseConfirmationMessage(product: CreditProduct): string {
-  const base = `buy ${product.totalCredits} credits?`;
+function CreditHistoryRow({ entry }: { entry: CreditLedgerEntry }) {
+  const positive = entry.amount > 0;
+  const amount = `${positive ? "+" : ""}${entry.amount}`;
 
-  if (product.bonusCredits <= 0) {
-    return base;
-  }
-
-  return `${base} includes ${product.bonusCredits} bonus credits.`;
+  return (
+    <YouInfoRow
+      icon={assets.icons.credits}
+      rightText={amount}
+      subtitle={formatShortDate(entry.createdAt)}
+      title={entry.label}
+      variant={positive ? "highlight" : "normal"}
+    />
+  );
 }
 
-function getPurchaseStatusLabel(status: RevenueCatCreditStatus): string {
-  if (status === "available") {
-    return "native iap";
+function CreditTransferTrail({
+  progress,
+  run,
+}: {
+  progress: Animated.Value;
+  run: CreditTransferRun | null;
+}) {
+  if (run == null) {
+    return null;
   }
 
-  if (status === "pending") {
-    return "loading";
+  const startX = run.from.x + run.from.width * 0.5 - 14;
+  const startY = run.from.y + run.from.height * 0.42 - 14;
+  const endX = run.to.x + run.to.width * 0.5 - 14;
+  const endY = run.to.y + run.to.height * 0.52 - 14;
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [startX, endX],
+  });
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [startY, endY],
+  });
+  const opacity = progress.interpolate({
+    inputRange: [0, 0.15, 0.82, 1],
+    outputRange: [0, 1, 0.9, 0],
+  });
+  const scale = progress.interpolate({
+    inputRange: [0, 0.55, 1],
+    outputRange: [0.7, 1.12, 0.76],
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.creditTransferOrb,
+        {
+          opacity,
+          transform: [{ translateX }, { translateY }, { scale }],
+        },
+      ]}
+    >
+      <View style={styles.creditTransferCore} />
+    </Animated.View>
+  );
+}
+
+function getCreditProductVisualState({
+  busyId,
+  productId,
+  successId,
+}: {
+  busyId: string | null;
+  productId: string;
+  successId: string | null;
+}): CreditProductVisualState {
+  if (successId === productId) {
+    return "success";
   }
 
-  return "iap unavailable";
+  if (busyId === productId) {
+    return "processing";
+  }
+
+  if (busyId != null) {
+    return "dimmed";
+  }
+
+  return "idle";
+}
+
+async function triggerSelectionHaptic() {
+  try {
+    await Haptics.selectionAsync();
+  } catch {
+    // Haptics are unavailable on some simulators and web builds.
+  }
+}
+
+async function triggerNotificationHaptic(type: Haptics.NotificationFeedbackType) {
+  try {
+    await Haptics.notificationAsync(type);
+  } catch {
+    // Haptics are unavailable on some simulators and web builds.
+  }
 }
 
 function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: number }> }) {
@@ -1624,13 +1899,131 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textTransform: "lowercase",
   },
-  creditProductMeta: {
-    color: "rgba(242, 211, 146, 0.88)",
+  creditHistoryEmpty: {
+    color: COPY_DIM,
     fontFamily: SERIF,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 10,
+    textAlign: "center",
     textTransform: "lowercase",
+  },
+  creditProductAura: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(244, 211, 146, 0.035)",
+  },
+  creditProductCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  creditProductDimmed: {
+    opacity: 0.48,
+  },
+  creditProductIconFrame: {
+    alignItems: "center",
+    backgroundColor: "rgba(9, 8, 20, 0.72)",
+    borderColor: "rgba(217, 143, 63, 0.46)",
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    marginRight: 12,
+    width: 46,
+  },
+  creditProductPanel: {
+    alignItems: "center",
+    backgroundColor: "rgba(13, 12, 27, 0.78)",
+    borderColor: "rgba(217, 143, 63, 0.48)",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    minHeight: 76,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  creditProductPrice: {
+    color: "rgba(242, 211, 146, 0.92)",
+    fontFamily: SERIF,
+    fontSize: 13,
+    lineHeight: 17,
+    marginLeft: 10,
+    minWidth: 54,
+    textAlign: "right",
+  },
+  creditProductProcessing: {
+    borderColor: "rgba(242, 211, 146, 0.82)",
+    backgroundColor: "rgba(31, 21, 54, 0.84)",
+  },
+  creditProductRecommended: {
+    borderColor: "rgba(232, 113, 207, 0.58)",
+  },
+  creditProductShell: {
+    borderRadius: 18,
+    shadowColor: GOLD_BRIGHT,
+    shadowOffset: { height: 0, width: 0 },
+    shadowRadius: 18,
+  },
+  creditProductShimmer: {
+    bottom: -20,
+    position: "absolute",
+    right: -36,
+    top: -20,
+    transform: [{ rotate: "12deg" }],
+    width: 78,
+    backgroundColor: "rgba(242, 211, 146, 0.18)",
+  },
+  creditProductSubtitle: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 12.5,
+    lineHeight: 17,
+    marginTop: 2,
+    textTransform: "lowercase",
+  },
+  creditProductSuccess: {
+    backgroundColor: "rgba(20, 43, 31, 0.72)",
+    borderColor: "rgba(139, 234, 166, 0.72)",
+  },
+  creditProductTitle: {
+    color: GOLD_BRIGHT,
+    flexShrink: 1,
+    fontFamily: SERIF,
+    fontSize: 16,
+    lineHeight: 20,
+    textTransform: "lowercase",
+  },
+  creditProductTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  creditsScene: {
+    position: "relative",
+  },
+  creditTransferCore: {
+    backgroundColor: "rgba(139, 234, 166, 0.88)",
+    borderRadius: 8,
+    height: 16,
+    shadowColor: "#8BEAA6",
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 16,
+    width: 16,
+  },
+  creditTransferOrb: {
+    alignItems: "center",
+    borderColor: "rgba(242, 211, 146, 0.4)",
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 28,
+    zIndex: 8,
   },
   disabled: {
     opacity: 0.62,

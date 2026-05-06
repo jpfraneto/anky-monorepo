@@ -16,11 +16,13 @@ import type { RootStackParamList } from "../../App";
 import { GlassCard } from "../components/anky/GlassCard";
 import { RitualButton } from "../components/anky/RitualButton";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
+import { getAnkyApiClient } from "../lib/api/client";
 import {
   ANKY_APP_URL,
   getPrivySignInDomain,
   PRIVY_OAUTH_REDIRECT_PATH,
 } from "../lib/auth/privyConfig";
+import { configureRevenueCat } from "../lib/credits/revenueCatCredits";
 import {
   type BackendWalletAuthProof,
   clearBackendAuthSession,
@@ -70,7 +72,16 @@ export function AuthScreen({ navigation }: Props) {
     }
 
     try {
-      await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+      const session = await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+      await configureRevenueCat().catch((error: unknown) => {
+        console.warn("RevenueCat identity sync failed after login.", error);
+      });
+      const api = getAnkyApiClient();
+      if (api != null) {
+        await api.claimWelcomeCreditGift(session.sessionToken).catch((error: unknown) => {
+          console.warn("Welcome credits grant failed after login.", error);
+        });
+      }
       setMessage("connected");
     } catch (error) {
       console.warn("Backend session exchange failed after Privy login.", error);

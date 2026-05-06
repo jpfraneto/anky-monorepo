@@ -6,6 +6,8 @@ import {
   CreateCheckoutResponse,
   CreateProcessingTicketRequest,
   CreateProcessingTicketResponse,
+  ClaimWelcomeCreditGiftResponse,
+  CreditLedgerResponse,
   CreditBalanceResponse,
   MobileCreditResponse,
   MobileLoomLookupResponse,
@@ -31,6 +33,8 @@ import {
   SealLookupResponse,
   SendThreadMessageRequest,
   SendThreadMessageResponse,
+  SyncCreditPurchaseHistoryRequest,
+  SyncCreditPurchaseHistoryResponse,
 } from "./types";
 
 type FetchImpl = typeof fetch;
@@ -153,6 +157,47 @@ export class AnkyApiClient {
       body: JSON.stringify(request),
       method: "POST",
     });
+  }
+
+  getCreditLedgerHistory({
+    identityId,
+    sessionToken,
+  }: {
+    identityId?: string;
+    sessionToken?: string;
+  } = {}): Promise<CreditLedgerResponse> {
+    const params = new URLSearchParams();
+
+    if (identityId != null) {
+      params.set("identityId", identityId);
+    }
+
+    const query = params.toString();
+
+    return this.request<CreditLedgerResponse>(
+      `/api/v1/credits/history${query.length > 0 ? `?${query}` : ""}`,
+      withBearerAuth({}, sessionToken),
+    );
+  }
+
+  claimWelcomeCreditGift(sessionToken: string): Promise<ClaimWelcomeCreditGiftResponse> {
+    return this.request<ClaimWelcomeCreditGiftResponse>(
+      "/api/v1/credits/welcome-gift",
+      withBearerAuth({ method: "POST" }, sessionToken),
+    );
+  }
+
+  syncCreditPurchaseHistory(
+    request: SyncCreditPurchaseHistoryRequest,
+    sessionToken?: string,
+  ): Promise<SyncCreditPurchaseHistoryResponse> {
+    return this.request<SyncCreditPurchaseHistoryResponse>(
+      "/api/v1/credits/history/sync-purchase",
+      withBearerAuth({
+        body: JSON.stringify(request),
+        method: "POST",
+      }, sessionToken),
+    );
   }
 
   async createProcessingTicket(
@@ -295,6 +340,20 @@ export class AnkyApiClient {
 
     return (await response.json()) as T;
   }
+}
+
+function withBearerAuth(init: RequestInit, sessionToken?: string): RequestInit {
+  if (sessionToken == null || sessionToken.length === 0) {
+    return init;
+  }
+
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${sessionToken}`);
+
+  return {
+    ...init,
+    headers,
+  };
 }
 
 export function createAnkyApiClient(options: AnkyApiClientOptions): AnkyApiClient {

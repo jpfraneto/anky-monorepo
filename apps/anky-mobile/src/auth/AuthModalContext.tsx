@@ -37,6 +37,8 @@ import {
   exchangePrivyAccessTokenForBackendSession,
   hasConfiguredBackend,
 } from "../lib/auth/backendSession";
+import { getAnkyApiClient } from "../lib/api/client";
+import { configureRevenueCat } from "../lib/credits/revenueCatCredits";
 import {
   type ExternalWalletProviderName,
   useExternalSolanaWallet,
@@ -136,7 +138,16 @@ function AuthModal({
 
     if (accessToken != null && hasConfiguredBackend()) {
       try {
-        await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+        const session = await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+        await configureRevenueCat().catch((error: unknown) => {
+          console.warn("RevenueCat identity sync failed after login.", error);
+        });
+        const api = getAnkyApiClient();
+        if (api != null) {
+          await api.claimWelcomeCreditGift(session.sessionToken).catch((error: unknown) => {
+            console.warn("Welcome credits grant failed after login.", error);
+          });
+        }
       } catch (error) {
         console.warn("Backend session exchange failed after Privy login.", error);
       }
