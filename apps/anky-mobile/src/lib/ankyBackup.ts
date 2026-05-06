@@ -19,7 +19,7 @@ import {
   createAnkyBackupManifest,
   fromBackupArchivePath,
   getAnkyBackupFileName,
-  isSafeBackupRelativePath,
+  isBackupEligibleRelativePath,
   parseAnkyBackupManifest,
   toBackupArchivePath,
 } from "./ankyBackupManifest";
@@ -225,7 +225,7 @@ async function listArchiveFilesInDirectory(
     fileNames.map(async (fileName) => {
       const relativePath = `${relativeDirectory}${fileName}`;
 
-      if (!isSafeBackupRelativePath(relativePath)) {
+      if (!isBackupEligibleRelativePath(relativePath)) {
         return [];
       }
 

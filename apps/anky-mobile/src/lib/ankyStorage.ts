@@ -10,8 +10,8 @@ import {
 import { resolveAnkyLocalState } from "./ankyState";
 import type { AnkyLocalState } from "./ankyState";
 import type { ProcessingArtifact } from "./api/types";
-import type { AnkySolanaCluster } from "./solana/ankySolanaConfig";
-import type { LoomSeal } from "./solana/types";
+import { ankySolanaConfig, type AnkySolanaCluster } from "./solana/ankySolanaConfig";
+import { getLoomSealProofState, type LoomSeal } from "./solana/types";
 
 const ANKY_DIRECTORY = "anky/";
 const ACTIVE_DRAFT_FILE = "active.anky.draft";
@@ -520,6 +520,7 @@ async function toSavedAnkyFile(
   const hashMatches = knownHashMatch ?? (await verifyHash(raw, hash));
   const preview = reconstructText(raw).slice(0, 96);
   const seals = await readLoomSealsForHash(hash);
+  const latestSeal = seals.at(-1);
   const artifactKinds = await listArtifactKindsForHash(hash);
 
   return {
@@ -527,11 +528,12 @@ async function toSavedAnkyFile(
     fileName,
     hash,
     hashMatches,
-    latestSeal: seals.at(-1),
+    latestSeal,
     localState: resolveAnkyLocalState({
       artifactCount: artifactKinds.length,
       closed: parsed.closed,
       hashMatches,
+      proofStatus: getLoomSealProofState(latestSeal, ankySolanaConfig.proofVerifierAuthority),
       sealCount: seals.length,
       valid: parsed.valid,
     }),
@@ -640,6 +642,7 @@ function toLoomSeal(seal: AnkySealSidecar): LoomSeal {
     network: seal.network,
     sessionHash: seal.session_hash,
     txSignature: seal.signature,
+    utcDay: seal.utc_day,
     writer: seal.writer,
   };
 }

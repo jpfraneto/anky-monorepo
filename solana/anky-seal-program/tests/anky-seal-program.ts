@@ -1,12 +1,8 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import {
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-} from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import assert from "assert";
+import crypto from "crypto";
 
 const MPL_CORE_PROGRAM_ID = new PublicKey(
   "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
@@ -16,6 +12,10 @@ const MPL_CORE_PROGRAM_ID = new PublicKey(
 const OFFICIAL_COLLECTION_DEVNET = new PublicKey(
   "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
 );
+const CORE_INTEGRATION_LOOM_ASSET_ENV = "ANKY_CORE_INTEGRATION_LOOM_ASSET";
+const CORE_INTEGRATION_COLLECTION_ENV = "ANKY_CORE_INTEGRATION_COLLECTION";
+const ALLOW_MAINNET_CORE_INTEGRATION_ENV =
+  "ANKY_ALLOW_MAINNET_CORE_INTEGRATION_TEST";
 
 type FetchedLoomState = {
   loomAsset: PublicKey;
@@ -37,35 +37,36 @@ describe("anky-seal-program", () => {
     loomState: LoomStateAccountClient;
   }).loomState;
 
-  // Real Core verification requires a Core-serialized Asset account. The old
-  // placeholder test created a zero-data account owned by Core, which must not
-  // pass anymore.
-  it.skip("seals one current-day .anky hash and updates LoomState lineage with a real Core asset", async () => {
+  it("seals one current-day .anky hash and updates LoomState lineage with an owned real Core asset", async function () {
+    this.timeout(120_000);
+
+    const loomAssetValue = process.env[CORE_INTEGRATION_LOOM_ASSET_ENV];
+    if (loomAssetValue == null || loomAssetValue.trim() === "") {
+      this.skip();
+      return;
+    }
+
+    if (isMainnetEndpoint(provider.connection.rpcEndpoint)) {
+      assert.strictEqual(
+        process.env[ALLOW_MAINNET_CORE_INTEGRATION_ENV],
+        "true",
+        `refusing mainnet Core integration test without ${ALLOW_MAINNET_CORE_INTEGRATION_ENV}=true`,
+      );
+    }
+
     const writer = provider.wallet.publicKey;
-    const loomAsset = Keypair.generate();
-
-    const lamports =
-      await provider.connection.getMinimumBalanceForRentExemption(0);
-
-    await provider.sendAndConfirm(
-      new Transaction().add(
-        SystemProgram.createAccount({
-          fromPubkey: writer,
-          newAccountPubkey: loomAsset.publicKey,
-          lamports,
-          space: 0,
-          programId: MPL_CORE_PROGRAM_ID,
-        }),
-      ),
-      [loomAsset],
+    const loomAsset = new PublicKey(loomAssetValue.trim());
+    const loomCollection = new PublicKey(
+      process.env[CORE_INTEGRATION_COLLECTION_ENV]?.trim() ||
+        OFFICIAL_COLLECTION_DEVNET.toBase58(),
     );
 
     const [loomState] = PublicKey.findProgramAddressSync(
-      [Buffer.from("loom_state"), loomAsset.publicKey.toBuffer()],
+      [Buffer.from("loom_state"), loomAsset.toBuffer()],
       program.programId,
     );
 
-    const firstHash = new Uint8Array(32).fill(7);
+    const firstHash = crypto.randomBytes(32);
     const utcDay = Math.floor(Date.now() / 86_400_000);
     const utcDayBytes = Buffer.alloc(8);
     utcDayBytes.writeBigInt64LE(BigInt(utcDay));
@@ -82,15 +83,15 @@ describe("anky-seal-program", () => {
       .sealAnky(Array.from(firstHash), new anchor.BN(utcDay))
       .accounts({
         writer,
-        loomAsset: loomAsset.publicKey,
-        loomCollection: OFFICIAL_COLLECTION_DEVNET,
+        loomAsset,
+        loomCollection,
         dailySeal,
         hashSeal,
       } as never)
       .rpc();
 
     const afterFirst = await loomStateAccount.fetch(loomState);
-    assert.strictEqual(afterFirst.loomAsset.toBase58(), loomAsset.publicKey.toBase58());
+    assert.strictEqual(afterFirst.loomAsset.toBase58(), loomAsset.toBase58());
     assert.strictEqual(afterFirst.totalSeals.toNumber(), 1);
     assert.deepStrictEqual(
       Array.from(afterFirst.latestSessionHash),
@@ -99,3 +100,7 @@ describe("anky-seal-program", () => {
     assert.notDeepStrictEqual(Array.from(afterFirst.rollingRoot), new Array(32).fill(0));
   });
 });
+
+function isMainnetEndpoint(endpoint: string): boolean {
+  return endpoint.toLowerCase().includes("mainnet");
+}

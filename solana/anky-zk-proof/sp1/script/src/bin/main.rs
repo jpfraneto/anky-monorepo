@@ -4,7 +4,7 @@ use anky_zk_proof::ProofReceipt;
 use clap::Parser;
 use sp1_sdk::{
     blocking::{ProveRequest, Prover, ProverClient},
-    include_elf, Elf, HashableKey, ProvingKey, SP1Stdin,
+    include_elf, Elf, HashableKey, ProvingKey, SP1ProofWithPublicValues, SP1Stdin,
 };
 
 const ANKY_SP1_ELF: Elf = include_elf!("anky-sp1-program");
@@ -13,7 +13,7 @@ const ANKY_SP1_ELF: Elf = include_elf!("anky-sp1-program");
 #[command(
     author,
     version,
-    about = "Execute or prove the Anky .anky verifier inside SP1."
+    about = "Execute, prove, or verify the Anky .anky verifier inside SP1."
 )]
 struct Args {
     #[arg(long)]
@@ -23,10 +23,13 @@ struct Args {
     prove: bool,
 
     #[arg(long)]
-    file: PathBuf,
+    verify: bool,
+
+    #[arg(long)]
+    file: Option<PathBuf>,
 
     #[arg(long, alias = "wallet")]
-    writer: String,
+    writer: Option<String>,
 
     #[arg(long)]
     expected_hash: Option<String>,
@@ -36,6 +39,9 @@ struct Args {
 
     #[arg(long)]
     proof_out: Option<PathBuf>,
+
+    #[arg(long)]
+    proof: Option<PathBuf>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,17 +49,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
 
     let args = Args::parse();
-    if args.execute == args.prove {
-        return Err("specify exactly one of --execute or --prove".into());
+    let mode_count = [args.execute, args.prove, args.verify]
+        .iter()
+        .filter(|enabled| **enabled)
+        .count();
+    if mode_count != 1 {
+        return Err("specify exactly one of --execute, --prove, or --verify".into());
     }
 
-    let raw = fs::read_to_string(&args.file)?;
+    let client = ProverClient::from_env();
+
+    if args.verify {
+        let proof_path = args
+            .proof
+            .as_ref()
+            .ok_or("--proof is required with --verify")?;
+        let proof = SP1ProofWithPublicValues::load(proof_path)?;
+        let pk = client.setup(ANKY_SP1_ELF)?;
+        println!("vkey: {}", pk.verifying_key().bytes32());
+        client.verify(&proof, pk.verifying_key(), None)?;
+
+        let receipt = decode_receipt(proof.public_values.as_slice())?;
+        write_receipt(&receipt, args.receipt_out.as_ref())?;
+        println!("{}", serde_json::to_string_pretty(&receipt)?);
+        println!("proof verified");
+        return Ok(());
+    }
+
+    let file = args
+        .file
+        .as_ref()
+        .ok_or("--file is required with --execute or --prove")?;
+    let writer = args
+        .writer
+        .as_ref()
+        .ok_or("--writer is required with --execute or --prove")?;
+    let raw = fs::read_to_string(file)?;
     let mut stdin = SP1Stdin::new();
     stdin.write(&raw);
-    stdin.write(&args.writer);
+    stdin.write(writer);
     stdin.write(&args.expected_hash);
-
-    let client = ProverClient::from_env();
 
     if args.execute {
         let (output, report) = client.execute(ANKY_SP1_ELF, stdin).run()?;

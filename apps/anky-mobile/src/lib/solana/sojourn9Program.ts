@@ -4,6 +4,8 @@ export type SolanaCluster = "devnet" | "mainnet-beta";
 export type SolanaSealAdapterMode = "mock" | "program";
 
 export const SOJOURN_9_PROGRAM_ID = "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX";
+export const SOJOURN_9_PROOF_VERIFIER_AUTHORITY =
+  "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP";
 export const SOJOURN_9_PROGRAM_NAME = "anky_seal_program";
 export const SOJOURN_9_CURRENT_SEAL_INSTRUCTION = "seal_anky";
 
@@ -11,6 +13,7 @@ export type Sojourn9ProgramConfig = {
   cluster: SolanaCluster;
   hashOnlyLoomSealSupported: boolean;
   programId: string;
+  proofVerifierAuthority: string;
   rpcUrl?: string;
   sealAdapterMode: SolanaSealAdapterMode;
   sealInstruction: typeof SOJOURN_9_CURRENT_SEAL_INSTRUCTION;
@@ -21,6 +24,9 @@ export function getSojourn9ProgramConfig(): Sojourn9ProgramConfig {
     cluster: readCluster(),
     hashOnlyLoomSealSupported: true,
     programId: getPublicEnv("EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID") ?? SOJOURN_9_PROGRAM_ID,
+    proofVerifierAuthority:
+      getPublicEnv("EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY") ??
+      SOJOURN_9_PROOF_VERIFIER_AUTHORITY,
     rpcUrl: getPublicEnv("EXPO_PUBLIC_SOLANA_RPC_URL"),
     sealAdapterMode: readSealAdapterMode(),
     sealInstruction: SOJOURN_9_CURRENT_SEAL_INSTRUCTION,
@@ -30,9 +36,10 @@ export function getSojourn9ProgramConfig(): Sojourn9ProgramConfig {
 export function getSojourn9ProgramStatus(): string {
   const config = getSojourn9ProgramConfig();
   const shortProgramId = `${config.programId.slice(0, 4)}...${config.programId.slice(-4)}`;
+  const shortVerifier = `${config.proofVerifierAuthority.slice(0, 4)}...${config.proofVerifierAuthority.slice(-4)}`;
 
   if (config.hashOnlyLoomSealSupported) {
-    return `${config.cluster} program ${shortProgramId}; hash-only Loom seal enabled; Core ownership proof is incomplete`;
+    return `${config.cluster} program ${shortProgramId}; verifier ${shortVerifier}; hash-only Loom seal enabled; Core ownership checked by seal program`;
   }
 
   return `${config.cluster} configured id ${shortProgramId}; hash-only Loom seal disabled`;

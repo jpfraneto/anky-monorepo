@@ -46,8 +46,10 @@ import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
 import { getCurrentSojournDay, getNextSessionKindForToday } from "../lib/sojourn";
 import type { AnkySessionSummary } from "../lib/sojourn";
 import { getSelectedLoom, type SelectedLoom } from "../lib/solana/loomStorage";
+import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
 import { getUtcDayFromUnixMs, isCurrentUtcDay, sealAnky } from "../lib/solana/sealAnky";
+import { getLoomSealProofState } from "../lib/solana/types";
 import { sendThreadMessage } from "../lib/thread/threadClient";
 import {
   FULL_ANKY_DURATION_MS,
@@ -79,6 +81,8 @@ type PendingReplyRetry = {
 
 type SealProof = {
   network?: "devnet" | "mainnet-beta";
+  proofState?: "failed" | "none" | "proving" | "verified";
+  proofTxSignature?: string;
   txSignature: string;
 };
 
@@ -207,12 +211,14 @@ export function RevealScreen({ navigation, route }: Props) {
       setScreenMode("review");
 
       const routeFileName = route.params?.fileName ?? null;
-      const [nextRaw, nextCredits, nextSessions, nextSelectedLoom] = await Promise.all([
-        routeFileName == null ? readPendingReveal() : readAnkyFile(routeFileName),
-        getReflectionCreditBalance(),
-        listAnkySessionSummaries(),
-        getSelectedLoom(),
-      ]);
+      const [nextRaw, nextCredits, nextSessions, nextSelectedLoom, nextSolanaConfig] =
+        await Promise.all([
+          routeFileName == null ? readPendingReveal() : readAnkyFile(routeFileName),
+          getReflectionCreditBalance(),
+          listAnkySessionSummaries(),
+          getSelectedLoom(),
+          loadMobileSolanaConfig(),
+        ]);
 
       if (!mounted) {
         return;
@@ -244,6 +250,7 @@ export function RevealScreen({ navigation, route }: Props) {
           nextFileName = saved.fileName;
           nextHash = saved.hash;
           nextHashMatches = saved.hashMatches;
+          await hydrateMobileSealReceiptsForHashes([saved.hash]);
           const seals = await readLoomSealsForHash(saved.hash);
           const latestSeal = seals.at(-1) ?? null;
           nextDidSeal = latestSeal != null;
@@ -252,6 +259,11 @@ export function RevealScreen({ navigation, route }: Props) {
               ? null
               : {
                   network: latestSeal.network,
+                  proofState: getLoomSealProofState(
+                    latestSeal,
+                    nextSolanaConfig.proofVerifierAuthority,
+                  ),
+                  proofTxSignature: latestSeal.proofTxSignature,
                   txSignature: latestSeal.txSignature,
                 };
           nextReflection = await readReflectionSidecar(saved.hash);
@@ -404,6 +416,7 @@ export function RevealScreen({ navigation, route }: Props) {
             sessionHash: receipt.session_hash,
             signature: receipt.signature,
             status: "confirmed",
+            utcDay: sessionUtcDay,
             wallet: receipt.writer,
           });
         } catch (recordError) {
@@ -422,6 +435,7 @@ export function RevealScreen({ navigation, route }: Props) {
       setDidSeal(true);
       setSealProof({
         network: receipt.network,
+        proofState: "none",
         txSignature: receipt.signature,
       });
       setActionState("idle");
@@ -867,6 +881,8 @@ function ReviewActions({
         error={sealError}
         isSealing={sealing}
         onSeal={onSealWithLoom}
+        proofState={sealProof?.proofState}
+        proofSignature={sealProof?.proofTxSignature}
         sealNetwork={sealProof?.network}
         sealSignature={sealProof?.txSignature}
         sealed={sealed}
@@ -995,6 +1011,8 @@ type LoomSealStatusProps = {
   error: string;
   isSealing: boolean;
   onSeal: () => void;
+  proofSignature?: string;
+  proofState?: "failed" | "none" | "proving" | "verified";
   sealNetwork?: "devnet" | "mainnet-beta";
   sealSignature?: string;
   sealed: boolean;
@@ -1006,12 +1024,24 @@ function LoomSealStatus({
   error,
   isSealing,
   onSeal,
+  proofSignature,
+  proofState = "none",
   sealNetwork,
   sealSignature,
   sealed,
 }: LoomSealStatusProps) {
   const hasError = error.trim().length > 0;
   const hasSignature = sealSignature != null && sealSignature.length > 0;
+  const visibleSignature = proofSignature ?? sealSignature;
+  const sealedLabel =
+    proofState === "verified"
+      ? "proof verified"
+      : proofState === "proving"
+        ? "proving"
+        : proofState === "failed"
+          ? "proof failed"
+          : "sealed";
+  const proofHasReceipt = proofState === "verified" || proofState === "failed";
 
   if (!canShow && !sealed) {
     return null;
@@ -1020,18 +1050,32 @@ function LoomSealStatus({
   if (sealed) {
     return (
       <View style={styles.loomSealWrap}>
-        <RevealActionButton centered disabled label="sealed" variant="seal" />
-        {hasSignature ? (
+        <RevealActionButton
+          centered
+          disabled
+          label={sealedLabel}
+          variant={proofState === "failed" ? "sealFailed" : "seal"}
+        />
+        {visibleSignature != null && visibleSignature.length > 0 ? (
           <Pressable
-            accessibilityLabel="view seal transaction on solscan"
+            accessibilityLabel="view seal transaction on orb"
             accessibilityRole="link"
             onPress={() => {
-              void openSolscanTx(sealSignature, sealNetwork);
+              void openOrbTx(visibleSignature, sealNetwork);
             }}
             style={({ pressed }) => [styles.txHashPressable, pressed && styles.pressed]}
           >
-            <Text style={styles.txHashLink}>{shortenTx(sealSignature)}</Text>
+            <Text style={styles.txHashLink}>
+              {proofHasReceipt && proofSignature != null ? "proof " : "seal "}
+              {shortenTx(visibleSignature)}
+            </Text>
           </Pressable>
+        ) : null}
+        {proofState === "proving" && !hasSignature ? (
+          <Text style={styles.txHashMuted}>sp1 receipt pending</Text>
+        ) : null}
+        {proofState === "failed" ? (
+          <Text style={styles.txHashMuted}>sp1 receipt failed</Text>
         ) : null}
       </View>
     );
@@ -1042,7 +1086,7 @@ function LoomSealStatus({
       <View style={styles.loomSealWrap}>
         <RevealActionButton
           disabled
-          helper="weaving your proof into the ankyverse"
+          helper="weaving your hash seal into the ankyverse"
           label="sealing..."
           loading
           variant="seal"
@@ -1391,19 +1435,19 @@ function shortenTx(signature?: string | null): string {
   return `${signature.slice(0, 8)}...${signature.slice(-8)}`;
 }
 
-function getSolscanTxUrl(
+function getOrbTxUrl(
   signature: string,
   network?: "devnet" | "mainnet-beta",
 ): string {
   const cluster = network === "devnet" ? "?cluster=devnet" : "";
-  return `https://solscan.io/tx/${signature}${cluster}`;
+  return `https://orbmarkets.io/tx/${signature}${cluster}`;
 }
 
-async function openSolscanTx(
+async function openOrbTx(
   signature: string,
   network?: "devnet" | "mainnet-beta",
 ): Promise<void> {
-  const url = getSolscanTxUrl(signature, network);
+  const url = getOrbTxUrl(signature, network);
   const canOpen = await Linking.canOpenURL(url);
 
   if (canOpen) {
@@ -2042,6 +2086,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+  },
+  txHashMuted: {
+    color: "rgba(255, 240, 201, 0.46)",
+    fontSize: fontSize.xs,
+    marginTop: spacing.xs,
+    textAlign: "center",
+    textTransform: "lowercase",
   },
   writingBlock: {
     paddingVertical: spacing.sm,

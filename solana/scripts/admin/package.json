@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "create-core-collection": "tsx createCoreCollection.ts",
+    "create-devnet-core-loom": "tsx createDevnetCoreLoom.ts",
     "create-devnet-config": "tsx createDevnetConfig.ts",
     "create-mainnet-config": "tsx createDevnetConfig.ts --cluster mainnet-beta",
     "set-seal-collection": "tsx setSealCollection.ts",

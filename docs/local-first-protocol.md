@@ -1,6 +1,6 @@
 # Anky Local-First Protocol
 
-**Status:** draft v1 · 2026-04-13
+**Status:** draft v1 · updated 2026-05-06 for Sojourn 9 Solana path
 **Supersedes:** sealed-write pipeline (`/api/sealed-write`, Nitro enclave)
 
 This document is the contract between the iOS app and the Anky backend for the local-first architecture. Both sides implement to this spec. Any behavior not described here is out of scope and should not be assumed.
@@ -9,7 +9,7 @@ This document is the contract between the iOS app and the Anky backend for the l
 
 ## The `.anky` session format
 
-A writing session is a string where each line is one keystroke: `{delta_ms} {character}`. The first line's delta is `0`. Characters are literal (including spaces). No enter, no backspace — only forward keystrokes. The SHA-256 of this string's UTF-8 bytes is the `session_hash`. See `https://anky.app/spec.md` for full details.
+A writing session is a string where each line is one keystroke: `{delta_ms} {character}`. The first line's delta is `0`. Characters are literal except typed spaces, which are encoded as the exact `SPACE` token in the current mobile/SP1 protocol. No enter, no backspace — only forward keystrokes. The SHA-256 of this string's UTF-8 bytes is the `session_hash`. See `https://anky.app/spec.md` for full details.
 
 This protocol transmits and stores the raw `.anky` string (or its derived artifacts), not flattened plaintext. Plaintext is flattened only transiently server-side for the Claude call.
 
@@ -33,7 +33,7 @@ For every authenticated anky, exactly these fields:
 |---|---|---|
 | `id` | uuid | server-generated |
 | `wallet_address` | text | authenticated user |
-| `session_hash` | text (hex) | client-computed SHA-256 of plaintext |
+| `session_hash` | text (hex) | client-computed SHA-256 of exact `.anky` UTF-8 bytes |
 | `duration_seconds` | int | client |
 | `word_count` | int | client |
 | `kingdom` | text | derived from `started_at` via Ankyverse calendar |
@@ -43,7 +43,7 @@ For every authenticated anky, exactly these fields:
 | `title` | text | Claude output |
 | `image_prompt` | text | Claude output |
 | `image_url` | text | R2 / CDN |
-| `solana_signature` | text | spl-memo tx |
+| `solana_signature` | text | Anky Seal Program `seal_anky` tx when sealed |
 | `created_at` | timestamptz | server |
 
 ## What the server never stores
@@ -83,7 +83,7 @@ For every authenticated anky, exactly these fields:
 4. Check idempotency: if an anky with this `session_hash` already exists for this wallet, return its existing derived artifacts as a complete SSE stream and exit.
 5. Flatten the `.anky` keystroke stream into plaintext (extract the character column) and open a streaming Claude call with the plaintext. Both variables live only in this function's stack frame.
 6. Stream events to client (see below).
-7. On completion: generate image via existing pipeline (R2 upload), log spl-memo on Solana, persist derived artifacts, emit terminal events.
+7. On completion: generate image via existing pipeline (R2 upload), optionally record public Anky Seal Program metadata, persist derived artifacts, emit terminal events.
 8. Drop the session + plaintext from memory. Do not log them. Do not include them in error reports.
 
 **Response:** `text/event-stream` (SSE)
@@ -129,7 +129,7 @@ An error during `claude` does NOT persist anything. The client retries the whole
 
 - `session_hash` is the idempotency key, scoped to wallet.
 - Resubmitting the same `session_hash` is safe and returns the existing anky.
-- Writing with identical plaintext submitted from two devices produces one anky (same hash).
+- Writing with identical `.anky` bytes submitted from two devices produces one anky (same hash). Reconstructed prose is not a valid hashing input.
 
 ### Timeouts
 
@@ -149,9 +149,9 @@ An error during `claude` does NOT persist anything. The client retries the whole
 | `content` column on `ankys` | For rows created via `/api/anky/submit`: always NULL. Existing rows retain content until a cleanup migration is run separately. |
 | Enclave infrastructure (`3.83.84.211`) | Stopped. No code path references it. |
 
-## Anonymous web users
+## Unauthenticated Web Users
 
-Unchanged. The `/write` plaintext path for anonymous web sessions remains. Anonymous writing is ephemeral by design — it lives in request memory, generates a reflection + image, and is never persisted anywhere. This path does not need local-first treatment because there is no "later" for an anonymous session.
+Unchanged. The `/write` plaintext path for unauthenticated web sessions remains. This legacy web-session writing is transient by design: it lives in request memory, generates a reflection + image, and is never persisted anywhere. This path does not need local-first treatment because there is no durable user session to return to later.
 
 ## Farcaster miniapp users
 
@@ -192,4 +192,4 @@ Full policy will reference this doc as the implementation backing the promise.
 
 ## Fresh start
 
-This protocol is v2. Existing `sealed_sessions` data and existing `ankys` rows with populated `content` are preserved as a v1 artifact — read-only, not queried by new code paths, not migrated. The new system begins with an empty state. Users re-onboard into the new flow; their old wallets and Mirror cNFTs carry over (they live on Solana, not on our server).
+This protocol is v2. Existing `sealed_sessions` data and existing `ankys` rows with populated `content` are preserved as a v1 artifact — read-only, not queried by new code paths, not migrated. The new system begins with an empty state. Users re-onboard into the new flow; old wallets and Mirror-era artifacts remain legacy history, while active Sojourn 9 access and scoring use Metaplex Core Looms plus Anky Seal Program receipts.

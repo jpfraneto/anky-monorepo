@@ -32,7 +32,56 @@ export type SealAnkyResult = {
 
 export type LoomSeal = SealAnkyResult & {
   createdAt?: string;
+  proofBlockTime?: number;
+  proofCreatedAt?: string;
+  proofHash?: string;
+  proofProtocolVersion?: number;
+  proofUtcDay?: number;
+  proofSlot?: number;
+  proofStatus?: "confirmed" | "failed" | "finalized" | "pending" | "processed";
+  proofTxSignature?: string;
+  proofVerifier?: string;
 };
+
+export function getLoomSealProofState(
+  seal: LoomSeal | null | undefined,
+  expectedProofVerifier?: string,
+): "failed" | "none" | "proving" | "verified" {
+  if (seal?.proofStatus === "confirmed" || seal?.proofStatus === "finalized") {
+    if (
+      typeof expectedProofVerifier !== "string" ||
+      expectedProofVerifier.length === 0 ||
+      seal.proofVerifier !== expectedProofVerifier ||
+      seal.proofProtocolVersion !== 1 ||
+      !Number.isSafeInteger(seal.proofUtcDay) ||
+      (Number.isSafeInteger(seal.utcDay) && seal.proofUtcDay !== seal.utcDay) ||
+      !isProofHash(seal.proofHash) ||
+      !isNonemptyString(seal.proofTxSignature)
+    ) {
+      return "failed";
+    }
+
+    return "verified";
+  }
+
+  if (seal?.proofStatus === "pending" || seal?.proofStatus === "processed") {
+    return "proving";
+  }
+
+  if (seal?.proofStatus === "failed") {
+    return "failed";
+  }
+
+  return "none";
+}
+
+function isProofHash(value: string | undefined): boolean {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+function isNonemptyString(value: string | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
 
 export type LoomClient = {
   getOwnedLooms(): Promise<Loom[]>;

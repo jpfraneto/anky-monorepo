@@ -10,6 +10,7 @@ export type AnkySolanaConfig = {
   coreCollection: string;
   loomMetadataBaseUrl?: string;
   network: AnkySolanaCluster;
+  proofVerifierAuthority?: string;
   sealVerification?: string;
   sealProgramId: string;
 };
@@ -28,6 +29,9 @@ export const ankySolanaConfig: AnkySolanaConfig = {
     "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
   loomMetadataBaseUrl: defaultLoomMetadataBaseUrl(cluster),
   network: cluster,
+  proofVerifierAuthority:
+    getPublicEnv("EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY") ??
+    "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
   sealVerification:
     cluster === "mainnet-beta"
       ? "mainnet_core_base_account_verification"

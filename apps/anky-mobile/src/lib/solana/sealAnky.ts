@@ -151,7 +151,7 @@ function assertCurrentUtcDay(utcDay: number): void {
   }
 }
 
-function buildSealAnkyInstructionData(sessionHashBytes: Uint8Array, utcDay: number): Buffer {
+export function buildSealAnkyInstructionData(sessionHashBytes: Uint8Array, utcDay: number): Buffer {
   if (sessionHashBytes.length !== 32) {
     throw new Error("sessionHashHex must decode to exactly 32 bytes.");
   }

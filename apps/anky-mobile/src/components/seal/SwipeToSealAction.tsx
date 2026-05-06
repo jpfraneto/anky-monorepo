@@ -60,7 +60,7 @@ export function SwipeToSealAction({
   const hasSealProof = sealed && sealSignature != null && sealSignature.length > 0;
   const trackHeight = hasSealProof ? 104 : KNOB_SIZE + TRACK_PADDING * 2;
   const knobTop = (trackHeight - KNOB_SIZE) / 2;
-  const solscanUrl = hasSealProof ? getSolscanTxUrl(sealSignature, sealNetwork) : null;
+  const orbUrl = hasSealProof ? getOrbTxUrl(sealSignature, sealNetwork) : null;
   const fillWidth =
     trackWidth <= 0
       ? KNOB_SIZE
@@ -197,15 +197,15 @@ export function SwipeToSealAction({
               </Text>
               <Pressable
                 accessibilityRole="link"
-                disabled={solscanUrl == null}
+                disabled={orbUrl == null}
                 onPress={() => {
-                  if (solscanUrl != null) {
-                    void Linking.openURL(solscanUrl).catch(() => undefined);
+                  if (orbUrl != null) {
+                    void Linking.openURL(orbUrl).catch(() => undefined);
                   }
                 }}
-                style={({ pressed }) => [styles.solscanLink, pressed && styles.linkPressed]}
+                style={({ pressed }) => [styles.orbLink, pressed && styles.linkPressed]}
               >
-                <Text style={styles.solscanText}>view on solscan</Text>
+                <Text style={styles.orbText}>view on orb</Text>
               </Pressable>
             </View>
           ) : (
@@ -234,12 +234,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function getSolscanTxUrl(
+function getOrbTxUrl(
   signature: string,
   network?: "devnet" | "mainnet-beta",
 ): string {
   const cluster = network === "devnet" ? "?cluster=devnet" : "";
-  return `https://solscan.io/tx/${encodeURIComponent(signature)}${cluster}`;
+  return `https://orbmarkets.io/tx/${encodeURIComponent(signature)}${cluster}`;
 }
 
 function shortSignature(signature: string): string {
@@ -400,12 +400,12 @@ const styles = StyleSheet.create({
   sealedTrack: {
     borderColor: "rgba(134, 239, 172, 0.42)",
   },
-  solscanLink: {
+  orbLink: {
     marginTop: 2,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
-  solscanText: {
+  orbText: {
     color: ankyColors.violetBright,
     fontSize: 12,
     fontWeight: "800",

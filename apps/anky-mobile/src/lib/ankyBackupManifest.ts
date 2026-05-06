@@ -7,6 +7,14 @@ export const ANKY_BACKUP_WARNING =
 
 const HASH_NAMED_ANKY_FILE_PATTERN = /^[a-f0-9]{64}\.anky$/;
 const IMAGE_SIDECAR_PATTERN = /^[a-f0-9]{64}\.image\.[a-z0-9]+$/;
+const TRANSIENT_PROOF_ARTIFACT_FILE_NAMES = new Set([
+  "handoff-manifest.json",
+  "proof-with-public-values.bin",
+  "receipt.json",
+  "verified-receipt.json",
+]);
+const TRANSIENT_PROOF_ARTIFACT_PATTERN =
+  /(?:^|[._-])(?:proof|sp1|witness|handoff)(?:[._-]|$)/i;
 
 export type AnkyBackupFileKind = "anky" | "draft" | "image" | "session_index" | "sidecar";
 
@@ -46,7 +54,7 @@ export function createAnkyBackupManifest({
   files: AnkyBackupFileListing[];
 }): AnkyBackupManifest {
   const manifestFiles = files
-    .filter((file) => isSafeBackupRelativePath(file.path))
+    .filter((file) => isBackupEligibleRelativePath(file.path))
     .map((file) => ({
       kind: file.kind ?? classifyBackupRelativePath(file.path),
       modificationTime: file.modificationTime,
@@ -109,7 +117,7 @@ export function getAnkyBackupFileName(now = new Date()): string {
 }
 
 export function toBackupArchivePath(relativePath: string): string {
-  if (!isSafeBackupRelativePath(relativePath)) {
+  if (!isBackupEligibleRelativePath(relativePath)) {
     throw new Error("Unsafe backup file path.");
   }
 
@@ -123,7 +131,7 @@ export function fromBackupArchivePath(archivePath: string): string | null {
 
   const relativePath = archivePath.slice(ANKY_BACKUP_FILES_PREFIX.length);
 
-  return isSafeBackupRelativePath(relativePath) ? relativePath : null;
+  return isBackupEligibleRelativePath(relativePath) ? relativePath : null;
 }
 
 export function parseAnkyBackupManifest(raw: string): AnkyBackupManifest {
@@ -170,6 +178,33 @@ export function isSafeBackupRelativePath(path: string): boolean {
   );
 }
 
+export function isBackupEligibleRelativePath(path: string): boolean {
+  if (!isSafeBackupRelativePath(path)) {
+    return false;
+  }
+
+  const parts = path.split("/");
+  const fileName = parts.at(-1) ?? path;
+
+  if (parts.some((part) => part.startsWith("."))) {
+    return false;
+  }
+
+  if (
+    fileName.endsWith(".anky") &&
+    fileName !== "pending.anky" &&
+    !HASH_NAMED_ANKY_FILE_PATTERN.test(fileName)
+  ) {
+    return false;
+  }
+
+  if (TRANSIENT_PROOF_ARTIFACT_FILE_NAMES.has(fileName)) {
+    return false;
+  }
+
+  return !TRANSIENT_PROOF_ARTIFACT_PATTERN.test(fileName);
+}
+
 function isFileCounts(value: unknown): value is AnkyBackupFileCounts {
   if (typeof value !== "object" || value == null) {
     return false;
@@ -196,7 +231,7 @@ function isManifestFile(value: unknown): value is AnkyBackupManifest["files"][nu
 
   return (
     typeof file.path === "string" &&
-    isSafeBackupRelativePath(file.path) &&
+    isBackupEligibleRelativePath(file.path) &&
     (file.kind === "anky" ||
       file.kind === "draft" ||
       file.kind === "image" ||

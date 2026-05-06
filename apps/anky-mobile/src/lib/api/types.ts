@@ -65,6 +65,7 @@ export type AppConfigResponse = {
     coreCollection?: string;
     coreProgramId?: string;
     loomMetadataBaseUrl?: string;
+    proofVerifierAuthority?: string;
     rpcUrl?: string;
     sealProgramId?: string;
     sealVerification?: string;
@@ -138,6 +139,20 @@ export type SealLookupResponse = {
   seals: LoomSeal[];
 };
 
+export type MobileSealScoreResponse = {
+  finalizedOnly: boolean;
+  formula: string;
+  network: string;
+  proofVerifierAuthority: string;
+  score: number;
+  sealedDays: number[];
+  streakBonus: number;
+  uniqueSealDays: number;
+  verifiedDays: number[];
+  verifiedSealDays: number;
+  wallet: string;
+};
+
 export type MobileSolanaConfigResponse = {
   cluster: "devnet" | "mainnet-beta";
   collectionUri: string;
@@ -146,6 +161,7 @@ export type MobileSolanaConfigResponse = {
   loomMetadataBaseUrl: string;
   network: "devnet" | "mainnet-beta";
   rpcUrl: string;
+  proofVerifierAuthority: string;
   sealProgramId: string;
   sealVerification: string;
 };
@@ -297,6 +313,7 @@ export type RecordMobileSealRequest = {
   signature: string;
   slot?: number;
   status?: "confirmed" | "finalized" | "processed" | "pending" | "failed";
+  utcDay?: number;
   wallet: string;
 };
 
