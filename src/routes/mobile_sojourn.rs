@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -32,6 +32,7 @@ const DEFAULT_MAINNET_SOLANA_RPC_URL: &str = "https://api.mainnet-beta.solana.co
 const DEFAULT_CORE_PROGRAM_ID: &str = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
 const DEFAULT_CORE_COLLECTION: &str = "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u";
 const DEFAULT_SEAL_PROGRAM_ID: &str = "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX";
+const DEFAULT_PROOF_VERIFIER_AUTHORITY: &str = "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP";
 const DEFAULT_COLLECTION_URI: &str = "https://anky.app/devnet/metadata/sojourn-9-looms.json";
 const DEFAULT_MAINNET_COLLECTION_URI: &str =
     "https://anky.app/mainnet/metadata/sojourn-9-looms.json";
@@ -41,6 +42,9 @@ const DEFAULT_SOJOURN_9_PROGRAM_ID: &str = "2VfB7nvV2SZuCpK2DurRgJLfw57TCt2g9VJX
 const DEFAULT_INITIAL_MOBILE_CREDITS: u32 = 8;
 const DEV_RECEIPT_SECRET: &str = "dev-mobile-receipt-secret";
 const MAX_LOOM_INDEX: u32 = 3_456;
+const MAX_HELIUS_WEBHOOK_PAYLOAD_BYTES: usize = 2_000_000;
+const HELIUS_WEBHOOK_SOURCE: &str = "helius_enhanced_webhook";
+const VERIFIED_SEAL_SEED: &[u8] = b"verified_seal";
 const PLACEHOLDER_IMAGE_PNG_BASE64: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -78,7 +82,16 @@ pub fn routes() -> Router<AppState> {
             get(get_mobile_reflection),
         )
         .route("/api/mobile/seals", get(lookup_mobile_seals))
+        .route("/api/mobile/seals/score", get(get_mobile_seal_score))
         .route("/api/mobile/seals/record", post(record_mobile_seal))
+        .route(
+            "/api/mobile/seals/verified/record",
+            post(record_mobile_verified_seal),
+        )
+        .route(
+            "/api/helius/anky-seal",
+            post(record_helius_anky_seal_webhook),
+        )
 }
 
 pub async fn get_config() -> Json<AppConfigResponse> {
@@ -91,10 +104,11 @@ pub async fn get_config() -> Json<AppConfigResponse> {
         solana: SolanaConfig {
             cluster: solana_cluster(),
             anky_program_id: Some(sojourn_9_program_id()),
-            rpc_url: Some(solana_rpc_url()),
+            rpc_url: Some(public_solana_rpc_url()),
             core_program_id: Some(core_program_id()),
             core_collection: Some(core_collection()),
             seal_program_id: Some(seal_program_id()),
+            proof_verifier_authority: Some(proof_verifier_authority()),
             collection_uri: Some(collection_uri()),
             loom_metadata_base_url: Some(loom_metadata_base_url()),
             seal_verification: Some(seal_verification_label()),
@@ -572,9 +586,15 @@ pub async fn create_mobile_reflection(
     State(state): State<AppState>,
     Json(req): Json<MobileReflectionRequest>,
 ) -> Result<Json<MobileReflectionResponse>, AppError> {
-    let identity_id = validate_identity_id(&req.identity_id)?;
-    let session_hash = normalize_hash(&req.session_hash)?;
-    let processing_type = req.processing_type.unwrap_or(ProcessingType::Reflection);
+    let MobileReflectionRequest {
+        identity_id,
+        session_hash,
+        anky,
+        processing_type,
+    } = req;
+    let identity_id = validate_identity_id(&identity_id)?;
+    let session_hash = normalize_hash(&session_hash)?;
+    let processing_type = processing_type.unwrap_or(ProcessingType::Reflection);
 
     if !matches!(
         processing_type,
@@ -585,27 +605,22 @@ pub async fn create_mobile_reflection(
         ));
     }
 
-    let computed_hash = hash_hex(req.anky.as_bytes());
+    // This endpoint is an explicit opt-in plaintext processing path. The raw
+    // `.anky` bytes are validated, reconstructed for reflection, and dropped
+    // before any database writes; persisted rows store only derived metadata.
+    let computed_hash = hash_hex(anky.as_bytes());
     if computed_hash != session_hash {
         return Err(AppError::BadRequest(
             ".anky bytes do not match sessionHash".into(),
         ));
     }
-    validate_closed_anky(&req.anky)?;
-    let writing_text = reconstruct_closed_anky_text(&req.anky)?;
+    validate_closed_anky(&anky)?;
+    let anky_byte_length = anky.as_bytes().len();
+    let writing_text = reconstruct_closed_anky_text(&anky)?;
+    drop(anky);
 
     ensure_mobile_credit_account(&state.db, &identity_id).await?;
 
-    let entry = CarpetEntry {
-        session_hash: session_hash.clone(),
-        anky: req.anky,
-    };
-    let carpet = AnkyCarpet {
-        carpet_version: 1,
-        purpose: processing_type,
-        created_at: chrono::Utc::now().timestamp_millis(),
-        entries: vec![entry],
-    };
     let artifacts =
         build_mobile_reflection_artifacts(&state, processing_type, &session_hash, &writing_text)
             .await?;
@@ -624,8 +639,8 @@ pub async fn create_mobile_reflection(
     let request_json = json!({
         "sessionHash": session_hash,
         "processingType": processing_type.as_str(),
-        "ankyByteLength": carpet.entries[0].anky.as_bytes().len(),
-        "entryCount": carpet.entries.len(),
+        "ankyByteLength": anky_byte_length,
+        "entryCount": 1,
         "plaintextReceivedByBackend": true
     });
     let result_json = json!({
@@ -688,8 +703,72 @@ pub async fn lookup_mobile_seals(
     Ok(Json(SealLookupResponse { seals }))
 }
 
+pub async fn get_mobile_seal_score(
+    State(state): State<AppState>,
+    Query(query): Query<SealScoreQuery>,
+) -> Result<Json<MobileSealScoreResponse>, AppError> {
+    let wallet = validate_public_key("wallet", &query.wallet)?;
+    let network = solana_cluster();
+    let proof_verifier = proof_verifier_authority();
+
+    let sealed_rows = sqlx::query(
+        "SELECT DISTINCT utc_day
+         FROM mobile_seal_receipts
+         WHERE network = $1
+           AND wallet = $2
+           AND utc_day IS NOT NULL
+           AND status = 'finalized'
+         ORDER BY utc_day ASC",
+    )
+    .bind(&network)
+    .bind(&wallet)
+    .fetch_all(&state.db)
+    .await?;
+
+    let verified_rows = sqlx::query(
+        "SELECT DISTINCT verified.utc_day
+         FROM mobile_verified_seal_receipts verified
+         JOIN mobile_seal_receipts seal
+           ON seal.network = verified.network
+          AND seal.wallet = verified.wallet
+          AND seal.session_hash = verified.session_hash
+          AND seal.utc_day = verified.utc_day
+         WHERE verified.network = $1
+           AND verified.wallet = $2
+           AND verified.verifier = $3
+           AND verified.protocol_version = 1
+           AND verified.utc_day IS NOT NULL
+           AND verified.status = 'finalized'
+           AND seal.status = 'finalized'
+         ORDER BY verified.utc_day ASC",
+    )
+    .bind(&network)
+    .bind(&wallet)
+    .bind(&proof_verifier)
+    .fetch_all(&state.db)
+    .await?;
+
+    let sealed_days = sealed_rows
+        .iter()
+        .map(|row| row.try_get("utc_day"))
+        .collect::<Result<Vec<i64>, _>>()?;
+    let verified_days = verified_rows
+        .iter()
+        .map(|row| row.try_get("utc_day"))
+        .collect::<Result<Vec<i64>, _>>()?;
+
+    Ok(Json(build_mobile_seal_score(
+        wallet,
+        network,
+        proof_verifier,
+        sealed_days,
+        verified_days,
+    )))
+}
+
 pub async fn record_mobile_seal(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<RecordMobileSealRequest>,
 ) -> Result<Json<RecordMobileSealResponse>, AppError> {
     let wallet = validate_public_key("wallet", &req.wallet)?;
@@ -699,16 +778,23 @@ pub async fn record_mobile_seal(
     let session_hash = normalize_hash(&req.session_hash)?;
     let signature = validate_signature(&req.signature)?;
     let status = validate_status(req.status.as_deref())?;
+    require_finalized_seal_record_secret(&status, &headers)?;
+    let can_update_finalized_receipt = indexer_write_secret_matches_config(&headers);
+    let utc_day = validate_optional_utc_day(req.utc_day)?;
 
     let row = sqlx::query(
         "INSERT INTO mobile_seal_receipts
-         (id, network, wallet, loom_asset, core_collection, session_hash, signature, slot, block_time, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT (signature) DO UPDATE
-         SET slot = COALESCE(EXCLUDED.slot, mobile_seal_receipts.slot),
+         (id, network, wallet, loom_asset, core_collection, session_hash, signature, utc_day, slot, block_time, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (network, wallet, session_hash) DO UPDATE
+         SET utc_day = COALESCE(EXCLUDED.utc_day, mobile_seal_receipts.utc_day),
+             slot = COALESCE(EXCLUDED.slot, mobile_seal_receipts.slot),
              block_time = COALESCE(EXCLUDED.block_time, mobile_seal_receipts.block_time),
+             signature = EXCLUDED.signature,
              status = EXCLUDED.status
-         RETURNING id, network, wallet, loom_asset, core_collection, session_hash, signature, slot, block_time, status, created_at",
+         WHERE mobile_seal_receipts.status <> 'finalized'
+            OR ($12 AND EXCLUDED.status = 'finalized')
+         RETURNING id, network, wallet, loom_asset, core_collection, session_hash, signature, utc_day, slot, block_time, status, created_at",
     )
     .bind(uuid::Uuid::new_v4().to_string())
     .bind(solana_cluster())
@@ -717,15 +803,222 @@ pub async fn record_mobile_seal(
     .bind(&core_collection)
     .bind(&session_hash)
     .bind(&signature)
+    .bind(utc_day)
     .bind(req.slot.map(|slot| slot as i64))
     .bind(req.block_time)
     .bind(&status)
-    .fetch_one(&state.db)
-    .await?;
+    .bind(can_update_finalized_receipt)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(
+            "finalized seal metadata is immutable without a finalized indexer/operator receipt"
+                .into(),
+        )
+    })?;
 
     Ok(Json(RecordMobileSealResponse {
         recorded: true,
         seal: loom_seal_from_row(&row)?,
+    }))
+}
+
+pub async fn record_mobile_verified_seal(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<RecordMobileVerifiedSealRequest>,
+) -> Result<Json<RecordMobileVerifiedSealResponse>, AppError> {
+    require_verified_seal_record_secret(&headers)?;
+
+    let wallet = validate_public_key("wallet", &req.wallet)?;
+    let session_hash = normalize_hash(&req.session_hash)?;
+    let proof_hash = normalize_hash(&req.proof_hash)?;
+    let verifier = validate_public_key("verifier", &req.verifier)?;
+    validate_expected_proof_verifier(&verifier)?;
+    let signature = validate_signature(&req.signature)?;
+    let status = validate_verified_seal_status(req.status.as_deref())?;
+    let requested_utc_day = validate_optional_utc_day(req.utc_day)?;
+
+    if req.protocol_version != 1 {
+        return Err(AppError::BadRequest(
+            "protocolVersion must be 1 for Sojourn 9 SP1 receipts".into(),
+        ));
+    }
+
+    let seal_row = sqlx::query(
+        "SELECT utc_day, status FROM mobile_seal_receipts
+         WHERE network = $1 AND wallet = $2 AND session_hash = $3
+         LIMIT 1",
+    )
+    .bind(solana_cluster())
+    .bind(&wallet)
+    .bind(&session_hash)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let seal_row = seal_row.ok_or_else(|| {
+        AppError::BadRequest(
+            "cannot record a verified receipt before the matching seal receipt is known".into(),
+        )
+    })?;
+    let seal_utc_day: Option<i64> = seal_row.try_get("utc_day")?;
+    let seal_status: String = seal_row.try_get("status")?;
+    require_landed_seal_receipt_status(&seal_status)?;
+    let utc_day = resolve_verified_utc_day(requested_utc_day, seal_utc_day)?;
+
+    if require_verified_seal_chain_proof() {
+        verify_verified_seal_account_on_chain(
+            &wallet,
+            &session_hash,
+            utc_day,
+            &proof_hash,
+            &verifier,
+            req.protocol_version,
+        )
+        .await?;
+    }
+
+    let row = sqlx::query(
+        "INSERT INTO mobile_verified_seal_receipts
+         (id, network, wallet, session_hash, proof_hash, verifier, protocol_version, utc_day, signature, slot, block_time, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (network, wallet, session_hash) DO UPDATE
+         SET slot = COALESCE(EXCLUDED.slot, mobile_verified_seal_receipts.slot),
+             block_time = COALESCE(EXCLUDED.block_time, mobile_verified_seal_receipts.block_time),
+             status = EXCLUDED.status
+         WHERE mobile_verified_seal_receipts.proof_hash = EXCLUDED.proof_hash
+           AND mobile_verified_seal_receipts.verifier = EXCLUDED.verifier
+           AND mobile_verified_seal_receipts.protocol_version = EXCLUDED.protocol_version
+           AND mobile_verified_seal_receipts.utc_day IS NOT DISTINCT FROM EXCLUDED.utc_day
+           AND mobile_verified_seal_receipts.signature = EXCLUDED.signature
+         RETURNING id, network, wallet, session_hash, proof_hash, verifier, protocol_version, utc_day, signature, slot, block_time, status, created_at",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(solana_cluster())
+    .bind(&wallet)
+    .bind(&session_hash)
+    .bind(&proof_hash)
+    .bind(&verifier)
+    .bind(req.protocol_version as i32)
+    .bind(utc_day)
+    .bind(&signature)
+    .bind(req.slot.map(|slot| slot as i64))
+    .bind(req.block_time)
+    .bind(&status)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(
+            "verified seal metadata conflicts with an existing immutable receipt".into(),
+        )
+    })?;
+
+    let lookup = SealLookupQuery {
+        wallet: Some(wallet.clone()),
+        loom_id: None,
+        session_hash: None,
+    };
+    let seal = query_seal_receipts(&state.db, &lookup)
+        .await?
+        .into_iter()
+        .find(|seal| seal.session_hash == session_hash)
+        .ok_or_else(|| AppError::NotFound("matching seal receipt not found".into()))?;
+
+    Ok(Json(RecordMobileVerifiedSealResponse {
+        recorded: true,
+        seal,
+        verified_seal: mobile_verified_seal_from_row(&row)?,
+    }))
+}
+
+pub async fn record_helius_anky_seal_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Result<Json<RecordHeliusAnkySealWebhookResponse>, AppError> {
+    require_verified_seal_record_secret(&headers)?;
+    validate_public_webhook_payload(&payload)?;
+    let payload_json = serde_json::to_string(&payload)?;
+    if payload_json.len() > MAX_HELIUS_WEBHOOK_PAYLOAD_BYTES {
+        return Err(AppError::BadRequest(
+            "Helius webhook payload is too large".into(),
+        ));
+    }
+    let payload_hash = hash_hex(payload_json.as_bytes());
+    let signatures = collect_public_webhook_signatures(&payload);
+    let signature = signatures.first().cloned();
+    let event_count = count_helius_webhook_items(&payload);
+
+    let row = if signature.is_some() {
+        sqlx::query(
+            "WITH signature_existing AS (
+                 UPDATE mobile_helius_webhook_events
+                 SET event_count = GREATEST($6, event_count),
+                     payload_json = $7
+                 WHERE network = $2 AND signature = $5
+                 RETURNING id, network, source, payload_hash, signature, event_count, created_at
+             ),
+             hash_existing AS (
+                 UPDATE mobile_helius_webhook_events
+                 SET signature = COALESCE(signature, $5),
+                     event_count = GREATEST($6, event_count),
+                     payload_json = $7
+                 WHERE network = $2
+                   AND payload_hash = $4
+                   AND NOT EXISTS (SELECT 1 FROM signature_existing)
+                 RETURNING id, network, source, payload_hash, signature, event_count, created_at
+             ),
+             inserted AS (
+                 INSERT INTO mobile_helius_webhook_events
+                     (id, network, source, payload_hash, signature, event_count, payload_json)
+                 SELECT $1, $2, $3, $4, $5, $6, $7
+                 WHERE NOT EXISTS (SELECT 1 FROM signature_existing)
+                   AND NOT EXISTS (SELECT 1 FROM hash_existing)
+                 ON CONFLICT (network, signature) WHERE signature IS NOT NULL DO UPDATE
+                 SET event_count = GREATEST(EXCLUDED.event_count, mobile_helius_webhook_events.event_count),
+                     payload_json = EXCLUDED.payload_json
+                 RETURNING id, network, source, payload_hash, signature, event_count, created_at
+             )
+             SELECT id, network, source, payload_hash, signature, event_count, created_at FROM signature_existing
+             UNION ALL
+             SELECT id, network, source, payload_hash, signature, event_count, created_at FROM hash_existing
+             UNION ALL
+             SELECT id, network, source, payload_hash, signature, event_count, created_at FROM inserted
+             LIMIT 1",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(solana_cluster())
+        .bind(HELIUS_WEBHOOK_SOURCE)
+        .bind(&payload_hash)
+        .bind(&signature)
+        .bind(event_count as i32)
+        .bind(&payload_json)
+        .fetch_one(&state.db)
+        .await?
+    } else {
+        sqlx::query(
+            "INSERT INTO mobile_helius_webhook_events
+             (id, network, source, payload_hash, signature, event_count, payload_json)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (network, payload_hash) DO UPDATE
+             SET event_count = EXCLUDED.event_count,
+                 payload_json = EXCLUDED.payload_json
+             RETURNING id, network, source, payload_hash, signature, event_count, created_at",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(solana_cluster())
+        .bind(HELIUS_WEBHOOK_SOURCE)
+        .bind(&payload_hash)
+        .bind(&signature)
+        .bind(event_count as i32)
+        .bind(&payload_json)
+        .fetch_one(&state.db)
+        .await?
+    };
+
+    Ok(Json(RecordHeliusAnkySealWebhookResponse {
+        recorded: true,
+        event: helius_webhook_event_from_row(&row)?,
     }))
 }
 
@@ -759,6 +1052,8 @@ struct SolanaConfig {
     core_collection: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     seal_program_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_verifier_authority: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     collection_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -902,9 +1197,31 @@ pub struct SealLookupQuery {
     session_hash: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SealScoreQuery {
+    wallet: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SealLookupResponse {
     seals: Vec<LoomSeal>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileSealScoreResponse {
+    wallet: String,
+    network: String,
+    proof_verifier_authority: String,
+    unique_seal_days: u32,
+    verified_seal_days: u32,
+    streak_bonus: u32,
+    score: u32,
+    sealed_days: Vec<i64>,
+    verified_days: Vec<i64>,
+    finalized_only: bool,
+    formula: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -916,11 +1233,31 @@ pub struct LoomSeal {
     session_hash: String,
     network: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    utc_day: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     slot: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     block_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_tx_signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_verifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_protocol_version: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_utc_day: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_slot: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_block_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_created_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -932,6 +1269,7 @@ pub struct MobileSolanaConfigResponse {
     core_program_id: String,
     core_collection: String,
     seal_program_id: String,
+    proof_verifier_authority: String,
     collection_uri: String,
     loom_metadata_base_url: String,
     seal_verification: String,
@@ -1279,6 +1617,7 @@ pub struct RecordMobileSealRequest {
     core_collection: String,
     session_hash: String,
     signature: String,
+    utc_day: Option<i64>,
     slot: Option<u64>,
     block_time: Option<i64>,
     status: Option<String>,
@@ -1291,16 +1630,80 @@ pub struct RecordMobileSealResponse {
     seal: LoomSeal,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordMobileVerifiedSealRequest {
+    wallet: String,
+    session_hash: String,
+    proof_hash: String,
+    verifier: String,
+    protocol_version: u16,
+    signature: String,
+    utc_day: Option<i64>,
+    slot: Option<u64>,
+    block_time: Option<i64>,
+    status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MobileVerifiedSeal {
+    tx_signature: String,
+    writer: String,
+    session_hash: String,
+    proof_hash: String,
+    verifier: String,
+    protocol_version: u16,
+    network: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    utc_day: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slot: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    block_time: Option<i64>,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordMobileVerifiedSealResponse {
+    recorded: bool,
+    verified_seal: MobileVerifiedSeal,
+    seal: LoomSeal,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeliusWebhookEventReceipt {
+    id: String,
+    network: String,
+    source: String,
+    payload_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<String>,
+    event_count: u32,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordHeliusAnkySealWebhookResponse {
+    recorded: bool,
+    event: HeliusWebhookEventReceipt,
+}
+
 fn mobile_solana_config() -> MobileSolanaConfigResponse {
     let cluster = solana_cluster();
 
     MobileSolanaConfigResponse {
         cluster: cluster.clone(),
         network: cluster,
-        rpc_url: solana_rpc_url(),
+        rpc_url: public_solana_rpc_url(),
         core_program_id: core_program_id(),
         core_collection: core_collection(),
         seal_program_id: seal_program_id(),
+        proof_verifier_authority: proof_verifier_authority(),
         collection_uri: collection_uri(),
         loom_metadata_base_url: loom_metadata_base_url(),
         seal_verification: seal_verification_label(),
@@ -1619,6 +2022,22 @@ struct LatestBlockhashRpcResult {
 struct LatestBlockhashRpcValue {
     blockhash: String,
     last_valid_block_height: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SolanaAccountRpcResponse {
+    result: Option<SolanaAccountRpcResult>,
+    error: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SolanaAccountRpcResult {
+    value: Option<SolanaAccountValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SolanaAccountValue {
+    data: Value,
 }
 
 async fn lookup_mobile_mint_authorization(
@@ -2423,39 +2842,76 @@ async fn query_seal_receipts(
     pool: &sqlx::PgPool,
     query: &SealLookupQuery,
 ) -> Result<Vec<LoomSeal>, AppError> {
+    let network = solana_cluster();
     let rows = if let Some(wallet) = query.wallet.as_deref() {
         let wallet = validate_public_key("wallet", wallet)?;
         sqlx::query(
-            "SELECT id, network, wallet, loom_asset, core_collection, session_hash, signature, slot, block_time, status, created_at
-             FROM mobile_seal_receipts
-             WHERE wallet = $1
-             ORDER BY created_at DESC
+            "SELECT msr.id, msr.network, msr.wallet, msr.loom_asset, msr.core_collection, msr.session_hash, msr.signature, msr.utc_day, msr.slot, msr.block_time, msr.status, msr.created_at,
+                    verified.proof_hash, verified.signature AS proof_signature, verified.verifier AS proof_verifier,
+                    verified.protocol_version AS proof_protocol_version, verified.utc_day AS proof_utc_day, verified.slot AS proof_slot,
+                    verified.block_time AS proof_block_time, verified.status AS proof_status,
+                    verified.created_at AS proof_created_at
+             FROM mobile_seal_receipts msr
+             LEFT JOIN LATERAL (
+                 SELECT proof_hash, signature, verifier, protocol_version, utc_day, slot, block_time, status, created_at
+                 FROM mobile_verified_seal_receipts
+                 WHERE network = msr.network AND wallet = msr.wallet AND session_hash = msr.session_hash
+                 ORDER BY created_at DESC
+                 LIMIT 1
+             ) verified ON TRUE
+             WHERE msr.network = $1 AND msr.wallet = $2
+             ORDER BY msr.created_at DESC
              LIMIT 100",
         )
+        .bind(&network)
         .bind(wallet)
         .fetch_all(pool)
         .await?
     } else if let Some(loom_id) = query.loom_id.as_deref() {
         let loom_id = validate_public_key("loomId", loom_id)?;
         sqlx::query(
-            "SELECT id, network, wallet, loom_asset, core_collection, session_hash, signature, slot, block_time, status, created_at
-             FROM mobile_seal_receipts
-             WHERE loom_asset = $1
-             ORDER BY created_at DESC
+            "SELECT msr.id, msr.network, msr.wallet, msr.loom_asset, msr.core_collection, msr.session_hash, msr.signature, msr.utc_day, msr.slot, msr.block_time, msr.status, msr.created_at,
+                    verified.proof_hash, verified.signature AS proof_signature, verified.verifier AS proof_verifier,
+                    verified.protocol_version AS proof_protocol_version, verified.utc_day AS proof_utc_day, verified.slot AS proof_slot,
+                    verified.block_time AS proof_block_time, verified.status AS proof_status,
+                    verified.created_at AS proof_created_at
+             FROM mobile_seal_receipts msr
+             LEFT JOIN LATERAL (
+                 SELECT proof_hash, signature, verifier, protocol_version, utc_day, slot, block_time, status, created_at
+                 FROM mobile_verified_seal_receipts
+                 WHERE network = msr.network AND wallet = msr.wallet AND session_hash = msr.session_hash
+                 ORDER BY created_at DESC
+                 LIMIT 1
+             ) verified ON TRUE
+             WHERE msr.network = $1 AND msr.loom_asset = $2
+             ORDER BY msr.created_at DESC
              LIMIT 100",
         )
+        .bind(&network)
         .bind(loom_id)
         .fetch_all(pool)
         .await?
     } else if let Some(session_hash) = query.session_hash.as_deref() {
         let session_hash = normalize_hash(session_hash)?;
         sqlx::query(
-            "SELECT id, network, wallet, loom_asset, core_collection, session_hash, signature, slot, block_time, status, created_at
-             FROM mobile_seal_receipts
-             WHERE session_hash = $1
-             ORDER BY created_at DESC
+            "SELECT msr.id, msr.network, msr.wallet, msr.loom_asset, msr.core_collection, msr.session_hash, msr.signature, msr.utc_day, msr.slot, msr.block_time, msr.status, msr.created_at,
+                    verified.proof_hash, verified.signature AS proof_signature, verified.verifier AS proof_verifier,
+                    verified.protocol_version AS proof_protocol_version, verified.utc_day AS proof_utc_day, verified.slot AS proof_slot,
+                    verified.block_time AS proof_block_time, verified.status AS proof_status,
+                    verified.created_at AS proof_created_at
+             FROM mobile_seal_receipts msr
+             LEFT JOIN LATERAL (
+                 SELECT proof_hash, signature, verifier, protocol_version, utc_day, slot, block_time, status, created_at
+                 FROM mobile_verified_seal_receipts
+                 WHERE network = msr.network AND wallet = msr.wallet AND session_hash = msr.session_hash
+                 ORDER BY created_at DESC
+                 LIMIT 1
+             ) verified ON TRUE
+             WHERE msr.network = $1 AND msr.session_hash = $2
+             ORDER BY msr.created_at DESC
              LIMIT 100",
         )
+        .bind(&network)
         .bind(session_hash)
         .fetch_all(pool)
         .await?
@@ -2489,6 +2945,63 @@ fn validate_seal_lookup_query(query: &SealLookupQuery) -> Result<(), AppError> {
     Ok(())
 }
 
+fn build_mobile_seal_score(
+    wallet: String,
+    network: String,
+    proof_verifier_authority: String,
+    sealed_days: Vec<i64>,
+    verified_days: Vec<i64>,
+) -> MobileSealScoreResponse {
+    let sealed_days = sorted_unique_days(sealed_days);
+    let mut verified_days = sorted_unique_days(verified_days);
+    verified_days.retain(|day| sealed_days.binary_search(day).is_ok());
+
+    let unique_seal_days = sealed_days.len() as u32;
+    let verified_seal_days = verified_days.len() as u32;
+    let streak_bonus = compute_seal_streak_bonus(&sealed_days);
+    let score = unique_seal_days + verified_seal_days + streak_bonus;
+
+    MobileSealScoreResponse {
+        wallet,
+        network,
+        proof_verifier_authority,
+        unique_seal_days,
+        verified_seal_days,
+        streak_bonus,
+        score,
+        sealed_days,
+        verified_days,
+        finalized_only: true,
+        formula:
+            "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)",
+    }
+}
+
+fn sorted_unique_days(mut days: Vec<i64>) -> Vec<i64> {
+    days.retain(|day| *day >= 0);
+    days.sort_unstable();
+    days.dedup();
+    days
+}
+
+fn compute_seal_streak_bonus(sorted_days: &[i64]) -> u32 {
+    let mut bonus = 0u32;
+    let mut run_len = 0u32;
+    let mut previous_day: Option<i64> = None;
+
+    for day in sorted_days {
+        if previous_day.is_some_and(|previous| *day == previous + 1) {
+            run_len += 1;
+        } else {
+            bonus += 2 * (run_len / 7);
+            run_len = 1;
+        }
+        previous_day = Some(*day);
+    }
+
+    bonus + 2 * (run_len / 7)
+}
+
 fn mobile_credit_account_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<MobileCreditAccount, AppError> {
@@ -2507,6 +3020,10 @@ fn mobile_credit_account_from_row(
 fn loom_seal_from_row(row: &sqlx::postgres::PgRow) -> Result<LoomSeal, AppError> {
     let created_at: chrono::DateTime<chrono::Utc> = row.try_get("created_at")?;
     let slot: Option<i64> = row.try_get("slot")?;
+    let proof_created_at = optional_datetime_column(row, "proof_created_at");
+    let proof_slot = optional_i64_column(row, "proof_slot");
+    let proof_protocol_version = optional_i32_column(row, "proof_protocol_version")
+        .and_then(|value| u16::try_from(value).ok());
 
     Ok(LoomSeal {
         tx_signature: row.try_get("signature")?,
@@ -2514,10 +3031,81 @@ fn loom_seal_from_row(row: &sqlx::postgres::PgRow) -> Result<LoomSeal, AppError>
         loom_id: row.try_get("loom_asset")?,
         session_hash: row.try_get("session_hash")?,
         network: row.try_get("network")?,
+        utc_day: optional_i64_column(row, "utc_day"),
         slot: slot.and_then(|value| u64::try_from(value).ok()),
         block_time: row.try_get("block_time")?,
         created_at: Some(created_at.to_rfc3339()),
+        proof_status: optional_string_column(row, "proof_status"),
+        proof_hash: optional_string_column(row, "proof_hash"),
+        proof_tx_signature: optional_string_column(row, "proof_signature"),
+        proof_verifier: optional_string_column(row, "proof_verifier"),
+        proof_protocol_version,
+        proof_utc_day: optional_i64_column(row, "proof_utc_day"),
+        proof_slot: proof_slot.and_then(|value| u64::try_from(value).ok()),
+        proof_block_time: optional_i64_column(row, "proof_block_time"),
+        proof_created_at: proof_created_at.map(|value| value.to_rfc3339()),
     })
+}
+
+fn mobile_verified_seal_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<MobileVerifiedSeal, AppError> {
+    let created_at: chrono::DateTime<chrono::Utc> = row.try_get("created_at")?;
+    let slot: Option<i64> = row.try_get("slot")?;
+    let protocol_version: i32 = row.try_get("protocol_version")?;
+
+    Ok(MobileVerifiedSeal {
+        tx_signature: row.try_get("signature")?,
+        writer: row.try_get("wallet")?,
+        session_hash: row.try_get("session_hash")?,
+        proof_hash: row.try_get("proof_hash")?,
+        verifier: row.try_get("verifier")?,
+        protocol_version: u16::try_from(protocol_version).unwrap_or(0),
+        network: row.try_get("network")?,
+        status: row.try_get("status")?,
+        utc_day: optional_i64_column(row, "utc_day"),
+        slot: slot.and_then(|value| u64::try_from(value).ok()),
+        block_time: row.try_get("block_time")?,
+        created_at: created_at.to_rfc3339(),
+    })
+}
+
+fn helius_webhook_event_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<HeliusWebhookEventReceipt, AppError> {
+    let created_at: chrono::DateTime<chrono::Utc> = row.try_get("created_at")?;
+    let event_count: i32 = row.try_get("event_count")?;
+
+    Ok(HeliusWebhookEventReceipt {
+        id: row.try_get("id")?,
+        network: row.try_get("network")?,
+        source: row.try_get("source")?,
+        payload_hash: row.try_get("payload_hash")?,
+        signature: row.try_get("signature")?,
+        event_count: u32::try_from(event_count).unwrap_or(0),
+        created_at: created_at.to_rfc3339(),
+    })
+}
+
+fn optional_string_column(row: &sqlx::postgres::PgRow, name: &str) -> Option<String> {
+    row.try_get::<Option<String>, _>(name).ok().flatten()
+}
+
+fn optional_i32_column(row: &sqlx::postgres::PgRow, name: &str) -> Option<i32> {
+    row.try_get::<Option<i32>, _>(name).ok().flatten()
+}
+
+fn optional_i64_column(row: &sqlx::postgres::PgRow, name: &str) -> Option<i64> {
+    row.try_get::<Option<i64>, _>(name).ok().flatten()
+}
+
+fn optional_datetime_column(
+    row: &sqlx::postgres::PgRow,
+    name: &str,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(name)
+        .ok()
+        .flatten()
 }
 
 fn mobile_loom_mint_from_row(row: &sqlx::postgres::PgRow) -> Result<MobileLoomMint, AppError> {
@@ -2633,6 +3221,20 @@ fn validate_expected_collection(value: &str) -> Result<(), AppError> {
     }
 }
 
+fn validate_expected_proof_verifier(value: &str) -> Result<(), AppError> {
+    validate_expected_proof_verifier_value(value, &proof_verifier_authority())
+}
+
+fn validate_expected_proof_verifier_value(value: &str, expected: &str) -> Result<(), AppError> {
+    if value == expected {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            "verifier does not match configured Anky Sojourn 9 proof verifier authority".into(),
+        ))
+    }
+}
+
 fn validate_loom_index(value: u32) -> Result<(), AppError> {
     if (1..=MAX_LOOM_INDEX).contains(&value) {
         Ok(())
@@ -2653,6 +3255,487 @@ fn validate_status(value: Option<&str>) -> Result<String, AppError> {
     match status {
         "confirmed" | "finalized" | "processed" | "pending" | "failed" => Ok(status.to_string()),
         _ => Err(AppError::BadRequest("status is invalid".into())),
+    }
+}
+
+fn validate_verified_seal_status(value: Option<&str>) -> Result<String, AppError> {
+    let status = value.unwrap_or("confirmed").trim();
+    match status {
+        "confirmed" | "finalized" => Ok(status.to_string()),
+        _ => Err(AppError::BadRequest(
+            "verified seal status must be confirmed or finalized".into(),
+        )),
+    }
+}
+
+fn require_landed_seal_receipt_status(status: &str) -> Result<(), AppError> {
+    match status {
+        "confirmed" | "finalized" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "matching seal receipt must be confirmed or finalized before verified metadata can be recorded".into(),
+        )),
+    }
+}
+
+fn validate_optional_utc_day(value: Option<i64>) -> Result<Option<i64>, AppError> {
+    match value {
+        Some(day) if day < 0 => Err(AppError::BadRequest("utcDay must be non-negative".into())),
+        other => Ok(other),
+    }
+}
+
+fn resolve_verified_utc_day(
+    requested_utc_day: Option<i64>,
+    seal_utc_day: Option<i64>,
+) -> Result<i64, AppError> {
+    if requested_utc_day.is_some() && seal_utc_day.is_some() && requested_utc_day != seal_utc_day {
+        return Err(AppError::BadRequest(
+            "utcDay does not match the matching seal receipt".into(),
+        ));
+    }
+
+    requested_utc_day.or(seal_utc_day).ok_or_else(|| {
+        AppError::BadRequest(
+            "utcDay is required for verified seal metadata when the matching seal receipt has no utcDay".into(),
+        )
+    })
+}
+
+fn require_verified_seal_record_secret(headers: &HeaderMap) -> Result<(), AppError> {
+    require_indexer_write_secret(headers, "verified seal metadata")
+}
+
+fn require_finalized_seal_record_secret(status: &str, headers: &HeaderMap) -> Result<(), AppError> {
+    if status == "finalized" {
+        require_indexer_write_secret(headers, "finalized seal metadata")
+    } else {
+        Ok(())
+    }
+}
+
+fn require_indexer_write_secret(headers: &HeaderMap, purpose: &str) -> Result<(), AppError> {
+    let expected = env_nonempty("ANKY_VERIFIED_SEAL_RECORD_SECRET")
+        .or_else(|| env_nonempty("ANKY_INDEXER_WRITE_SECRET"))
+        .ok_or_else(|| {
+            AppError::Unavailable(format!(
+                "{purpose} recording is not configured on this backend"
+            ))
+        })?;
+    require_indexer_write_secret_value(headers, &expected, purpose)
+}
+
+fn indexer_write_secret_matches_config(headers: &HeaderMap) -> bool {
+    env_nonempty("ANKY_VERIFIED_SEAL_RECORD_SECRET")
+        .or_else(|| env_nonempty("ANKY_INDEXER_WRITE_SECRET"))
+        .is_some_and(|expected| verified_seal_record_secret_matches(headers, &expected))
+}
+
+fn require_indexer_write_secret_value(
+    headers: &HeaderMap,
+    expected: &str,
+    purpose: &str,
+) -> Result<(), AppError> {
+    if verified_seal_record_secret_matches(headers, expected) {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized(format!("invalid {purpose} secret")))
+    }
+}
+
+fn verified_seal_record_secret_matches(headers: &HeaderMap, expected: &str) -> bool {
+    let x_indexer_secret = headers
+        .get("x-anky-indexer-secret")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    if x_indexer_secret == expected {
+        return true;
+    }
+
+    let authorization = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    authorization == expected || authorization == format!("Bearer {expected}")
+}
+
+fn require_verified_seal_chain_proof() -> bool {
+    env_flag("ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF")
+}
+
+async fn verify_verified_seal_account_on_chain(
+    writer: &str,
+    session_hash: &str,
+    utc_day: i64,
+    proof_hash: &str,
+    verifier: &str,
+    protocol_version: u16,
+) -> Result<(), AppError> {
+    let writer_pubkey = solana_pubkey("wallet", writer)?;
+    let seal_program = solana_pubkey("sealProgramId", &seal_program_id())?;
+    let session_hash_bytes = decode_hash_bytes(session_hash)?;
+    let proof_hash_bytes = decode_hash_bytes(proof_hash)?;
+    let verifier_pubkey = solana_pubkey("verifier", verifier)?;
+    let writer_bytes = writer_pubkey.to_bytes();
+    let verifier_bytes = verifier_pubkey.to_bytes();
+    let (verified_seal_pda, _bump) = SolanaPubkey::find_program_address(
+        &[
+            VERIFIED_SEAL_SEED,
+            writer_pubkey.as_ref(),
+            session_hash_bytes.as_ref(),
+        ],
+        &seal_program,
+    );
+    let account = fetch_solana_account_base64(&verified_seal_pda.to_string()).await?;
+    let data_base64 = solana_account_data_base64(&account.data)?;
+    let data = BASE64_STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|_| AppError::Unavailable("VerifiedSeal account data is not base64".into()))?;
+
+    verify_verified_seal_account_data(
+        &data,
+        &writer_bytes,
+        &session_hash_bytes,
+        utc_day,
+        &proof_hash_bytes,
+        &verifier_bytes,
+        protocol_version,
+    )
+}
+
+async fn fetch_solana_account_base64(pubkey: &str) -> Result<SolanaAccountValue, AppError> {
+    let response = reqwest::Client::new()
+        .post(solana_rpc_url())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": "anky-verified-seal-account",
+            "method": "getAccountInfo",
+            "params": [
+                pubkey,
+                {
+                    "commitment": "finalized",
+                    "encoding": "base64"
+                }
+            ]
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<SolanaAccountRpcResponse>()
+        .await?;
+
+    if let Some(error) = response.error {
+        return Err(AppError::Unavailable(format!(
+            "Solana RPC getAccountInfo failed: {error}"
+        )));
+    }
+
+    response
+        .result
+        .and_then(|result| result.value)
+        .ok_or_else(|| {
+            AppError::BadRequest("matching on-chain VerifiedSeal account not found".into())
+        })
+}
+
+fn solana_account_data_base64(value: &Value) -> Result<&str, AppError> {
+    if let Some(data) = value.as_str() {
+        return Ok(data);
+    }
+    if let Some(data) = value
+        .as_array()
+        .and_then(|items| items.first())
+        .and_then(Value::as_str)
+    {
+        return Ok(data);
+    }
+
+    Err(AppError::Unavailable(
+        "Solana RPC account data is not base64 encoded".into(),
+    ))
+}
+
+fn verify_verified_seal_account_data(
+    data: &[u8],
+    writer: &[u8; 32],
+    session_hash: &[u8; 32],
+    utc_day: i64,
+    proof_hash: &[u8; 32],
+    verifier: &[u8; 32],
+    protocol_version: u16,
+) -> Result<(), AppError> {
+    const DISCRIMINATOR_LEN: usize = 8;
+    const PUBKEY_LEN: usize = 32;
+    const HASH_LEN: usize = 32;
+    const I64_LEN: usize = 8;
+    const U16_LEN: usize = 2;
+    const MIN_VERIFIED_SEAL_LEN: usize = DISCRIMINATOR_LEN
+        + PUBKEY_LEN
+        + HASH_LEN
+        + I64_LEN
+        + HASH_LEN
+        + PUBKEY_LEN
+        + U16_LEN
+        + I64_LEN;
+
+    if data.len() < MIN_VERIFIED_SEAL_LEN {
+        return Err(AppError::BadRequest(
+            "on-chain VerifiedSeal account is truncated".into(),
+        ));
+    }
+    if data[..DISCRIMINATOR_LEN] != anchor_discriminator("account:VerifiedSeal") {
+        return Err(AppError::BadRequest(
+            "on-chain account is not a VerifiedSeal".into(),
+        ));
+    }
+
+    let mut offset = DISCRIMINATOR_LEN;
+    let account_writer = read_fixed_32(data, &mut offset)?;
+    let account_session_hash = read_fixed_32(data, &mut offset)?;
+    let account_utc_day = read_i64_le(data, &mut offset)?;
+    let account_proof_hash = read_fixed_32(data, &mut offset)?;
+    let account_verifier = read_fixed_32(data, &mut offset)?;
+    let account_protocol_version = read_u16_le(data, &mut offset)?;
+
+    if account_writer != *writer
+        || account_session_hash != *session_hash
+        || account_utc_day != utc_day
+        || account_proof_hash != *proof_hash
+        || account_verifier != *verifier
+        || account_protocol_version != protocol_version
+    {
+        return Err(AppError::BadRequest(
+            "on-chain VerifiedSeal account does not match submitted metadata".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn read_fixed_32(data: &[u8], offset: &mut usize) -> Result<[u8; 32], AppError> {
+    let end = offset.checked_add(32).ok_or_else(|| {
+        AppError::BadRequest("on-chain VerifiedSeal account offset overflow".into())
+    })?;
+    let bytes = data
+        .get(*offset..end)
+        .ok_or_else(|| AppError::BadRequest("on-chain VerifiedSeal account is truncated".into()))?;
+    *offset = end;
+    let mut fixed = [0u8; 32];
+    fixed.copy_from_slice(bytes);
+
+    Ok(fixed)
+}
+
+fn read_i64_le(data: &[u8], offset: &mut usize) -> Result<i64, AppError> {
+    let end = offset.checked_add(8).ok_or_else(|| {
+        AppError::BadRequest("on-chain VerifiedSeal account offset overflow".into())
+    })?;
+    let bytes = data
+        .get(*offset..end)
+        .ok_or_else(|| AppError::BadRequest("on-chain VerifiedSeal account is truncated".into()))?;
+    *offset = end;
+
+    Ok(i64::from_le_bytes(bytes.try_into().map_err(|_| {
+        AppError::BadRequest("on-chain VerifiedSeal account has invalid i64 field".into())
+    })?))
+}
+
+fn read_u16_le(data: &[u8], offset: &mut usize) -> Result<u16, AppError> {
+    let end = offset.checked_add(2).ok_or_else(|| {
+        AppError::BadRequest("on-chain VerifiedSeal account offset overflow".into())
+    })?;
+    let bytes = data
+        .get(*offset..end)
+        .ok_or_else(|| AppError::BadRequest("on-chain VerifiedSeal account is truncated".into()))?;
+    *offset = end;
+
+    Ok(u16::from_le_bytes(bytes.try_into().map_err(|_| {
+        AppError::BadRequest("on-chain VerifiedSeal account has invalid u16 field".into())
+    })?))
+}
+
+fn anchor_discriminator(preimage: &str) -> [u8; 8] {
+    let hash = Sha256::digest(preimage.as_bytes());
+    let mut discriminator = [0u8; 8];
+    discriminator.copy_from_slice(&hash[..8]);
+
+    discriminator
+}
+
+fn decode_hash_bytes(value: &str) -> Result<[u8; 32], AppError> {
+    let bytes = hex::decode(value)
+        .map_err(|_| AppError::BadRequest("hash must be lowercase hex".into()))?;
+    if bytes.len() != 32 {
+        return Err(AppError::BadRequest("hash must be 32 bytes".into()));
+    }
+    let mut fixed = [0u8; 32];
+    fixed.copy_from_slice(&bytes);
+
+    Ok(fixed)
+}
+
+fn validate_public_webhook_payload(value: &Value) -> Result<(), AppError> {
+    if let Some(field) = find_private_webhook_field(value) {
+        return Err(AppError::BadRequest(format!(
+            "Helius webhook payload must not contain private .anky field `{field}`"
+        )));
+    }
+    if contains_anky_plaintext_value(value) {
+        return Err(AppError::BadRequest(
+            "Helius webhook payload must not contain .anky plaintext values".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn find_private_webhook_field(value: &Value) -> Option<String> {
+    match value {
+        Value::Array(items) => items.iter().find_map(find_private_webhook_field),
+        Value::Object(object) => {
+            for (key, child) in object {
+                if private_webhook_key_name(key) {
+                    return Some(key.clone());
+                }
+                if let Some(field) = find_private_webhook_field(child) {
+                    return Some(field);
+                }
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+fn contains_anky_plaintext_value(value: &Value) -> bool {
+    match value {
+        Value::Array(items) => items.iter().any(contains_anky_plaintext_value),
+        Value::Object(object) => object.values().any(contains_anky_plaintext_value),
+        Value::String(text) => looks_like_complete_anky_plaintext(text),
+        _ => false,
+    }
+}
+
+fn looks_like_complete_anky_plaintext(value: &str) -> bool {
+    value.contains('\n')
+        && value.contains("8000")
+        && (validate_closed_anky(value).is_ok() || looks_like_legacy_literal_space_anky(value))
+}
+
+fn looks_like_legacy_literal_space_anky(value: &str) -> bool {
+    if value.is_empty()
+        || value.starts_with('\u{feff}')
+        || value.contains('\r')
+        || !value.ends_with("\n8000")
+        || value.matches("\n8000").count() != 1
+    {
+        return false;
+    }
+
+    let mut lines = value.split('\n');
+    let Some(first) = lines.next() else {
+        return false;
+    };
+    if !capture_line_has_valid_time_and_character(first, false) {
+        return false;
+    }
+
+    for line in lines {
+        if line == "8000" {
+            return true;
+        }
+        if !capture_line_has_valid_time_and_character(line, true) {
+            return false;
+        }
+    }
+
+    false
+}
+
+fn capture_line_has_valid_time_and_character(line: &str, delta_line: bool) -> bool {
+    let Ok((time, character)) = split_capture_line(line) else {
+        return false;
+    };
+    let time_ok = if delta_line {
+        time.len() == 4
+            && time.chars().all(|ch| ch.is_ascii_digit())
+            && time
+                .parse::<u16>()
+                .map(|delta_ms| delta_ms <= 7_999)
+                .unwrap_or(false)
+    } else {
+        time.parse::<u64>().is_ok()
+    };
+
+    time_ok && (character == " " || is_accepted_anky_character(character))
+}
+
+fn private_webhook_key_name(key: &str) -> bool {
+    let normalized = key.trim().to_ascii_lowercase().replace(['_', '-'], "");
+    matches!(
+        normalized.as_str(),
+        "anky"
+            | "rawanky"
+            | "plainanky"
+            | "ankyplaintext"
+            | "ankytext"
+            | "ankycontent"
+            | "writingplaintext"
+            | "plaintext"
+            | "sp1witness"
+            | "proofwitness"
+            | "privatewitness"
+            | "witness"
+            | "privateinput"
+            | "privateinputs"
+    )
+}
+
+fn count_helius_webhook_items(value: &Value) -> u32 {
+    match value {
+        Value::Array(items) => u32::try_from(items.len().max(1)).unwrap_or(u32::MAX),
+        Value::Object(object) => object
+            .get("transactions")
+            .and_then(Value::as_array)
+            .map(|items| u32::try_from(items.len().max(1)).unwrap_or(u32::MAX))
+            .unwrap_or(1),
+        _ => 1,
+    }
+}
+
+fn collect_public_webhook_signatures(value: &Value) -> Vec<String> {
+    let mut signatures = Vec::new();
+    collect_public_webhook_signatures_into(value, &mut signatures);
+    signatures.sort();
+    signatures.dedup();
+    signatures
+}
+
+fn collect_public_webhook_signatures_into(value: &Value, signatures: &mut Vec<String>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_public_webhook_signatures_into(item, signatures);
+            }
+        }
+        Value::Object(object) => {
+            for (key, child) in object {
+                if matches!(
+                    key.as_str(),
+                    "signature" | "txSignature" | "transactionSignature"
+                ) {
+                    if let Some(signature) = child.as_str() {
+                        if validate_signature(signature).is_ok() {
+                            signatures.push(signature.trim().to_string());
+                        }
+                    }
+                }
+                collect_public_webhook_signatures_into(child, signatures);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -2907,6 +3990,9 @@ fn is_accepted_anky_character(value: &str) -> bool {
     if value == "SPACE" {
         return true;
     }
+    if value == " " {
+        return false;
+    }
 
     let mut chars = value.chars();
     let Some(character) = chars.next() else {
@@ -2931,7 +4017,7 @@ fn reconstruct_closed_anky_text(anky: &str) -> Result<String, AppError> {
 
         let (_, token) = split_capture_line(line)?;
 
-        if token == "SPACE" || token == " " {
+        if token == "SPACE" {
             text.push(' ');
         } else {
             text.push_str(token);
@@ -3145,15 +4231,51 @@ fn solana_cluster() -> String {
 }
 
 fn solana_rpc_url() -> String {
-    env_nonempty("ANKY_SOLANA_RPC_URL")
-        .or_else(|| env_nonempty("EXPO_PUBLIC_SOLANA_RPC_URL"))
-        .unwrap_or_else(|| {
-            if solana_cluster() == "mainnet-beta" {
-                DEFAULT_MAINNET_SOLANA_RPC_URL.to_string()
-            } else {
-                DEFAULT_SOLANA_RPC_URL.to_string()
-            }
-        })
+    resolve_server_solana_rpc_url(
+        &solana_cluster(),
+        env_nonempty("ANKY_SOLANA_RPC_URL"),
+        env_nonempty("EXPO_PUBLIC_SOLANA_RPC_URL"),
+    )
+}
+
+fn public_solana_rpc_url() -> String {
+    resolve_public_solana_rpc_url(
+        &solana_cluster(),
+        env_nonempty("ANKY_PUBLIC_SOLANA_RPC_URL"),
+        env_nonempty("EXPO_PUBLIC_SOLANA_RPC_URL"),
+    )
+}
+
+fn resolve_server_solana_rpc_url(
+    cluster: &str,
+    server_rpc_url: Option<String>,
+    expo_public_rpc_url: Option<String>,
+) -> String {
+    server_rpc_url
+        .or(expo_public_rpc_url)
+        .unwrap_or_else(|| default_solana_rpc_url_for_cluster(cluster))
+}
+
+fn resolve_public_solana_rpc_url(
+    cluster: &str,
+    public_rpc_url: Option<String>,
+    expo_public_rpc_url: Option<String>,
+) -> String {
+    public_rpc_url
+        .or(expo_public_rpc_url)
+        .unwrap_or_else(|| default_solana_rpc_url_for_cluster(cluster))
+}
+
+fn default_solana_rpc_url() -> String {
+    default_solana_rpc_url_for_cluster(&solana_cluster())
+}
+
+fn default_solana_rpc_url_for_cluster(cluster: &str) -> String {
+    if cluster == "mainnet-beta" {
+        DEFAULT_MAINNET_SOLANA_RPC_URL.to_string()
+    } else {
+        DEFAULT_SOLANA_RPC_URL.to_string()
+    }
 }
 
 fn core_program_id() -> String {
@@ -3172,6 +4294,12 @@ fn seal_program_id() -> String {
     env_nonempty("ANKY_SEAL_PROGRAM_ID")
         .or_else(|| env_nonempty("EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID"))
         .unwrap_or_else(|| DEFAULT_SEAL_PROGRAM_ID.to_string())
+}
+
+fn proof_verifier_authority() -> String {
+    env_nonempty("ANKY_PROOF_VERIFIER_AUTHORITY")
+        .or_else(|| env_nonempty("EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY"))
+        .unwrap_or_else(|| DEFAULT_PROOF_VERIFIER_AUTHORITY.to_string())
 }
 
 fn collection_uri() -> String {
@@ -3240,10 +4368,65 @@ mod tests {
         assert_eq!(ProcessingType::FullSojournArchive.credit_cost(), 88);
     }
 
+    #[tokio::test]
+    async fn app_config_includes_proof_verifier_authority() {
+        let Json(config) = get_config().await;
+        let value = serde_json::to_value(config).unwrap();
+
+        assert_eq!(
+            value["solana"]["proofVerifierAuthority"],
+            proof_verifier_authority()
+        );
+    }
+
     #[test]
-    fn validate_closed_anky_accepts_literal_space_character() {
+    fn mobile_solana_config_includes_proof_verifier_authority() {
+        let value = serde_json::to_value(mobile_solana_config()).unwrap();
+
+        assert_eq!(value["proofVerifierAuthority"], proof_verifier_authority());
+    }
+
+    #[test]
+    fn solana_rpc_resolvers_keep_private_rpc_out_of_public_config() {
+        let server_rpc = resolve_server_solana_rpc_url(
+            "devnet",
+            Some("https://private-helius.example/?api-key=secret".to_string()),
+            Some("https://public-expo.example".to_string()),
+        );
+        let public_rpc = resolve_public_solana_rpc_url(
+            "devnet",
+            Some("https://public-mobile.example".to_string()),
+            Some("https://public-expo.example".to_string()),
+        );
+
+        assert_eq!(server_rpc, "https://private-helius.example/?api-key=secret");
+        assert_eq!(public_rpc, "https://public-mobile.example");
+    }
+
+    #[test]
+    fn public_solana_rpc_resolver_falls_back_to_expo_then_default() {
+        assert_eq!(
+            resolve_public_solana_rpc_url(
+                "devnet",
+                None,
+                Some("https://public-expo.example".to_string())
+            ),
+            "https://public-expo.example"
+        );
+        assert_eq!(
+            resolve_public_solana_rpc_url("devnet", None, None),
+            DEFAULT_SOLANA_RPC_URL
+        );
+        assert_eq!(
+            resolve_public_solana_rpc_url("mainnet-beta", None, None),
+            DEFAULT_MAINNET_SOLANA_RPC_URL
+        );
+    }
+
+    #[test]
+    fn validate_closed_anky_rejects_literal_space_character() {
         let anky = "1710000000000 a\n0001  \n8000";
-        assert!(validate_closed_anky(anky).is_ok());
+        assert!(validate_closed_anky(anky).is_err());
     }
 
     #[test]
@@ -3280,6 +4463,326 @@ mod tests {
         };
 
         assert!(validate_carpet(&carpet).is_ok());
+    }
+
+    #[test]
+    fn verified_seal_record_secret_requires_matching_header() {
+        let mut headers = HeaderMap::new();
+        assert!(!verified_seal_record_secret_matches(
+            &headers,
+            "expected-secret"
+        ));
+
+        headers.insert("x-anky-indexer-secret", "wrong-secret".parse().unwrap());
+        assert!(!verified_seal_record_secret_matches(
+            &headers,
+            "expected-secret"
+        ));
+
+        headers.insert("x-anky-indexer-secret", "expected-secret".parse().unwrap());
+        assert!(verified_seal_record_secret_matches(
+            &headers,
+            "expected-secret"
+        ));
+
+        headers.remove("x-anky-indexer-secret");
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer expected-secret".parse().unwrap(),
+        );
+        assert!(verified_seal_record_secret_matches(
+            &headers,
+            "expected-secret"
+        ));
+
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "expected-secret".parse().unwrap(),
+        );
+        assert!(verified_seal_record_secret_matches(
+            &headers,
+            "expected-secret"
+        ));
+    }
+
+    #[test]
+    fn verified_seal_record_requires_configured_verifier_authority() {
+        assert!(validate_expected_proof_verifier_value(
+            DEFAULT_PROOF_VERIFIER_AUTHORITY,
+            DEFAULT_PROOF_VERIFIER_AUTHORITY
+        )
+        .is_ok());
+        let error = validate_expected_proof_verifier_value(
+            "11111111111111111111111111111111",
+            DEFAULT_PROOF_VERIFIER_AUTHORITY,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("proof verifier authority"));
+    }
+
+    #[test]
+    fn utc_day_validator_rejects_negative_values() {
+        assert_eq!(validate_optional_utc_day(None).unwrap(), None);
+        assert_eq!(
+            validate_optional_utc_day(Some(19_999)).unwrap(),
+            Some(19_999)
+        );
+
+        let error = validate_optional_utc_day(Some(-1)).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("utcDay"));
+    }
+
+    #[test]
+    fn verified_seal_status_requires_landed_receipt_status() {
+        assert_eq!(validate_verified_seal_status(None).unwrap(), "confirmed");
+        assert_eq!(
+            validate_verified_seal_status(Some("finalized")).unwrap(),
+            "finalized"
+        );
+
+        for status in ["pending", "processed", "failed"] {
+            let error = validate_verified_seal_status(Some(status)).unwrap_err();
+            assert!(matches!(error, AppError::BadRequest(_)));
+            assert!(error.to_string().contains("confirmed or finalized"));
+        }
+    }
+
+    #[test]
+    fn public_seal_status_allows_mobile_receipt_lifecycle_states() {
+        for status in ["confirmed", "finalized", "processed", "pending", "failed"] {
+            assert_eq!(validate_status(Some(status)).unwrap(), status);
+        }
+    }
+
+    #[test]
+    fn finalized_public_seal_metadata_requires_indexer_secret() {
+        let mut headers = HeaderMap::new();
+        assert!(require_finalized_seal_record_secret("confirmed", &headers).is_ok());
+        assert!(require_finalized_seal_record_secret("pending", &headers).is_ok());
+
+        let error = require_indexer_write_secret_value(
+            &headers,
+            "expected-secret",
+            "finalized seal metadata",
+        )
+        .unwrap_err();
+        assert!(matches!(error, AppError::Unauthorized(_)));
+        assert!(error.to_string().contains("finalized seal metadata"));
+
+        headers.insert("x-anky-indexer-secret", "expected-secret".parse().unwrap());
+        assert!(require_indexer_write_secret_value(
+            &headers,
+            "expected-secret",
+            "finalized seal metadata",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn finalized_public_seal_conflict_update_is_sticky() {
+        let source = include_str!("mobile_sojourn.rs");
+
+        assert!(source.contains("WHERE mobile_seal_receipts.status <> 'finalized'"));
+        assert!(source.contains("OR ($12 AND EXCLUDED.status = 'finalized')"));
+        assert!(source.contains("finalized seal metadata is immutable"));
+    }
+
+    #[test]
+    fn mobile_seal_score_uses_score_v1_formula_with_streak_runs() {
+        let score = build_mobile_seal_score(
+            "11111111111111111111111111111111".to_string(),
+            "devnet".to_string(),
+            DEFAULT_PROOF_VERIFIER_AUTHORITY.to_string(),
+            vec![
+                20_001, 20_000, 20_002, 20_003, 20_004, 20_005, 20_006, 20_007, 20_008, 20_009,
+                20_010, 20_011, 20_012, 20_013, 20_020, 20_021, 20_022, 20_023, 20_024, 20_025,
+                20_026,
+            ],
+            vec![20_000, 20_000, 20_013, 20_026],
+        );
+
+        assert_eq!(score.unique_seal_days, 21);
+        assert_eq!(score.verified_seal_days, 3);
+        assert_eq!(score.streak_bonus, 6);
+        assert_eq!(score.score, 30);
+        assert_eq!(score.sealed_days.first().copied(), Some(20_000));
+        assert_eq!(score.sealed_days.last().copied(), Some(20_026));
+        assert!(score.finalized_only);
+        assert!(score.formula.contains("unique_seal_days"));
+    }
+
+    #[test]
+    fn mobile_seal_score_drops_verified_days_without_matching_sealed_day() {
+        let score = build_mobile_seal_score(
+            "11111111111111111111111111111111".to_string(),
+            "devnet".to_string(),
+            DEFAULT_PROOF_VERIFIER_AUTHORITY.to_string(),
+            vec![20_001, 20_001, -1],
+            vec![20_001, 20_002],
+        );
+
+        assert_eq!(score.sealed_days, vec![20_001]);
+        assert_eq!(score.verified_days, vec![20_001]);
+        assert_eq!(score.score, 2);
+    }
+
+    #[test]
+    fn verified_metadata_requires_landed_matching_seal_status() {
+        assert!(require_landed_seal_receipt_status("confirmed").is_ok());
+        assert!(require_landed_seal_receipt_status("finalized").is_ok());
+
+        for status in ["pending", "processed", "failed"] {
+            let error = require_landed_seal_receipt_status(status).unwrap_err();
+            assert!(matches!(error, AppError::BadRequest(_)));
+            assert!(error.to_string().contains("matching seal receipt"));
+        }
+    }
+
+    #[test]
+    fn verified_utc_day_resolution_requires_known_day_and_rejects_mismatch() {
+        assert_eq!(
+            resolve_verified_utc_day(Some(19_999), Some(19_999)).unwrap(),
+            19_999
+        );
+        assert_eq!(
+            resolve_verified_utc_day(Some(19_999), None).unwrap(),
+            19_999
+        );
+        assert_eq!(
+            resolve_verified_utc_day(None, Some(19_999)).unwrap(),
+            19_999
+        );
+
+        let missing = resolve_verified_utc_day(None, None).unwrap_err();
+        assert!(matches!(missing, AppError::BadRequest(_)));
+        assert!(missing.to_string().contains("utcDay is required"));
+
+        let mismatch = resolve_verified_utc_day(Some(20_000), Some(19_999)).unwrap_err();
+        assert!(matches!(mismatch, AppError::BadRequest(_)));
+        assert!(mismatch.to_string().contains("utcDay does not match"));
+    }
+
+    #[test]
+    fn verified_seal_account_data_must_match_submitted_public_metadata() {
+        let writer = [1u8; 32];
+        let session_hash = [2u8; 32];
+        let proof_hash = [3u8; 32];
+        let verifier = [4u8; 32];
+        let data =
+            verified_seal_account_data(writer, session_hash, 20_000, proof_hash, verifier, 1);
+
+        assert!(verify_verified_seal_account_data(
+            &data,
+            &writer,
+            &session_hash,
+            20_000,
+            &proof_hash,
+            &verifier,
+            1,
+        )
+        .is_ok());
+
+        let mismatch = verify_verified_seal_account_data(
+            &data,
+            &writer,
+            &session_hash,
+            20_001,
+            &proof_hash,
+            &verifier,
+            1,
+        )
+        .unwrap_err();
+        assert!(matches!(mismatch, AppError::BadRequest(_)));
+        assert!(mismatch.to_string().contains("does not match"));
+    }
+
+    #[test]
+    fn verified_seal_account_data_rejects_wrong_discriminator() {
+        let mut data =
+            verified_seal_account_data([1u8; 32], [2u8; 32], 20_000, [3u8; 32], [4u8; 32], 1);
+        data[0] ^= 0xff;
+
+        let error = verify_verified_seal_account_data(
+            &data, &[1u8; 32], &[2u8; 32], 20_000, &[3u8; 32], &[4u8; 32], 1,
+        )
+        .unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("not a VerifiedSeal"));
+    }
+
+    #[test]
+    fn helius_webhook_payload_rejects_private_anky_fields() {
+        let payload = json!({
+            "signature": "2hntvJaJzRkFWt3hTa7Q9oiGyVsTpjMwmzY8WcN52UDMsTyMuzKUtcEhupAe7BcZGeq49dFBhhgoYgeZ79m53sNh",
+            "accountData": [
+                {
+                    "rawAnky": "1710000000000 a\n8000"
+                }
+            ]
+        });
+
+        let error = validate_public_webhook_payload(&payload).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("rawAnky"));
+    }
+
+    #[test]
+    fn helius_webhook_payload_rejects_anky_plaintext_values_under_generic_keys() {
+        let payload = json!({
+            "signature": "2hntvJaJzRkFWt3hTa7Q9oiGyVsTpjMwmzY8WcN52UDMsTyMuzKUtcEhupAe7BcZGeq49dFBhhgoYgeZ79m53sNh",
+            "instructions": [
+                {
+                    "programId": seal_program_id(),
+                    "memo": "1710000000000 a\n8000"
+                }
+            ]
+        });
+
+        let error = validate_public_webhook_payload(&payload).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("plaintext values"));
+    }
+
+    #[test]
+    fn helius_webhook_payload_rejects_legacy_literal_space_anky_plaintext_values() {
+        let payload = json!({
+            "signature": "2hntvJaJzRkFWt3hTa7Q9oiGyVsTpjMwmzY8WcN52UDMsTyMuzKUtcEhupAe7BcZGeq49dFBhhgoYgeZ79m53sNh",
+            "instructions": [
+                {
+                    "programId": seal_program_id(),
+                    "memo": "1710000000000 a\n0001  \n8000"
+                }
+            ]
+        });
+
+        let error = validate_public_webhook_payload(&payload).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("plaintext values"));
+    }
+
+    #[test]
+    fn helius_webhook_payload_counts_public_items_and_dedupes_signatures() {
+        let signature = "2hntvJaJzRkFWt3hTa7Q9oiGyVsTpjMwmzY8WcN52UDMsTyMuzKUtcEhupAe7BcZGeq49dFBhhgoYgeZ79m53sNh";
+        let payload = json!([
+            {
+                "signature": signature,
+                "description": "public Anchor event payload"
+            },
+            {
+                "txSignature": signature,
+                "transactionSignature": "not-a-signature"
+            }
+        ]);
+
+        validate_public_webhook_payload(&payload).unwrap();
+        assert_eq!(count_helius_webhook_items(&payload), 2);
+        assert_eq!(
+            collect_public_webhook_signatures(&payload),
+            vec![signature.to_string()]
+        );
     }
 
     #[test]
@@ -3400,5 +4903,26 @@ mod tests {
             ],
             "userMessage": "what is still alive here?"
         })
+    }
+
+    fn verified_seal_account_data(
+        writer: [u8; 32],
+        session_hash: [u8; 32],
+        utc_day: i64,
+        proof_hash: [u8; 32],
+        verifier: [u8; 32],
+        protocol_version: u16,
+    ) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&anchor_discriminator("account:VerifiedSeal"));
+        data.extend_from_slice(&writer);
+        data.extend_from_slice(&session_hash);
+        data.extend_from_slice(&utc_day.to_le_bytes());
+        data.extend_from_slice(&proof_hash);
+        data.extend_from_slice(&verifier);
+        data.extend_from_slice(&protocol_version.to_le_bytes());
+        data.extend_from_slice(&1_700_000_000i64.to_le_bytes());
+
+        data
     }
 }

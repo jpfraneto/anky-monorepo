@@ -245,6 +245,7 @@ export function EntryScreen({ navigation, route }: Props) {
             sessionHash: entryState.hash,
             signature: seal.signature,
             status: "confirmed",
+            utcDay: sessionUtcDay,
             wallet: wallet.publicKey,
           });
         } catch (recordError) {
@@ -372,6 +373,7 @@ function toLoomSeal(seal: {
   network: LoomSeal["network"];
   session_hash: string;
   signature: string;
+  utc_day?: number;
   writer: string;
 }): LoomSeal {
   return {
@@ -380,6 +382,7 @@ function toLoomSeal(seal: {
     network: seal.network,
     sessionHash: seal.session_hash,
     txSignature: seal.signature,
+    utcDay: seal.utc_day,
     writer: seal.writer,
   };
 }

@@ -345,6 +345,19 @@ mod tests {
     }
 
     #[test]
+    fn receipt_serialization_does_not_include_private_witness() {
+        let raw = full_anky_raw_with_character("ね");
+
+        let receipt = build_receipt(&raw, WRITER, None).expect("receipt");
+        let serialized = serde_json::to_string(&receipt).expect("serialize receipt");
+
+        assert_eq!(receipt.session_hash, compute_session_hash(&raw));
+        assert!(!serialized.contains("ね"));
+        assert!(!serialized.contains("7999 ね"));
+        assert!(!serialized.contains(&raw));
+    }
+
+    #[test]
     fn rejects_missing_terminal_line() {
         let error = parse_anky("1700000000000 a\n0001 b\n").expect_err("parse error");
 
@@ -392,9 +405,17 @@ mod tests {
     }
 
     fn full_anky_raw() -> String {
+        full_anky_raw_with_character("a")
+    }
+
+    fn full_anky_raw_with_character(character: &str) -> String {
+        assert_eq!(character.chars().count(), 1);
+
         let mut raw = "1700000000000 a\n".to_string();
         for _ in 0..60 {
-            raw.push_str("7999 a\n");
+            raw.push_str("7999 ");
+            raw.push_str(character);
+            raw.push('\n');
         }
         raw.push_str(TERMINAL_LINE);
         raw

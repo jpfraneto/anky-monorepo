@@ -16,6 +16,7 @@ import {
   MobileReflectionJobResponse,
   MobileReflectionRequest,
   MobileReflectionResponse,
+  MobileSealScoreResponse,
   MobileSolanaConfigResponse,
   MobileSpendCreditsRequest,
   MobileSpendCreditsResponse,
@@ -225,6 +226,14 @@ export class AnkyApiClient {
     }
 
     return this.request<SealLookupResponse>(`/api/mobile/seals?${params.toString()}`);
+  }
+
+  lookupMobileSealScore(wallet: string): Promise<MobileSealScoreResponse> {
+    const params = new URLSearchParams({ wallet });
+
+    return this.request<MobileSealScoreResponse>(
+      `/api/mobile/seals/score?${params.toString()}`,
+    );
   }
 
   recordMobileSeal(request: RecordMobileSealRequest): Promise<RecordMobileSealResponse> {

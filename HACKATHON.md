@@ -1,18 +1,18 @@
 # Anky — Colosseum Hackathon Framework
 
-*Last updated: 2026-04-11*
+*Last updated: 2026-05-06*
 
 ---
 
 ## The One-Liner
 
-Anky is proof of inner work on Solana. Write for 8 minutes without stopping. Your writing is encrypted on-device, processed inside an AWS Nitro Enclave, and the session hash is logged immutably on-chain. The backend never sees what you wrote. The chain is the witness.
+Anky is a private daily writing ritual with a Solana witness. Write for 8 minutes without stopping; your phone keeps the `.anky` file local, hashes the exact UTF-8 bytes, seals only that hash through an Anky Loom, and can attach an SP1-verified receipt without revealing the writing.
 
 ---
 
 ## The Pitch (30 seconds)
 
-Every app on your phone is designed to make you forget you're alive. Anky is the only one that asks you to remember. Eight minutes of uninterrupted stream-of-consciousness writing — no backspace, no editing, no performance. What comes out is real. The writing is encrypted on your device, processed inside an AWS Nitro Enclave, and the session hash goes on Solana. The backend is cryptographically blind. You own your consciousness. The chain proves you showed up.
+Every app on your phone is designed to make you forget you're alive. Anky is the one that asks you to remember. Eight minutes of uninterrupted stream-of-consciousness writing: no backspace, no editing, no performance. What comes out stays local by default. Solana sees the hash, the Loom, the wallet, and the UTC day; SP1 proves the private `.anky` file was structurally valid off-chain; the current on-chain verified badge is verifier-authority-attested after that SP1 verification.
 
 ---
 
@@ -20,11 +20,11 @@ Every app on your phone is designed to make you forget you're alive. Anky is the
 
 Three things that cannot exist without the chain:
 
-1. **Zero-knowledge proof of inner work.** The session hash on Solana proves you did the practice without revealing what you wrote. No centralized platform can offer this guarantee — they can revoke, delete, or read your data. The hash is permanent and the content is private. That's a new primitive.
+1. **Proof-of-practice without plaintext storage.** The session hash on Solana commits to the exact `.anky` bytes without revealing the writing. The SP1 path proves private `.anky` validity off-chain, and the Anky Seal Program records the public verified receipt after verifier-authority attestation. Future hardening is direct on-chain SP1/Groth16 verification.
 
-2. **Identity without platform lock-in.** Your Solana wallet IS your identity. Your Mirror cNFT is your membership. Your session logs follow your pubkey across any app that queries the chain. No account, no email, no platform dependency.
+2. **Identity without platform lock-in.** Your Solana wallet is the public identity for the season. Your Metaplex Core Loom is the access artifact. Your public seals and verified receipts follow your pubkey across any app that indexes the Anky Seal Program.
 
-3. **Invisible infrastructure.** The user never needs SOL, never signs a transaction, never sees a wallet popup. The authority wallet pays ~$0.0007 per session log. The chain is as invisible as TCP/IP. This is only viable on Solana — sub-second finality, sub-cent costs, compressed NFTs.
+3. **Practice-based scoring.** Helius-backed indexing reconstructs finalized `DailySeal`, `HashSeal`, and `VerifiedSeal` state so rewards can be based on unique days, verified days, and streaks instead of token balance.
 
 ---
 
@@ -36,27 +36,29 @@ The $1.5T wellness market is full of people doing breathwork, meditation retreat
 
 ## Architecture (for technical judges)
 
-```
-iOS Device                    Backend (poiesis)              EC2 Enclave (Nitro)
-──────────                    ─────────────────              ───────────────────
-Write 8 min                   
-SHA256(plaintext) locally     
-Encrypt with enclave X25519   
-                              
-POST /api/sealed-write ────→  Store sealed envelope (blind)
-                              Log hash on Solana (spl-memo) ─→ Solana
-                              Relay envelope to enclave ────→ Decrypt (X25519+AES-256-GCM)
-                                                              Verify SHA256 == session_hash
-                                                              Call OpenRouter → reflection
-                                                              DESTROY plaintext
-                              ←──── {reflection, image_prompt, title}
-                              Generate image from prompt
-                              Store reflection
-                              
-User polls status ──────────→ Return reflection + image
+```text
+iOS Device                    Solana                         Backend / Indexer
+──────────                    ──────                         ─────────────────
+Write 8 min
+Save exact .anky bytes locally
+SHA-256(.anky bytes)
+
+Own/mint Core Loom ─────────→ Metaplex Core Loom asset
+
+seal_anky(hash, utc_day) ───→ Anky Seal Program
+                              DailySeal + HashSeal
+
+Opt-in proof file path ─────→ SP1 prover process
+                              local SP1 proof verification
+
+record_verified_anky ───────→ VerifiedSeal PDA
+                              verifier-authority-attested
+
+                              Helius finalized backfill ───→ score snapshot
+Mobile polls backend ──────────────────────────────────────→ Sealed / Proving / Verified
 ```
 
-**The backend NEVER sees the writing.** Cryptographically guaranteed, not policy-promised.
+The canonical proof/scoring path must not persist `.anky` plaintext. Plaintext may enter a prover or reflection path only as explicit opt-in transient process memory; it must not be logged, stored, or sent to chain.
 
 ---
 
@@ -76,15 +78,18 @@ Consumer apps that DID win: Banger (tweet marketplace, 1st Consumer Renaissance)
 
 ## What's Built and Deployed (not a demo)
 
-- **Rust/Axum server** on production at anky.app (Cloudflare tunnel)
-- **AWS Nitro Enclave** with sealed write pipeline (decrypt → OpenRouter → outputs)
-- **Solana session logging** via spl-memo (authority pays, user wallet indexed)
-- **Mirror cNFTs** via Bubblegum (3,456 cap, membership gate)
-- **iOS app** on TestFlight (CryptoKit encryption, sealed write)
+- **React Native mobile app** with local `.anky` writing, hashing, Loom, seal, proof-state, and backend score surfaces
+- **Metaplex Core Loom path** for Sojourn 9 access artifacts
+- **Anky Seal Program** with `DailySeal`, `HashSeal`, `LoomState`, and verifier-attested `VerifiedSeal`
+- **SP1 proof path** that proves private `.anky` validity off-chain and verifies proofs locally
+- **VerifiedSeal operator/backend metadata path** for public receipt persistence after off-chain SP1 verification
+- **Helius/RPC indexer** for finalized seal/verified event reconstruction and deterministic Score V1 snapshots
 - **Farcaster miniapp** live (chat interface, mirror generation, writing overlay)
 - **Image generation pipeline** (Gemini → Flux/ComfyUI on local 4090s)
 - **Text inference chain** (local Qwen 27B → Claude → OpenRouter fallback)
 - **8 kingdoms** cycling through chakras across 96-day sojourns
+
+Not claimed yet: mainnet deployment, direct on-chain SP1 verification, production Helius webhook creation, or a completed live devnet `seal -> prove -> record verified -> index -> score` run.
 
 ---
 
@@ -92,8 +97,8 @@ Consumer apps that DID win: Banger (tweet marketplace, 1st Consumer Renaissance)
 
 - **Paradigm** (Aug 2024): "I'm equally interested in non-financial use cases because they create a positive feedback loop"
 - **a16z** (Oct 2024): "As transaction costs come down, many other potential crypto consumer apps become possible"
-- **Galaxy Research** (Feb 2025): SBTs and non-transferable tokens for identity + reputation — exactly what Mirror cNFTs are
-- **Cypherpunk's Manifesto** (Nakamoto Institute): "To encrypt is to indicate the desire for privacy" — Anky's sealed architecture is cypherpunk orthodoxy applied to the inner life
+- **Galaxy Research** (Feb 2025): SBTs and non-transferable tokens for identity + reputation — close to the role Sojourn 9 Looms play as season access artifacts
+- **Cypherpunk's Manifesto** (Nakamoto Institute): "To encrypt is to indicate the desire for privacy" — Anky's local-first hash-seal architecture applies that privacy instinct to daily practice
 
 ---
 
@@ -109,7 +114,7 @@ Danny Jones viewers. Breathwork practitioners. Retreat-goers. People who are alr
 
 **The 3,456 seat limit is a mystery school, not a waitlist.**
 
-Don't apologize for scarcity. Lean into it. This isn't a product launch — it's an initiation into a practice. The Mirror reflects you back to yourself. The sojourn gives it rhythm and ceremony. "3,456 seats. 96 days. One rule: don't stop writing for 8 minutes."
+Don't apologize for scarcity. Lean into it. This isn't a product launch — it's an initiation into a practice. The Loom gives the season a public access artifact. The sojourn gives it rhythm and ceremony. "3,456 seats. 96 days. One rule: don't stop writing for 8 minutes."
 
 **Solana isn't the reward. Solana is the witness.**
 
@@ -125,7 +130,7 @@ Every other app is designed to minimize friction. Anky maximizes it — delibera
 
 > **Anky: Proof of Inner Work on Solana**
 >
-> Write for 8 minutes without stopping. Your writing is encrypted on-device, processed in an AWS Nitro Enclave, and the session hash is logged immutably on Solana — proof you did the practice, without revealing what you wrote. Your first session mints a Mirror cNFT: your seat among 3,456 participants in a 96-day sojourn. The practice is always free. The chain is the witness. The $1.5T wellness market meets cypherpunk privacy. Live on Farcaster + iOS.
+> Write for 8 minutes without stopping. Your phone keeps the `.anky` file local, hashes the exact bytes, and seals only that hash on Solana through a Metaplex Core Loom. SP1 proves private `.anky` validity off-chain, and the current on-chain verified receipt is verifier-authority-attested after that proof is checked. Helius indexing turns finalized seals and verified receipts into a deterministic practice score for up to 3,456 Sojourn 9 participants.
 
 ---
 
@@ -137,7 +142,7 @@ Every other app is designed to minimize friction. Anky maximizes it — delibera
 
 3. **The mystical framing alienates some audiences.** Sojourns, kingdoms, chakras — resonates deeply with some, repels others. The protocol is pure engineering. The culture is deliberately spiritual. Feature for community, risk for pitch.
 
-4. **Adoption requires behavior change.** Nobody wakes up wanting to write for 8 minutes with no backspace. The sojourn structure, the Mirror cNFT, the evolving profile — these create gravity. But gravity takes time.
+4. **Adoption requires behavior change.** Nobody wakes up wanting to write for 8 minutes with no backspace. The sojourn structure, the Loom, the evolving profile — these create gravity. But gravity takes time.
 
 ---
 

@@ -26,6 +26,7 @@ export async function loadMobileSolanaConfig(): Promise<MobileSolanaRuntimeConfi
       coreProgramId: response.coreProgramId,
       loomMetadataBaseUrl: response.loomMetadataBaseUrl,
       network: response.network,
+      proofVerifierAuthority: response.proofVerifierAuthority,
       rpcUrl: response.rpcUrl,
       sealProgramId: response.sealProgramId,
       sealVerification: response.sealVerification,

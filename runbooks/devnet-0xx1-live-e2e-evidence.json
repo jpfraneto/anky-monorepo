@@ -1,0 +1,88 @@
+{
+  "artifactKind": "anky_sojourn9_devnet_live_e2e_evidence",
+  "artifactVersion": 1,
+  "generatedAt": "2026-05-06T15:31:55.221Z",
+  "isFinalLaunchEvidence": false,
+  "cluster": "devnet",
+  "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "coreProgramId": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+  "coreCollection": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
+  "proofVerifierAuthority": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+  "sp1Vkey": "0x00399c50f86cb417d0cf0c80485b0f1781590170c6892861a1a55974da6e4758",
+  "proofSubject": {
+    "description": "Edited current 0xx1 bytes after timestamp and terminal 8000 fix; no plaintext is included in this artifact.",
+    "sessionHash": "f6c922b2b87fec532aa3d24cb2bafcc237043fa28de168820c2326e0b18955b3",
+    "utcDay": 20579,
+    "writer": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+    "valid": true,
+    "durationOk": true,
+    "acceptedDurationMs": 479011,
+    "riteDurationMs": 487011,
+    "eventCount": 3817,
+    "proofHash": "b228eea80545194b3e39b7ac9dcf5f04443c9bf18ef94ff1f3e0e0fe0d17fd1f"
+  },
+  "loom": {
+    "asset": "6oEyFPQPksvKyCtdjsSEzL6JMxAPPwBPkMBBAMvUnNLJ",
+    "owner": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q"
+  },
+  "accounts": {
+    "dailySeal": "B6yPbDL7oTbjxG9eYca72EbKmpcSPr4DggTSrmLg6YDD",
+    "hashSeal": "ABiRs6Mqf3SyFWB5D2bKLy5fD5yRnYbT9hqeXHbzKd9g",
+    "loomState": "9J9zrRTqECd1tyvyuBox8m8RCRfUVtDTZGzj5EUzipCh",
+    "verifiedSeal": "6FhuWEqMUcpuePVgywdFwWJ295mE8g9nwK7oQz7x7J19"
+  },
+  "transactions": {
+    "seal": {
+      "signature": "5EvmetB1HBsRJR4ErvTbvvamq63fQzEEAhxoiaUobVxUybFeMRBYVVur3CX5mfJxRCAubFkjib2QodK1E8avTEJU",
+      "orbUrl": "https://orbmarkets.io/tx/5EvmetB1HBsRJR4ErvTbvvamq63fQzEEAhxoiaUobVxUybFeMRBYVVur3CX5mfJxRCAubFkjib2QodK1E8avTEJU"
+    },
+    "recordVerifiedAnky": {
+      "signature": "2pyxGzZeYzmd3r5ctTqhB73RX3QPCAeE7VRQYMRPD16nCv1t7Gj3U7NXhgWJkcWiwaSyYZP72sNtoDRbcUNTQ91",
+      "orbUrl": "https://orbmarkets.io/tx/2pyxGzZeYzmd3r5ctTqhB73RX3QPCAeE7VRQYMRPD16nCv1t7Gj3U7NXhgWJkcWiwaSyYZP72sNtoDRbcUNTQ91"
+    }
+  },
+  "chainVerification": {
+    "hashSealReady": true,
+    "verifiedSealLanded": true,
+    "verifiedSealProtocolVersion": 1,
+    "checkedAt": "2026-05-06T15:26:29.410Z",
+    "witnessRead": false
+  },
+  "heliusIndexing": {
+    "knownSignatureSnapshot": {
+      "path": "/tmp/anky-live-devnet-signature-score-snapshot-20579.json",
+      "audited": true,
+      "requireFinalized": true,
+      "indexedEvents": 2,
+      "sealedEvents": 1,
+      "verifiedEvents": 1,
+      "scoreRows": 1,
+      "totalScore": 2,
+      "score": {
+        "wallet": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+        "uniqueSealDays": 1,
+        "verifiedSealDays": 1,
+        "streakBonus": 0,
+        "score": 2,
+        "sealedDays": [
+          20579
+        ]
+      }
+    },
+    "programAddressBackfill": {
+      "path": "/tmp/anky-live-devnet-program-backfill-score-snapshot-20579-rerun.json",
+      "requireFinalized": true,
+      "indexedEvents": 0,
+      "scoreRows": 0,
+      "caveat": "Program-address Helius backfill was still empty for this devnet program when checked; known-signature finalized reconciliation worked for the demo pair, but full backfill/webhook coverage remains a launch blocker."
+    }
+  },
+  "notFinalBecause": [
+    "Target backend migrations/config have not been applied and verified for this run.",
+    "Public backend seal/verified metadata was not posted for this run.",
+    "No public Helius webhook ID or full finalized program backfill evidence is attached.",
+    "Live mobile-device demo evidence is not attached.",
+    "Mainnet program, collection, verifier, funding, and snapshot values are not confirmed.",
+    "Direct on-chain SP1 verification is not implemented; this is verifier-authority-attested after off-chain SP1 verification."
+  ]
+}

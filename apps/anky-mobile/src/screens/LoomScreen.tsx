@@ -20,7 +20,7 @@ import { ChakanaLoom, getLoomCompletion } from "../components/sojourn/ChakanaLoo
 import { KingdomBadge } from "../components/sojourn/KingdomBadge";
 import { AnkyApiError } from "../lib/api/ankyApi";
 import { getAnkyApiClient } from "../lib/api/client";
-import type { MobileLoomMint } from "../lib/api/types";
+import type { MobileLoomMint, MobileSealScoreResponse } from "../lib/api/types";
 import { hasConfiguredBackend } from "../lib/auth/backendSession";
 import { listAnkySessionSummaries } from "../lib/ankySessionIndex";
 import { listLocalLoomSeals, listSavedAnkyFiles, type SavedAnkyFile } from "../lib/ankyStorage";
@@ -67,6 +67,8 @@ export function LoomScreen({ navigation }: Props) {
   const [recordedLooms, setRecordedLooms] = useState<MobileLoomMint[]>([]);
   const [runtimeConfig, setRuntimeConfig] = useState<MobileSolanaRuntimeConfig | null>(null);
   const [selectedLoom, setSelectedLoom] = useState<SelectedLoom | null>(null);
+  const [sealScore, setSealScore] = useState<MobileSealScoreResponse | null>(null);
+  const [sealScoreState, setSealScoreState] = useState<"idle" | "loading" | "unavailable">("idle");
   const [seals, setSeals] = useState<LoomSeal[]>([]);
   const [files, setFiles] = useState<SavedAnkyFile[]>([]);
   const [sessions, setSessions] = useState<AnkySessionSummary[]>([]);
@@ -139,7 +141,13 @@ export function LoomScreen({ navigation }: Props) {
         }
 
         if (walletState.publicKey != null && backendConfigured) {
-          await restoreWalletLooms(walletState.publicKey, mounted);
+          await Promise.all([
+            restoreWalletLooms(walletState.publicKey, mounted),
+            restoreSealScore(walletState.publicKey, mounted),
+          ]);
+        } else if (mounted) {
+          setSealScore(null);
+          setSealScoreState(walletState.publicKey != null ? "unavailable" : "idle");
         }
       } catch (error) {
         console.error(error);
@@ -156,6 +164,38 @@ export function LoomScreen({ navigation }: Props) {
       unsubscribe();
     };
   }, [backendConfigured, navigation, walletState.publicKey]);
+
+  async function restoreSealScore(wallet: string, mounted = true) {
+    const api = getAnkyApiClient();
+
+    if (api == null) {
+      if (mounted) {
+        setSealScore(null);
+        setSealScoreState("unavailable");
+      }
+      return;
+    }
+
+    try {
+      if (mounted) {
+        setSealScoreState("loading");
+      }
+      const score = await api.lookupMobileSealScore(wallet);
+
+      if (!mounted) {
+        return;
+      }
+
+      setSealScore(score);
+      setSealScoreState("idle");
+    } catch (error) {
+      console.warn("Could not restore mobile seal score.", error);
+      if (mounted) {
+        setSealScore(null);
+        setSealScoreState("unavailable");
+      }
+    }
+  }
 
   function openDay(day: DayState) {
     navigation.navigate("DayChamber", { day: day.day });
@@ -370,7 +410,7 @@ export function LoomScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>loom</Text>
         <Text style={styles.sojourn}>
-          a loom is the onchain place where your ankys can be sealed. your writing stays private; solana records proof, ownership, and the ritual trace.
+          a loom is the onchain place where your ankys can be sealed. your writing stays private; solana records hash seals, ownership, and verified receipts when they exist.
         </Text>
 
         <GlassCard style={styles.card}>
@@ -480,6 +520,38 @@ export function LoomScreen({ navigation }: Props) {
 
           {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
         </GlassCard>
+
+        {walletState.publicKey == null ? null : (
+          <GlassCard style={styles.card}>
+            <Text style={styles.label}>indexed score</Text>
+            <View style={styles.metrics}>
+              <Metric label="score" value={sealScore == null ? "0" : String(sealScore.score)} />
+              <Metric
+                label="sealed"
+                value={sealScore == null ? "0" : String(sealScore.uniqueSealDays)}
+              />
+              <Metric
+                label="proof days"
+                value={sealScore == null ? "0" : String(sealScore.verifiedSealDays)}
+              />
+              <Metric
+                label="bonus"
+                value={sealScore == null ? "0" : String(sealScore.streakBonus)}
+              />
+            </View>
+            <Text style={styles.note}>
+              {sealScoreState === "loading"
+                ? "syncing finalized receipts"
+                : !backendConfigured
+                  ? "backend score unavailable"
+                  : sealScoreState === "unavailable"
+                    ? "score sync unavailable"
+                    : sealScore == null
+                      ? "no finalized score yet"
+                      : `${sealScore.network} · finalized receipts only`}
+            </Text>
+          </GlassCard>
+        )}
 
         {selectedLoom == null ? null : (
           <GlassCard style={styles.card}>
