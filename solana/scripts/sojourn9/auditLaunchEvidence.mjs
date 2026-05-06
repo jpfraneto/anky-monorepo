@@ -8,6 +8,12 @@ const DEFAULT_MAX_PARTICIPANTS = 3_456;
 const DEFAULT_REWARD_BPS = 800;
 const SCORE_FORMULA =
   "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)";
+const CREDIT_LEDGER_MIGRATION = "019_credit_ledger_entries";
+const VERIFIED_SEAL_BACKEND_MIGRATIONS = [
+  "020_mobile_verified_seal_receipts",
+  "021_mobile_helius_webhook_events",
+  "022_mobile_helius_webhook_signature_dedupe",
+];
 const SECONDS_PER_DAY = 86_400;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BOOLEAN_FLAGS = new Set(["--print-template"]);
@@ -226,10 +232,18 @@ function auditBackendEvidence(backend, issues) {
     issues.push("backend.requireVerifiedSealChainProof must be true for launch evidence");
   }
   const migrations = normalizeMigrationSet(backend.migrationsApplied);
-  for (const migration of ["019", "020", "021"]) {
+  for (const migration of VERIFIED_SEAL_BACKEND_MIGRATIONS) {
     if (!migrations.has(migration)) {
       issues.push(`backend.migrationsApplied must include ${migration}`);
     }
+  }
+  if (
+    (backend.fullMigrationChainApplied === true ||
+      backend.fullMigrationChainChecked === true ||
+      backend.fullBackendMigrationChainApplied === true) &&
+    !migrations.has(CREDIT_LEDGER_MIGRATION)
+  ) {
+    issues.push(`backend.migrationsApplied must include ${CREDIT_LEDGER_MIGRATION}`);
   }
 }
 
@@ -370,9 +384,10 @@ function buildLaunchEvidenceTemplate() {
       url: "https://<public_backend_host>",
       requireVerifiedSealChainProof: true,
       migrationsApplied: [
-        "019_mobile_verified_seal_receipts",
-        "020_mobile_helius_webhook_events",
-        "021_mobile_helius_webhook_signature_dedupe",
+        "019_credit_ledger_entries",
+        "020_mobile_verified_seal_receipts",
+        "021_mobile_helius_webhook_events",
+        "022_mobile_helius_webhook_signature_dedupe",
       ],
     },
     helius: {
@@ -597,10 +612,9 @@ function normalizeMigrationSet(value) {
   const migrations = new Set();
   if (Array.isArray(value)) {
     for (const item of value) {
-      const text = String(item).trim();
-      const match = text.match(/0?(\d{2})/);
-      if (match != null) {
-        migrations.add(match[1].padStart(3, "0"));
+      const migration = normalizeMigrationName(item);
+      if (migration != null) {
+        migrations.add(migration);
       }
     }
     return migrations;
@@ -610,13 +624,31 @@ function normalizeMigrationSet(value) {
       if (applied !== true) {
         continue;
       }
-      const match = key.match(/0?(\d{2})/);
-      if (match != null) {
-        migrations.add(match[1].padStart(3, "0"));
+      const migration = normalizeMigrationName(key);
+      if (migration != null) {
+        migrations.add(migration);
       }
     }
   }
   return migrations;
+}
+
+function normalizeMigrationName(value) {
+  const text = String(value ?? "").trim().replace(/\\/g, "/").split("/").pop() ?? "";
+  const migration = text.replace(/\.sql$/i, "").toLowerCase();
+  if (/^0?19(?:_credit_ledger_entries)?$/.test(migration)) {
+    return CREDIT_LEDGER_MIGRATION;
+  }
+  if (/^0?20(?:_mobile_verified_seal_receipts)?$/.test(migration)) {
+    return "020_mobile_verified_seal_receipts";
+  }
+  if (/^0?21(?:_mobile_helius_webhook_events)?$/.test(migration)) {
+    return "021_mobile_helius_webhook_events";
+  }
+  if (/^0?22(?:_mobile_helius_webhook_signature_dedupe)?$/.test(migration)) {
+    return "022_mobile_helius_webhook_signature_dedupe";
+  }
+  return null;
 }
 
 function isBase58PublicKey(value) {

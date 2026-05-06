@@ -189,6 +189,63 @@ test("rejects missing finalized Score V1 and Helius audit markers", async () => 
   assert.ok(report.issues.includes("scoreSnapshot.participantCap must be 3456"));
 });
 
+test("requires VerifiedSeal backend migrations by current migration names", async () => {
+  const oldNumbering = publicEvidence({
+    backend: {
+      ...publicEvidence().backend,
+      migrationsApplied: [
+        "019_mobile_verified_seal_receipts",
+        "020_mobile_helius_webhook_events",
+        "021_mobile_helius_webhook_signature_dedupe",
+      ],
+    },
+  });
+  const oldNumberingPath = writeEvidence(oldNumbering);
+  const oldNumberingResult = await runNode([SCRIPT_PATH, "--evidence", oldNumberingPath]);
+
+  assert.equal(oldNumberingResult.code, 1);
+  const oldNumberingReport = JSON.parse(oldNumberingResult.stdout);
+  assert.ok(
+    oldNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 020_mobile_verified_seal_receipts",
+    ),
+  );
+  assert.ok(
+    oldNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 022_mobile_helius_webhook_signature_dedupe",
+    ),
+  );
+  assert.ok(
+    !oldNumberingReport.issues.includes("backend.migrationsApplied must include 019"),
+  );
+
+  const fullChainMissingCredit = publicEvidence({
+    backend: {
+      ...publicEvidence().backend,
+      fullMigrationChainApplied: true,
+      migrationsApplied: [
+        "020_mobile_verified_seal_receipts",
+        "021_mobile_helius_webhook_events",
+        "022_mobile_helius_webhook_signature_dedupe",
+      ],
+    },
+  });
+  const fullChainMissingCreditPath = writeEvidence(fullChainMissingCredit);
+  const fullChainMissingCreditResult = await runNode([
+    SCRIPT_PATH,
+    "--evidence",
+    fullChainMissingCreditPath,
+  ]);
+
+  assert.equal(fullChainMissingCreditResult.code, 1);
+  const fullChainMissingCreditReport = JSON.parse(fullChainMissingCreditResult.stdout);
+  assert.ok(
+    fullChainMissingCreditReport.issues.includes(
+      "backend.migrationsApplied must include 019_credit_ledger_entries",
+    ),
+  );
+});
+
 test("rejects secret-shaped evidence paths and unknown secret options", async () => {
   const secretPath = await runNode([SCRIPT_PATH, "--evidence", "/tmp/.env"]);
   assert.equal(secretPath.code, 1);
@@ -216,7 +273,12 @@ test("rejects secret-shaped evidence paths and unknown secret options", async ()
 function publicEvidence(overrides = {}) {
   const base = {
     backend: {
-      migrationsApplied: ["019_mobile_verified_seal_receipts", "020", "021"],
+      migrationsApplied: [
+        "019_credit_ledger_entries",
+        "020_mobile_verified_seal_receipts",
+        "021_mobile_helius_webhook_events",
+        "022_mobile_helius_webhook_signature_dedupe",
+      ],
       requireVerifiedSealChainProof: true,
       url: "https://anky.example",
     },

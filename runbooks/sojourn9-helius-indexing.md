@@ -122,7 +122,7 @@ node solana/scripts/indexer/auditScoreSnapshot.mjs \
 
 Observed on 2026-05-06: the known-signature snapshot indexed `2` finalized events, one sealed day, one verified day, and score `2` for wallet `5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q`; the score auditor returned `ok: true`.
 
-After the target backend has migrations `019`, `020`, and `021` applied and the indexer secret configured outside Codex, post only public seal/verified metadata from the same finalized transaction pair:
+After the target backend has `020_mobile_verified_seal_receipts`, `021_mobile_helius_webhook_events`, and `022_mobile_helius_webhook_signature_dedupe` applied, plus `019_credit_ledger_entries` if applying the full backend chain, and the indexer secret configured outside Codex, post only public seal/verified metadata from the same finalized transaction pair:
 
 ```bash
 HELIUS_API_KEY=<configured_in_shell> \
@@ -241,7 +241,7 @@ The backend receiver path is:
 POST /api/helius/anky-seal
 ```
 
-It requires the indexer secret via Helius `Authorization` authHeader or the operator `x-anky-indexer-secret`, rejects private-looking `.anky` fields, rejects complete valid `.anky` plaintext string values under generic keys, and stores only public webhook JSON plus payload hash/signature summary in `mobile_helius_webhook_events`. Apply `migrations/020_mobile_helius_webhook_events.sql` and `migrations/021_mobile_helius_webhook_signature_dedupe.sql` before enabling this route in a deployed backend. Stored receipt rows can be exported directly into `ankySealIndexer.mjs` because it understands `payload_json` and `payloadJson`.
+It requires the indexer secret via Helius `Authorization` authHeader or the operator `x-anky-indexer-secret`, rejects private-looking `.anky` fields, rejects complete valid `.anky` plaintext string values under generic keys, and stores only public webhook JSON plus payload hash/signature summary in `mobile_helius_webhook_events`. Apply `migrations/021_mobile_helius_webhook_events.sql` and `migrations/022_mobile_helius_webhook_signature_dedupe.sql` before enabling this route in a deployed backend. Stored receipt rows can be exported directly into `ankySealIndexer.mjs` because it understands `payload_json` and `payloadJson`.
 When Helius includes a valid 64-byte Solana transaction signature, the receiver dedupes by `(network, signature)` with a partial unique index. Payloads without a valid signature fall back to `(network, payload_hash)` dedupe. This keeps webhook retry deliveries from creating duplicate receipt rows while still allowing unsigned local smoke payloads.
 
 Webhook delivery costs credits. Use finalized data for reward snapshots; webhook events are best used for live UI and then reconciled with a finalized backfill.

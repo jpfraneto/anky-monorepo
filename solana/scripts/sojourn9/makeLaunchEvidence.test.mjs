@@ -61,6 +61,12 @@ test("builds audited public launch evidence from a handoff manifest without read
   assert.equal(evidence.helius.backfillMethod, "getTransactionsForAddress");
   assert.equal(evidence.helius.backfillCommitment, "finalized");
   assert.equal(evidence.helius.backfillAudited, true);
+  assert.deepEqual(evidence.backend.migrationsApplied, [
+    "019_credit_ledger_entries",
+    "020_mobile_verified_seal_receipts",
+    "021_mobile_helius_webhook_events",
+    "022_mobile_helius_webhook_signature_dedupe",
+  ]);
   assert.equal(evidence.scoreSnapshot.audited, true);
   assert.doesNotMatch(result.stdout, /private-witness|actual-backend-secret|actual-helius-key/);
 });

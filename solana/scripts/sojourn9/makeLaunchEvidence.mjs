@@ -167,9 +167,10 @@ function buildEvidence(args) {
       url: backendUrl,
       requireVerifiedSealChainProof: true,
       migrationsApplied: [
-        "019_mobile_verified_seal_receipts",
-        "020_mobile_helius_webhook_events",
-        "021_mobile_helius_webhook_signature_dedupe",
+        "019_credit_ledger_entries",
+        "020_mobile_verified_seal_receipts",
+        "021_mobile_helius_webhook_events",
+        "022_mobile_helius_webhook_signature_dedupe",
       ],
     },
     helius: {
