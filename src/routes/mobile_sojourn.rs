@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -49,6 +49,15 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/config", get(get_config))
         .route("/api/v1/credits/balance", get(get_credit_balance))
         .route("/api/v1/credits/checkout", post(create_checkout_session))
+        .route("/api/v1/credits/history", get(get_credit_ledger_history))
+        .route(
+            "/api/v1/credits/history/sync-purchase",
+            post(sync_credit_purchase_history),
+        )
+        .route(
+            "/api/v1/credits/welcome-gift",
+            post(claim_welcome_credit_gift),
+        )
         // Legacy direct-IAP verifier. The mobile app now uses RevenueCat CREDITS
         // and should not call this route.
         .route(
@@ -132,6 +141,124 @@ pub async fn create_checkout_session(
     Err(AppError::Unavailable(
         "credit checkout is not configured on this backend".into(),
     ))
+}
+
+pub async fn get_credit_ledger_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CreditLedgerQuery>,
+) -> Result<Json<CreditLedgerResponse>, AppError> {
+    let user_id = resolve_credit_ledger_user_id(&state, &headers, query.identity_id.as_deref()).await?;
+    let limit = query.limit.unwrap_or(20).clamp(1, 50);
+    let entries = query_credit_ledger_entries(&state.db, &user_id, limit).await?;
+
+    Ok(Json(CreditLedgerResponse { entries }))
+}
+
+pub async fn claim_welcome_credit_gift(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<WelcomeCreditGiftResponse>, AppError> {
+    let auth_user_id = crate::routes::swift::bearer_auth(&state, &headers).await?;
+    let user_id = mobile_identity_for_auth_user(&auth_user_id);
+
+    if has_credit_ledger_reference(&state.db, &user_id, "anky", "welcome_gift").await? {
+        let entries = query_credit_ledger_entries(&state.db, &user_id, 20).await?;
+
+        return Ok(Json(WelcomeCreditGiftResponse {
+            balance_source: "revenuecat",
+            entries,
+            granted: false,
+            ok: true,
+        }));
+    }
+
+    post_revenuecat_credit_adjustment(
+        &user_id,
+        8,
+        &format!("anky-welcome-gift:{user_id}"),
+    )
+    .await?;
+
+    insert_credit_ledger_entry(
+        &state.db,
+        CreditLedgerInsert {
+            amount: 8,
+            kind: "gift",
+            label: "gift from anky",
+            metadata: json!({ "currency": "CREDITS" }),
+            reference_id: Some("welcome_gift"),
+            source: "anky",
+            user_id: &user_id,
+        },
+    )
+    .await?;
+
+    let entries = query_credit_ledger_entries(&state.db, &user_id, 20).await?;
+
+    Ok(Json(WelcomeCreditGiftResponse {
+        balance_source: "revenuecat",
+        entries,
+        granted: true,
+        ok: true,
+    }))
+}
+
+pub async fn sync_credit_purchase_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreditPurchaseHistorySyncRequest>,
+) -> Result<Json<CreditPurchaseHistorySyncResponse>, AppError> {
+    let user_id =
+        resolve_credit_ledger_user_id(&state, &headers, req.identity_id.as_deref()).await?;
+    let package = native_credit_package(&req.package_id)
+        .or_else(|| native_credit_package_for_product(&req.product_id))
+        .ok_or_else(|| AppError::BadRequest("unknown credit package".into()))?;
+
+    if req.product_id != package.ios_product_id && req.product_id != package.android_product_id {
+        return Err(AppError::BadRequest(
+            "productId does not match credit package".into(),
+        ));
+    }
+
+    let transaction_id = validate_short_text("transactionId", &req.transaction_id, 256)?;
+    let purchased_at = req
+        .purchased_at
+        .as_deref()
+        .map(|value| validate_short_text("purchasedAt", value, 96))
+        .transpose()?;
+    let purchase_token = req
+        .purchase_token
+        .as_deref()
+        .map(|value| validate_short_text("purchaseToken", value, 512))
+        .transpose()?;
+
+    let inserted = insert_credit_ledger_entry(
+        &state.db,
+        CreditLedgerInsert {
+            amount: package.credits_granted as i32,
+            kind: "purchase",
+            label: "bought credits",
+            metadata: json!({
+                "currency": "CREDITS",
+                "packageId": package.package_id,
+                "productId": req.product_id,
+                "purchaseToken": purchase_token,
+                "purchasedAt": purchased_at,
+            }),
+            reference_id: Some(transaction_id.as_str()),
+            source: "revenuecat",
+            user_id: &user_id,
+        },
+    )
+    .await?;
+    let entries = query_credit_ledger_entries(&state.db, &user_id, 20).await?;
+
+    Ok(Json(CreditPurchaseHistorySyncResponse {
+        entries,
+        inserted,
+        ok: true,
+    }))
 }
 
 pub async fn verify_native_credit_purchase(
@@ -791,6 +918,63 @@ pub struct CreateCheckoutRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CreateCheckoutResponse {
     checkout_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditLedgerQuery {
+    identity_id: Option<String>,
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditLedgerEntry {
+    id: String,
+    user_id: String,
+    kind: String,
+    source: String,
+    amount: i32,
+    label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reference_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<Value>,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditLedgerResponse {
+    entries: Vec<CreditLedgerEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WelcomeCreditGiftResponse {
+    balance_source: &'static str,
+    entries: Vec<CreditLedgerEntry>,
+    granted: bool,
+    ok: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPurchaseHistorySyncRequest {
+    identity_id: Option<String>,
+    package_id: String,
+    product_id: String,
+    transaction_id: String,
+    purchase_token: Option<String>,
+    purchased_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPurchaseHistorySyncResponse {
+    entries: Vec<CreditLedgerEntry>,
+    inserted: bool,
+    ok: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1835,6 +2019,20 @@ fn native_credit_package(package_id: &str) -> Option<NativeCreditPackage> {
     }
 }
 
+fn native_credit_package_for_product(product_id: &str) -> Option<NativeCreditPackage> {
+    [
+        native_credit_package("credits_22"),
+        native_credit_package("credits_88_bonus_11"),
+        native_credit_package("credits_333_bonus_88"),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|package| {
+        product_id.trim() == package.ios_product_id
+            || product_id.trim() == package.android_product_id
+    })
+}
+
 fn validate_native_credit_purchase_request(
     req: &NativeCreditPurchaseVerifyRequest,
     package: &NativeCreditPackage,
@@ -2417,6 +2615,173 @@ async fn debit_mobile_credits(
     tx.commit().await?;
 
     Ok(account)
+}
+
+struct CreditLedgerInsert<'a> {
+    amount: i32,
+    kind: &'a str,
+    label: &'a str,
+    metadata: Value,
+    reference_id: Option<&'a str>,
+    source: &'a str,
+    user_id: &'a str,
+}
+
+async fn resolve_credit_ledger_user_id(
+    state: &AppState,
+    headers: &HeaderMap,
+    identity_id: Option<&str>,
+) -> Result<String, AppError> {
+    if headers.get("authorization").is_some() {
+        let auth_user_id = crate::routes::swift::bearer_auth(state, headers).await?;
+        return Ok(mobile_identity_for_auth_user(&auth_user_id));
+    }
+
+    let identity_id = identity_id
+        .ok_or_else(|| AppError::BadRequest("identityId is required".into()))?;
+
+    validate_identity_id(identity_id)
+}
+
+fn mobile_identity_for_auth_user(user_id: &str) -> String {
+    format!("user:{user_id}")
+}
+
+async fn query_credit_ledger_entries(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    limit: i64,
+) -> Result<Vec<CreditLedgerEntry>, AppError> {
+    let rows = sqlx::query(
+        "SELECT id, user_id, kind, source, amount, label, reference_id, metadata_json, created_at::TEXT AS created_at
+         FROM credit_ledger_entries
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    rows.iter().map(credit_ledger_entry_from_row).collect()
+}
+
+async fn has_credit_ledger_reference(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    source: &str,
+    reference_id: &str,
+) -> Result<bool, AppError> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+            FROM credit_ledger_entries
+            WHERE user_id = $1
+              AND source = $2
+              AND reference_id = $3
+        )",
+    )
+    .bind(user_id)
+    .bind(source)
+    .bind(reference_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(exists)
+}
+
+async fn insert_credit_ledger_entry(
+    pool: &sqlx::PgPool,
+    entry: CreditLedgerInsert<'_>,
+) -> Result<bool, AppError> {
+    validate_credit_ledger_kind(entry.kind)?;
+    validate_short_text("source", entry.source, 64)?;
+    validate_short_text("label", entry.label, 96)?;
+
+    let inserted = sqlx::query_scalar::<_, String>(
+        "INSERT INTO credit_ledger_entries
+         (id, user_id, kind, source, amount, label, reference_id, metadata_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT DO NOTHING
+         RETURNING id",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(entry.user_id)
+    .bind(entry.kind)
+    .bind(entry.source)
+    .bind(entry.amount)
+    .bind(entry.label)
+    .bind(entry.reference_id)
+    .bind(entry.metadata.to_string())
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(inserted.is_some())
+}
+
+fn credit_ledger_entry_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<CreditLedgerEntry, AppError> {
+    let metadata_json: Option<String> = row.try_get("metadata_json")?;
+    let metadata = metadata_json
+        .as_deref()
+        .and_then(|value| serde_json::from_str::<Value>(value).ok());
+
+    Ok(CreditLedgerEntry {
+        amount: row.try_get("amount")?,
+        created_at: row.try_get("created_at")?,
+        id: row.try_get("id")?,
+        kind: row.try_get("kind")?,
+        label: row.try_get("label")?,
+        metadata,
+        reference_id: row.try_get("reference_id")?,
+        source: row.try_get("source")?,
+        user_id: row.try_get("user_id")?,
+    })
+}
+
+fn validate_credit_ledger_kind(kind: &str) -> Result<(), AppError> {
+    match kind {
+        "adjustment" | "gift" | "purchase" | "spend" => Ok(()),
+        _ => Err(AppError::BadRequest("invalid credit ledger kind".into())),
+    }
+}
+
+async fn post_revenuecat_credit_adjustment(
+    customer_id: &str,
+    amount: i32,
+    idempotency_key: &str,
+) -> Result<(), AppError> {
+    let project_id = env_nonempty("ANKY_REVENUECAT_PROJECT_ID")
+        .ok_or_else(|| AppError::Unavailable("RevenueCat project id is not configured".into()))?;
+    let secret_key = env_nonempty("ANKY_REVENUECAT_SECRET_KEY")
+        .ok_or_else(|| AppError::Unavailable("RevenueCat secret key is not configured".into()))?;
+    let encoded_customer_id = urlencoding::encode(customer_id);
+    let url = format!(
+        "https://api.revenuecat.com/v2/projects/{project_id}/customers/{encoded_customer_id}/virtual_currencies/transactions"
+    );
+    let response = reqwest::Client::new()
+        .post(url)
+        .bearer_auth(secret_key)
+        .header("Idempotency-Key", idempotency_key)
+        .json(&json!({
+            "adjustments": {
+                "CREDITS": amount,
+            }
+        }))
+        .send()
+        .await?;
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::Unavailable(format!(
+            "RevenueCat credit adjustment failed with HTTP {status}: {body}"
+        )));
+    }
+
+    Ok(())
 }
 
 async fn query_seal_receipts(

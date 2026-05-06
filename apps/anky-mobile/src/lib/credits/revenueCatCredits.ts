@@ -27,7 +27,14 @@ export type AnkyCreditStorePackage = {
 
 export type RevenueCatCreditPurchaseResult =
   | { message: string; status: "cancelled" }
-  | { message: string; status: "completed" }
+  | {
+      message: string;
+      productId: string;
+      purchasedAt: string;
+      purchaseToken?: string;
+      status: "completed";
+      transactionId: string;
+    }
   | { message: string; status: "failed" };
 
 type PurchasesModule = typeof import("react-native-purchases");
@@ -112,7 +119,7 @@ export async function purchaseCreditsPackage(
 
     if (status !== "available" || purchasesModule == null) {
       return {
-        message: "iap unavailable in this build.",
+        message: "purchases unavailable in this build.",
         status: "failed",
       };
     }
@@ -131,13 +138,17 @@ export async function purchaseCreditsPackage(
       };
     }
 
-    await purchasesModule.default.purchasePackage(storePackage.revenueCatPackage);
+    const purchase = await purchasesModule.default.purchasePackage(storePackage.revenueCatPackage);
     await purchasesModule.default.invalidateVirtualCurrenciesCache().catch(() => undefined);
     await purchasesModule.default.getVirtualCurrencies().catch(() => undefined);
 
     return {
       message: "credits added.",
+      productId: purchase.productIdentifier,
+      purchasedAt: purchase.transaction.purchaseDate,
+      purchaseToken: purchase.transaction.purchaseToken ?? undefined,
       status: "completed",
+      transactionId: purchase.transaction.transactionIdentifier,
     };
   } catch (error) {
     if (isRevenueCatPurchaseCancelled(error)) {
@@ -154,11 +165,17 @@ export async function purchaseCreditsPackage(
   }
 }
 
-export async function getRevenueCatCreditBalance(): Promise<number> {
+export async function getRevenueCatCreditBalance(
+  options: { forceRefresh?: boolean } = {},
+): Promise<number> {
   await configureRevenueCat();
 
   if (status !== "available" || purchasesModule == null) {
     throw new Error("revenuecat is not configured in this build.");
+  }
+
+  if (options.forceRefresh === true) {
+    await purchasesModule.default.invalidateVirtualCurrenciesCache().catch(() => undefined);
   }
 
   const currencies = await purchasesModule.default.getVirtualCurrencies();

@@ -175,6 +175,44 @@ export type MobileSpendCreditsResponse = {
   creditsSpent: number;
 };
 
+export type CreditLedgerEntry = {
+  amount: number;
+  createdAt: string;
+  id: string;
+  kind: "adjustment" | "gift" | "purchase" | "spend";
+  label: string;
+  metadata?: unknown;
+  referenceId?: string;
+  source: string;
+  userId: string;
+};
+
+export type CreditLedgerResponse = {
+  entries: CreditLedgerEntry[];
+};
+
+export type ClaimWelcomeCreditGiftResponse = {
+  balanceSource: "revenuecat";
+  entries: CreditLedgerEntry[];
+  granted: boolean;
+  ok: boolean;
+};
+
+export type SyncCreditPurchaseHistoryRequest = {
+  identityId?: string;
+  packageId: string;
+  productId: string;
+  purchaseToken?: string;
+  purchasedAt?: string;
+  transactionId: string;
+};
+
+export type SyncCreditPurchaseHistoryResponse = {
+  entries: CreditLedgerEntry[];
+  inserted: boolean;
+  ok: boolean;
+};
+
 export type MobileMintAuthorizationRequest = {
   collection?: string;
   inviteCode?: string;
