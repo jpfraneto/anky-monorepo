@@ -440,7 +440,7 @@ export function LoomScreen({ navigation }: Props) {
                 disabled={mintBusy}
                 label={
                   walletState.hasWallet
-                    ? "finish wallet login"
+                    ? "continue with wallet"
                     : walletState.authenticated
                       ? "create embedded wallet"
                       : "login / connect wallet"

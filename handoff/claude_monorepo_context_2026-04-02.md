@@ -49,7 +49,7 @@ cargo workspace members: none
 ANKY_SKILL_v7.2.md
 ARCHITECTURE_CHANGES.md
 ARCHITECTURE_MAP.md
-AuthKey_MDCA44YATB.p8
+[ignored Apple private key].p8
 CLAUDE.md
 CURRENT_STATE.md
 Cargo.lock

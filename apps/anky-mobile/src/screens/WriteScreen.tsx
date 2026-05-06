@@ -143,10 +143,10 @@ export function WriteScreen({ navigation, route }: Props) {
       : {
           avoidKeyboard: true,
           emotion: "welcome",
-          intensity: "minimal",
-          maxMode: "sigil",
+          intensity: "normal",
+          maxMode: "companion",
           placement: "left",
-          preferredMode: "sigil",
+          preferredMode: "companion",
           sequence: "finding_thread",
         },
   );

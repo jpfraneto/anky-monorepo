@@ -16,6 +16,7 @@ export type LoomOwnership = {
 export type SealAnkyInput = {
   loomId: string;
   sessionHash: string;
+  sessionUtcDay: number;
 };
 
 export type SealAnkyResult = {
@@ -25,6 +26,7 @@ export type SealAnkyResult = {
   sessionHash: string;
   slot?: number;
   txSignature: string;
+  utcDay?: number;
   writer: string;
 };
 

@@ -181,6 +181,9 @@ fn verify_seed_auth_signature(
 #[derive(Deserialize)]
 pub struct PrivyAuthRequest {
     pub auth_token: String,
+    pub siws_message: Option<String>,
+    pub siws_signature: Option<String>,
+    pub wallet_address: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -329,6 +332,115 @@ pub async fn auth_seed_verify(
     Ok(Json(result))
 }
 
+fn parse_privy_siws_wallet_address(message: &str) -> Option<String> {
+    let (_, signed_section) =
+        message.split_once("wants you to sign in with your Solana account:\n")?;
+    let wallet_address = signed_section.lines().next()?.trim();
+
+    if wallet_address.is_empty() {
+        None
+    } else {
+        Some(wallet_address.to_string())
+    }
+}
+
+fn parse_privy_siws_issued_at(message: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    let issued_at = message
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Issued At: "))?;
+    chrono::DateTime::parse_from_rfc3339(issued_at)
+        .ok()
+        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+}
+
+async fn auth_privy_wallet_fallback(
+    state: &AppState,
+    req: &PrivyAuthRequest,
+) -> Result<Option<AuthResponse>, AppError> {
+    let has_wallet_proof =
+        req.wallet_address.is_some() || req.siws_message.is_some() || req.siws_signature.is_some();
+
+    if !has_wallet_proof {
+        return Ok(None);
+    }
+
+    let wallet_address = req
+        .wallet_address
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("wallet_address required".into()))?;
+    let siws_message = req
+        .siws_message
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("siws_message required".into()))?;
+    let siws_signature = req
+        .siws_signature
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("siws_signature required".into()))?;
+
+    let wallet_address = normalize_seed_wallet_address(wallet_address)?;
+    let message_wallet = parse_privy_siws_wallet_address(siws_message)
+        .ok_or_else(|| AppError::BadRequest("invalid siws message".into()))
+        .and_then(|address| normalize_seed_wallet_address(&address))?;
+
+    if message_wallet != wallet_address {
+        return Err(AppError::Unauthorized(
+            "siws message does not match wallet".into(),
+        ));
+    }
+
+    let issued_at = parse_privy_siws_issued_at(siws_message)
+        .ok_or_else(|| AppError::BadRequest("invalid siws issued at".into()))?;
+    let message_age = chrono::Utc::now().signed_duration_since(issued_at);
+    if message_age > chrono::Duration::minutes(10) || message_age < chrono::Duration::minutes(-5) {
+        return Err(AppError::Unauthorized("siws message expired".into()));
+    }
+
+    verify_seed_auth_signature(&wallet_address, siws_message, siws_signature)?;
+
+    let (user_id, username) = {
+        let db = crate::db::conn(&state.db)?;
+        let user_id = if let Some(existing) = queries::get_user_by_wallet(&db, &wallet_address)? {
+            existing
+        } else {
+            let uid = uuid::Uuid::new_v4().to_string();
+            queries::create_user_with_wallet(&db, &uid, &wallet_address)?;
+            uid
+        };
+        let username = queries::get_user_username(&db, &user_id).ok().flatten();
+
+        (user_id, username)
+    };
+
+    let session_token = uuid::Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(90))
+        .unwrap()
+        .to_rfc3339();
+    {
+        let db = crate::db::conn(&state.db)?;
+        queries::create_auth_session(&db, &session_token, &user_id, None, &expires_at)?;
+    }
+
+    state.emit_log(
+        "INFO",
+        "swift_auth",
+        &format!(
+            "Mobile wallet login via SIWS: {} ({})",
+            &user_id[..8],
+            wallet_address
+        ),
+    );
+
+    Ok(Some(AuthResponse {
+        ok: true,
+        session_token,
+        user_id,
+        username,
+        email: None,
+        wallet_address: Some(wallet_address),
+    }))
+}
+
 /// POST /swift/v1/auth/privy
 /// Verify a Privy auth token and return a session token for subsequent mobile requests.
 /// The returned `session_token` must be stored securely (iOS Keychain) and sent as
@@ -345,44 +457,65 @@ pub async fn auth_privy(
         return Err(AppError::Internal("Privy not configured".into()));
     }
 
-    // Verify Privy JWT
-    let privy_did = if !verification_key.is_empty() {
+    // Verify Privy JWT. Wallet-backed mobile login also includes the SIWS message
+    // signed by Phantom; if token verification is unavailable, use that proof to
+    // create the same backend session without asking the user to sign twice.
+    let privy_did_result: Result<String, AppError> = if !verification_key.is_empty() {
         use jsonwebtoken::{Algorithm, DecodingKey, Validation};
         #[derive(serde::Deserialize)]
         struct Claims {
             sub: String,
         }
-        let key = DecodingKey::from_ec_pem(verification_key.as_bytes())
-            .map_err(|e| AppError::Internal(format!("Invalid Privy key: {}", e)))?;
-        let mut val = Validation::new(Algorithm::ES256);
-        val.set_issuer(&["privy.io"]);
-        val.set_audience(&[app_id.as_str()]);
-        jsonwebtoken::decode::<Claims>(&req.auth_token, &key, &val)
-            .map_err(|_| AppError::BadRequest("invalid privy token".into()))?
-            .claims
-            .sub
+        match DecodingKey::from_ec_pem(verification_key.as_bytes()) {
+            Ok(key) => {
+                let mut val = Validation::new(Algorithm::ES256);
+                val.set_issuer(&["privy.io"]);
+                val.set_audience(&[app_id.as_str()]);
+                jsonwebtoken::decode::<Claims>(&req.auth_token, &key, &val)
+                    .map(|token| token.claims.sub)
+                    .map_err(|_| AppError::BadRequest("invalid privy token".into()))
+            }
+            Err(e) => Err(AppError::Internal(format!("Invalid Privy key: {}", e))),
+        }
     } else {
         let client = reqwest::Client::new();
-        let resp = client
+        match client
             .post("https://auth.privy.io/api/v1/sessions/verify")
             .header("privy-app-id", app_id.as_str())
             .basic_auth(app_id, Some(app_secret))
-            .json(&serde_json::json!({ "auth_token": req.auth_token }))
+            .json(&serde_json::json!({ "auth_token": req.auth_token.as_str() }))
             .send()
             .await
-            .map_err(|e| AppError::Internal(format!("Privy verify failed: {}", e)))?;
-        if !resp.status().is_success() {
-            return Err(AppError::BadRequest("invalid privy token".into()));
+        {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    Err(AppError::BadRequest("invalid privy token".into()))
+                } else {
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(body) => body
+                            .get("user")
+                            .and_then(|u| u.get("id"))
+                            .and_then(|id| id.as_str())
+                            .map(|s| s.to_string())
+                            .ok_or_else(|| {
+                                AppError::Internal("no user id in Privy response".into())
+                            }),
+                        Err(e) => Err(AppError::Internal(format!("Privy parse failed: {}", e))),
+                    }
+                }
+            }
+            Err(e) => Err(AppError::Internal(format!("Privy verify failed: {}", e))),
         }
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("Privy parse failed: {}", e)))?;
-        body.get("user")
-            .and_then(|u| u.get("id"))
-            .and_then(|id| id.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| AppError::Internal("no user id in Privy response".into()))?
+    };
+    let privy_did = match privy_did_result {
+        Ok(privy_did) => privy_did,
+        Err(token_error) => {
+            if let Some(response) = auth_privy_wallet_fallback(&state, &req).await? {
+                return Ok(Json(response));
+            }
+
+            return Err(token_error);
+        }
     };
 
     // Look up or create user
@@ -2041,6 +2174,30 @@ mod tests {
 
         let result = verify_seed_auth_signature(&wallet_address, &message, &bad_sig_b58);
         assert!(result.is_err(), "wrong key should fail verification");
+    }
+
+    #[test]
+    fn parses_privy_siws_wallet_address() {
+        let message = "anky.app wants you to sign in with your Solana account:\n9HuaaPExampleWallet111111111111111111111111\n\nYou are proving you own 9HuaaPExampleWallet111111111111111111111111.\n\nURI: https://anky.app\nVersion: 1\nChain ID: mainnet\nNonce: nonce\nIssued At: 2026-05-05T17:48:13.819Z";
+
+        let wallet_address = parse_privy_siws_wallet_address(message);
+
+        assert_eq!(
+            wallet_address.as_deref(),
+            Some("9HuaaPExampleWallet111111111111111111111111")
+        );
+    }
+
+    #[test]
+    fn parses_privy_siws_issued_at() {
+        let message = "anky.app wants you to sign in with your Solana account:\n9HuaaPExampleWallet111111111111111111111111\n\nURI: https://anky.app\nVersion: 1\nChain ID: mainnet\nNonce: nonce\nIssued At: 2026-05-05T17:48:13.819Z";
+
+        let issued_at = parse_privy_siws_issued_at(message);
+
+        assert_eq!(
+            issued_at.unwrap().to_rfc3339(),
+            "2026-05-05T17:48:13.819+00:00"
+        );
     }
 }
 

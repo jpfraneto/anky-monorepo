@@ -1,0 +1,23 @@
+{
+  "source": "raw/thread-spritesheet.png",
+  "layout": {
+    "columns": 4,
+    "rows": 3
+  },
+  "frameWidth": 362,
+  "frameHeight": 362,
+  "totalFrames": 8,
+  "fpsRecommendation": 5,
+  "sequenceName": "finding_thread",
+  "frames": [
+    "frames/thread_001.png",
+    "frames/thread_002.png",
+    "frames/thread_003.png",
+    "frames/thread_004.png",
+    "frames/thread_005.png",
+    "frames/thread_006.png",
+    "frames/thread_007.png",
+    "frames/thread_008.png"
+  ],
+  "backgroundRemoval": "edge-connected bright neutral checkerboard removal with transparent PNG output"
+}

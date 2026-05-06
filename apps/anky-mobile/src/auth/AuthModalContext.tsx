@@ -25,6 +25,7 @@ import {
   useLoginWithSiws,
   usePrivy,
 } from "@privy-io/expo";
+import * as Clipboard from "expo-clipboard";
 
 import {
   ANKY_APP_URL,
@@ -32,7 +33,7 @@ import {
   PRIVY_OAUTH_REDIRECT_PATH,
 } from "../lib/auth/privyConfig";
 import {
-  clearBackendAuthSession,
+  type BackendWalletAuthProof,
   exchangePrivyAccessTokenForBackendSession,
   hasConfiguredBackend,
 } from "../lib/auth/backendSession";
@@ -40,7 +41,7 @@ import {
   type ExternalWalletProviderName,
   useExternalSolanaWallet,
 } from "../lib/privy/ExternalSolanaWalletProvider";
-import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
+import { toPrivySiwsSignature } from "../lib/privy/siwsSignature";
 import { shortAddress } from "../lib/solana/loomStorage";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
@@ -56,6 +57,8 @@ type AuthModalContextValue = {
 
 type OAuthProvider = "apple" | "google";
 type WalletProvider = ExternalWalletProviderName;
+
+const CODE_LENGTH = 6;
 
 const AuthModalContext = createContext<AuthModalContextValue | null>(null);
 
@@ -112,13 +115,14 @@ function AuthModal({
   reason?: string;
   visible: boolean;
 }) {
-  const { getAccessToken, isReady, logout, user } = usePrivy();
+  const { getAccessToken, isReady, user } = usePrivy();
   const oauth = useLoginWithOAuth();
   const emailLogin = useLoginWithEmail();
   const siws = useLoginWithSiws();
   const externalWallet = useExternalSolanaWallet();
-  const privyWallet = useAnkyPrivyWallet();
   const attemptedWalletLoginRef = useRef<string | null>(null);
+  const codeInputRef = useRef<TextInput>(null);
+  const finishingVisibleLoginRef = useRef(false);
   const walletLoginInFlight = useRef(false);
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
@@ -127,14 +131,23 @@ function AuthModal({
   const [pendingWallet, setPendingWallet] = useState<WalletProvider | null>(null);
   const [working, setWorking] = useState(false);
 
-  const finishPrivyLogin = useCallback(async () => {
+  const finishPrivyLogin = useCallback(async (walletProof?: BackendWalletAuthProof) => {
     const accessToken = await getAccessToken();
 
     if (accessToken != null && hasConfiguredBackend()) {
-      await exchangePrivyAccessTokenForBackendSession(accessToken);
+      try {
+        await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+      } catch (error) {
+        console.warn("Backend session exchange failed after Privy login.", error);
+      }
     }
 
-    await afterSuccess?.();
+    try {
+      await afterSuccess?.();
+    } catch (error) {
+      console.warn("Auth success callback failed.", error);
+    }
+
     setMessage("connected.");
     onClose();
   }, [afterSuccess, getAccessToken, onClose]);
@@ -162,17 +175,22 @@ function AuthModal({
           wallet: { address },
         });
         const { signature } = await signMessage(siwsMessage);
+        const privySignature = toPrivySiwsSignature(signature);
 
         await siws.login({
           message: siwsMessage,
-          signature,
+          signature: privySignature,
           wallet: {
             connectorType: "deeplink",
             walletClientType: walletProvider,
           },
         });
         setPendingWallet(null);
-        await finishPrivyLogin();
+        await finishPrivyLogin({
+          siwsMessage,
+          siwsSignature: signature,
+          walletAddress: address,
+        });
       } catch (error) {
         setPendingWallet(null);
         setMessage(error instanceof Error ? error.message : "wallet login failed.");
@@ -195,6 +213,28 @@ function AuthModal({
       attemptedWalletLoginRef.current = null;
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (
+      !visible ||
+      !isReady ||
+      user == null ||
+      working ||
+      walletLoginInFlight.current ||
+      finishingVisibleLoginRef.current
+    ) {
+      return;
+    }
+
+    finishingVisibleLoginRef.current = true;
+    setWorking(true);
+    setMessage("connected.");
+
+    void finishPrivyLogin().finally(() => {
+      finishingVisibleLoginRef.current = false;
+      setWorking(false);
+    });
+  }, [finishPrivyLogin, isReady, user, visible, working]);
 
   useEffect(() => {
     if (!visible || !isReady || user != null || walletLoginInFlight.current) {
@@ -302,6 +342,23 @@ function AuthModal({
     }
   }
 
+  async function handlePasteCode() {
+    try {
+      const clipboardValue = await Clipboard.getStringAsync();
+      const nextCode = clipboardValue.replace(/\D/g, "").slice(0, CODE_LENGTH);
+
+      if (nextCode.length === 0) {
+        setMessage("no code found on the clipboard.");
+        return;
+      }
+
+      setCode(nextCode);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "could not read the clipboard.");
+    }
+  }
+
   async function handleWalletConnect(provider: WalletProvider) {
     const connectedWallet = externalWallet.wallets[provider];
 
@@ -317,7 +374,7 @@ function AuthModal({
         return;
       }
 
-      setMessage(`${connectedWallet.label} connected.`);
+      await finishPrivyLogin();
       return;
     }
 
@@ -335,167 +392,205 @@ function AuthModal({
     }
   }
 
-  async function handleCreateEmbeddedWallet() {
-    setWorking(true);
-    setMessage("");
-
-    try {
-      await privyWallet.createWallet();
-      setMessage("embedded solana wallet ready.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "wallet creation failed.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function handleLogout() {
-    setWorking(true);
-    setMessage("");
-
-    try {
-      await Promise.allSettled(
-        (["phantom", "backpack"] as const).map((provider) =>
-          externalWallet.wallets[provider] == null
-            ? Promise.resolve()
-            : externalWallet.disconnectWallet(provider),
-        ),
-      );
-      await clearBackendAuthSession();
-      await logout();
-      await afterSuccess?.();
-      setMessage("logged out.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "logout failed.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.modalRoot}
       >
-        <Pressable accessibilityRole="button" onPress={onClose} style={styles.scrim} />
-        <View style={styles.sheet}>
-          <ScrollView
-            contentContainerStyle={styles.sheetContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.header}>
-              <Text style={styles.title}>enter anky</Text>
-              <Text style={styles.subtitle}>
-                {reason ??
-                  "your writing stays on this device unless you ask anky to process it."}
-              </Text>
-            </View>
+        <View style={styles.authBackdrop}>
+          <Pressable accessibilityRole="button" onPress={onClose} style={styles.scrim} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {!isReady ? (
+                <View style={styles.header}>
+                  <Text style={styles.title}>opening anky</Text>
+                  <Text style={styles.subtitle}>one moment.</Text>
+                </View>
+              ) : null}
 
-            {isReady && isLoggedIn ? (
-              <View style={styles.panel}>
-                <Text style={styles.label}>signed in</Text>
-                <Text numberOfLines={2} style={styles.connected}>
-                  {user.id}
-                </Text>
-                <Text style={styles.note}>
-                  {privyWallet.hasEmbeddedWallet
-                    ? `embedded wallet ${shortAddress(privyWallet.embeddedPublicKey ?? "", 6)}`
-                    : "embedded wallet not created."}
-                </Text>
-                <View style={styles.buttonGroup}>
-                  {!privyWallet.hasEmbeddedWallet ? (
+              {isReady && isLoggedIn ? (
+                <View style={styles.header}>
+                  <Text style={styles.title}>connected</Text>
+                  <Text style={styles.subtitle}>returning to your writing.</Text>
+                </View>
+              ) : null}
+
+              {isReady && !isLoggedIn && !emailCodeSent ? (
+                <>
+                  <View style={styles.header}>
+                    <Text style={styles.title}>log in to anky</Text>
+                    <Text style={styles.subtitle}>
+                      {reason ?? "continue your journey within"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.inputWrap}>
+                    <Text style={styles.inputIcon}>✉</Text>
+                    <TextInput
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      onChangeText={setEmail}
+                      placeholder="enter your email"
+                      placeholderTextColor="rgba(255, 240, 201, 0.48)"
+                      style={styles.input}
+                      textContentType="emailAddress"
+                      value={email}
+                    />
+                  </View>
+                  <Text style={styles.helperText}>
+                    ✦ we’ll send a one-time passcode to your email ✦
+                  </Text>
+                  <AuthButton
+                    disabled={isBusy}
+                    icon="✉"
+                    label={isBusy ? "sending code" : "send code"}
+                    onPress={() => void handleSendEmailCode()}
+                  />
+
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or continue with</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+                  <View style={styles.buttonGroup}>
                     <AuthButton
                       disabled={isBusy}
-                      label="create embedded wallet"
-                      onPress={() => void handleCreateEmbeddedWallet()}
+                      icon="G"
+                      label="continue with google"
+                      onPress={() => void handleOAuth("google")}
+                      variant="secondary"
                     />
-                  ) : null}
-                  <AuthButton disabled={isBusy} label="log out" onPress={() => void handleLogout()} />
-                </View>
-              </View>
-            ) : null}
+                    <AuthButton
+                      disabled={isBusy}
+                      icon=""
+                      label="continue with apple"
+                      onPress={() => void handleOAuth("apple")}
+                      variant="secondary"
+                    />
+                    <AuthButton
+                      disabled={isBusy}
+                      icon="◥"
+                      label="continue with phantom"
+                      onPress={() => void handleWalletConnect("phantom")}
+                      variant="secondary"
+                    />
+                  </View>
+                </>
+              ) : null}
 
-            {isReady && !isLoggedIn ? (
-              <View style={styles.panel}>
-                <Text style={styles.label}>email</Text>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  onChangeText={setEmail}
-                  placeholder="email"
-                  placeholderTextColor="rgba(255, 240, 201, 0.42)"
-                  style={styles.input}
-                  textContentType="emailAddress"
-                  value={email}
-                />
-                {emailCodeSent ? (
-                  <TextInput
-                    autoCapitalize="none"
-                    keyboardType="number-pad"
-                    onChangeText={setCode}
-                    placeholder="code"
-                    placeholderTextColor="rgba(255, 240, 201, 0.42)"
-                    style={styles.input}
-                    textContentType="oneTimeCode"
-                    value={code}
+              {isReady && !isLoggedIn && emailCodeSent ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setCode("");
+                      setEmailCodeSent(false);
+                      setMessage("");
+                    }}
+                    style={styles.backButton}
+                  >
+                    <Text style={styles.backText}>‹ back</Text>
+                  </Pressable>
+                  <View style={styles.header}>
+                    <Text style={styles.title}>enter your code</Text>
+                    <Text numberOfLines={2} style={styles.subtitle}>
+                      ✦ we sent a code to {email.trim()} ✦
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => codeInputRef.current?.focus()}
+                    style={styles.codeRow}
+                  >
+                    {Array.from({ length: CODE_LENGTH }).map((_, index) => {
+                      const digit = code[index] ?? "";
+                      const active = digit.length === 0 && index === Math.min(code.length, CODE_LENGTH - 1);
+
+                      return (
+                        <View
+                          key={index}
+                          style={[styles.codeBox, active && styles.codeBoxActive]}
+                        >
+                          <Text style={styles.codeText}>{digit}</Text>
+                        </View>
+                      );
+                    })}
+                    <TextInput
+                      ref={codeInputRef}
+                      autoCapitalize="none"
+                      autoFocus
+                      caretHidden
+                      keyboardType="number-pad"
+                      maxLength={CODE_LENGTH}
+                      onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, CODE_LENGTH))}
+                      style={styles.hiddenCodeInput}
+                      textContentType="oneTimeCode"
+                      value={code}
+                    />
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isBusy}
+                    onPress={() => void handlePasteCode()}
+                    style={({ pressed }) => [
+                      styles.pasteButton,
+                      isBusy && styles.disabled,
+                      pressed && !isBusy && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.pasteText}>▣ paste code</Text>
+                  </Pressable>
+
+                  <AuthButton
+                    disabled={isBusy || code.trim().length === 0}
+                    icon="✉"
+                    label={isBusy ? "verifying code" : "verify code"}
+                    onPress={() => void handleEmailLogin()}
                   />
-                ) : null}
-                <AuthButton
-                  disabled={isBusy}
-                  label={emailCodeSent ? "verify code" : "continue with email"}
-                  onPress={() => void (emailCodeSent ? handleEmailLogin() : handleSendEmailCode())}
-                />
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isBusy}
+                    onPress={() => void handleSendEmailCode()}
+                    style={({ pressed }) => [
+                      styles.resendButton,
+                      isBusy && styles.disabled,
+                      pressed && !isBusy && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.resendText}>resend code</Text>
+                  </Pressable>
+                </>
+              ) : null}
+
+              {isLoggedIn || connectedExternalWallet == null ? null : (
+                <Text style={styles.note}>
+                  {connectedExternalWallet.label} {shortAddress(connectedExternalWallet.address, 6)}{" "}
+                  {needsWalletLogin
+                    ? "connected. sign once to continue."
+                    : "is ready for loom actions."}
+                </Text>
+              )}
+              {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
+
+              <View style={styles.privyRow}>
+                <Text style={styles.lockIcon}>▣</Text>
+                <Text style={styles.privyText}>protected with privy</Text>
               </View>
-            ) : null}
 
-            {isReady && !isLoggedIn ? (
-              <View style={styles.buttonGroup}>
-                <AuthButton
-                  disabled={isBusy}
-                  label="continue with apple"
-                  onPress={() => void handleOAuth("apple")}
-                  variant="secondary"
-                />
-                <AuthButton
-                  disabled={isBusy}
-                  label="continue with google"
-                  onPress={() => void handleOAuth("google")}
-                  variant="secondary"
-                />
-                <AuthButton
-                  disabled={
-                    isBusy || (isLoggedIn && connectedExternalWallet?.provider === "phantom")
-                  }
-                  label={
-                    connectedExternalWallet?.provider === "phantom"
-                      ? isLoggedIn
-                        ? "phantom connected"
-                        : "finish phantom login"
-                      : "connect phantom"
-                  }
-                  onPress={() => void handleWalletConnect("phantom")}
-                  variant="secondary"
-                />
-              </View>
-            ) : null}
-
-            {connectedExternalWallet == null ? null : (
-              <Text style={styles.note}>
-                {connectedExternalWallet.label} {shortAddress(connectedExternalWallet.address, 6)}{" "}
-                {needsWalletLogin
-                  ? "connected. sign once to finish login."
-                  : "is ready for loom actions."}
-              </Text>
-            )}
-            {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
-
-            <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeText}>stay local</Text>
-            </Pressable>
-          </ScrollView>
+              <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
+                <Text style={styles.closeText}>not now</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -504,11 +599,13 @@ function AuthModal({
 
 function AuthButton({
   disabled = false,
+  icon,
   label,
   onPress,
   variant = "primary",
 }: {
   disabled?: boolean;
+  icon?: string;
   label: string;
   onPress: () => void;
   variant?: "primary" | "secondary";
@@ -525,6 +622,11 @@ function AuthButton({
         pressed && !disabled && styles.pressed,
       ]}
     >
+      {icon == null ? null : (
+        <Text style={[styles.authButtonIcon, variant === "secondary" && styles.authButtonIconSecondary]}>
+          {icon}
+        </Text>
+      )}
       <Text style={[styles.authButtonText, variant === "secondary" && styles.authButtonTextSecondary]}>
         {label}
       </Text>
@@ -537,29 +639,57 @@ function getWalletLoginKey(provider: WalletProvider, address: string): string {
 }
 
 const styles = StyleSheet.create({
+  authBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
   authButton: {
     alignItems: "center",
-    backgroundColor: "rgba(232, 200, 121, 0.18)",
-    borderColor: "rgba(232, 200, 121, 0.54)",
+    backgroundColor: "rgba(99, 45, 160, 0.42)",
+    borderColor: "rgba(255, 216, 116, 0.82)",
     borderRadius: 8,
     borderWidth: 1,
-    minHeight: 50,
+    flexDirection: "row",
+    gap: spacing.sm,
     justifyContent: "center",
+    minHeight: 58,
     paddingHorizontal: spacing.md,
   },
+  authButtonIcon: {
+    color: ankyColors.gold,
+    fontSize: 22,
+    lineHeight: 26,
+    minWidth: 26,
+    textAlign: "center",
+  },
+  authButtonIconSecondary: {
+    color: ankyColors.gold,
+  },
   authButtonSecondary: {
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderColor: "rgba(232, 200, 121, 0.22)",
+    backgroundColor: "rgba(12, 11, 31, 0.72)",
+    borderColor: "rgba(232, 142, 83, 0.35)",
   },
   authButtonText: {
     color: ankyColors.gold,
-    fontSize: fontSize.md,
+    flexShrink: 1,
+    fontSize: 18,
     fontWeight: "700",
     textAlign: "center",
     textTransform: "lowercase",
   },
   authButtonTextSecondary: {
-    color: ankyColors.text,
+    color: ankyColors.gold,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  backText: {
+    color: ankyColors.gold,
+    fontSize: fontSize.md,
+    textTransform: "lowercase",
   },
   buttonGroup: {
     gap: spacing.sm,
@@ -581,23 +711,93 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: spacing.xs,
   },
+  codeBox: {
+    alignItems: "center",
+    backgroundColor: "rgba(12, 11, 31, 0.82)",
+    borderColor: "rgba(185, 121, 232, 0.66)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    height: 58,
+    justifyContent: "center",
+    maxWidth: 64,
+  },
+  codeBoxActive: {
+    borderColor: "rgba(255, 216, 116, 0.94)",
+  },
+  codeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    marginBottom: spacing.md,
+    marginTop: spacing.md,
+  },
+  codeText: {
+    color: ankyColors.gold,
+    fontSize: 25,
+    fontWeight: "700",
+  },
   disabled: {
     opacity: 0.48,
+  },
+  dividerLine: {
+    backgroundColor: "rgba(215, 186, 115, 0.42)",
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  dividerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  dividerText: {
+    color: ankyColors.textMuted,
+    fontSize: fontSize.sm,
+    textTransform: "lowercase",
   },
   header: {
     alignItems: "center",
     marginBottom: spacing.lg,
   },
+  helperText: {
+    color: ankyColors.textMuted,
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+    marginTop: spacing.md,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  hiddenCodeInput: {
+    height: 1,
+    opacity: 0,
+    position: "absolute",
+    width: 1,
+  },
   input: {
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderColor: "rgba(232, 200, 121, 0.22)",
+    color: ankyColors.text,
+    flex: 1,
+    fontSize: fontSize.md,
+    paddingVertical: 0,
+  },
+  inputIcon: {
+    color: ankyColors.gold,
+    fontSize: 25,
+    lineHeight: 28,
+    minWidth: 30,
+    textAlign: "center",
+  },
+  inputWrap: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 12, 34, 0.76)",
+    borderColor: "rgba(185, 121, 232, 0.72)",
     borderRadius: 8,
     borderWidth: 1,
-    color: ankyColors.text,
-    fontSize: fontSize.md,
-    marginTop: spacing.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 58,
     paddingHorizontal: spacing.md,
-    paddingVertical: 13,
   },
   label: {
     color: ankyColors.gold,
@@ -606,8 +806,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textTransform: "uppercase",
   },
+  lockIcon: {
+    color: ankyColors.gold,
+    fontSize: 18,
+    lineHeight: 20,
+  },
   message: {
-    color: ankyColors.textMuted,
+    color: ankyColors.gold,
     fontSize: fontSize.sm,
     lineHeight: 20,
     marginTop: spacing.md,
@@ -624,45 +829,94 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: "center",
   },
-  panel: {
-    backgroundColor: "rgba(10, 9, 25, 0.94)",
-    borderColor: "rgba(232, 200, 121, 0.22)",
+  pasteButton: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(12, 11, 31, 0.72)",
+    borderColor: "rgba(232, 142, 83, 0.42)",
     borderRadius: 8,
     borderWidth: 1,
-    padding: spacing.md,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  pasteText: {
+    color: ankyColors.gold,
+    fontSize: fontSize.sm,
+    fontWeight: "700",
+    textTransform: "lowercase",
   },
   pressed: {
     opacity: 0.72,
   },
+  privyRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    marginTop: spacing.lg,
+  },
+  privyText: {
+    color: "rgba(184, 178, 255, 0.72)",
+    fontSize: fontSize.md,
+    textTransform: "lowercase",
+  },
+  resendButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(12, 11, 31, 0.5)",
+    borderColor: "rgba(156, 163, 175, 0.24)",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    minHeight: 46,
+    justifyContent: "center",
+  },
+  resendText: {
+    color: ankyColors.textMuted,
+    fontSize: fontSize.md,
+    textTransform: "lowercase",
+  },
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    backgroundColor: "rgba(0, 0, 0, 0.42)",
+    zIndex: 0,
   },
   sheet: {
-    backgroundColor: "rgba(8, 7, 19, 0.98)",
-    borderColor: "rgba(232, 200, 121, 0.28)",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: "rgba(8, 7, 24, 0.96)",
+    borderColor: "rgba(255, 216, 116, 0.64)",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderWidth: 1,
-    maxHeight: "88%",
+    maxHeight: "78%",
     overflow: "hidden",
+    zIndex: 2,
   },
   sheetContent: {
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    backgroundColor: "rgba(184, 178, 255, 0.7)",
+    borderRadius: 8,
+    height: 6,
+    marginTop: spacing.md,
+    width: 62,
   },
   subtitle: {
-    color: ankyColors.textMuted,
-    fontSize: fontSize.sm,
-    lineHeight: 21,
+    color: "rgba(244, 241, 234, 0.74)",
+    fontSize: fontSize.md,
+    lineHeight: 22,
     marginTop: spacing.sm,
-    maxWidth: 300,
+    maxWidth: 340,
     textAlign: "center",
     textTransform: "lowercase",
   },
   title: {
     color: ankyColors.gold,
-    fontSize: fontSize.xxl,
+    fontFamily: Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" }),
+    fontSize: 34,
     fontWeight: "700",
     letterSpacing: 0,
     textTransform: "lowercase",

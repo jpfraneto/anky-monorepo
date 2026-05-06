@@ -1,48 +1,59 @@
-import { getPublicEnv } from "../config/env";
-
-export type CreditProductKind = "consumable" | "subscription";
+export type AnkyRevenueCatPackageId = "regular" | "sojourner" | "starter";
 
 export type CreditProduct = {
-  credits?: number;
+  androidProductId: string;
+  baseCredits: number;
+  bonusCredits: number;
   description: string;
+  fallbackPriceLabel: string;
   id: string;
-  kind: CreditProductKind;
-  priceLabel: string;
+  iosProductId: string;
+  kind: "consumable";
+  recommended?: boolean;
+  revenueCatPackageId: AnkyRevenueCatPackageId;
   title: string;
+  totalCredits: number;
 };
 
 export const CREDIT_PRODUCTS: CreditProduct[] = [
   {
-    credits: 8,
-    description: "a small bundle for a few reflections.",
-    id: getPublicEnv("EXPO_PUBLIC_IAP_CREDITS_8_ID") ?? "credits_8",
+    androidProductId: "credits_22",
+    baseCredits: 22,
+    bonusCredits: 0,
+    description: "try the mirror.",
+    fallbackPriceLabel: "$2.22",
+    id: "credits_22",
+    iosProductId: "inc.anky.credits.22",
     kind: "consumable",
-    priceLabel: "$2.99",
-    title: "8 credits",
+    revenueCatPackageId: "starter",
+    title: "22 credits",
+    totalCredits: 22,
   },
   {
-    credits: 24,
-    description: "for a deeper stretch of reflections.",
-    id: getPublicEnv("EXPO_PUBLIC_IAP_CREDITS_24_ID") ?? "credits_24",
+    androidProductId: "credits_88_bonus_11",
+    baseCredits: 88,
+    bonusCredits: 11,
+    description: "99 total credits. best for regular writing.",
+    fallbackPriceLabel: "$8.88",
+    id: "credits_88_bonus_11",
+    iosProductId: "inc.anky.credits.88_bonus_11",
     kind: "consumable",
-    priceLabel: "$6.99",
-    title: "24 credits",
+    recommended: true,
+    revenueCatPackageId: "regular",
+    title: "88 + 11 bonus",
+    totalCredits: 99,
   },
   {
-    credits: 88,
-    description: "for a long season of mirrors.",
-    id: getPublicEnv("EXPO_PUBLIC_IAP_CREDITS_88_ID") ?? "credits_88",
+    androidProductId: "credits_333_bonus_88",
+    baseCredits: 333,
+    bonusCredits: 88,
+    description: "421 total credits. for the full sojourn.",
+    fallbackPriceLabel: "$33.33",
+    id: "credits_333_bonus_88",
+    iosProductId: "inc.anky.credits.333_bonus_88",
     kind: "consumable",
-    priceLabel: "$19.99",
-    title: "88 credits",
-  },
-  {
-    description: "8 credits every day.",
-    id:
-      getPublicEnv("EXPO_PUBLIC_IAP_PREMIUM_MONTHLY_ID") ??
-      "premium_monthly_8_per_day",
-    kind: "subscription",
-    priceLabel: "$8 / month",
-    title: "premium",
+    revenueCatPackageId: "sojourner",
+    title: "333 + 88 bonus",
+    totalCredits: 421,
   },
 ];

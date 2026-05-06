@@ -331,6 +331,9 @@ export type SendThreadMessageResponse = {
 
 export type PrivyAuthRequest = {
   auth_token: string;
+  siws_message?: string;
+  siws_signature?: string;
+  wallet_address?: string;
 };
 
 export type BackendAuthResponse = {

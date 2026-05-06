@@ -20,10 +20,8 @@ type PublicEnvName =
   | "EXPO_PUBLIC_ANKY_CORE_COLLECTION"
   | "EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID"
   | "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL"
-  | "EXPO_PUBLIC_IAP_CREDITS_8_ID"
-  | "EXPO_PUBLIC_IAP_CREDITS_24_ID"
-  | "EXPO_PUBLIC_IAP_CREDITS_88_ID"
-  | "EXPO_PUBLIC_IAP_PREMIUM_MONTHLY_ID";
+  | "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY"
+  | "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY";
 
 const bundledPublicEnv: Partial<Record<PublicEnvName, string | undefined>> =
   typeof process === "undefined" || process.env == null
@@ -45,13 +43,10 @@ const bundledPublicEnv: Partial<Record<PublicEnvName, string | undefined>> =
           process.env.EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID,
         EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL:
           process.env.EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL,
-        EXPO_PUBLIC_IAP_CREDITS_8_ID: process.env.EXPO_PUBLIC_IAP_CREDITS_8_ID,
-        EXPO_PUBLIC_IAP_CREDITS_24_ID:
-          process.env.EXPO_PUBLIC_IAP_CREDITS_24_ID,
-        EXPO_PUBLIC_IAP_CREDITS_88_ID:
-          process.env.EXPO_PUBLIC_IAP_CREDITS_88_ID,
-        EXPO_PUBLIC_IAP_PREMIUM_MONTHLY_ID:
-          process.env.EXPO_PUBLIC_IAP_PREMIUM_MONTHLY_ID,
+        EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY:
+          process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
+        EXPO_PUBLIC_REVENUECAT_IOS_API_KEY:
+          process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
       };
 
 type ExpoConstants = {

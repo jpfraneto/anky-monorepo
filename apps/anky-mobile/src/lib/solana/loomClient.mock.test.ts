@@ -10,16 +10,19 @@ describe("mock loom client", () => {
     });
     const [loom] = await client.getOwnedLooms();
     const sessionHash = "a".repeat(64);
+    const sessionUtcDay = Math.floor(1700000000000 / 86_400_000);
 
     await expect(
       client.sealAnky({
         loomId: loom.id,
         sessionHash,
+        sessionUtcDay,
       }),
     ).resolves.toMatchObject({
       blockTime: 1700000000,
       loomId: loom.id,
       sessionHash,
+      utcDay: sessionUtcDay,
       writer: loom.ownerWallet,
     });
   });
@@ -32,7 +35,31 @@ describe("mock loom client", () => {
       client.sealAnky({
         loomId: loom.id,
         sessionHash: "not-a-hash",
+        sessionUtcDay: Math.floor(Date.now() / 86_400_000),
       }),
     ).rejects.toThrow("sessionHash");
+  });
+
+  it("rejects duplicate daily seals", async () => {
+    const client = createMockLoomClient({
+      now: () => 1700000000000,
+      random: () => 0.123,
+    });
+    const [loom] = await client.getOwnedLooms();
+    const sessionUtcDay = Math.floor(1700000000000 / 86_400_000);
+
+    await client.sealAnky({
+      loomId: loom.id,
+      sessionHash: "a".repeat(64),
+      sessionUtcDay,
+    });
+
+    await expect(
+      client.sealAnky({
+        loomId: loom.id,
+        sessionHash: "b".repeat(64),
+        sessionUtcDay,
+      }),
+    ).rejects.toThrow("UTC day");
   });
 });

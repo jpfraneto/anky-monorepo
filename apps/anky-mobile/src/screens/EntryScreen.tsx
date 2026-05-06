@@ -42,7 +42,11 @@ import type { LoomSeal } from "../lib/solana/types";
 import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
 import { getSelectedLoom } from "../lib/solana/loomStorage";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
-import { sealAnky as sealAnkyOnchain } from "../lib/solana/sealAnky";
+import {
+  getUtcDayFromUnixMs,
+  isCurrentUtcDay,
+  sealAnky as sealAnkyOnchain,
+} from "../lib/solana/sealAnky";
 import {
   getRiteDurationMs,
   getThreadModeForRawAnky,
@@ -197,6 +201,14 @@ export function EntryScreen({ navigation, route }: Props) {
       setSealError("");
       setStatusMessage("");
 
+      const parsed = parseAnky(entryState.raw);
+      const sessionUtcDay =
+        parsed.startedAt == null ? null : getUtcDayFromUnixMs(parsed.startedAt);
+
+      if (sessionUtcDay == null || !isCurrentUtcDay(sessionUtcDay)) {
+        throw new Error("Only an Anky from the current UTC day can be sealed.");
+      }
+
       const loom = await getSelectedLoom();
 
       if (loom == null) {
@@ -218,6 +230,7 @@ export function EntryScreen({ navigation, route }: Props) {
         network: config.network,
         programId: config.sealProgramId,
         sessionHashHex: entryState.hash,
+        sessionUtcDay,
         wallet,
       });
 
@@ -240,14 +253,13 @@ export function EntryScreen({ navigation, route }: Props) {
       }
 
       setEntry({ ...entryState, seal: toLoomSeal(seal) });
-      setStatusMessage("sealed. hash only was written; local writing stayed private.");
       setActionState("idle");
     } catch (error) {
       console.error(error);
       const nextMessage =
         error instanceof Error ? error.message : "Seal failed. Your .anky is still local.";
       setSealError(nextMessage);
-      setStatusMessage(nextMessage);
+      setStatusMessage("");
       setActionState("error");
     }
   }
@@ -288,6 +300,9 @@ export function EntryScreen({ navigation, route }: Props) {
 
   const parsed = parseAnky(entry.raw);
   const isFragmentEntry = !isCompleteParsedAnky(parsed);
+  const sessionUtcDay =
+    parsed.startedAt == null ? null : getUtcDayFromUnixMs(parsed.startedAt);
+  const canSealCurrentUtcDay = sessionUtcDay != null && isCurrentUtcDay(sessionUtcDay);
   const dateParts = formatEntryDateParts(entry.raw);
   const durationLabel = formatDuration(getRiteDurationMs(parsed));
   const canReflect =
@@ -302,7 +317,9 @@ export function EntryScreen({ navigation, route }: Props) {
     entry.valid &&
     entry.hashMatches &&
     entry.seal == null &&
-    walletState.hasWallet;
+    walletState.hasWallet &&
+    canSealCurrentUtcDay &&
+    actionState !== "sealing";
   const shouldShowSeal =
     !isFragmentEntry &&
     entry.valid &&
@@ -328,6 +345,20 @@ export function EntryScreen({ navigation, route }: Props) {
         onFullReflect={() => void handleReflect(entry, "full")}
         onSimpleReflect={() => void handleReflect(entry, "simple")}
         reflection={entry.reflection}
+        sealAction={
+          shouldShowSeal ? (
+            <SwipeToSealAction
+              disabled={!canSeal}
+              error={sealError}
+              isSealing={actionState === "sealing"}
+              onSeal={() => handleSeal(entry)}
+              sealNetwork={entry.seal?.network}
+              sealSignature={entry.seal?.txSignature}
+              sealed={entry.seal != null}
+              walletKind={walletState.walletKind}
+            />
+          ) : undefined
+        }
         text={entry.text}
         timeLabel={dateParts.time}
       />

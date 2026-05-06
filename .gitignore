@@ -8,7 +8,17 @@ data/
 *.log
 .secrets/
 .DS_Store
+
+# Mobile signing credentials and private keys
+*.jks
+*.keystore
 *.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*service-account*.json
+*service_account*.json
 .idea
 anky.db
 scripts/__pycache__/

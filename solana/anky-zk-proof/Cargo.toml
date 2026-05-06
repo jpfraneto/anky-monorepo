@@ -1,0 +1,13 @@
+[package]
+name = "anky-zk-proof"
+version = "0.1.0"
+description = "ZK-ready .anky private session verifier and public receipt CLI"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"

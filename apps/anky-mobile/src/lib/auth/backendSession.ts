@@ -16,15 +16,27 @@ export type BackendAuthSession = {
   walletAddress?: string;
 };
 
+export type BackendWalletAuthProof = {
+  siwsMessage: string;
+  siwsSignature: string;
+  walletAddress: string;
+};
+
 export function hasConfiguredBackend(): boolean {
   return ANKY_API_BASE_URL.length > 0;
 }
 
 export async function exchangePrivyAccessTokenForBackendSession(
   accessToken: string,
+  walletProof?: BackendWalletAuthProof,
 ): Promise<BackendAuthSession> {
   const api = createAnkyApiClient({ baseUrl: ANKY_API_BASE_URL });
-  const response = await api.exchangePrivyAuthToken(accessToken);
+  const response = await api.exchangePrivyAuthToken({
+    auth_token: accessToken,
+    siws_message: walletProof?.siwsMessage,
+    siws_signature: walletProof?.siwsSignature,
+    wallet_address: walletProof?.walletAddress,
+  });
   const session = toBackendAuthSession(response);
 
   await saveBackendAuthSession(session);

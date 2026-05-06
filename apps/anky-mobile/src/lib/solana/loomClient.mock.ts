@@ -16,6 +16,7 @@ const MOCK_LOOMS: Loom[] = [
     totalSeals: 0,
   },
 ];
+const MS_PER_UTC_DAY = 86_400_000;
 
 type MockLoomClientOptions = {
   now?: () => number;
@@ -27,6 +28,8 @@ export function createMockLoomClient({
   random = Math.random,
 }: MockLoomClientOptions = {}): LoomClient {
   const looms = MOCK_LOOMS.map((loom) => ({ ...loom }));
+  const sealedHashes = new Set<string>();
+  const sealedUtcDays = new Set<number>();
 
   return {
     async getOwnedLooms() {
@@ -47,12 +50,28 @@ export function createMockLoomClient({
       }
 
       const timestamp = now();
+      const currentUtcDay = Math.floor(timestamp / MS_PER_UTC_DAY);
+
+      if (input.sessionUtcDay !== currentUtcDay) {
+        throw new Error("Only an Anky from the current UTC day can be sealed.");
+      }
+
+      if (sealedUtcDays.has(input.sessionUtcDay)) {
+        throw new Error("This writer has already sealed an Anky for this UTC day.");
+      }
+
+      if (sealedHashes.has(input.sessionHash)) {
+        throw new Error("This writer has already sealed this session hash.");
+      }
+
       const nonce = Math.floor(random() * 1_000_000_000)
         .toString(36)
         .padStart(6, "0");
       const txSignature = `mock_${timestamp.toString(36)}_${input.sessionHash.slice(0, 16)}_${nonce}`;
       const totalSeals = (loom.totalSeals ?? 0) + 1;
 
+      sealedUtcDays.add(input.sessionUtcDay);
+      sealedHashes.add(input.sessionHash);
       loom.totalSeals = totalSeals;
       loom.latestSessionHash = input.sessionHash;
 
@@ -62,6 +81,7 @@ export function createMockLoomClient({
         sessionHash: input.sessionHash,
         slot: timestamp,
         txSignature,
+        utcDay: input.sessionUtcDay,
         writer: MOCK_WRITER,
       };
     },

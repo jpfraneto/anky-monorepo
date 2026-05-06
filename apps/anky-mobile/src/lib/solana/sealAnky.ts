@@ -15,6 +15,9 @@ import type { AnkySolanaCluster } from "./ankySolanaConfig";
 const LOOM_STATE_SEED = new Uint8Array([
   108, 111, 111, 109, 95, 115, 116, 97, 116, 101,
 ]);
+const DAILY_SEAL_SEED = Buffer.from("daily_seal", "utf8");
+const HASH_SEAL_SEED = Buffer.from("hash_seal", "utf8");
+const MS_PER_UTC_DAY = 86_400_000;
 
 export type SealAnkyInput = {
   wallet: AnkySolanaWallet;
@@ -22,6 +25,7 @@ export type SealAnkyInput = {
   programId: string;
   network: AnkySolanaCluster;
   sessionHashHex: string;
+  sessionUtcDay: number;
   loomAsset: string;
   coreCollection: string;
 };
@@ -30,6 +34,7 @@ export type SealAnkyResult = {
   version: 1;
   network: AnkySolanaCluster;
   session_hash: string;
+  utc_day: number;
   loom_asset: string;
   writer: string;
   signature: string;
@@ -43,17 +48,31 @@ export async function sealAnky({
   programId,
   network,
   sessionHashHex,
+  sessionUtcDay,
   loomAsset,
   coreCollection,
 }: SealAnkyInput): Promise<SealAnkyResult> {
   const normalizedSessionHash = normalizeSessionHash(sessionHashHex);
   const sessionHashBytes = hexToBytes(normalizedSessionHash);
+  const normalizedUtcDay = normalizeSessionUtcDay(sessionUtcDay);
+
+  assertCurrentUtcDay(normalizedUtcDay);
+
   const writer = new PublicKey(wallet.publicKey);
   const programPublicKey = new PublicKey(programId);
   const loomAssetPublicKey = new PublicKey(loomAsset);
   const coreCollectionPublicKey = new PublicKey(coreCollection);
+  const utcDayBytes = encodeI64Le(normalizedUtcDay);
   const [loomState] = PublicKey.findProgramAddressSync(
     [LOOM_STATE_SEED, loomAssetPublicKey.toBuffer()],
+    programPublicKey,
+  );
+  const [dailySeal] = PublicKey.findProgramAddressSync(
+    [DAILY_SEAL_SEED, writer.toBuffer(), utcDayBytes],
+    programPublicKey,
+  );
+  const [hashSeal] = PublicKey.findProgramAddressSync(
+    [HASH_SEAL_SEED, writer.toBuffer(), Buffer.from(sessionHashBytes)],
     programPublicKey,
   );
 
@@ -65,9 +84,11 @@ export async function sealAnky({
         { pubkey: loomAssetPublicKey, isSigner: false, isWritable: false },
         { pubkey: coreCollectionPublicKey, isSigner: false, isWritable: false },
         { pubkey: loomState, isSigner: false, isWritable: true },
+        { pubkey: dailySeal, isSigner: false, isWritable: true },
+        { pubkey: hashSeal, isSigner: false, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data: buildSealAnkyInstructionData(sessionHashBytes),
+      data: buildSealAnkyInstructionData(sessionHashBytes, normalizedUtcDay),
     }),
   );
 
@@ -81,6 +102,7 @@ export async function sealAnky({
     version: 1,
     network,
     session_hash: normalizedSessionHash,
+    utc_day: normalizedUtcDay,
     loom_asset: loomAssetPublicKey.toBase58(),
     writer: writer.toBase58(),
     signature,
@@ -99,16 +121,55 @@ export function normalizeSessionHash(sessionHashHex: string): string {
   return value.toLowerCase();
 }
 
-function buildSealAnkyInstructionData(sessionHashBytes: Uint8Array): Buffer {
+export function getUtcDayFromUnixMs(unixMs: number): number {
+  if (!Number.isFinite(unixMs)) {
+    throw new Error("session timestamp must be finite.");
+  }
+
+  return Math.floor(unixMs / MS_PER_UTC_DAY);
+}
+
+export function getCurrentUtcDay(nowMs = Date.now()): number {
+  return getUtcDayFromUnixMs(nowMs);
+}
+
+export function isCurrentUtcDay(utcDay: number, nowMs = Date.now()): boolean {
+  return normalizeSessionUtcDay(utcDay) === getCurrentUtcDay(nowMs);
+}
+
+function normalizeSessionUtcDay(utcDay: number): number {
+  if (!Number.isSafeInteger(utcDay)) {
+    throw new Error("sessionUtcDay must be a safe integer UTC day.");
+  }
+
+  return utcDay;
+}
+
+function assertCurrentUtcDay(utcDay: number): void {
+  if (!isCurrentUtcDay(utcDay)) {
+    throw new Error("Only an Anky from the current UTC day can be sealed.");
+  }
+}
+
+function buildSealAnkyInstructionData(sessionHashBytes: Uint8Array, utcDay: number): Buffer {
   if (sessionHashBytes.length !== 32) {
     throw new Error("sessionHashHex must decode to exactly 32 bytes.");
   }
 
   const discriminator = sha256(utf8ToBytes("global:seal_anky")).slice(0, 8);
-  const data = Buffer.alloc(40);
+  const data = Buffer.alloc(48);
   data.set(discriminator, 0);
   data.set(sessionHashBytes, 8);
+  data.set(encodeI64Le(utcDay), 40);
   return data;
+}
+
+function encodeI64Le(value: number): Buffer {
+  const buffer = Buffer.alloc(8);
+
+  buffer.writeBigInt64LE(BigInt(value));
+
+  return buffer;
 }
 
 async function signAndSendWalletTransaction({

@@ -32,6 +32,7 @@ describe("Sojourn 9 program connection", () => {
       client.sealAnky({
         loomId: "loom",
         sessionHash: "a".repeat(64),
+        sessionUtcDay: Math.floor(Date.now() / 86_400_000),
       }),
     ).rejects.toThrow("Use src/lib/solana/sealAnky.ts");
   });

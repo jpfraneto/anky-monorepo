@@ -1,7 +1,10 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
+  Linking,
   PanResponder,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -15,116 +18,304 @@ type Props = {
   error?: string;
   isSealing?: boolean;
   onSeal: () => Promise<void> | void;
+  sealNetwork?: "devnet" | "mainnet-beta";
+  sealSignature?: string;
   sealed?: boolean;
+  walletKind?: "embedded" | "external";
 };
 
-const KNOB_SIZE = 54;
-const COMPLETE_THRESHOLD = 0.72;
+const KNOB_SIZE = 56;
+const TRACK_PADDING = 4;
+const COMPLETE_THRESHOLD = 0.86;
+const FAST_SWIPE_VELOCITY = 1.1;
 
 export function SwipeToSealAction({
   disabled = false,
   error,
   isSealing = false,
   onSeal,
+  sealNetwork,
+  sealSignature,
   sealed = false,
+  walletKind,
 }: Props) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const fillProgress = useRef(new Animated.Value(sealed ? 1 : 0)).current;
+  const panStartXRef = useRef(0);
   const progressRef = useRef(sealed ? 1 : 0);
-  const [progress, setProgress] = useState(sealed ? 1 : 0);
   const [trackWidth, setTrackWidth] = useState(0);
-  const maxSwipe = Math.max(0, trackWidth - KNOB_SIZE - 8);
+  const maxSwipe = Math.max(0, trackWidth - KNOB_SIZE - TRACK_PADDING * 2);
   const unavailable = disabled && !sealed && !isSealing;
+  const state = sealed
+    ? "sealed"
+    : isSealing
+      ? "sealing"
+      : error != null && error.length > 0
+        ? "error"
+        : unavailable
+          ? "unavailable"
+          : "ready";
+  const label = getSealLabel(state, walletKind);
+  const detail = getSealDetail(state, error, walletKind);
+  const hasSealProof = sealed && sealSignature != null && sealSignature.length > 0;
+  const trackHeight = hasSealProof ? 104 : KNOB_SIZE + TRACK_PADDING * 2;
+  const knobTop = (trackHeight - KNOB_SIZE) / 2;
+  const solscanUrl = hasSealProof ? getSolscanTxUrl(sealSignature, sealNetwork) : null;
+  const fillWidth =
+    trackWidth <= 0
+      ? KNOB_SIZE
+      : fillProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [KNOB_SIZE + TRACK_PADDING, trackWidth],
+        });
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: () => !disabled && !isSealing && !sealed,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          !disabled && !isSealing && !sealed && Math.abs(gesture.dx) > 2,
         onStartShouldSetPanResponder: () => !disabled && !isSealing && !sealed,
+        onPanResponderGrant: () => {
+          fillProgress.stopAnimation();
+          translateX.stopAnimation((value) => {
+            panStartXRef.current = typeof value === "number" ? value : 0;
+          });
+        },
         onPanResponderMove: (_event, gesture) => {
-          const nextX = clamp(gesture.dx, 0, maxSwipe);
+          const nextX = clamp(panStartXRef.current + gesture.dx, 0, maxSwipe);
           const nextProgress = maxSwipe === 0 ? 0 : nextX / maxSwipe;
 
           translateX.setValue(nextX);
+          fillProgress.setValue(nextProgress);
           progressRef.current = nextProgress;
-          setProgress(nextProgress);
         },
-        onPanResponderRelease: () => {
-          if (progressRef.current >= COMPLETE_THRESHOLD) {
-            Animated.timing(translateX, {
-              duration: 120,
-              toValue: maxSwipe,
-              useNativeDriver: true,
+        onPanResponderRelease: (_event, gesture) => {
+          const shouldComplete =
+            progressRef.current >= COMPLETE_THRESHOLD || gesture.vx > FAST_SWIPE_VELOCITY;
+
+          if (shouldComplete) {
+            animateSwipeTo({
+              fillProgress,
+              progress: 1,
+              translateX,
+              x: maxSwipe,
             }).start(() => {
               progressRef.current = 1;
-              setProgress(1);
-              void Promise.resolve(onSeal()).finally(() => {
-                if (!sealed) {
-                  Animated.timing(translateX, {
-                    duration: 180,
-                    toValue: 0,
-                    useNativeDriver: true,
-                  }).start(() => {
-                    progressRef.current = 0;
-                    setProgress(0);
-                  });
-                }
-              });
+              void Promise.resolve(onSeal()).catch(() => undefined);
             });
             return;
           }
 
-          Animated.timing(translateX, {
-            duration: 180,
-            toValue: 0,
-            useNativeDriver: true,
+          animateSwipeTo({
+            fillProgress,
+            progress: 0,
+            translateX,
+            x: 0,
           }).start(() => {
             progressRef.current = 0;
-            setProgress(0);
+          });
+        },
+        onPanResponderTerminate: () => {
+          animateSwipeTo({
+            fillProgress,
+            progress: 0,
+            translateX,
+            x: 0,
+          }).start(() => {
+            progressRef.current = 0;
           });
         },
       }),
-    [disabled, isSealing, maxSwipe, onSeal, sealed, translateX],
+    [disabled, fillProgress, isSealing, maxSwipe, onSeal, sealed, translateX],
   );
+
+  useEffect(() => {
+    if (trackWidth === 0) {
+      return;
+    }
+
+    if (sealed || isSealing) {
+      progressRef.current = 1;
+      animateSwipeTo({
+        fillProgress,
+        progress: 1,
+        translateX,
+        x: maxSwipe,
+      }).start();
+      return;
+    }
+
+    if (error != null && error.length > 0) {
+      progressRef.current = 0;
+      animateSwipeTo({
+        fillProgress,
+        progress: 0,
+        translateX,
+        x: 0,
+      }).start();
+      return;
+    }
+  }, [error, fillProgress, isSealing, maxSwipe, sealed, trackWidth, translateX]);
 
   return (
     <View style={styles.root}>
       <View
+        {...panResponder.panHandlers}
         onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-        style={[styles.track, unavailable && styles.unavailable, sealed && styles.sealedTrack]}
+        style={[
+          styles.track,
+          { height: trackHeight },
+          state === "unavailable" && styles.unavailable,
+          state === "error" && styles.errorTrack,
+          sealed && styles.sealedTrack,
+        ]}
       >
-        <View style={[styles.fill, { width: `${Math.max(progress, sealed ? 1 : 0) * 100}%` }]} />
+        <Animated.View
+          style={[
+            styles.fill,
+            (state === "sealing" || state === "sealed") && styles.fillStrong,
+            state === "error" && styles.fillError,
+            { width: fillWidth },
+          ]}
+        />
         <View style={styles.copy}>
-          <Text style={[styles.label, unavailable && styles.mutedLabel]}>
-            {sealed
-              ? "sealed"
-              : isSealing
-                ? "sealing"
-                : unavailable
-                  ? "sealing unavailable"
-                  : "swipe to seal"}
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={1}
+            style={[
+              styles.label,
+              state === "unavailable" && styles.mutedLabel,
+              state === "error" && styles.errorLabel,
+            ]}
+          >
+            {label}
           </Text>
-          <Text style={styles.detail}>hash only • local writing stays private</Text>
+          {hasSealProof ? (
+            <View style={styles.proofBlock}>
+              <Text numberOfLines={1} style={styles.txHash}>
+                tx hash {shortSignature(sealSignature)}
+              </Text>
+              <Pressable
+                accessibilityRole="link"
+                disabled={solscanUrl == null}
+                onPress={() => {
+                  if (solscanUrl != null) {
+                    void Linking.openURL(solscanUrl).catch(() => undefined);
+                  }
+                }}
+                style={({ pressed }) => [styles.solscanLink, pressed && styles.linkPressed]}
+              >
+                <Text style={styles.solscanText}>view on solscan</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text numberOfLines={2} style={styles.detail}>
+              {detail}
+            </Text>
+          )}
         </View>
         <Animated.View
-          {...panResponder.panHandlers}
           style={[
             styles.knob,
             {
+              top: knobTop,
               transform: [{ translateX: sealed ? maxSwipe : translateX }],
             },
           ]}
         >
-          <AnkyGlyph size={30} />
+          {isSealing ? <ActivityIndicator color={ankyColors.gold} size="small" /> : <AnkyGlyph size={30} />}
         </Animated.View>
       </View>
-      {unavailable ? <Text style={styles.quiet}>your writing is still local</Text> : null}
-      {error == null || error.length === 0 ? null : <Text style={styles.error}>{error}</Text>}
     </View>
   );
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function getSolscanTxUrl(
+  signature: string,
+  network?: "devnet" | "mainnet-beta",
+): string {
+  const cluster = network === "devnet" ? "?cluster=devnet" : "";
+  return `https://solscan.io/tx/${encodeURIComponent(signature)}${cluster}`;
+}
+
+function shortSignature(signature: string): string {
+  if (signature.length <= 18) {
+    return signature;
+  }
+
+  return `${signature.slice(0, 8)}...${signature.slice(-8)}`;
+}
+
+function animateSwipeTo({
+  fillProgress,
+  progress,
+  translateX,
+  x,
+}: {
+  fillProgress: Animated.Value;
+  progress: number;
+  translateX: Animated.Value;
+  x: number;
+}) {
+  return Animated.parallel([
+    Animated.spring(translateX, {
+      damping: progress === 1 ? 18 : 20,
+      mass: 0.72,
+      stiffness: progress === 1 ? 230 : 250,
+      toValue: x,
+      useNativeDriver: true,
+    }),
+    Animated.spring(fillProgress, {
+      damping: progress === 1 ? 18 : 20,
+      mass: 0.72,
+      stiffness: progress === 1 ? 230 : 250,
+      toValue: progress,
+      useNativeDriver: false,
+    }),
+  ]);
+}
+
+function getSealLabel(
+  state: "error" | "ready" | "sealed" | "sealing" | "unavailable",
+  walletKind?: "embedded" | "external",
+): string {
+  switch (state) {
+    case "error":
+      return "seal did not complete";
+    case "sealed":
+      return "sealed with loom";
+    case "sealing":
+      return walletKind === "external" ? "waiting for wallet" : "sealing hash";
+    case "unavailable":
+      return "sealing unavailable";
+    case "ready":
+      return "swipe to seal";
+  }
+}
+
+function getSealDetail(
+  state: "error" | "ready" | "sealed" | "sealing" | "unavailable",
+  error?: string,
+  walletKind?: "embedded" | "external",
+): string {
+  switch (state) {
+    case "error":
+      return error ?? "your writing is still local";
+    case "sealed":
+      return "hash only • local writing stayed private";
+    case "sealing":
+      return walletKind === "external"
+        ? "approve the hash-only seal in your wallet"
+        : "hash only • local writing stays private";
+    case "unavailable":
+      return "your writing is still local";
+    case "ready":
+      return "hash only • local writing stays private";
+  }
 }
 
 const styles = StyleSheet.create({
@@ -142,38 +333,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     marginTop: 3,
+    maxWidth: "100%",
+    paddingHorizontal: spacing.xs,
+    textAlign: "center",
     textTransform: "lowercase",
   },
-  error: {
-    color: ankyColors.danger,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: spacing.sm,
-    textAlign: "center",
+  errorLabel: {
+    color: "#F19A72",
+  },
+  errorTrack: {
+    borderColor: "rgba(241, 154, 114, 0.42)",
   },
   fill: {
-    backgroundColor: "rgba(215, 186, 115, 0.16)",
+    backgroundColor: "rgba(139, 124, 246, 0.12)",
     bottom: 0,
     left: 0,
     position: "absolute",
     top: 0,
   },
+  fillError: {
+    backgroundColor: "rgba(241, 154, 114, 0.1)",
+  },
+  fillStrong: {
+    backgroundColor: "rgba(215, 186, 115, 0.18)",
+  },
   knob: {
     alignItems: "center",
-    backgroundColor: ankyColors.bg,
-    borderColor: ankyColors.borderStrong,
+    backgroundColor: "#0B0920",
+    borderColor: "rgba(232, 200, 121, 0.54)",
     borderRadius: 8,
     borderWidth: 1,
     height: KNOB_SIZE,
     justifyContent: "center",
-    left: 4,
+    left: TRACK_PADDING,
     position: "absolute",
-    top: 4,
     width: KNOB_SIZE,
     zIndex: 2,
   },
   label: {
-    color: ankyColors.text,
+    color: ankyColors.gold,
     fontSize: 16,
     fontWeight: "800",
     letterSpacing: 0,
@@ -181,6 +379,13 @@ const styles = StyleSheet.create({
   },
   mutedLabel: {
     color: ankyColors.textMuted,
+  },
+  linkPressed: {
+    opacity: 0.7,
+  },
+  proofBlock: {
+    alignItems: "center",
+    marginTop: 5,
   },
   quiet: {
     color: ankyColors.textMuted,
@@ -190,18 +395,33 @@ const styles = StyleSheet.create({
     textTransform: "lowercase",
   },
   root: {
-    marginTop: spacing.lg,
+    width: "100%",
   },
   sealedTrack: {
-    borderColor: ankyColors.success,
+    borderColor: "rgba(134, 239, 172, 0.42)",
+  },
+  solscanLink: {
+    marginTop: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  solscanText: {
+    color: ankyColors.violetBright,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "lowercase",
   },
   track: {
-    backgroundColor: ankyColors.bg3,
-    borderColor: ankyColors.border,
+    backgroundColor: "rgba(15, 12, 34, 0.96)",
+    borderColor: "rgba(232, 200, 121, 0.26)",
     borderRadius: 8,
     borderWidth: 1,
-    height: KNOB_SIZE + 8,
     overflow: "hidden",
+  },
+  txHash: {
+    color: ankyColors.text,
+    fontSize: 12,
+    fontWeight: "700",
   },
   unavailable: {
     opacity: 0.7,

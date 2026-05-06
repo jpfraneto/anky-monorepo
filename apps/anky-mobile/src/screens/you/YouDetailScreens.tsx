@@ -18,7 +18,6 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { usePrivy } from "@privy-io/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
-import * as WebBrowser from "expo-web-browser";
 
 import type { RootStackParamList } from "../../../App";
 import { useAuthModal } from "../../auth/AuthModalContext";
@@ -38,16 +37,24 @@ import {
   type ProcessingReceiptSidecar,
   type SavedAnkyFile,
 } from "../../lib/ankyStorage";
-import { getAnkyApiClient } from "../../lib/api/client";
 import {
   clearBackendAuthSession,
   getStoredBackendAuthSession,
-  hasConfiguredBackend,
   type BackendAuthSession,
 } from "../../lib/auth/backendSession";
 import { useExternalSolanaWallet } from "../../lib/privy/ExternalSolanaWalletProvider";
 import { getReflectionCreditBalance } from "../../lib/credits/processAnky";
 import { CREDIT_PRODUCTS, type CreditProduct } from "../../lib/credits/products";
+import {
+  configureRevenueCat,
+  getCreditsOfferingPackages,
+  getRevenueCatCreditBalance,
+  getRevenueCatCreditStatus,
+  purchaseCreditsPackage,
+  type AnkyCreditStorePackage,
+  type AnkyRevenueCatPackageId,
+  type RevenueCatCreditStatus,
+} from "../../lib/credits/revenueCatCredits";
 import { getPublicEnv } from "../../lib/config/env";
 import { useAnkyPrivyWallet } from "../../lib/privy/useAnkyPrivyWallet";
 import { NotificationSettingsModal } from "../../notifications/NotificationSettingsModal";
@@ -629,16 +636,50 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const [balance, setBalance] = useState(0);
   const [message, setMessage] = useState("");
   const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
+  const [purchaseStatus, setPurchaseStatus] =
+    useState<RevenueCatCreditStatus>(getRevenueCatCreditStatus());
   const [recentUsage, setRecentUsage] = useState<RecentCreditUsage[]>([]);
+  const [storePackages, setStorePackages] = useState<
+    Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>>
+  >({});
 
   useEffect(() => {
     let mounted = true;
 
     async function load() {
-      const [nextBalance, files] = await Promise.all([
+      const [localBalance, files] = await Promise.all([
         getReflectionCreditBalance(),
         listSavedAnkyFiles(),
       ]);
+      let nextBalance = localBalance;
+      let nextStorePackages: Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>> = {};
+      let nextMessage = "";
+
+      await configureRevenueCat().catch((error: unknown) => {
+        console.warn("RevenueCat credits unavailable.", error);
+      });
+
+      if (getRevenueCatCreditStatus() === "available") {
+        try {
+          const [packages, revenueCatBalance] = await Promise.all([
+            getCreditsOfferingPackages(),
+            getRevenueCatCreditBalance(),
+          ]);
+
+          nextBalance = revenueCatBalance;
+          nextStorePackages = packages.reduce<
+            Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>>
+          >((packagesById, storePackage) => {
+            packagesById[storePackage.packageId] = storePackage;
+            return packagesById;
+          }, {});
+        } catch (error) {
+          console.warn("RevenueCat credits load failed.", error);
+          nextMessage =
+            error instanceof Error ? error.message : "credits offering is unavailable.";
+        }
+      }
+
       const receipts = await Promise.all(
         files.map(async (file) => ({
           file,
@@ -661,13 +702,28 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
 
       if (mounted) {
         setBalance(nextBalance);
+        setMessage(nextMessage);
+        setPurchaseStatus(getRevenueCatCreditStatus());
         setRecentUsage(sortedReceipts.slice(0, 3));
+        setStorePackages(nextStorePackages);
       }
     }
 
-    void load().catch(console.error);
+    setPurchaseStatus("pending");
+    void load().catch((error: unknown) => {
+      console.error(error);
+      if (mounted) {
+        setPurchaseStatus(getRevenueCatCreditStatus());
+      }
+    });
     const unsubscribe = navigation.addListener("focus", () => {
-      void load().catch(console.error);
+      setPurchaseStatus("pending");
+      void load().catch((error: unknown) => {
+        console.error(error);
+        if (mounted) {
+          setPurchaseStatus(getRevenueCatCreditStatus());
+        }
+      });
     });
 
     return () => {
@@ -676,32 +732,60 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     };
   }, [navigation]);
 
-  async function startPurchase(product: CreditProduct) {
+  function startPurchase(product: CreditProduct) {
     if (purchaseBusyId != null) {
       return;
     }
 
+    setMessage("");
+
+    if (purchaseStatus === "pending") {
+      setMessage("iap is still loading.");
+      return;
+    }
+
+    if (purchaseStatus !== "available") {
+      setMessage("iap unavailable in this build.");
+      return;
+    }
+
+    if (storePackages[product.revenueCatPackageId] == null) {
+      setMessage("credits offering is still loading.");
+      return;
+    }
+
+    Alert.alert("buy credits?", getCreditPurchaseConfirmationMessage(product), [
+      { style: "cancel", text: "cancel" },
+      {
+        onPress: () => {
+          void performPurchase(product);
+        },
+        text: "continue",
+      },
+    ]);
+  }
+
+  async function performPurchase(product: CreditProduct) {
     setPurchaseBusyId(product.id);
     setMessage("");
 
     try {
-      const api = getAnkyApiClient();
+      const result = await purchaseCreditsPackage(product.revenueCatPackageId);
 
-      if (api == null) {
-        setMessage("purchases need a configured backend or native iap build.");
+      if (result.status === "completed") {
+        const nextBalance = await getRevenueCatCreditBalance().catch(() => balance);
+        setMessage("credits added.");
+        setBalance(nextBalance);
         return;
       }
 
-      const checkout = await api.createCheckoutSession({ packageId: product.id });
-
-      await WebBrowser.openBrowserAsync(checkout.checkoutUrl);
-      setMessage("checkout opened. credits update after the backend validates purchase.");
+      setMessage(result.message);
     } catch (error) {
       console.error(error);
       setMessage(
         error instanceof Error
           ? error.message
-          : "purchase is not configured in this build.",
+          : "purchase failed.",
       );
     } finally {
       setPurchaseBusyId(null);
@@ -716,18 +800,21 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     >
       <YouHeroCard
         icon={assets.icons.credits}
-        status={hasConfiguredBackend() ? "server-backed" : "backend off"}
-        subtitle="1 simple reflection = 1 credit. writing is always free."
+        status={getPurchaseStatusLabel(purchaseStatus)}
+        subtitle="write freely. spend credits only when you ask anky to reflect."
         title={`${balance} available`}
       />
+
+      <CreditCostCard />
 
       <View style={styles.stack}>
         {CREDIT_PRODUCTS.map((product) => (
           <CreditProductRow
             busy={purchaseBusyId === product.id}
             key={product.id}
-            onPress={() => void startPurchase(product)}
+            onPress={() => startPurchase(product)}
             product={product}
+            storePackage={storePackages[product.revenueCatPackageId]}
           />
         ))}
       </View>
@@ -755,7 +842,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       )}
 
       <InlineMessage text={message} />
-      <OwnershipCard text="credits are only for optional processing. writing is always free." />
+      <OwnershipCard text="mobile credits use the app store or play store. writing is always free." />
     </YouDetailShell>
   );
 }
@@ -1155,22 +1242,72 @@ function CreditProductRow({
   busy,
   onPress,
   product,
+  storePackage,
 }: {
   busy: boolean;
   onPress: () => void;
   product: CreditProduct;
+  storePackage?: AnkyCreditStorePackage;
 }) {
+  const priceLabel = storePackage?.priceLabel ?? product.fallbackPriceLabel;
+  const creditsLine =
+    product.bonusCredits > 0
+      ? `${product.totalCredits} total · ${product.bonusCredits} bonus`
+      : `${product.totalCredits} total`;
+
   return (
     <YouInfoRow
-      badge={product.priceLabel}
+      badge={product.recommended ? "recommended" : priceLabel}
       icon={assets.icons.credits}
       onPress={onPress}
-      rightText={busy ? "opening" : product.kind === "subscription" ? "monthly" : undefined}
+      rightText={busy ? "buying" : product.recommended ? priceLabel : undefined}
       subtitle={product.description}
       title={product.title}
-      variant={product.kind === "subscription" ? "highlight" : "normal"}
-    />
+      variant={product.recommended ? "highlight" : "normal"}
+    >
+      <Text style={styles.creditProductMeta}>{creditsLine}</Text>
+    </YouInfoRow>
   );
+}
+
+function CreditCostCard() {
+  return (
+    <View style={styles.creditCostCard}>
+      {[
+        "1 credit = simple mirror",
+        "5 credits = full mirror",
+        "8 credits = deep mirror later",
+        "writing is always free",
+      ].map((line) => (
+        <View key={line} style={styles.creditCostLine}>
+          <View style={styles.creditCostDot} />
+          <Text style={styles.creditCostText}>{line}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function getCreditPurchaseConfirmationMessage(product: CreditProduct): string {
+  const base = `buy ${product.totalCredits} credits?`;
+
+  if (product.bonusCredits <= 0) {
+    return base;
+  }
+
+  return `${base} includes ${product.bonusCredits} bonus credits.`;
+}
+
+function getPurchaseStatusLabel(status: RevenueCatCreditStatus): string {
+  if (status === "available") {
+    return "native iap";
+  }
+
+  if (status === "pending") {
+    return "loading";
+  }
+
+  return "iap unavailable";
 }
 
 function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: number }> }) {
@@ -1458,6 +1595,42 @@ const styles = StyleSheet.create({
   cosmosWash: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(5, 5, 14, 0.22)",
+  },
+  creditCostCard: {
+    backgroundColor: "rgba(9, 8, 20, 0.66)",
+    borderColor: "rgba(233, 190, 114, 0.24)",
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  creditCostDot: {
+    backgroundColor: "rgba(242, 211, 146, 0.78)",
+    borderRadius: 3,
+    height: 6,
+    width: 6,
+  },
+  creditCostLine: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 9,
+  },
+  creditCostText: {
+    color: "rgba(216, 201, 212, 0.78)",
+    fontFamily: SERIF,
+    fontSize: 12.5,
+    lineHeight: 17,
+    textTransform: "lowercase",
+  },
+  creditProductMeta: {
+    color: "rgba(242, 211, 146, 0.88)",
+    fontFamily: SERIF,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 7,
+    textTransform: "lowercase",
   },
   disabled: {
     opacity: 0.62,

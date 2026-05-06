@@ -3,6 +3,7 @@
 This folder contains the first devnet Solana integration for Anky:
 
 - `anky-seal-program/`: Anchor program that seals `.anky` session hashes through already-minted Looms.
+- `anky-zk-proof/`: ZK-ready local verifier/CLI for proving private `.anky` structure without exposing text.
 - `scripts/admin/`: admin scripts to create the official Metaplex Core collection and produce devnet config.
 - `../apps/anky-mobile/src/lib/solana/`: React Native scaffolding for mobile Loom minting and `.anky` hash sealing.
 
@@ -96,7 +97,70 @@ The mobile `mintAnkyLoom` file now includes two devnet Metaplex Core builder pat
 
 Important mint authority note: creating an asset inside the official Core collection requires the collection update authority or a valid delegate. A normal user cannot unilaterally mint into Anky's official collection just by paying SOL.
 
-The mobile `sealAnky` file builds the Anchor `seal_anky([u8; 32])` instruction directly with `@solana/web3.js`, derives the `loom_state` PDA, asks the wallet to sign, sends the transaction, and returns a confirmed receipt shape.
+The mobile `sealAnky` file builds the Anchor `seal_anky(session_hash: [u8; 32], utc_day: i64)` instruction directly with `@solana/web3.js`, derives the `loom_state`, `daily_seal`, and `hash_seal` PDAs, asks the wallet to sign, sends the transaction, and returns a confirmed receipt shape.
+
+## SP1 Proof Flow
+
+The current proof implementation includes an SP1 zkVM guest and host script for local proof generation and verification. It is not yet doing trustless on-chain SP1 verification inside the Anchor program.
+
+`solana/anky-zk-proof` validates the private `.anky` plaintext locally and emits a public receipt with:
+
+- `writer`
+- `session_hash`
+- `utc_day`
+- timing metrics
+- `proof_hash`
+
+For a fast local verifier run:
+
+```bash
+cd solana/anky-zk-proof
+cargo run -- --file path/to/session.anky --writer <wallet> --expected-hash <sha256_hex>
+```
+
+For the SP1 path:
+
+```bash
+cd solana/anky-zk-proof/sp1/program
+cargo prove build
+
+cd ../script
+PROTOC=/home/kithkui/.local/protoc-34.1/bin/protoc \
+RUST_LOG=info \
+cargo run --release -- \
+  --execute \
+  --file ../../fixtures/full.anky \
+  --writer <wallet> \
+  --receipt-out receipt.json
+
+PROTOC=/home/kithkui/.local/protoc-34.1/bin/protoc \
+RUST_LOG=info \
+cargo run --release -- \
+  --prove \
+  --file ../../fixtures/full.anky \
+  --writer <wallet> \
+  --receipt-out receipt.json \
+  --proof-out proof-with-public-values.bin
+```
+
+The receipt proves, to the local verifier, that the file matches the public hash and follows the Anky protocol rules:
+
+- LF-only `.anky` format
+- terminal `8000` line
+- first-line epoch timestamp
+- four-digit capped deltas
+- `SPACE` encoding for spaces
+- full 8-minute rite duration including terminal silence
+
+The SP1 guest commits the receipt JSON as public values. The host script can execute the guest quickly for debugging or generate and verify an SP1 Core proof. A sample fixture produced:
+
+- vkey `0x00418281239458876cbe43d5431998057856f03e0b47d85695fce2a45b200da4`
+- `148936` execution cycles
+- a locally verified SP1 Core proof in `proof-with-public-values.bin`
+
+The Anchor program exposes `record_verified_anky(session_hash, utc_day, proof_hash, protocol_version)`. This instruction can only upgrade an existing `hash_seal` PDA, so a verified receipt cannot be created for an unsealed hash. For the hackathon demo, it is gated by `PROOF_VERIFIER_AUTHORITY`; the verifier service can run the SP1 proof off-chain, verify it, then record only the public receipt hash on-chain.
+
+The next hardening step is to generate SP1 Groth16 proofs and verify them directly in a Solana program with `sp1-solana` or a dedicated verifier program. The current program already has the `verified_seal` PDA and event shape needed to preserve compatibility when that verifier replaces the authority-gated demo path.
 
 ## Backend Mobile API
 
@@ -129,6 +193,14 @@ A seal means:
 
 > Wallet W used Loom L to anchor `.anky` hash H at Solana time T.
 
+The program enforces three receipt constraints:
+
+- the submitted `utc_day` must equal the current UTC day from the Solana clock
+- the same writer wallet cannot seal more than one Anky for a UTC day
+- the same writer wallet cannot seal the same `session_hash` more than once
+
+The program still receives only a hash and the claimed UTC day. The official mobile client derives that day from the parsed `.anky` `startedAt` timestamp before building the transaction; the program can verify the day is current, but it cannot inspect the private plaintext to prove which day produced the hash.
+
 On each seal, `LoomState` stores:
 
 - `loom_asset`
@@ -138,7 +210,7 @@ On each seal, `LoomState` stores:
 - `created_at`
 - `updated_at`
 
-The rolling root domain is `ANKY_LOOM_ROOT_V1` and includes the previous root, writer, Loom asset, session hash, total seal count, and timestamp.
+The rolling root domain is `ANKY_LOOM_ROOT_V1` and includes the previous root, writer, Loom asset, session hash, UTC day, total seal count, and timestamp.
 
 ## Core Verification Status
 

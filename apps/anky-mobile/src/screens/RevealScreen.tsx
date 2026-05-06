@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -27,6 +30,7 @@ import {
   clearActiveDraft,
   clearPendingReveal,
   readAnkyFile,
+  readLoomSealsForHash,
   readPendingReveal,
   readReflectionSidecar,
   saveClosedSession,
@@ -43,7 +47,7 @@ import { getCurrentSojournDay, getNextSessionKindForToday } from "../lib/sojourn
 import type { AnkySessionSummary } from "../lib/sojourn";
 import { getSelectedLoom, type SelectedLoom } from "../lib/solana/loomStorage";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
-import { sealAnky } from "../lib/solana/sealAnky";
+import { getUtcDayFromUnixMs, isCurrentUtcDay, sealAnky } from "../lib/solana/sealAnky";
 import { sendThreadMessage } from "../lib/thread/threadClient";
 import {
   FULL_ANKY_DURATION_MS,
@@ -73,6 +77,11 @@ type PendingReplyRetry = {
   userMessage: RevealChatMessage;
 };
 
+type SealProof = {
+  network?: "devnet" | "mainnet-beta";
+  txSignature: string;
+};
+
 const GOLD = "#E8C879";
 const GOLD_SOFT = "rgba(232, 200, 121, 0.72)";
 const GOLD_DIM = "rgba(232, 200, 121, 0.38)";
@@ -99,10 +108,14 @@ export function RevealScreen({ navigation, route }: Props) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<RevealChatMessage[]>([]);
   const [pendingRetry, setPendingRetry] = useState<PendingReplyRetry | null>(null);
+  const [pendingReflectionConfirm, setPendingReflectionConfirm] =
+    useState<ReflectionKind | null>(null);
   const [raw, setRaw] = useState<string | null>(null);
   const [reflection, setReflection] = useState<string | null>(null);
   const [reflectionKind, setReflectionKind] = useState<ReflectionKind | null>(null);
   const [screenMode, setScreenMode] = useState<ScreenMode>("review");
+  const [sealError, setSealError] = useState("");
+  const [sealProof, setSealProof] = useState<SealProof | null>(null);
   const [sessions, setSessions] = useState<AnkySessionSummary[]>([]);
   const [selectedLoom, setSelectedLoom] = useState<SelectedLoom | null>(null);
   const [presenceSequence, setPresenceSequence] = useState<"celebrate" | "idle_blink">(
@@ -113,6 +126,10 @@ export function RevealScreen({ navigation, route }: Props) {
   const reconstructed = useMemo(() => (raw == null ? "" : reconstructText(raw)), [raw]);
   const parsed = useMemo(() => (raw == null ? null : parseAnky(raw)), [raw]);
   const riteDurationMs = useMemo(() => getRiteDurationMs(parsed), [parsed]);
+  const sessionUtcDay = useMemo(
+    () => (parsed?.startedAt == null ? null : getUtcDayFromUnixMs(parsed.startedAt)),
+    [parsed],
+  );
   const revealKind = getRevealKind(parsed);
   const isFullAnky = riteDurationMs != null && riteDurationMs >= FULL_ANKY_DURATION_MS;
   const currentHash = hash.length > 0 ? hash : fileName?.replace(/\.anky$/, "");
@@ -128,15 +145,21 @@ export function RevealScreen({ navigation, route }: Props) {
   const canUseAnky = raw != null && parsed?.valid === true && hashMatches;
   const canCopy = reconstructed.length > 0 && actionState !== "copying";
   const canRequestReflection = canUseAnky && isFullAnky && !isSaving && !isLoading;
-  const canSealWithLoom =
+  const canShowSealWithLoom =
     canUseAnky &&
     isFullAnky &&
-    !didSeal &&
     selectedLoom != null &&
     wallet.hasWallet &&
     currentHash != null &&
-    !isSaving &&
+    !isSaving;
+  const canSealCurrentUtcDay = sessionUtcDay != null && isCurrentUtcDay(sessionUtcDay);
+  const canSealWithLoom =
+    canShowSealWithLoom &&
+    canSealCurrentUtcDay &&
+    !didSeal &&
     actionState !== "sealing";
+  const sealUtcDayError =
+    canShowSealWithLoom && !canSealCurrentUtcDay ? "only today's UTC anky can be sealed." : "";
   const quickReflectionCost = CREDIT_COSTS.reflection;
   const fullReflectionCost = CREDIT_COSTS.full_anky;
   const canSendChat =
@@ -177,7 +200,10 @@ export function RevealScreen({ navigation, route }: Props) {
       setMessage("");
       setMessages([]);
       setPendingRetry(null);
+      setPendingReflectionConfirm(null);
       setReflectionKind(null);
+      setSealError("");
+      setSealProof(null);
       setScreenMode("review");
 
       const routeFileName = route.params?.fileName ?? null;
@@ -198,6 +224,7 @@ export function RevealScreen({ navigation, route }: Props) {
       let nextDidSeal = false;
       let nextMessage = "";
       let nextReflection: string | null = null;
+      let nextSealProof: SealProof | null = null;
 
       if (nextRaw == null) {
         nextMessage = "no hay escritura cerrada para revelar.";
@@ -217,7 +244,16 @@ export function RevealScreen({ navigation, route }: Props) {
           nextFileName = saved.fileName;
           nextHash = saved.hash;
           nextHashMatches = saved.hashMatches;
-          nextDidSeal = saved.sealCount > 0;
+          const seals = await readLoomSealsForHash(saved.hash);
+          const latestSeal = seals.at(-1) ?? null;
+          nextDidSeal = latestSeal != null;
+          nextSealProof =
+            latestSeal == null
+              ? null
+              : {
+                  network: latestSeal.network,
+                  txSignature: latestSeal.txSignature,
+                };
           nextReflection = await readReflectionSidecar(saved.hash);
 
           if (!isEntryRoute && autoIndexedHashRef.current !== saved.hash) {
@@ -253,6 +289,7 @@ export function RevealScreen({ navigation, route }: Props) {
       setSelectedLoom(nextSelectedLoom);
       setHash(nextHash);
       setHashMatches(nextHashMatches);
+      setSealProof(nextSealProof);
       setDidSeal(nextDidSeal);
       setMessage(nextMessage);
       setActionState(nextMessage.length > 0 && nextRaw != null ? "error" : "idle");
@@ -330,10 +367,16 @@ export function RevealScreen({ navigation, route }: Props) {
       return;
     }
 
+    if (sessionUtcDay == null || !isCurrentUtcDay(sessionUtcDay)) {
+      setSealError("only today's UTC anky can be sealed.");
+      return;
+    }
+
     try {
       setActionState("sealing");
       setMessage("");
       setError("");
+      setSealError("");
 
       const config = await loadMobileSolanaConfig();
       const signingWallet = await wallet.getWallet();
@@ -345,6 +388,7 @@ export function RevealScreen({ navigation, route }: Props) {
         network: config.network,
         programId: config.sealProgramId,
         sessionHashHex: currentHash,
+        sessionUtcDay,
         wallet: signingWallet,
       });
 
@@ -376,13 +420,42 @@ export function RevealScreen({ navigation, route }: Props) {
       }
 
       setDidSeal(true);
-      setMessage("sealed with loom. hash only.");
+      setSealProof({
+        network: receipt.network,
+        txSignature: receipt.signature,
+      });
       setActionState("idle");
     } catch (sealError) {
       console.error(sealError);
-      setMessage(sealError instanceof Error ? sealError.message : "seal failed. your writing is unchanged.");
+      setSealError(
+        sealError instanceof Error ? sealError.message : "seal failed. your writing is unchanged.",
+      );
+      setMessage("");
       setActionState("error");
     }
+  }
+
+  function requestReflectionWithConfirm(kind: ReflectionKind) {
+    if (!canRequestReflection) {
+      return;
+    }
+
+    if (!isLoggedIn) {
+      openLoginForReflection();
+      return;
+    }
+
+    const cost = kind === "full" ? fullReflectionCost : quickReflectionCost;
+
+    if (creditBalance != null && creditBalance < cost) {
+      setError("no hay créditos suficientes para esta reflexión.");
+      setMessage("no hay créditos suficientes para esta reflexión.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setPendingReflectionConfirm(kind);
   }
 
   async function handleStartReflection(kind: ReflectionKind) {
@@ -610,21 +683,22 @@ export function RevealScreen({ navigation, route }: Props) {
                 canCopy={canCopy}
                 canSealWithLoom={canSealWithLoom}
                 canRequestReflection={canRequestReflection}
+                canShowSealWithLoom={canShowSealWithLoom}
                 creditBalance={creditBalance}
                 fullCost={fullReflectionCost}
-                hasConnectedWallet={wallet.hasExternalWallet}
                 isLoggedIn={isLoggedIn}
                 isFullAnky={isFullAnky}
                 onBuyCredits={handleBuyCredits}
                 onCopy={() => void handleCopy()}
-                onFullReflection={() => void handleStartReflection("full")}
-                onQuickReflection={() => void handleStartReflection("quick")}
+                onFullReflection={() => requestReflectionWithConfirm("full")}
+                onQuickReflection={() => requestReflectionWithConfirm("quick")}
                 onSealWithLoom={() => void handleSealWithLoom()}
                 onWriteAgain={handleWriteAgain}
                 quickCost={quickReflectionCost}
+                sealError={sealError || sealUtcDayError}
+                sealProof={sealProof}
                 sealed={didSeal}
                 sealing={actionState === "sealing"}
-                walletLabel={wallet.walletLabel}
               />
             ) : (
               <RevealChat
@@ -647,6 +721,22 @@ export function RevealScreen({ navigation, route }: Props) {
               <Text style={styles.errorText}>esta escritura necesita atención antes de reflexión.</Text>
             ) : null}
           </ScrollView>
+          <ReflectionSpendConfirmModal
+            balance={creditBalance}
+            fullCost={fullReflectionCost}
+            kind={pendingReflectionConfirm}
+            onCancel={() => setPendingReflectionConfirm(null)}
+            onConfirm={() => {
+              const kind = pendingReflectionConfirm;
+
+              setPendingReflectionConfirm(null);
+
+              if (kind != null) {
+                void handleStartReflection(kind);
+              }
+            }}
+            quickCost={quickReflectionCost}
+          />
         </View>
       </KeyboardAvoidingView>
     </ScreenBackground>
@@ -709,9 +799,9 @@ function ReviewActions({
   canCopy,
   canSealWithLoom,
   canRequestReflection,
+  canShowSealWithLoom,
   creditBalance,
   fullCost,
-  hasConnectedWallet,
   isLoggedIn,
   isFullAnky,
   onBuyCredits,
@@ -721,16 +811,17 @@ function ReviewActions({
   onSealWithLoom,
   onWriteAgain,
   quickCost,
+  sealError,
+  sealProof,
   sealed,
   sealing,
-  walletLabel,
 }: {
   canCopy: boolean;
   canSealWithLoom: boolean;
   canRequestReflection: boolean;
+  canShowSealWithLoom: boolean;
   creditBalance: number | null;
   fullCost: number;
-  hasConnectedWallet: boolean;
   isLoggedIn: boolean;
   isFullAnky: boolean;
   onBuyCredits: () => void;
@@ -740,18 +831,19 @@ function ReviewActions({
   onSealWithLoom: () => void;
   onWriteAgain: () => void;
   quickCost: number;
+  sealError: string;
+  sealProof: SealProof | null;
   sealed: boolean;
   sealing: boolean;
-  walletLabel?: string;
 }) {
   const notEnoughForQuick = isLoggedIn && creditBalance != null && creditBalance < quickCost;
   const notEnoughForFull = isLoggedIn && creditBalance != null && creditBalance < fullCost;
+  const quickBadge = isFullAnky && isLoggedIn ? formatCreditBadge(quickCost) : undefined;
+  const fullBadge = isFullAnky && isLoggedIn ? formatCreditBadge(fullCost) : undefined;
   const quickDisabled = !canRequestReflection || (isLoggedIn && notEnoughForQuick);
   const fullDisabled = !canRequestReflection || (isLoggedIn && notEnoughForFull);
   const statusLine = !isFullAnky
     ? "write 8 minutes to ask anky for reflection"
-    : !isLoggedIn && hasConnectedWallet
-      ? `finish ${(walletLabel ?? "wallet").toLowerCase()} login to ask anky for a reflection`
     : !isLoggedIn
       ? "login to ask anky for a reflection"
       : creditBalance == null
@@ -769,17 +861,16 @@ function ReviewActions({
         onPress={onCopy}
         variant="secondary"
       />
-      {sealed ? (
-        <Text style={styles.sealStatus}>sealed with loom · hash only</Text>
-      ) : canSealWithLoom ? (
-        <RevealActionButton
-          disabled={sealing}
-          icon="◇"
-          label={sealing ? "sealing" : "seal with loom"}
-          onPress={onSealWithLoom}
-          variant="secondary"
-        />
-      ) : null}
+      <LoomSealStatus
+        canSeal={canSealWithLoom}
+        canShow={canShowSealWithLoom}
+        error={sealError}
+        isSealing={sealing}
+        onSeal={onSealWithLoom}
+        sealNetwork={sealProof?.network}
+        sealSignature={sealProof?.txSignature}
+        sealed={sealed}
+      />
       {!isFullAnky ? (
         <RevealActionButton
           icon="↻"
@@ -793,7 +884,7 @@ function ReviewActions({
         <Text style={styles.reflectionStatus}>{statusLine}</Text>
       </View>
       <RevealActionButton
-        badge={isFullAnky && isLoggedIn ? `${quickCost} credit${quickCost === 1 ? "" : "s"}` : undefined}
+        badge={quickBadge}
         disabled={quickDisabled}
         icon="✦"
         label="ask for reflection"
@@ -801,7 +892,7 @@ function ReviewActions({
         variant="primary"
       />
       <RevealActionButton
-        badge={isFullAnky && isLoggedIn ? `${fullCost} credits` : undefined}
+        badge={fullBadge}
         disabled={fullDisabled}
         icon="◎"
         label="full anky reflection"
@@ -817,47 +908,306 @@ function ReviewActions({
   );
 }
 
+function formatCreditBadge(cost: number): string {
+  return `${cost} credit${cost === 1 ? "" : "s"}`;
+}
+
+function ReflectionSpendConfirmModal({
+  balance,
+  fullCost,
+  kind,
+  onCancel,
+  onConfirm,
+  quickCost,
+}: {
+  balance: number | null;
+  fullCost: number;
+  kind: ReflectionKind | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  quickCost: number;
+}) {
+  if (kind == null) {
+    return null;
+  }
+
+  const cost = kind === "full" ? fullCost : quickCost;
+  const title = `spend ${cost} ${cost === 1 ? "credit" : "credits"}?`;
+  const modeLabel = kind === "full" ? "a full anky reflection" : "a reflection";
+  const balanceLine =
+    balance == null
+      ? "anky will check your credits before processing."
+      : `you have ${balance} ${balance === 1 ? "credit" : "credits"} left.`;
+
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible>
+      <View style={styles.confirmBackdrop}>
+        <Pressable
+          accessibilityLabel="close reflection confirmation"
+          accessibilityRole="button"
+          onPress={onCancel}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.confirmCard}>
+          <View pointerEvents="none" style={styles.confirmThreadOverlay}>
+            <View style={styles.confirmThreadWash} />
+            <View style={styles.confirmThreadLineTop} />
+            <View style={styles.confirmThreadLineBottom} />
+          </View>
+          <Text style={styles.confirmEyebrow}>before anky reads</Text>
+          <Text style={styles.confirmTitle}>{title}</Text>
+          <Text style={styles.confirmBody}>
+            {balanceLine} this will ask anky for {modeLabel}.
+          </Text>
+
+          <View style={styles.confirmActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.confirmSecondaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.confirmSecondaryText}>not now</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={onConfirm}
+              style={({ pressed }) => [
+                styles.confirmPrimaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.confirmPrimaryText}>spend {cost}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+type LoomSealStatusProps = {
+  canSeal: boolean;
+  canShow: boolean;
+  error: string;
+  isSealing: boolean;
+  onSeal: () => void;
+  sealNetwork?: "devnet" | "mainnet-beta";
+  sealSignature?: string;
+  sealed: boolean;
+};
+
+function LoomSealStatus({
+  canSeal,
+  canShow,
+  error,
+  isSealing,
+  onSeal,
+  sealNetwork,
+  sealSignature,
+  sealed,
+}: LoomSealStatusProps) {
+  const hasError = error.trim().length > 0;
+  const hasSignature = sealSignature != null && sealSignature.length > 0;
+
+  if (!canShow && !sealed) {
+    return null;
+  }
+
+  if (sealed) {
+    return (
+      <View style={styles.loomSealWrap}>
+        <RevealActionButton centered disabled label="sealed" variant="seal" />
+        {hasSignature ? (
+          <Pressable
+            accessibilityLabel="view seal transaction on solscan"
+            accessibilityRole="link"
+            onPress={() => {
+              void openSolscanTx(sealSignature, sealNetwork);
+            }}
+            style={({ pressed }) => [styles.txHashPressable, pressed && styles.pressed]}
+          >
+            <Text style={styles.txHashLink}>{shortenTx(sealSignature)}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
+  if (isSealing) {
+    return (
+      <View style={styles.loomSealWrap}>
+        <RevealActionButton
+          disabled
+          helper="weaving your proof into the ankyverse"
+          label="sealing..."
+          loading
+          variant="seal"
+        />
+      </View>
+    );
+  }
+
+  if (hasError && canSeal) {
+    return (
+      <View style={styles.loomSealWrap}>
+        <RevealActionButton
+          helper={error}
+          icon="!"
+          label="try sealing again"
+          onPress={onSeal}
+          variant="sealFailed"
+        />
+      </View>
+    );
+  }
+
+  if (canShow && canSeal) {
+    return (
+      <View style={styles.loomSealWrap}>
+        <RevealActionButton icon="◇" label="seal with loom" onPress={onSeal} variant="seal" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.loomSealWrap}>
+      <RevealActionButton
+        disabled
+        helper={hasError ? error : "your writing is still whole without a seal"}
+        icon="◇"
+        label="loom unavailable"
+        variant="sealMuted"
+      />
+    </View>
+  );
+}
+
+type RevealActionVariant =
+  | "accent"
+  | "primary"
+  | "seal"
+  | "sealFailed"
+  | "sealMuted"
+  | "secondary";
+
 function RevealActionButton({
   badge,
+  centered = false,
   disabled = false,
+  helper,
   icon,
   label,
+  loading = false,
   onPress,
   variant,
 }: {
   badge?: string;
+  centered?: boolean;
   disabled?: boolean;
-  icon: string;
+  helper?: string;
+  icon?: string;
   label: string;
-  onPress: () => void;
-  variant: "accent" | "primary" | "secondary";
+  loading?: boolean;
+  onPress?: () => void;
+  variant: RevealActionVariant;
 }) {
+  const pressableDisabled = disabled || loading || onPress == null;
+  const hasBadge = badge != null;
+
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      disabled={pressableDisabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
         variant === "primary" && styles.actionButtonPrimary,
         variant === "accent" && styles.actionButtonAccent,
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        variant === "secondary" && styles.actionButtonSecondary,
+        variant === "seal" && styles.actionButtonSeal,
+        variant === "sealFailed" && styles.actionButtonSealFailed,
+        variant === "sealMuted" && styles.actionButtonSealMuted,
+        centered && styles.actionButtonCentered,
+        disabled &&
+          (variant === "primary" || variant === "accent" || variant === "secondary") &&
+          styles.disabled,
+        pressed && !pressableDisabled && styles.pressed,
       ]}
     >
-      <Text style={[styles.actionIcon, disabled && styles.actionTextDisabled]}>{icon}</Text>
-      <Text
-        adjustsFontSizeToFit
-        minimumFontScale={0.82}
-        numberOfLines={2}
-        style={[
-          styles.actionText,
-          variant === "primary" && styles.actionTextPrimary,
-          disabled && styles.actionTextDisabled,
-        ]}
-      >
-        {label}
-      </Text>
+      <View pointerEvents="none" style={styles.actionThreadOverlay}>
+        <View style={styles.actionThreadWash} />
+        <View style={styles.actionThreadLineTop} />
+        <View style={styles.actionThreadLineBottom} />
+      </View>
+      {centered ? (
+        <View style={styles.actionCenteredContent}>
+          <Text style={styles.actionInlineOrnament}>✦</Text>
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.86}
+            numberOfLines={1}
+            style={[
+              styles.actionText,
+              styles.actionTextCentered,
+              variant === "primary" && styles.actionTextPrimary,
+              variant === "sealFailed" && styles.actionTextFailed,
+              disabled && variant !== "seal" && styles.actionTextDisabled,
+            ]}
+          >
+            {label}
+          </Text>
+          <Text style={styles.actionInlineOrnament}>✦</Text>
+        </View>
+      ) : (
+        <>
+          <View style={styles.actionIconArea}>
+            {loading ? (
+              <ActivityIndicator color={GOLD} size="small" />
+            ) : (
+              <Text
+                style={[
+                  styles.actionIcon,
+                  variant === "sealFailed" && styles.actionIconFailed,
+                  disabled && variant !== "seal" && styles.actionTextDisabled,
+                ]}
+              >
+                {icon}
+              </Text>
+            )}
+          </View>
+          <View style={[styles.actionContent, hasBadge && styles.actionContentWithBadge]}>
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              numberOfLines={2}
+              style={[
+                styles.actionText,
+                variant === "primary" && styles.actionTextPrimary,
+                variant === "sealFailed" && styles.actionTextFailed,
+                disabled && variant !== "seal" && styles.actionTextDisabled,
+              ]}
+            >
+              {label}
+            </Text>
+            {helper == null ? null : (
+              <Text
+                numberOfLines={2}
+                style={[
+                  styles.actionHelper,
+                  variant === "sealFailed" && styles.actionHelperFailed,
+                  disabled && variant !== "seal" && styles.actionHelperDisabled,
+                ]}
+              >
+                {helper}
+              </Text>
+            )}
+          </View>
+        </>
+      )}
       {badge == null ? null : (
         <View style={styles.creditBadge}>
           <Text style={styles.creditBadgeText}>{badge}</Text>
@@ -1029,6 +1379,38 @@ function createRevealMessageId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+function shortenTx(signature?: string | null): string {
+  if (signature == null || signature.length === 0) {
+    return "";
+  }
+
+  if (signature.length <= 18) {
+    return signature;
+  }
+
+  return `${signature.slice(0, 8)}...${signature.slice(-8)}`;
+}
+
+function getSolscanTxUrl(
+  signature: string,
+  network?: "devnet" | "mainnet-beta",
+): string {
+  const cluster = network === "devnet" ? "?cluster=devnet" : "";
+  return `https://solscan.io/tx/${signature}${cluster}`;
+}
+
+async function openSolscanTx(
+  signature: string,
+  network?: "devnet" | "mainnet-beta",
+): Promise<void> {
+  const url = getSolscanTxUrl(signature, network);
+  const canOpen = await Linking.canOpenURL(url);
+
+  if (canOpen) {
+    await Linking.openURL(url);
+  }
+}
+
 function buildSessionSummary(
   saved: SavedAnkyFile,
   raw: string,
@@ -1104,51 +1486,165 @@ function formatWordCount(count: number): string {
 const styles = StyleSheet.create({
   actionButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.035)",
+    backgroundColor: "rgba(10, 8, 22, 0.94)",
     borderColor: "rgba(232, 200, 121, 0.24)",
-    borderRadius: 8,
+    borderRadius: 18,
     borderWidth: 1,
+    elevation: 2,
     flexDirection: "row",
-    gap: spacing.sm,
-    height: 64,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    minHeight: 70,
+    overflow: "hidden",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
     width: "100%",
   },
   actionButtonAccent: {
-    backgroundColor: "rgba(139, 124, 246, 0.11)",
+    backgroundColor: "rgba(55, 42, 93, 0.42)",
     borderColor: "rgba(232, 200, 121, 0.34)",
+    shadowColor: ankyColors.violet,
+    shadowOpacity: 0.1,
+  },
+  actionButtonCentered: {
+    justifyContent: "center",
   },
   actionButtonPrimary: {
-    backgroundColor: "rgba(232, 200, 121, 0.18)",
-    borderColor: "rgba(232, 200, 121, 0.54)",
+    backgroundColor: "rgba(68, 48, 23, 0.62)",
+    borderColor: "rgba(232, 200, 121, 0.5)",
+    shadowColor: GOLD,
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+  },
+  actionButtonSeal: {
+    backgroundColor: "rgba(15, 12, 30, 0.9)",
+    borderColor: "rgba(232, 200, 121, 0.26)",
+    shadowOpacity: 0.07,
+  },
+  actionButtonSealFailed: {
+    backgroundColor: "rgba(31, 14, 24, 0.72)",
+    borderColor: "rgba(241, 169, 130, 0.28)",
+    shadowColor: "#F1A982",
+    shadowOpacity: 0.08,
+  },
+  actionButtonSealMuted: {
+    backgroundColor: "rgba(12, 10, 24, 0.68)",
+    borderColor: "rgba(232, 200, 121, 0.16)",
+    shadowOpacity: 0.04,
+  },
+  actionButtonSecondary: {
+    backgroundColor: "rgba(255, 255, 255, 0.024)",
+    borderColor: "rgba(232, 200, 121, 0.17)",
+    shadowOpacity: 0.05,
+  },
+  actionCenteredContent: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    width: "100%",
+  },
+  actionContent: {
+    flex: 1,
+    justifyContent: "center",
+    minWidth: 0,
+  },
+  actionContentWithBadge: {
+    paddingRight: 82,
+  },
+  actionHelper: {
+    color: "rgba(255, 240, 201, 0.54)",
+    fontSize: fontSize.xs,
+    lineHeight: 16,
+    marginTop: 2,
+    textTransform: "lowercase",
+  },
+  actionHelperDisabled: {
+    color: "rgba(255, 240, 201, 0.42)",
+  },
+  actionHelperFailed: {
+    color: "rgba(241, 169, 130, 0.74)",
+  },
+  actionIconArea: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+    width: 30,
   },
   actionIcon: {
     color: GOLD,
-    fontSize: 20,
+    fontSize: 22,
+    lineHeight: 26,
     textAlign: "center",
-    width: 24,
+  },
+  actionIconFailed: {
+    color: "#F1A982",
+  },
+  actionInlineOrnament: {
+    color: "rgba(232, 200, 121, 0.58)",
+    fontSize: 12,
+    lineHeight: 16,
   },
   actionText: {
     color: PAPER,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "700",
-    lineHeight: 19,
+    fontSize: 17,
+    fontWeight: "800",
+    lineHeight: 22,
     textAlign: "left",
     textTransform: "lowercase",
   },
+  actionTextCentered: {
+    color: GOLD_SOFT,
+    flexShrink: 1,
+    textAlign: "center",
+  },
   actionTextDisabled: {
     color: "rgba(255, 240, 201, 0.48)",
+  },
+  actionTextFailed: {
+    color: "#F1C29C",
   },
   actionTextPrimary: {
     color: GOLD,
   },
   actionSeparator: {
-    backgroundColor: "rgba(232, 200, 121, 0.18)",
+    backgroundColor: "rgba(232, 200, 121, 0.14)",
     height: StyleSheet.hairlineWidth,
-    marginVertical: spacing.xs,
+    marginVertical: spacing.sm,
     width: "100%",
+  },
+  actionThreadLineBottom: {
+    backgroundColor: "rgba(232, 200, 121, 0.1)",
+    bottom: 8,
+    height: StyleSheet.hairlineWidth,
+    left: spacing.lg,
+    position: "absolute",
+    right: spacing.lg,
+  },
+  actionThreadLineTop: {
+    backgroundColor: "rgba(232, 200, 121, 0.14)",
+    height: StyleSheet.hairlineWidth,
+    left: spacing.lg,
+    position: "absolute",
+    right: spacing.lg,
+    top: 8,
+  },
+  actionThreadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.66,
+  },
+  actionThreadWash: {
+    backgroundColor: "rgba(139, 124, 246, 0.055)",
+    bottom: 0,
+    left: "18%",
+    position: "absolute",
+    right: "18%",
+    top: 0,
   },
   assistantBubble: {
     backgroundColor: "rgba(17, 13, 31, 0.82)",
@@ -1233,18 +1729,133 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
   },
-  creditBadge: {
-    backgroundColor: "rgba(8, 7, 19, 0.74)",
-    borderColor: "rgba(232, 200, 121, 0.34)",
-    borderRadius: 8,
+  confirmActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  confirmBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    backgroundColor: "rgba(2, 2, 8, 0.78)",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+  },
+  confirmBody: {
+    color: "rgba(255, 240, 201, 0.68)",
+    fontSize: fontSize.sm,
+    lineHeight: 21,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  confirmCard: {
+    backgroundColor: "rgba(10, 8, 22, 0.98)",
+    borderColor: "rgba(232, 200, 121, 0.28)",
+    borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    elevation: 5,
+    overflow: "hidden",
+    padding: spacing.lg,
+    position: "relative",
+    shadowColor: GOLD,
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    width: "100%",
+  },
+  confirmEyebrow: {
+    color: GOLD_DIM,
+    fontSize: fontSize.xs,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    marginBottom: spacing.xs,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  confirmPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(68, 48, 23, 0.62)",
+    borderColor: "rgba(232, 200, 121, 0.5)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  confirmPrimaryText: {
+    color: GOLD,
+    fontSize: fontSize.sm,
+    fontWeight: "900",
+    textTransform: "lowercase",
+  },
+  confirmSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.024)",
+    borderColor: "rgba(232, 200, 121, 0.17)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  confirmSecondaryText: {
+    color: "rgba(255, 240, 201, 0.72)",
+    fontSize: fontSize.sm,
+    fontWeight: "800",
+    textTransform: "lowercase",
+  },
+  confirmTitle: {
+    color: GOLD,
+    fontFamily: SERIF,
+    fontSize: 24,
+    lineHeight: 30,
+    marginBottom: spacing.sm,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  confirmThreadLineBottom: {
+    backgroundColor: "rgba(232, 200, 121, 0.08)",
+    bottom: 10,
+    height: StyleSheet.hairlineWidth,
+    left: spacing.lg,
+    position: "absolute",
+    right: spacing.lg,
+  },
+  confirmThreadLineTop: {
+    backgroundColor: "rgba(232, 200, 121, 0.12)",
+    height: StyleSheet.hairlineWidth,
+    left: spacing.lg,
+    position: "absolute",
+    right: spacing.lg,
+    top: 10,
+  },
+  confirmThreadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.7,
+  },
+  confirmThreadWash: {
+    backgroundColor: "rgba(139, 124, 246, 0.045)",
+    bottom: 0,
+    left: "18%",
+    position: "absolute",
+    right: "18%",
+    top: 0,
+  },
+  creditBadge: {
+    backgroundColor: "rgba(8, 7, 19, 0.78)",
+    borderColor: "rgba(232, 200, 121, 0.42)",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    position: "absolute",
+    right: 10,
+    top: 10,
   },
   creditBadgeText: {
     color: GOLD_SOFT,
-    fontSize: 11,
-    fontWeight: "800",
+    fontSize: 10,
+    fontWeight: "900",
     textTransform: "lowercase",
   },
   disabled: {
@@ -1334,6 +1945,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 22,
   },
+  loomSealWrap: {
+    alignItems: "center",
+    width: "100%",
+  },
   message: {
     color: GOLD_SOFT,
     fontSize: fontSize.sm,
@@ -1389,13 +2004,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textTransform: "lowercase",
   },
-  sealStatus: {
-    color: GOLD_SOFT,
-    fontSize: fontSize.sm,
-    lineHeight: 19,
-    textAlign: "center",
-    textTransform: "lowercase",
-  },
   sendButton: {
     alignItems: "center",
     backgroundColor: "rgba(232, 200, 121, 0.2)",
@@ -1421,6 +2029,19 @@ const styles = StyleSheet.create({
   },
   userRow: {
     justifyContent: "flex-end",
+  },
+  txHashLink: {
+    color: "rgba(255, 240, 201, 0.62)",
+    fontSize: fontSize.xs,
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+    textDecorationColor: "rgba(232, 200, 121, 0.38)",
+    textDecorationLine: "underline",
+  },
+  txHashPressable: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   writingBlock: {
     paddingVertical: spacing.sm,

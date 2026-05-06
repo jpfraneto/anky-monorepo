@@ -5,8 +5,11 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::engine::general_purpose::{
+    STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD,
+};
 use base64::Engine as _;
+use jsonwebtoken::{encode as jwt_encode, Algorithm, EncodingKey, Header};
 use mpl_core::instructions::CreateV2Builder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -33,8 +36,7 @@ const DEFAULT_COLLECTION_URI: &str = "https://anky.app/devnet/metadata/sojourn-9
 const DEFAULT_MAINNET_COLLECTION_URI: &str =
     "https://anky.app/mainnet/metadata/sojourn-9-looms.json";
 const DEFAULT_LOOM_METADATA_BASE_URL: &str = "https://anky.app/devnet/metadata/looms";
-const DEFAULT_MAINNET_LOOM_METADATA_BASE_URL: &str =
-    "https://anky.app/mainnet/metadata/looms";
+const DEFAULT_MAINNET_LOOM_METADATA_BASE_URL: &str = "https://anky.app/mainnet/metadata/looms";
 const DEFAULT_SOJOURN_9_PROGRAM_ID: &str = "2VfB7nvV2SZuCpK2DurRgJLfw57TCt2g9VJXACo5h8aK";
 const DEFAULT_INITIAL_MOBILE_CREDITS: u32 = 8;
 const DEV_RECEIPT_SECRET: &str = "dev-mobile-receipt-secret";
@@ -47,6 +49,12 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/config", get(get_config))
         .route("/api/v1/credits/balance", get(get_credit_balance))
         .route("/api/v1/credits/checkout", post(create_checkout_session))
+        // Legacy direct-IAP verifier. The mobile app now uses RevenueCat CREDITS
+        // and should not call this route.
+        .route(
+            "/api/v1/credits/native-purchase/verify",
+            post(verify_native_credit_purchase),
+        )
         .route("/api/v1/processing/tickets", post(create_processing_ticket))
         .route("/api/v1/processing/run", post(run_processing))
         .route("/api/v1/seals", get(lookup_seals))
@@ -124,6 +132,33 @@ pub async fn create_checkout_session(
     Err(AppError::Unavailable(
         "credit checkout is not configured on this backend".into(),
     ))
+}
+
+pub async fn verify_native_credit_purchase(
+    State(state): State<AppState>,
+    Json(req): Json<NativeCreditPurchaseVerifyRequest>,
+) -> Result<Json<NativeCreditPurchaseVerifyResponse>, AppError> {
+    let identity_id = req.identity_id.trim();
+
+    if identity_id.is_empty() {
+        return Err(AppError::BadRequest("identityId is required".into()));
+    }
+
+    let package = native_credit_package(&req.package_id)
+        .ok_or_else(|| AppError::BadRequest("unknown credit package".into()))?;
+
+    validate_native_credit_purchase_request(&req, &package)?;
+    verify_native_store_purchase(&req).await?;
+
+    let (account, credits_added, duplicate) =
+        grant_native_mobile_credits(&state.db, identity_id, &req, &package).await?;
+
+    Ok(Json(NativeCreditPurchaseVerifyResponse {
+        account,
+        credits_added,
+        duplicate,
+        ok: true,
+    }))
 }
 
 pub async fn create_processing_ticket(
@@ -922,6 +957,43 @@ pub struct MobileCreditAccount {
 pub struct MobileCreditResponse {
     account: MobileCreditAccount,
     initial_credits: u32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NativePurchasePlatform {
+    Ios,
+    Android,
+}
+
+impl NativePurchasePlatform {
+    fn as_str(self) -> &'static str {
+        match self {
+            NativePurchasePlatform::Ios => "ios",
+            NativePurchasePlatform::Android => "android",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeCreditPurchaseVerifyRequest {
+    identity_id: String,
+    platform: NativePurchasePlatform,
+    app_product_id: String,
+    package_id: String,
+    transaction_id: Option<String>,
+    purchase_token: Option<String>,
+    receipt_data: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeCreditPurchaseVerifyResponse {
+    ok: bool,
+    account: MobileCreditAccount,
+    credits_added: u32,
+    duplicate: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1732,6 +1804,552 @@ fn expand_home(path: &str) -> String {
     path.to_string()
 }
 
+struct NativeCreditPackage {
+    package_id: &'static str,
+    ios_product_id: &'static str,
+    android_product_id: &'static str,
+    credits_granted: u32,
+}
+
+fn native_credit_package(package_id: &str) -> Option<NativeCreditPackage> {
+    match package_id.trim() {
+        "credits_22" => Some(NativeCreditPackage {
+            android_product_id: "credits_22",
+            credits_granted: 22,
+            ios_product_id: "inc.anky.credits.22",
+            package_id: "credits_22",
+        }),
+        "credits_88_bonus_11" => Some(NativeCreditPackage {
+            android_product_id: "credits_88_bonus_11",
+            credits_granted: 99,
+            ios_product_id: "inc.anky.credits.88_bonus_11",
+            package_id: "credits_88_bonus_11",
+        }),
+        "credits_333_bonus_88" => Some(NativeCreditPackage {
+            android_product_id: "credits_333_bonus_88",
+            credits_granted: 421,
+            ios_product_id: "inc.anky.credits.333_bonus_88",
+            package_id: "credits_333_bonus_88",
+        }),
+        _ => None,
+    }
+}
+
+fn validate_native_credit_purchase_request(
+    req: &NativeCreditPurchaseVerifyRequest,
+    package: &NativeCreditPackage,
+) -> Result<(), AppError> {
+    let expected_product_id = match req.platform {
+        NativePurchasePlatform::Ios => package.ios_product_id,
+        NativePurchasePlatform::Android => package.android_product_id,
+    };
+
+    if req.app_product_id.trim() != expected_product_id {
+        return Err(AppError::BadRequest(
+            "native product id does not match packageId".into(),
+        ));
+    }
+
+    match req.platform {
+        NativePurchasePlatform::Ios => {
+            if first_nonempty([
+                req.transaction_id.as_deref(),
+                req.purchase_token.as_deref(),
+                req.receipt_data.as_deref(),
+            ])
+            .is_none()
+            {
+                return Err(AppError::BadRequest(
+                    "iOS purchase evidence is required".into(),
+                ));
+            }
+        }
+        NativePurchasePlatform::Android => {
+            if req
+                .purchase_token
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty()
+            {
+                return Err(AppError::BadRequest(
+                    "Android purchaseToken is required".into(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn verify_native_store_purchase(
+    req: &NativeCreditPurchaseVerifyRequest,
+) -> Result<(), AppError> {
+    if env_flag("ANKY_NATIVE_IAP_DEV_BYPASS") && dev_plaintext_processing_allowed() {
+        tracing::warn!(
+            package_id = %req.package_id,
+            platform = %req.platform.as_str(),
+            "native credit purchase verification bypassed for development"
+        );
+        return Ok(());
+    }
+
+    match req.platform {
+        NativePurchasePlatform::Ios => verify_apple_native_purchase(req).await,
+        NativePurchasePlatform::Android => verify_google_native_purchase(req).await,
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct AppleServerApiClaims {
+    iss: String,
+    iat: i64,
+    exp: i64,
+    aud: String,
+    bid: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppleTransactionInfoResponse {
+    signed_transaction_info: String,
+}
+
+async fn verify_apple_native_purchase(
+    req: &NativeCreditPurchaseVerifyRequest,
+) -> Result<(), AppError> {
+    let transaction_id = apple_transaction_id(req)?;
+    let token = apple_server_api_token()?;
+    let client = reqwest::Client::new();
+    let base_urls = apple_store_api_base_urls();
+
+    for base_url in base_urls {
+        let url = format!(
+            "{}/inApps/v1/transactions/{}",
+            base_url,
+            urlencoding::encode(&transaction_id)
+        );
+        let response = client.get(url).bearer_auth(&token).send().await?;
+        let status = response.status();
+        let body = response.text().await?;
+
+        if status.is_success() {
+            let info: AppleTransactionInfoResponse = serde_json::from_str(&body)?;
+            let transaction = decode_jws_payload(&info.signed_transaction_info)?;
+            let product_id = transaction
+                .get("productId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let bundle_id = transaction
+                .get("bundleId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let returned_transaction_id = transaction
+                .get("transactionId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+
+            if product_id != req.app_product_id.trim() {
+                return Err(AppError::BadRequest(
+                    "Apple transaction product does not match packageId".into(),
+                ));
+            }
+
+            if returned_transaction_id != transaction_id {
+                return Err(AppError::BadRequest(
+                    "Apple transaction id does not match purchase evidence".into(),
+                ));
+            }
+
+            if let Some(expected_bundle_id) = env_nonempty("ANKY_IOS_BUNDLE_ID") {
+                if bundle_id != expected_bundle_id {
+                    return Err(AppError::BadRequest(
+                        "Apple transaction bundle id does not match".into(),
+                    ));
+                }
+            }
+
+            if transaction.get("revocationDate").is_some() {
+                return Err(AppError::BadRequest(
+                    "Apple transaction has been revoked".into(),
+                ));
+            }
+
+            return Ok(());
+        }
+
+        if status.as_u16() != 404 {
+            tracing::warn!(%status, body = %body, "Apple native purchase verification failed");
+            return Err(AppError::BadRequest(
+                "Apple could not verify this purchase".into(),
+            ));
+        }
+    }
+
+    Err(AppError::BadRequest(
+        "Apple could not find this purchase".into(),
+    ))
+}
+
+fn apple_transaction_id(req: &NativeCreditPurchaseVerifyRequest) -> Result<String, AppError> {
+    if let Some(transaction_id) = req.transaction_id.as_deref().map(str::trim) {
+        if !transaction_id.is_empty() {
+            return Ok(transaction_id.to_string());
+        }
+    }
+
+    for signed_payload in [req.purchase_token.as_deref(), req.receipt_data.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        let payload = decode_jws_payload(signed_payload)?;
+
+        if let Some(transaction_id) = payload.get("transactionId").and_then(Value::as_str) {
+            if !transaction_id.trim().is_empty() {
+                return Ok(transaction_id.trim().to_string());
+            }
+        }
+    }
+
+    Err(AppError::BadRequest(
+        "Apple transactionId is required".into(),
+    ))
+}
+
+fn apple_server_api_token() -> Result<String, AppError> {
+    let issuer_id = env_nonempty("ANKY_APP_STORE_ISSUER_ID")
+        .ok_or_else(|| AppError::Unavailable("Apple IAP issuer id is not configured".into()))?;
+    let key_id = env_nonempty("ANKY_APP_STORE_KEY_ID")
+        .ok_or_else(|| AppError::Unavailable("Apple IAP key id is not configured".into()))?;
+    let bundle_id = env_nonempty("ANKY_IOS_BUNDLE_ID")
+        .ok_or_else(|| AppError::Unavailable("Apple bundle id is not configured".into()))?;
+    let private_key = native_private_key_from_env(
+        "ANKY_APP_STORE_PRIVATE_KEY",
+        "ANKY_APP_STORE_PRIVATE_KEY_PATH",
+    )?;
+    let now = chrono::Utc::now().timestamp();
+    let claims = AppleServerApiClaims {
+        aud: "appstoreconnect-v1".to_string(),
+        bid: bundle_id,
+        exp: now + 20 * 60,
+        iat: now,
+        iss: issuer_id,
+    };
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(key_id);
+
+    jwt_encode(
+        &header,
+        &claims,
+        &EncodingKey::from_ec_pem(private_key.as_bytes()).map_err(|error| {
+            AppError::Unavailable(format!("Apple IAP private key is invalid: {error}"))
+        })?,
+    )
+    .map_err(|error| AppError::Unavailable(format!("Apple IAP token signing failed: {error}")))
+}
+
+fn apple_store_api_base_urls() -> Vec<&'static str> {
+    match env_nonempty("ANKY_APP_STORE_ENVIRONMENT")
+        .unwrap_or_else(|| "auto".to_string())
+        .as_str()
+    {
+        "production" => vec!["https://api.storekit.itunes.apple.com"],
+        "sandbox" => vec!["https://api.storekit-sandbox.itunes.apple.com"],
+        _ => vec![
+            "https://api.storekit.itunes.apple.com",
+            "https://api.storekit-sandbox.itunes.apple.com",
+        ],
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleServiceAccount {
+    client_email: String,
+    private_key: String,
+    token_uri: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GoogleOAuthClaims {
+    iss: String,
+    scope: String,
+    aud: String,
+    iat: i64,
+    exp: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleOAuthTokenResponse {
+    access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleProductPurchaseResponse {
+    purchase_state: Option<i32>,
+}
+
+async fn verify_google_native_purchase(
+    req: &NativeCreditPurchaseVerifyRequest,
+) -> Result<(), AppError> {
+    let package_name = env_nonempty("ANKY_GOOGLE_PLAY_PACKAGE_NAME").ok_or_else(|| {
+        AppError::Unavailable("Google Play package name is not configured".into())
+    })?;
+    let purchase_token = req
+        .purchase_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::BadRequest("Android purchaseToken is required".into()))?;
+    let access_token = google_play_access_token().await?;
+    let url = format!(
+        "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{}/purchases/products/{}/tokens/{}",
+        urlencoding::encode(&package_name),
+        urlencoding::encode(req.app_product_id.trim()),
+        urlencoding::encode(purchase_token),
+    );
+    let response = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(access_token)
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+
+    if !status.is_success() {
+        tracing::warn!(%status, body = %body, "Google native purchase verification failed");
+        return Err(AppError::BadRequest(
+            "Google Play could not verify this purchase".into(),
+        ));
+    }
+
+    let purchase: GoogleProductPurchaseResponse = serde_json::from_str(&body)?;
+
+    if purchase.purchase_state.unwrap_or(1) != 0 {
+        return Err(AppError::BadRequest(
+            "Google Play purchase is not completed".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+async fn google_play_access_token() -> Result<String, AppError> {
+    let account = google_service_account()?;
+    let token_uri = account
+        .token_uri
+        .unwrap_or_else(|| "https://oauth2.googleapis.com/token".to_string());
+    let now = chrono::Utc::now().timestamp();
+    let claims = GoogleOAuthClaims {
+        aud: token_uri.clone(),
+        exp: now + 55 * 60,
+        iat: now,
+        iss: account.client_email,
+        scope: "https://www.googleapis.com/auth/androidpublisher".to_string(),
+    };
+    let header = Header::new(Algorithm::RS256);
+    let assertion = jwt_encode(
+        &header,
+        &claims,
+        &EncodingKey::from_rsa_pem(account.private_key.as_bytes()).map_err(|error| {
+            AppError::Unavailable(format!("Google Play private key is invalid: {error}"))
+        })?,
+    )
+    .map_err(|error| AppError::Unavailable(format!("Google Play token signing failed: {error}")))?;
+    let response = reqwest::Client::new()
+        .post(token_uri)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ])
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+
+    if !status.is_success() {
+        tracing::warn!(%status, body = %body, "Google Play OAuth failed");
+        return Err(AppError::Unavailable(
+            "Google Play verification auth failed".into(),
+        ));
+    }
+
+    let token: GoogleOAuthTokenResponse = serde_json::from_str(&body)?;
+
+    Ok(token.access_token)
+}
+
+fn google_service_account() -> Result<GoogleServiceAccount, AppError> {
+    let raw = if let Some(json) = env_nonempty("ANKY_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON") {
+        if json.trim_start().starts_with('{') {
+            json
+        } else {
+            std::fs::read_to_string(json)?
+        }
+    } else if let Some(path) = env_nonempty("ANKY_GOOGLE_PLAY_SERVICE_ACCOUNT_PATH")
+        .or_else(|| env_nonempty("GOOGLE_APPLICATION_CREDENTIALS"))
+    {
+        std::fs::read_to_string(path)?
+    } else {
+        return Err(AppError::Unavailable(
+            "Google Play service account is not configured".into(),
+        ));
+    };
+
+    serde_json::from_str(&raw).map_err(AppError::from)
+}
+
+fn native_private_key_from_env(value_name: &str, path_name: &str) -> Result<String, AppError> {
+    if let Some(value) = env_nonempty(value_name) {
+        if value.trim_start().starts_with("-----BEGIN") {
+            return Ok(value.replace("\\n", "\n"));
+        }
+
+        return Ok(std::fs::read_to_string(value)?);
+    }
+
+    if let Some(path) = env_nonempty(path_name) {
+        return Ok(std::fs::read_to_string(path)?);
+    }
+
+    Err(AppError::Unavailable(format!(
+        "{value_name} or {path_name} is required"
+    )))
+}
+
+fn decode_jws_payload(token: &str) -> Result<Value, AppError> {
+    let payload = token
+        .split('.')
+        .nth(1)
+        .ok_or_else(|| AppError::BadRequest("signed purchase payload is malformed".into()))?;
+    let bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| AppError::BadRequest("signed purchase payload is malformed".into()))?;
+
+    serde_json::from_slice(&bytes).map_err(AppError::from)
+}
+
+async fn grant_native_mobile_credits(
+    pool: &sqlx::PgPool,
+    identity_id: &str,
+    req: &NativeCreditPurchaseVerifyRequest,
+    package: &NativeCreditPackage,
+) -> Result<(MobileCreditAccount, u32, bool), AppError> {
+    ensure_mobile_credit_account(pool, identity_id).await?;
+
+    let platform = req.platform.as_str();
+    let purchase_key = native_purchase_key(req)?;
+    let raw_receipt_json = serde_json::to_string(req)?;
+    let mut tx = pool.begin().await?;
+
+    let existing = sqlx::query(
+        "SELECT id
+         FROM mobile_credit_purchases
+         WHERE platform = $1
+           AND purchase_key = $2",
+    )
+    .bind(platform)
+    .bind(&purchase_key)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if existing.is_some() {
+        let account = select_mobile_credit_account(&mut tx, identity_id).await?;
+        tx.commit().await?;
+
+        return Ok((account, 0, true));
+    }
+
+    let purchase_id = uuid::Uuid::new_v4().to_string();
+
+    sqlx::query(
+        "INSERT INTO mobile_credit_purchases
+         (id, identity_id, platform, app_product_id, package_id, purchase_key, credits_granted, verification_status, raw_receipt_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'verified', $8)",
+    )
+    .bind(&purchase_id)
+    .bind(identity_id)
+    .bind(platform)
+    .bind(req.app_product_id.trim())
+    .bind(package.package_id)
+    .bind(&purchase_key)
+    .bind(package.credits_granted as i32)
+    .bind(raw_receipt_json)
+    .execute(&mut *tx)
+    .await?;
+
+    let row = sqlx::query(
+        "UPDATE mobile_credit_accounts
+         SET credits_remaining = credits_remaining + $2,
+             updated_at = NOW()
+         WHERE identity_id = $1
+         RETURNING identity_id, credits_remaining, created_at, updated_at",
+    )
+    .bind(identity_id)
+    .bind(package.credits_granted as i32)
+    .fetch_one(&mut *tx)
+    .await?;
+    let account = mobile_credit_account_from_row(&row)?;
+
+    sqlx::query(
+        "INSERT INTO mobile_credit_events (id, identity_id, delta, reason, related_id, metadata_json)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(identity_id)
+    .bind(package.credits_granted as i32)
+    .bind("native_purchase")
+    .bind(&purchase_id)
+    .bind(
+        json!({
+            "appProductId": req.app_product_id,
+            "packageId": package.package_id,
+            "platform": platform,
+        })
+        .to_string(),
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok((account, package.credits_granted, false))
+}
+
+async fn select_mobile_credit_account(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    identity_id: &str,
+) -> Result<MobileCreditAccount, AppError> {
+    let row = sqlx::query(
+        "SELECT identity_id, credits_remaining, created_at, updated_at
+         FROM mobile_credit_accounts
+         WHERE identity_id = $1",
+    )
+    .bind(identity_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    mobile_credit_account_from_row(&row)
+}
+
+fn native_purchase_key(req: &NativeCreditPurchaseVerifyRequest) -> Result<String, AppError> {
+    first_nonempty([
+        req.transaction_id.as_deref(),
+        req.purchase_token.as_deref(),
+        req.receipt_data.as_deref(),
+    ])
+    .map(ToString::to_string)
+    .ok_or_else(|| AppError::BadRequest("purchase evidence is required".into()))
+}
+
+fn first_nonempty<'a>(values: impl IntoIterator<Item = Option<&'a str>>) -> Option<&'a str> {
+    values
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+}
+
 async fn ensure_mobile_credit_account(
     pool: &sqlx::PgPool,
     identity_id: &str,
@@ -2330,9 +2948,7 @@ async fn build_mobile_reflection_artifacts(
     writing_text: &str,
 ) -> Result<Vec<Value>, AppError> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-    let _drain = tokio::spawn(async move {
-        while rx.recv().await.is_some() {}
-    });
+    let _drain = tokio::spawn(async move { while rx.recv().await.is_some() {} });
     let (full_text, _input_tokens, _output_tokens, model, provider) =
         crate::services::claude::stream_title_and_reflection_best(
             &state.config,

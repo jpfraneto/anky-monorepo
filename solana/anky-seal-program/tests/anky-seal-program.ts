@@ -40,7 +40,7 @@ describe("anky-seal-program", () => {
   // Real Core verification requires a Core-serialized Asset account. The old
   // placeholder test created a zero-data account owned by Core, which must not
   // pass anymore.
-  it.skip("seals sample .anky hashes and updates LoomState lineage with a real Core asset", async () => {
+  it.skip("seals one current-day .anky hash and updates LoomState lineage with a real Core asset", async () => {
     const writer = provider.wallet.publicKey;
     const loomAsset = Keypair.generate();
 
@@ -66,14 +66,26 @@ describe("anky-seal-program", () => {
     );
 
     const firstHash = new Uint8Array(32).fill(7);
-    const secondHash = new Uint8Array(32).fill(9);
+    const utcDay = Math.floor(Date.now() / 86_400_000);
+    const utcDayBytes = Buffer.alloc(8);
+    utcDayBytes.writeBigInt64LE(BigInt(utcDay));
+    const [dailySeal] = PublicKey.findProgramAddressSync(
+      [Buffer.from("daily_seal"), writer.toBuffer(), utcDayBytes],
+      program.programId,
+    );
+    const [hashSeal] = PublicKey.findProgramAddressSync(
+      [Buffer.from("hash_seal"), writer.toBuffer(), Buffer.from(firstHash)],
+      program.programId,
+    );
 
     await program.methods
-      .sealAnky(Array.from(firstHash))
+      .sealAnky(Array.from(firstHash), new anchor.BN(utcDay))
       .accounts({
         writer,
         loomAsset: loomAsset.publicKey,
         loomCollection: OFFICIAL_COLLECTION_DEVNET,
+        dailySeal,
+        hashSeal,
       } as never)
       .rpc();
 
@@ -84,25 +96,6 @@ describe("anky-seal-program", () => {
       Array.from(afterFirst.latestSessionHash),
       Array.from(firstHash),
     );
-
-    await program.methods
-      .sealAnky(Array.from(secondHash))
-      .accounts({
-        writer,
-        loomAsset: loomAsset.publicKey,
-        loomCollection: OFFICIAL_COLLECTION_DEVNET,
-      } as never)
-      .rpc();
-
-    const afterSecond = await loomStateAccount.fetch(loomState);
-    assert.strictEqual(afterSecond.totalSeals.toNumber(), 2);
-    assert.deepStrictEqual(
-      Array.from(afterSecond.latestSessionHash),
-      Array.from(secondHash),
-    );
-    assert.notDeepStrictEqual(
-      Array.from(afterSecond.rollingRoot),
-      new Array(32).fill(0),
-    );
+    assert.notDeepStrictEqual(Array.from(afterFirst.rollingRoot), new Array(32).fill(0));
   });
 });

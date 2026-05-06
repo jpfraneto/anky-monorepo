@@ -52,6 +52,7 @@ export type AnkySealSidecar = {
   session_hash: string;
   signature: string;
   status: "confirmed";
+  utc_day?: number;
   version: 1;
   writer: string;
 };
@@ -609,7 +610,8 @@ function isAnkySealSidecar(value: unknown): value is AnkySealSidecar {
     typeof seal.loom_asset === "string" &&
     typeof seal.writer === "string" &&
     typeof seal.signature === "string" &&
-    typeof seal.created_at === "string"
+    typeof seal.created_at === "string" &&
+    (seal.utc_day == null || Number.isSafeInteger(seal.utc_day))
   );
 }
 

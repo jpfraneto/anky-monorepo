@@ -19,6 +19,7 @@ import {
   MobileSolanaConfigResponse,
   MobileSpendCreditsRequest,
   MobileSpendCreditsResponse,
+  PrivyAuthRequest,
   RecordMobileLoomMintRequest,
   RecordMobileLoomMintResponse,
   RecordMobileSealRequest,
@@ -137,9 +138,9 @@ export class AnkyApiClient {
     return this.request<MobileLoomLookupResponse>(`/api/mobile/looms?${params.toString()}`);
   }
 
-  exchangePrivyAuthToken(authToken: string): Promise<BackendAuthResponse> {
+  exchangePrivyAuthToken(request: PrivyAuthRequest): Promise<BackendAuthResponse> {
     return this.request<BackendAuthResponse>("/swift/v1/auth/privy", {
-      body: JSON.stringify({ auth_token: authToken }),
+      body: JSON.stringify(request),
       method: "POST",
     });
   }

@@ -22,6 +22,7 @@ import {
   PRIVY_OAUTH_REDIRECT_PATH,
 } from "../lib/auth/privyConfig";
 import {
+  type BackendWalletAuthProof,
   clearBackendAuthSession,
   exchangePrivyAccessTokenForBackendSession,
   hasConfiguredBackend,
@@ -30,6 +31,7 @@ import {
   type ExternalWalletProviderName,
   useExternalSolanaWallet,
 } from "../lib/privy/ExternalSolanaWalletProvider";
+import { toPrivySiwsSignature } from "../lib/privy/siwsSignature";
 import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
 import { shortAddress } from "../lib/solana/loomStorage";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
@@ -54,7 +56,7 @@ export function AuthScreen({ navigation }: Props) {
   const [pendingWallet, setPendingWallet] = useState<WalletProvider | null>(null);
   const [working, setWorking] = useState(false);
 
-  const finishPrivyLogin = useCallback(async () => {
+  const finishPrivyLogin = useCallback(async (walletProof?: BackendWalletAuthProof) => {
     const accessToken = await getAccessToken();
 
     if (accessToken == null) {
@@ -67,8 +69,13 @@ export function AuthScreen({ navigation }: Props) {
       return;
     }
 
-    await exchangePrivyAccessTokenForBackendSession(accessToken);
-    setMessage("connected");
+    try {
+      await exchangePrivyAccessTokenForBackendSession(accessToken, walletProof);
+      setMessage("connected");
+    } catch (error) {
+      console.warn("Backend session exchange failed after Privy login.", error);
+      setMessage("connected. backend session will retry later.");
+    }
   }, [getAccessToken]);
 
   const completeWalletLogin = useCallback(
@@ -94,16 +101,21 @@ export function AuthScreen({ navigation }: Props) {
           wallet: { address },
         });
         const { signature } = await signMessage(siwsMessage);
+        const privySignature = toPrivySiwsSignature(signature);
 
         await siws.login({
           message: siwsMessage,
-          signature,
+          signature: privySignature,
           wallet: {
             connectorType: "deeplink",
             walletClientType: walletProvider,
           },
         });
-        await finishPrivyLogin();
+        await finishPrivyLogin({
+          siwsMessage,
+          siwsSignature: signature,
+          walletAddress: address,
+        });
         setPendingWallet(null);
         navigation.replace("You");
       } catch (error) {
@@ -313,13 +325,19 @@ export function AuthScreen({ navigation }: Props) {
   const connectedExternalWallet = externalWallet.activeWallet;
   const phantomWallet = externalWallet.wallets.phantom;
   const backpackWallet = externalWallet.wallets.backpack;
-  const embeddedWalletCopy = privyWallet.hasEmbeddedWallet
-    ? `embedded wallet ${
-        privyWallet.embeddedPublicKey == null
-          ? "ready"
-          : shortAddress(privyWallet.embeddedPublicKey, 6)
-      }`
-    : "embedded wallet not created. use this path for apple, google, or email sign-in.";
+  const embeddedWalletCopy =
+    isLoggedIn && connectedExternalWallet != null
+      ? `${connectedExternalWallet.label} ${shortAddress(
+          connectedExternalWallet.address,
+          6,
+        )} connected. embedded wallet not needed.`
+      : privyWallet.hasEmbeddedWallet
+        ? `embedded wallet ${
+            privyWallet.embeddedPublicKey == null
+              ? "ready"
+              : shortAddress(privyWallet.embeddedPublicKey, 6)
+          }`
+        : "embedded wallet not created. use this path for apple, google, or email sign-in.";
   const externalWalletCopy =
     connectedExternalWallet == null
       ? "use Phantom or Backpack for Loom minting and sealing. embedded wallets are for apple, google, or email sign-in."
@@ -359,7 +377,7 @@ export function AuthScreen({ navigation }: Props) {
               )}
               <View style={styles.buttonGroup}>
                 <RitualButton label="continue" onPress={() => navigation.replace("You")} />
-                {!privyWallet.hasEmbeddedWallet ? (
+                {!privyWallet.hasEmbeddedWallet && connectedExternalWallet == null ? (
                   <RitualButton
                     disabled={isBusy}
                     label="create embedded wallet"
@@ -389,7 +407,7 @@ export function AuthScreen({ navigation }: Props) {
                     : connectedExternalWallet?.provider === "phantom"
                       ? isLoggedIn
                         ? "phantom connected"
-                        : "finish phantom login"
+                        : "continue with phantom"
                       : "use phantom"
                 }
                 onPress={() => void handleWalletConnect("phantom")}
@@ -402,7 +420,7 @@ export function AuthScreen({ navigation }: Props) {
                     : connectedExternalWallet?.provider === "backpack"
                       ? isLoggedIn
                         ? "backpack connected"
-                        : "finish backpack login"
+                        : "continue with backpack"
                       : "use backpack"
                 }
                 onPress={() => void handleWalletConnect("backpack")}

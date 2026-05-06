@@ -1,0 +1,4 @@
+target/
+sp1/**/target/
+sp1/script/proof-with-public-values.bin
+sp1/script/receipt.json

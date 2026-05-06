@@ -240,15 +240,16 @@ function SelectedDayPanel({
   day: SojournMapDay;
   onPressAnky?: (anky: SojournMapAnky) => void;
 }) {
+  const completeAnkys = day.ankys.filter((anky) => anky.kind === "anky");
+  const fragments = day.ankys.filter((anky) => anky.kind === "fragment");
+  const hasWriting = completeAnkys.length > 0 || fragments.length > 0;
+
   return (
     <View style={[styles.panel, { paddingBottom: sojournMapTokens.spacing.lg + bottomInset }]}>
       <View style={styles.panelTopDiamond} />
       <Text style={styles.panelTitle}>Day {day.day}</Text>
-      <Text style={styles.panelSubtitle}>
-        {formatPanelCount(day)}
-      </Text>
 
-      {day.ankys.length === 0 ? (
+      {!hasWriting ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>
             {day.isFuture ? "not open yet" : "nothing here yet"}
@@ -258,53 +259,127 @@ function SelectedDayPanel({
           </Text>
         </View>
       ) : (
-        <ScrollView style={styles.ankyList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-          {day.ankys.map((anky) => (
-            <Pressable
-              accessibilityRole="button"
-              key={anky.id}
-              onPress={() => onPressAnky?.(anky)}
-              style={({ pressed }) => [
-                styles.ankyCard,
-                anky.kind === "fragment" && styles.fragmentCard,
-                pressed && styles.ankyCardPressed,
-              ]}
-            >
-              <Image
-                accessibilityIgnoresInvertColors
-                source={anky.avatar}
-                style={[styles.ankyAvatar, anky.kind === "fragment" && styles.fragmentAvatar]}
+        <ScrollView
+          contentContainerStyle={styles.dayListContent}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          style={styles.dayList}
+        >
+          {completeAnkys.length > 0 ? (
+            <View style={styles.ankySection}>
+              <SectionDivider
+                label={`${completeAnkys.length} ${completeAnkys.length === 1 ? "anky" : "ankys"}`}
               />
-              <View style={styles.ankyTextBlock}>
-                <Text numberOfLines={1} style={styles.ankyTitle}>
-                  {anky.title}
-                </Text>
-                <Text numberOfLines={1} style={styles.ankyMeta}>
-                  {anky.durationLabel}
-                </Text>
-                <Text numberOfLines={1} style={styles.ankyPreview}>
-                  {anky.firstLine}
-                </Text>
-              </View>
-              <Text style={styles.openGlyph}>›</Text>
-            </Pressable>
-          ))}
+              {completeAnkys.map((anky) => (
+                <AnkyPanelRow anky={anky} key={anky.id} onPress={() => onPressAnky?.(anky)} />
+              ))}
+            </View>
+          ) : null}
+
+          {fragments.length > 0 ? (
+            <View style={styles.fragmentSection}>
+              <SectionDivider
+                label={`${fragments.length} ${fragments.length === 1 ? "fragment" : "fragments"}`}
+              />
+              {fragments.map((fragment) => (
+                <FragmentPanelRow
+                  fragment={fragment}
+                  key={fragment.id}
+                  onPress={() => onPressAnky?.(fragment)}
+                />
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
   );
 }
 
-function formatPanelCount(day: SojournMapDay): string {
-  const fragmentCount = day.fragmentCount ?? 0;
-  const parts = [
-    `${day.ankyCount} ${day.ankyCount === 1 ? "anky" : "ankys"}`,
-    fragmentCount > 0
-      ? `${fragmentCount} ${fragmentCount === 1 ? "fragment" : "fragments"}`
-      : null,
-  ].filter((part): part is string => part != null);
+function AnkyPanelRow({
+  anky,
+  onPress,
+}: {
+  anky: SojournMapAnky;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.ankyCard, pressed && styles.ankyCardPressed]}
+    >
+      <Image
+        accessibilityIgnoresInvertColors
+        source={anky.avatar}
+        style={styles.ankyAvatar}
+      />
+      <View style={styles.ankyTextBlock}>
+        <Text numberOfLines={1} style={styles.ankyTitle}>
+          {anky.title}
+        </Text>
+        <Text numberOfLines={1} style={styles.ankyMeta}>
+          {anky.durationLabel}
+        </Text>
+        <Text numberOfLines={1} style={styles.ankyPreview}>
+          {anky.firstLine}
+        </Text>
+      </View>
+      <Text style={styles.openGlyph}>›</Text>
+    </Pressable>
+  );
+}
 
-  return parts.join(" · ");
+function FragmentPanelRow({
+  fragment,
+  onPress,
+}: {
+  fragment: SojournMapAnky;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.fragmentRow, pressed && styles.ankyCardPressed]}
+    >
+      <View style={styles.fragmentTextBlock}>
+        <Text numberOfLines={1} style={styles.fragmentMeta}>
+          {formatFragmentMeta(fragment)}
+        </Text>
+        <Text numberOfLines={1} style={styles.fragmentPreview}>
+          {fragment.firstLine}
+        </Text>
+      </View>
+      <Text style={styles.fragmentOpenGlyph}>›</Text>
+    </Pressable>
+  );
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <View style={styles.sectionDivider}>
+      <View style={styles.sectionLine} />
+      <Text style={styles.sectionTitle}>{label}</Text>
+      <View style={styles.sectionLine} />
+    </View>
+  );
+}
+
+function formatFragmentMeta(fragment: SojournMapAnky): string {
+  const duration = fragment.durationLabel.match(/\d+\s+min/)?.[0] ?? "fragment";
+  const words = countWords(fragment.firstLine);
+
+  return `${duration} · ${words} ${words === 1 ? "word" : "words"}`;
+}
+
+function countWords(value: string): number {
+  const words = value
+    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return words.length;
 }
 
 function withAlpha(hex: string, alpha: string) {
@@ -363,16 +438,8 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.45)",
     textShadowRadius: 3,
   },
-  fragmentAvatar: {
-    height: sojournMapTokens.card.avatar - 10,
-    opacity: 0.58,
-    width: sojournMapTokens.card.avatar - 10,
-  },
-  fragmentCard: {
-    backgroundColor: "rgba(18, 16, 34, 0.42)",
-    borderColor: "rgba(216,176,107,0.22)",
-    minHeight: sojournMapTokens.card.minHeight - 12,
-    opacity: 0.78,
+  ankySection: {
+    marginTop: sojournMapTokens.spacing.xs,
   },
   fragmentCount: {
     fontFamily: SERIF,
@@ -381,8 +448,42 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     opacity: 0.58,
   },
-  ankyList: {
-    maxHeight: 288,
+  fragmentMeta: {
+    color: sojournMapTokens.colors.textMuted,
+    fontFamily: SERIF,
+    fontSize: sojournMapTokens.typography.caption,
+    lineHeight: 17,
+  },
+  fragmentOpenGlyph: {
+    color: sojournMapTokens.colors.gold,
+    fontSize: 24,
+    lineHeight: 28,
+    marginLeft: sojournMapTokens.spacing.md,
+  },
+  fragmentPreview: {
+    color: sojournMapTokens.colors.textSecondary,
+    fontFamily: SERIF,
+    fontSize: sojournMapTokens.typography.body,
+    lineHeight: 18,
+  },
+  fragmentRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(9, 8, 22, 0.46)",
+    borderColor: "rgba(216, 176, 107, 0.18)",
+    borderRadius: sojournMapTokens.radius.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginBottom: 5,
+    minHeight: 54,
+    paddingHorizontal: sojournMapTokens.spacing.lg,
+    paddingVertical: sojournMapTokens.spacing.xs,
+  },
+  fragmentSection: {
+    marginTop: sojournMapTokens.spacing.sm,
+  },
+  fragmentTextBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   ankyMeta: {
     color: sojournMapTokens.colors.textSecondary,
@@ -450,6 +551,12 @@ const styles = StyleSheet.create({
   },
   dayRowRightSpacer: {
     width: 94,
+  },
+  dayList: {
+    maxHeight: 336,
+  },
+  dayListContent: {
+    paddingBottom: sojournMapTokens.spacing.xs,
   },
   dotRail: {
     alignItems: "center",
@@ -553,6 +660,26 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  sectionDivider: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: sojournMapTokens.spacing.md,
+    marginBottom: sojournMapTokens.spacing.sm,
+    marginTop: sojournMapTokens.spacing.xs,
+  },
+  sectionLine: {
+    backgroundColor: sojournMapTokens.colors.trackGold,
+    flex: 1,
+    height: 1,
+  },
+  sectionTitle: {
+    color: sojournMapTokens.colors.goldBright,
+    fontFamily: SERIF,
+    fontSize: sojournMapTokens.typography.subtitle,
+    fontWeight: "700",
+    lineHeight: 22,
+    textTransform: "lowercase",
   },
   scrollContent: {
     alignItems: "center",

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   Animated,
   Platform,
@@ -32,6 +32,7 @@ type Props = {
   onSimpleReflect: () => void;
   onTryAgain?: () => void;
   reflection?: string | null;
+  sealAction?: ReactNode;
   text: string;
   timeLabel?: string;
 };
@@ -61,6 +62,7 @@ export function AnkySessionSurface({
   onSimpleReflect,
   onTryAgain,
   reflection,
+  sealAction,
   text,
   timeLabel,
 }: Props) {
@@ -119,6 +121,8 @@ export function AnkySessionSurface({
             <Text style={styles.processingText}>anky is reading</Text>
           </View>
         ) : null}
+
+        {sealAction == null ? null : <View style={styles.sealActionWrap}>{sealAction}</View>}
 
         <View style={styles.actionGrid}>
           <SessionActionButton
@@ -389,6 +393,9 @@ const styles = StyleSheet.create({
     color: ankyColors.text,
     fontSize: fontSize.md,
     lineHeight: 25,
+  },
+  sealActionWrap: {
+    marginTop: spacing.md,
   },
   spinner: {
     borderColor: "rgba(232, 200, 121, 0.22)",
