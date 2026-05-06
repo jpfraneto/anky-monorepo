@@ -7,10 +7,10 @@ The backend stores public seal and verified receipt metadata for mobile state. I
 Apply the current backend migration chain through the mobile verified receipt and Helius webhook receipt migrations before enabling the operator or indexer backend posts:
 
 ```bash
-psql "$DATABASE_URL" -f migrations/019_credit_ledger_entries.sql
-psql "$DATABASE_URL" -f migrations/020_mobile_verified_seal_receipts.sql
-psql "$DATABASE_URL" -f migrations/021_mobile_helius_webhook_events.sql
-psql "$DATABASE_URL" -f migrations/022_mobile_helius_webhook_signature_dedupe.sql
+psql "$DATABASE_URL" -f migrations/019_mobile_verified_seal_receipts.sql
+psql "$DATABASE_URL" -f migrations/020_mobile_helius_webhook_events.sql
+psql "$DATABASE_URL" -f migrations/021_mobile_helius_webhook_signature_dedupe.sql
+psql "$DATABASE_URL" -f migrations/022_credit_ledger_entries.sql
 ```
 
 The migrations create or harden `mobile_verified_seal_receipts`, add `utc_day` columns for public seal and verified receipt metadata, add check constraints for hash/protocol/status shape, add unique guards for seal identity and verified transaction signatures, and add a foreign-key guard so verified rows require the matching public seal receipt. They also create `mobile_helius_webhook_events` for public enhanced webhook delivery receipts. If a check constraint, unique index, or foreign key fails, stop and inspect invalid, duplicate, or orphaned receipt rows before launch.
@@ -21,7 +21,7 @@ Before applying to a shared database, run the disposable local Postgres smoke:
 node solana/scripts/sojourn9/smokeVerifiedSealMigration.mjs
 ```
 
-The smoke applies `017_mobile_solana_integration.sql`, `019_credit_ledger_entries.sql`, `020_mobile_verified_seal_receipts.sql`, `021_mobile_helius_webhook_events.sql`, and `022_mobile_helius_webhook_signature_dedupe.sql` twice in a clean database and in a partial pre-existing verified-table database, then verifies public-only columns, constraints, unique indexes, the matching-seal foreign key, Helius webhook receipt guards, signature dedupe, and basic insert guards.
+The smoke applies `017_mobile_solana_integration.sql`, `019_mobile_verified_seal_receipts.sql`, `020_mobile_helius_webhook_events.sql`, `021_mobile_helius_webhook_signature_dedupe.sql`, and `022_credit_ledger_entries.sql` twice in a clean database and in a partial pre-existing verified-table database, then verifies public-only columns, constraints, unique indexes, the matching-seal foreign key, Helius webhook receipt guards, signature dedupe, and basic insert guards.
 
 ## Required Env
 
@@ -76,7 +76,7 @@ CARGO_TARGET_DIR=/tmp/anky-root-target cargo test verified_seal_record_requires_
 CARGO_TARGET_DIR=/tmp/anky-root-target cargo test verified_seal_account_data -- --nocapture
 ```
 
-This migration set was smoke-tested against disposable local Postgres clusters by applying `017_mobile_solana_integration.sql`, `019_credit_ledger_entries.sql`, `020_mobile_verified_seal_receipts.sql`, `021_mobile_helius_webhook_events.sql`, and `022_mobile_helius_webhook_signature_dedupe.sql` twice, and confirming the `utc_day` columns, UTC-day constraints, verified receipt hash/protocol/status constraints, unique indexes, Helius webhook receipt constraints/indexes, Helius signature dedupe index, and `mobile_verified_seal_receipts_matching_seal` foreign key exist. A second smoke simulated a partial pre-existing verified receipt table and confirmed the migration adds the missing constraints and indexes.
+This migration set was smoke-tested against disposable local Postgres clusters by applying `017_mobile_solana_integration.sql`, `019_mobile_verified_seal_receipts.sql`, `020_mobile_helius_webhook_events.sql`, `021_mobile_helius_webhook_signature_dedupe.sql`, and `022_credit_ledger_entries.sql` twice, and confirming the `utc_day` columns, UTC-day constraints, verified receipt hash/protocol/status constraints, unique indexes, Helius webhook receipt constraints/indexes, Helius signature dedupe index, and `mobile_verified_seal_receipts_matching_seal` foreign key exist. A second smoke simulated a partial pre-existing verified receipt table and confirmed the migration adds the missing constraints and indexes.
 
 Reusable smoke command:
 

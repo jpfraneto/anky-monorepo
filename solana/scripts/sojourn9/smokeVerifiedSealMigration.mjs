@@ -11,25 +11,25 @@ import { redactSecretValues } from "./redactSecrets.mjs";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
 const MIGRATION_017 = path.join(REPO_ROOT, "migrations", "017_mobile_solana_integration.sql");
-const MIGRATION_019_CREDIT_LEDGER = path.join(
+const MIGRATION_019_VERIFIED_SEAL = path.join(
   REPO_ROOT,
   "migrations",
-  "019_credit_ledger_entries.sql",
+  "019_mobile_verified_seal_receipts.sql",
 );
-const MIGRATION_020_VERIFIED_SEAL = path.join(
+const MIGRATION_020_HELIUS_WEBHOOK = path.join(
   REPO_ROOT,
   "migrations",
-  "020_mobile_verified_seal_receipts.sql",
+  "020_mobile_helius_webhook_events.sql",
 );
-const MIGRATION_021_HELIUS_WEBHOOK = path.join(
+const MIGRATION_021_HELIUS_SIGNATURE_DEDUPE = path.join(
   REPO_ROOT,
   "migrations",
-  "021_mobile_helius_webhook_events.sql",
+  "021_mobile_helius_webhook_signature_dedupe.sql",
 );
-const MIGRATION_022_HELIUS_SIGNATURE_DEDUPE = path.join(
+const MIGRATION_022_CREDIT_LEDGER = path.join(
   REPO_ROOT,
   "migrations",
-  "022_mobile_helius_webhook_signature_dedupe.sql",
+  "022_credit_ledger_entries.sql",
 );
 const BOOLEAN_FLAGS = new Set(["--keep"]);
 const VALUE_FLAGS = new Set([]);
@@ -49,10 +49,10 @@ async function main() {
 
   requireBinaries(REQUIRED_BINS);
   requireFile(MIGRATION_017);
-  requireFile(MIGRATION_019_CREDIT_LEDGER);
-  requireFile(MIGRATION_020_VERIFIED_SEAL);
-  requireFile(MIGRATION_021_HELIUS_WEBHOOK);
-  requireFile(MIGRATION_022_HELIUS_SIGNATURE_DEDUPE);
+  requireFile(MIGRATION_019_VERIFIED_SEAL);
+  requireFile(MIGRATION_020_HELIUS_WEBHOOK);
+  requireFile(MIGRATION_021_HELIUS_SIGNATURE_DEDUPE);
+  requireFile(MIGRATION_022_CREDIT_LEDGER);
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "anky-verified-migration-"));
   const dataDir = path.join(workDir, "pgdata");
@@ -138,14 +138,14 @@ async function runScenario({ createPartialVerifiedTable, database, port, socketD
     });
   }
 
-  await psqlFile({ database, file: MIGRATION_019_CREDIT_LEDGER, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_019_CREDIT_LEDGER, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_020_VERIFIED_SEAL, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_020_VERIFIED_SEAL, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_021_HELIUS_WEBHOOK, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_021_HELIUS_WEBHOOK, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_022_HELIUS_SIGNATURE_DEDUPE, port, socketDir });
-  await psqlFile({ database, file: MIGRATION_022_HELIUS_SIGNATURE_DEDUPE, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_019_VERIFIED_SEAL, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_019_VERIFIED_SEAL, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_020_HELIUS_WEBHOOK, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_020_HELIUS_WEBHOOK, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_021_HELIUS_SIGNATURE_DEDUPE, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_021_HELIUS_SIGNATURE_DEDUPE, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_022_CREDIT_LEDGER, port, socketDir });
+  await psqlFile({ database, file: MIGRATION_022_CREDIT_LEDGER, port, socketDir });
   const schema = await readSchema({ database, port, socketDir });
   assertSchema(schema);
   await assertInsertContract({ database, port, socketDir });
@@ -702,9 +702,9 @@ function printUsage() {
 Options:
   --keep  Keep the temporary Postgres data directory for manual inspection.
 
-This starts a disposable local Postgres cluster, applies migrations 017, 019_credit_ledger_entries,
-020_mobile_verified_seal_receipts, 021_mobile_helius_webhook_events, and
-022_mobile_helius_webhook_signature_dedupe,
+This starts a disposable local Postgres cluster, applies migrations 017, 019_mobile_verified_seal_receipts,
+020_mobile_helius_webhook_events, 021_mobile_helius_webhook_signature_dedupe, and
+022_credit_ledger_entries,
 checks clean and partial-existing-table scenarios, verifies public-only columns,
 constraints, indexes, signature dedupe, insert guards, and finalized-only score SQL,
 then removes the temp cluster.`);

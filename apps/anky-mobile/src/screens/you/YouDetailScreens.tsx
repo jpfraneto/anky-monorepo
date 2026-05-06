@@ -95,6 +95,11 @@ type LoomInfoProps = NativeStackScreenProps<RootStackParamList, "LoomInfo">;
 type IconName = "account" | "credits" | "exportData" | "loom" | "privacy";
 type RowVariant = "danger" | "highlight" | "normal";
 type ActionVariant = "danger" | "primary" | "secondary";
+type CreditHistoryStatus = "loading" | "ready" | "requires_account" | "unavailable";
+type CreditHistoryEntry = CreditLedgerEntry & {
+  optimistic?: boolean;
+  syncing?: boolean;
+};
 type CreditProductVisualState = "dimmed" | "idle" | "processing" | "success";
 type CreditTransferRun = {
   from: LayoutRectangle;
@@ -648,12 +653,21 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
   const [purchaseStatus, setPurchaseStatus] =
     useState<RevenueCatCreditStatus>(getRevenueCatCreditStatus());
-  const [ledgerEntries, setLedgerEntries] = useState<CreditLedgerEntry[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<CreditHistoryStatus>("loading");
+  const [ledgerEntries, setLedgerEntries] = useState<CreditHistoryEntry[]>([]);
   const [successProductId, setSuccessProductId] = useState<string | null>(null);
   const [transferRun, setTransferRun] = useState<CreditTransferRun | null>(null);
   const [heroLayout, setHeroLayout] = useState<LayoutRectangle | null>(null);
   const [packListLayout, setPackListLayout] = useState<LayoutRectangle | null>(null);
   const [cardLayouts, setCardLayouts] = useState<Record<string, LayoutRectangle>>({});
+  const pendingPurchaseSyncsRef = useRef<
+    Array<{
+      product: CreditProduct;
+      result: Extract<Awaited<ReturnType<typeof purchaseCreditsPackage>>, { status: "completed" }>;
+      transactionId: string;
+    }>
+  >([]);
+  const welcomeGiftAttemptedForUserRef = useRef<string | null>(null);
   const [storePackages, setStorePackages] = useState<
     Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>>
   >({});

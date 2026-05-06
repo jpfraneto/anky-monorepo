@@ -19,8 +19,8 @@ test("passes on the current Sojourn 9 launch privacy surface", async () => {
   const report = JSON.parse(result.stdout);
   assert.equal(report.ok, true);
   assert.equal(report.issues.length, 0);
-  assert.ok(report.checkedFiles.includes("migrations/019_credit_ledger_entries.sql"));
-  assert.ok(report.checkedFiles.includes("migrations/020_mobile_verified_seal_receipts.sql"));
+  assert.ok(report.checkedFiles.includes("migrations/019_mobile_verified_seal_receipts.sql"));
+  assert.ok(report.checkedFiles.includes("migrations/022_credit_ledger_entries.sql"));
   assert.ok(report.checkedFiles.includes("runbooks/devnet-0xx1-live-e2e-evidence.json"));
   assert.doesNotMatch(result.stdout, /secret-api-key|postgres:\/\/secret/);
 });
@@ -28,12 +28,12 @@ test("passes on the current Sojourn 9 launch privacy surface", async () => {
 test("rejects private columns in launch receipt migrations", async () => {
   const repoRoot = createMinimalRepo();
   fs.writeFileSync(
-    path.join(repoRoot, "migrations/019_credit_ledger_entries.sql"),
+    path.join(repoRoot, "migrations/022_credit_ledger_entries.sql"),
     "CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, private_input TEXT NOT NULL);",
     "utf8",
   );
   fs.writeFileSync(
-    path.join(repoRoot, "migrations/020_mobile_verified_seal_receipts.sql"),
+    path.join(repoRoot, "migrations/019_mobile_verified_seal_receipts.sql"),
     "CREATE TABLE mobile_verified_seal_receipts (id TEXT PRIMARY KEY, session_hash TEXT NOT NULL);",
     "utf8",
   );
@@ -133,23 +133,23 @@ function createMinimalRepo() {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "anky-privacy-guard-"));
   writeFile(
     repoRoot,
-    "migrations/019_credit_ledger_entries.sql",
-    "CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL, metadata_json TEXT);",
-  );
-  writeFile(
-    repoRoot,
-    "migrations/020_mobile_verified_seal_receipts.sql",
+    "migrations/019_mobile_verified_seal_receipts.sql",
     "CREATE TABLE mobile_verified_seal_receipts (id TEXT PRIMARY KEY, session_hash TEXT NOT NULL, proof_hash TEXT NOT NULL);",
   );
   writeFile(
     repoRoot,
-    "migrations/021_mobile_helius_webhook_events.sql",
+    "migrations/020_mobile_helius_webhook_events.sql",
     "CREATE TABLE mobile_helius_webhook_events (id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, payload_json TEXT NOT NULL);",
   );
   writeFile(
     repoRoot,
-    "migrations/022_mobile_helius_webhook_signature_dedupe.sql",
+    "migrations/021_mobile_helius_webhook_signature_dedupe.sql",
     "CREATE UNIQUE INDEX idx_mobile_helius_webhook_events_network_signature_unique ON mobile_helius_webhook_events(network, signature) WHERE signature IS NOT NULL;",
+  );
+  writeFile(
+    repoRoot,
+    "migrations/022_credit_ledger_entries.sql",
+    "CREATE TABLE credit_ledger_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL, metadata_json TEXT);",
   );
   writeFile(
     repoRoot,

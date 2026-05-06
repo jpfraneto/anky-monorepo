@@ -11,10 +11,10 @@ const BOOLEAN_FLAGS = new Set([]);
 const VALUE_FLAGS = new Set(["--repo-root"]);
 
 const SQL_FILES = [
-  "migrations/019_credit_ledger_entries.sql",
-  "migrations/020_mobile_verified_seal_receipts.sql",
-  "migrations/021_mobile_helius_webhook_events.sql",
-  "migrations/022_mobile_helius_webhook_signature_dedupe.sql",
+  "migrations/019_mobile_verified_seal_receipts.sql",
+  "migrations/020_mobile_helius_webhook_events.sql",
+  "migrations/021_mobile_helius_webhook_signature_dedupe.sql",
+  "migrations/022_credit_ledger_entries.sql",
 ];
 
 const OPERATOR_SCRIPTS = [

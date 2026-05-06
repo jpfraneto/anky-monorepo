@@ -33,13 +33,13 @@ const LOCAL_ARTIFACTS = [
   ["Proof handoff status checker", "solana/scripts/sojourn9/checkProofHandoff.mjs"],
   ["Secret redaction utility", "solana/scripts/sojourn9/redactSecrets.mjs"],
   ["Sojourn 9 privacy guard", "solana/scripts/sojourn9/privacyGuard.mjs"],
-  ["Credit ledger migration", "migrations/019_credit_ledger_entries.sql"],
-  ["Verified receipt migration", "migrations/020_mobile_verified_seal_receipts.sql"],
-  ["Helius webhook receipt migration", "migrations/021_mobile_helius_webhook_events.sql"],
+  ["Verified receipt migration", "migrations/019_mobile_verified_seal_receipts.sql"],
+  ["Helius webhook receipt migration", "migrations/020_mobile_helius_webhook_events.sql"],
   [
     "Helius webhook signature dedupe migration",
-    "migrations/022_mobile_helius_webhook_signature_dedupe.sql",
+    "migrations/021_mobile_helius_webhook_signature_dedupe.sql",
   ],
+  ["Credit ledger migration", "migrations/022_credit_ledger_entries.sql"],
   ["Verified receipt migration smoke", "solana/scripts/sojourn9/smokeVerifiedSealMigration.mjs"],
   ["Helius event indexer", "solana/scripts/indexer/ankySealIndexer.mjs"],
   ["Helius score snapshot auditor", "solana/scripts/indexer/auditScoreSnapshot.mjs"],
@@ -310,7 +310,7 @@ const SOURCE_CHECKS = [
   },
   {
     name: "Helius webhook migration has signature retry dedupe",
-    path: "migrations/022_mobile_helius_webhook_signature_dedupe.sql",
+    path: "migrations/021_mobile_helius_webhook_signature_dedupe.sql",
     required: [
       "idx_mobile_helius_webhook_events_network_signature_unique",
       "ON mobile_helius_webhook_events(network, signature)",
@@ -480,7 +480,7 @@ const HUMAN_GATES = [
   {
     gate: "target_backend_migration",
     reason:
-      "Migrations 019_credit_ledger_entries, 020_mobile_verified_seal_receipts, 021_mobile_helius_webhook_events, and 022_mobile_helius_webhook_signature_dedupe are prepared and smoke-tested locally, but they must be applied to the target backend database by an operator.",
+      "Migrations 019_mobile_verified_seal_receipts, 020_mobile_helius_webhook_events, 021_mobile_helius_webhook_signature_dedupe, and 022_credit_ledger_entries are prepared and smoke-tested locally, but they must be applied to the target backend database by an operator.",
   },
   {
     gate: "backend_verified_seal_chain_proof",
@@ -574,7 +574,7 @@ function main() {
           nextRequiredInputs: [
             "operator-run or attach a public audited fresh same-day devnet HashSeal -> VerifiedSeal evidence bundle for the target demo, using the writer-owned Core Loom and npm run seal/prove helpers",
             "verifier authority signing path approved by the human",
-            "target backend DATABASE_URL migrations 019_credit_ledger_entries, 020_mobile_verified_seal_receipts, 021_mobile_helius_webhook_events, and 022_mobile_helius_webhook_signature_dedupe applied by operator",
+            "target backend DATABASE_URL migrations 019_mobile_verified_seal_receipts, 020_mobile_helius_webhook_events, 021_mobile_helius_webhook_signature_dedupe, and 022_credit_ledger_entries applied by operator",
             "launch backend configured with ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF=true, private ANKY_SOLANA_RPC_URL, and public ANKY_PUBLIC_SOLANA_RPC_URL/EXPO_PUBLIC_SOLANA_RPC_URL",
             "HELIUS_API_KEY or Helius RPC URL configured outside Codex",
             "owned devnet Core Loom asset for ANKY_CORE_INTEGRATION_LOOM_ASSET integration test",

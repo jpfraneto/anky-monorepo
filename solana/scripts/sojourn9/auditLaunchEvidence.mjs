@@ -8,11 +8,11 @@ const DEFAULT_MAX_PARTICIPANTS = 3_456;
 const DEFAULT_REWARD_BPS = 800;
 const SCORE_FORMULA =
   "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)";
-const CREDIT_LEDGER_MIGRATION = "019_credit_ledger_entries";
+const CREDIT_LEDGER_MIGRATION = "022_credit_ledger_entries";
 const VERIFIED_SEAL_BACKEND_MIGRATIONS = [
-  "020_mobile_verified_seal_receipts",
-  "021_mobile_helius_webhook_events",
-  "022_mobile_helius_webhook_signature_dedupe",
+  "019_mobile_verified_seal_receipts",
+  "020_mobile_helius_webhook_events",
+  "021_mobile_helius_webhook_signature_dedupe",
 ];
 const SECONDS_PER_DAY = 86_400;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -384,10 +384,10 @@ function buildLaunchEvidenceTemplate() {
       url: "https://<public_backend_host>",
       requireVerifiedSealChainProof: true,
       migrationsApplied: [
-        "019_credit_ledger_entries",
-        "020_mobile_verified_seal_receipts",
-        "021_mobile_helius_webhook_events",
-        "022_mobile_helius_webhook_signature_dedupe",
+        "019_mobile_verified_seal_receipts",
+        "020_mobile_helius_webhook_events",
+        "021_mobile_helius_webhook_signature_dedupe",
+        "022_credit_ledger_entries",
       ],
     },
     helius: {
@@ -636,17 +636,17 @@ function normalizeMigrationSet(value) {
 function normalizeMigrationName(value) {
   const text = String(value ?? "").trim().replace(/\\/g, "/").split("/").pop() ?? "";
   const migration = text.replace(/\.sql$/i, "").toLowerCase();
-  if (/^0?19(?:_credit_ledger_entries)?$/.test(migration)) {
+  if (/^0?19(?:_mobile_verified_seal_receipts)?$/.test(migration)) {
+    return "019_mobile_verified_seal_receipts";
+  }
+  if (/^0?20(?:_mobile_helius_webhook_events)?$/.test(migration)) {
+    return "020_mobile_helius_webhook_events";
+  }
+  if (/^0?21(?:_mobile_helius_webhook_signature_dedupe)?$/.test(migration)) {
+    return "021_mobile_helius_webhook_signature_dedupe";
+  }
+  if (/^0?22(?:_credit_ledger_entries)?$/.test(migration)) {
     return CREDIT_LEDGER_MIGRATION;
-  }
-  if (/^0?20(?:_mobile_verified_seal_receipts)?$/.test(migration)) {
-    return "020_mobile_verified_seal_receipts";
-  }
-  if (/^0?21(?:_mobile_helius_webhook_events)?$/.test(migration)) {
-    return "021_mobile_helius_webhook_events";
-  }
-  if (/^0?22(?:_mobile_helius_webhook_signature_dedupe)?$/.test(migration)) {
-    return "022_mobile_helius_webhook_signature_dedupe";
   }
   return null;
 }

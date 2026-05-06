@@ -189,34 +189,46 @@ test("rejects missing finalized Score V1 and Helius audit markers", async () => 
   assert.ok(report.issues.includes("scoreSnapshot.participantCap must be 3456"));
 });
 
-test("requires VerifiedSeal backend migrations by current migration names", async () => {
-  const oldNumbering = publicEvidence({
+test("requires VerifiedSeal backend migrations by current DB-truth names", async () => {
+  const previousNumbering = publicEvidence({
     backend: {
       ...publicEvidence().backend,
       migrationsApplied: [
-        "019_mobile_verified_seal_receipts",
-        "020_mobile_helius_webhook_events",
-        "021_mobile_helius_webhook_signature_dedupe",
+        "019_credit_ledger_entries",
+        "020_mobile_verified_seal_receipts",
+        "021_mobile_helius_webhook_events",
+        "022_mobile_helius_webhook_signature_dedupe",
       ],
     },
   });
-  const oldNumberingPath = writeEvidence(oldNumbering);
-  const oldNumberingResult = await runNode([SCRIPT_PATH, "--evidence", oldNumberingPath]);
+  const previousNumberingPath = writeEvidence(previousNumbering);
+  const previousNumberingResult = await runNode([
+    SCRIPT_PATH,
+    "--evidence",
+    previousNumberingPath,
+  ]);
 
-  assert.equal(oldNumberingResult.code, 1);
-  const oldNumberingReport = JSON.parse(oldNumberingResult.stdout);
+  assert.equal(previousNumberingResult.code, 1);
+  const previousNumberingReport = JSON.parse(previousNumberingResult.stdout);
   assert.ok(
-    oldNumberingReport.issues.includes(
-      "backend.migrationsApplied must include 020_mobile_verified_seal_receipts",
+    previousNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 019_mobile_verified_seal_receipts",
     ),
   );
   assert.ok(
-    oldNumberingReport.issues.includes(
-      "backend.migrationsApplied must include 022_mobile_helius_webhook_signature_dedupe",
+    previousNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 020_mobile_helius_webhook_events",
     ),
   );
   assert.ok(
-    !oldNumberingReport.issues.includes("backend.migrationsApplied must include 019"),
+    previousNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 021_mobile_helius_webhook_signature_dedupe",
+    ),
+  );
+  assert.ok(
+    !previousNumberingReport.issues.includes(
+      "backend.migrationsApplied must include 022_credit_ledger_entries",
+    ),
   );
 
   const fullChainMissingCredit = publicEvidence({
@@ -224,9 +236,9 @@ test("requires VerifiedSeal backend migrations by current migration names", asyn
       ...publicEvidence().backend,
       fullMigrationChainApplied: true,
       migrationsApplied: [
-        "020_mobile_verified_seal_receipts",
-        "021_mobile_helius_webhook_events",
-        "022_mobile_helius_webhook_signature_dedupe",
+        "019_mobile_verified_seal_receipts",
+        "020_mobile_helius_webhook_events",
+        "021_mobile_helius_webhook_signature_dedupe",
       ],
     },
   });
@@ -241,7 +253,7 @@ test("requires VerifiedSeal backend migrations by current migration names", asyn
   const fullChainMissingCreditReport = JSON.parse(fullChainMissingCreditResult.stdout);
   assert.ok(
     fullChainMissingCreditReport.issues.includes(
-      "backend.migrationsApplied must include 019_credit_ledger_entries",
+      "backend.migrationsApplied must include 022_credit_ledger_entries",
     ),
   );
 });
@@ -274,10 +286,10 @@ function publicEvidence(overrides = {}) {
   const base = {
     backend: {
       migrationsApplied: [
-        "019_credit_ledger_entries",
-        "020_mobile_verified_seal_receipts",
-        "021_mobile_helius_webhook_events",
-        "022_mobile_helius_webhook_signature_dedupe",
+        "019_mobile_verified_seal_receipts",
+        "020_mobile_helius_webhook_events",
+        "021_mobile_helius_webhook_signature_dedupe",
+        "022_credit_ledger_entries",
       ],
       requireVerifiedSealChainProof: true,
       url: "https://anky.example",

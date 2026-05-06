@@ -267,7 +267,7 @@ function buildChecklist({
     remainingManualGates: [
       "writer keypair must own the supplied Core Loom and have devnet SOL",
       "verifier authority keypair/custody must be approved by the human",
-      "backend migrations 020_mobile_verified_seal_receipts, 021_mobile_helius_webhook_events, and 022_mobile_helius_webhook_signature_dedupe must be applied before backend metadata posts; apply 019_credit_ledger_entries as part of the full backend migration chain",
+      "backend migrations 019_mobile_verified_seal_receipts, 020_mobile_helius_webhook_events, and 021_mobile_helius_webhook_signature_dedupe must be applied before backend metadata posts; apply 022_credit_ledger_entries as part of the full backend migration chain",
       "launch backend must set ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF=true",
       "Helius API key or Helius RPC URL must be configured outside Codex",
       "mobile app must be run against the resulting devnet backend/indexed state",

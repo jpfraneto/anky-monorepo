@@ -1,5 +1,5 @@
 -- Dedupe Helius webhook retries by public Solana transaction signature.
--- Payloads without a valid signature still fall back to migration 021's
+-- Payloads without a valid signature still fall back to migration 020's
 -- network/payload_hash uniqueness.
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_helius_webhook_events_network_signature_unique
