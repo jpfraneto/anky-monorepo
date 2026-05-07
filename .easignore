@@ -1,0 +1,67 @@
+# EAS archives the Git repository root for this monorepo build.
+# Keep the remote build context scoped to the Expo app.
+
+# Ignore root entries by default, then reopen the mobile app path.
+/*
+!/.easignore
+!/apps
+/apps/*
+!/apps/anky-mobile
+!/apps/anky-mobile/**
+
+# Mobile dependencies and generated build output
+apps/anky-mobile/node_modules/
+apps/anky-mobile/.expo/
+apps/anky-mobile/dist/
+apps/anky-mobile/web-build/
+apps/anky-mobile/coverage/
+apps/anky-mobile/ios/
+apps/anky-mobile/android/
+apps/anky-mobile/expo-env.d.ts
+apps/anky-mobile/*.tsbuildinfo
+
+# Mobile env and signing material
+apps/anky-mobile/.env
+apps/anky-mobile/.env.*
+!apps/anky-mobile/.env.example
+apps/anky-mobile/*.jks
+apps/anky-mobile/*.keystore
+apps/anky-mobile/*.p8
+apps/anky-mobile/*.p12
+apps/anky-mobile/*.pem
+apps/anky-mobile/*.key
+apps/anky-mobile/*.mobileprovision
+apps/anky-mobile/*service-account*.json
+apps/anky-mobile/*service_account*.json
+
+# Mobile repo-only docs and tests
+apps/anky-mobile/AGENTS.md
+apps/anky-mobile/ANKY_SOJOURN9_ALIGNMENT_AUDIT.md
+apps/anky-mobile/README.md
+apps/anky-mobile/docs/
+apps/anky-mobile/src/**/*.test.ts
+apps/anky-mobile/src/**/*.test.tsx
+apps/anky-mobile/src/**/*.spec.ts
+apps/anky-mobile/src/**/*.spec.tsx
+
+# Mobile asset sources and unused media
+apps/anky-mobile/assets/ChatGPT Image*.png
+apps/anky-mobile/assets/2c6f08ab-99b3-4fed-b8c2-5dbccf713ae6.png
+apps/anky-mobile/assets/8c506da0-cec8-4f8c-a7d5-90d1f2717f0e.jpeg
+apps/anky-mobile/assets/904f3d62-eef8-44b4-abc7-cefa45e49a75.png
+apps/anky-mobile/assets/a16d6617-4f75-4357-934e-201c942dd2d4.png
+apps/anky-mobile/assets/ac398260-6dde-4da8-8091-e836b8fafea8.png
+apps/anky-mobile/assets/d6feff37-9db1-49d3-8efc-064ea2f60048.png
+apps/anky-mobile/assets/*.pdf
+apps/anky-mobile/assets/anky-logo-source.png
+apps/anky-mobile/assets/logo-*.png
+apps/anky-mobile/assets/map-background.png
+apps/anky-mobile/assets/feather.png
+
+# Animation source/previews. Runtime imports use normalized frames and thread frames.
+apps/anky-mobile/assets/anky-animation/README.md
+apps/anky-mobile/assets/anky-animation/assets/anky/anky-sprite.png
+apps/anky-mobile/assets/anky-animation/assets/anky/atlas.json
+apps/anky-mobile/assets/anky-animation/assets/anky/frames/contact-sheet.*
+apps/anky-mobile/assets/anky-animation/assets/anky/frames/raw/
+apps/anky-mobile/assets/anky-animation/assets/anky/previews/
