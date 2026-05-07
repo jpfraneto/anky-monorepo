@@ -3,23 +3,23 @@
 **Status:** draft v1 · updated 2026-05-06 for Sojourn 9 Solana path
 **Supersedes:** sealed-write pipeline (`/api/sealed-write`, Nitro enclave)
 
-This document is the contract between the iOS app and the Anky backend for the local-first architecture. Both sides implement to this spec. Any behavior not described here is out of scope and should not be assumed.
+This document is the contract between the mobile app and backend for the current local-first mobile proof path. It must not be used as a global privacy claim for every legacy web/backend surface in the monorepo. Older tables and routes can contain plaintext or derived writing content and are outside this launch promise unless explicitly migrated and audited.
 
 ---
 
 ## The `.anky` session format
 
-A writing session is a string where each line is one keystroke: `{delta_ms} {character}`. The first line's delta is `0`. Characters are literal except typed spaces, which are encoded as the exact `SPACE` token in the current mobile/SP1 protocol. No enter, no backspace — only forward keystrokes. The SHA-256 of this string's UTF-8 bytes is the `session_hash`. See `https://anky.app/spec.md` for full details.
+A writing session is a string where each line is one keystroke: `{delta_ms} {character}`. The first line stores the session start epoch milliseconds. Characters are literal except typed spaces, which are encoded as the exact `SPACE` token in the current mobile/SP1 protocol. No enter, no backspace - only forward keystrokes. The session hash is the SHA-256 of exact `.anky` UTF-8 bytes. See `https://anky.app/spec.md` for full details.
 
-This protocol transmits and stores the raw `.anky` string (or its derived artifacts), not flattened plaintext. Plaintext is flattened only transiently server-side for the Claude call.
+The proof, seal, indexing, and scoring path persists public metadata only: wallet, Loom, UTC day, session hash, signatures, proof hash, verifier, protocol version, slot/block time, and status. Reflection or proof processing may accept raw `.anky` only as explicit opt-in transient process input. Reconstructed prose is not a valid hashing input.
 
 ---
 
 ## Principles
 
 1. **The iOS device is the source of truth for writing sessions.** The server is a derived-artifact store and a coordination point for Solana + image generation.
-2. **The backend never persists plaintext writing from authenticated users.** Not in databases, not in logs, not in error messages, not in request traces.
-3. **Plaintext may transit server RAM** only for the duration of a single Claude API call, then is discarded. This is the same trust model as any AI chat app (Hailee, Claude.ai, ChatGPT).
+2. **The current mobile proof/seal/indexing path must not persist plaintext writing.** Not in proof jobs, seal receipt rows, verified receipt rows, Helius webhook rows, score snapshots, logs, error messages, or request traces.
+3. **Plaintext may transit server RAM** only when the user explicitly asks for reflection or proof processing. It must be treated as transient request memory and must not become canonical scoring data.
 4. **A writing session is never lost because of the network.** Local persistence is unconditional. Server submit is best-effort with unbounded retry.
 5. **Simplicity is a feature.** If the privacy policy can't be explained in one paragraph, the architecture is wrong.
 
@@ -27,7 +27,9 @@ This protocol transmits and stores the raw `.anky` string (or its derived artifa
 
 ## What the server stores
 
-For every authenticated anky, exactly these fields:
+For every authenticated mobile proof/seal record, the proof and indexing system stores public metadata only. Reflection records may store derived artifacts such as titles, reflections, image prompts, and image URLs, but not raw `.anky` plaintext.
+
+For a derived-artifact anky row, the intended non-plaintext fields are:
 
 | Field | Type | Source |
 |---|---|---|
@@ -46,12 +48,14 @@ For every authenticated anky, exactly these fields:
 | `solana_signature` | text | Anky Seal Program `seal_anky` tx when sealed |
 | `created_at` | timestamptz | server |
 
-## What the server never stores
+## What the current proof/indexing path never stores
 
 - The writing plaintext.
 - Any derivative that could reconstruct the writing (embeddings of the raw text, first-N-characters, etc.).
-- The Claude request body after the response is returned.
+- Raw `.anky` witness bytes after proof processing completes.
 - Any log line that contains the writing.
+
+Legacy web/session tables are not covered by this guarantee. Public privacy copy must say "current mobile proof path" or "proof/indexing path", not "Anky never stores writing" globally.
 
 ---
 
@@ -81,7 +85,7 @@ For every authenticated anky, exactly these fields:
 2. Verify `wallet_signature` is a valid Solana signature of `session_hash` by the user's wallet.
 3. Recompute SHA-256 of the `session` UTF-8 bytes, assert it equals `session_hash`. Reject with `400` if mismatch.
 4. Check idempotency: if an anky with this `session_hash` already exists for this wallet, return its existing derived artifacts as a complete SSE stream and exit.
-5. Flatten the `.anky` keystroke stream into plaintext (extract the character column) and open a streaming Claude call with the plaintext. Both variables live only in this function's stack frame.
+5. For optional reflection only, flatten the `.anky` keystroke stream into plaintext and open a streaming Claude call with the plaintext. Both variables must live only in transient request memory.
 6. Stream events to client (see below).
 7. On completion: generate image via existing pipeline (R2 upload), optionally record public Anky Seal Program metadata, persist derived artifacts, emit terminal events.
 8. Drop the session + plaintext from memory. Do not log them. Do not include them in error reports.
@@ -151,7 +155,7 @@ An error during `claude` does NOT persist anything. The client retries the whole
 
 ## Unauthenticated Web Users
 
-Unchanged. The `/write` plaintext path for unauthenticated web sessions remains. This legacy web-session writing is transient by design: it lives in request memory, generates a reflection + image, and is never persisted anywhere. This path does not need local-first treatment because there is no durable user session to return to later.
+Legacy `/write` web-session behavior is outside the current mobile proof launch scope. Do not use it to support public local-first or plaintext-free claims until it has been separately audited against the active code and database.
 
 ## Farcaster miniapp users
 
@@ -173,11 +177,11 @@ These properties must hold on the iOS app and will be verified by the iOS implem
 
 ---
 
-## Privacy policy (to be shown to users)
+## Launch-safe privacy copy
 
 Short version:
 
-> Your writing lives on your phone. When you finish an 8-minute session, we send the text to Claude to generate a reflection and image prompt — exactly like any other AI app — and immediately forget it. We store the reflection, the image, and a cryptographic hash that proves your session happened. We never store your writing.
+> Your writing is local-first in the current mobile proof path. The seal, proof, indexing, and scoring system stores public metadata like wallet, Loom, UTC day, session hash, signatures, and proof hash, not plaintext. If you request reflection or proof processing, plaintext may be handled transiently for that request. Legacy web paths are outside this promise.
 
 Full policy will reference this doc as the implementation backing the promise.
 

@@ -9,7 +9,9 @@ It is a 96-day writing pilgrimage divided into 12 regions of 8 days.
 It is entered through the iOS app.
 It is bounded by exactly 3,456 vessels.
 
-Each vessel is a soulbound cNFT.
+Launch implementation note: in the active Sojourn 9 launch path, a vessel is represented by Metaplex Core Loom ownership. Older Bubblegum/cNFT language in historical Sojourn 9 scaffolds is noncanonical for this launch until explicitly reimplemented and tested.
+
+Each vessel is a season access artifact.
 One wallet may steward at most one vessel.
 
 The center is daily writing, not trading, spectacle, or social performance.
@@ -82,8 +84,8 @@ There is no retroactive sealing and no future sealing.
 
 Sojourn 9 contains exactly 3,456 canonical vessels.
 
-Each valid vessel is a cNFT in the canonical Sojourn 9 collection.
-Each valid vessel is soulbound for the duration of the season.
+Each valid vessel is a Loom in the canonical Sojourn 9 Metaplex Core collection.
+Each valid vessel is intended as a season-bound access artifact for the duration of the season.
 
 A wallet may steward at most one valid vessel.
 Once claimed, the vessel remains bound to its claiming wallet for the season.

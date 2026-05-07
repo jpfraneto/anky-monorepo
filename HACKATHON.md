@@ -87,7 +87,7 @@ Consumer apps that DID win: Banger (tweet marketplace, 1st Consumer Renaissance)
 - **Farcaster miniapp** live (chat interface, mirror generation, writing overlay)
 - **Image generation pipeline** (Gemini → Flux/ComfyUI on local 4090s)
 - **Text inference chain** (local Qwen 27B → Claude → OpenRouter fallback)
-- **8 kingdoms** cycling through chakras across 96-day sojourns
+- **Sojourn 9 structure**: 96 days as 12 regions of 8 days, with 8 kingdoms/chakras/colors as the inner symbolic cycle
 
 Not claimed yet: mainnet deployment, direct on-chain SP1 verification, production Helius webhook creation, or a completed live devnet `seal -> prove -> record verified -> index -> score` run.
 

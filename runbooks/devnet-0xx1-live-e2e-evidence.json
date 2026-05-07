@@ -57,13 +57,13 @@
       "sealedEvents": 1,
       "verifiedEvents": 1,
       "scoreRows": 1,
-      "totalScore": 2,
+      "totalScore": 3,
       "score": {
         "wallet": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
         "uniqueSealDays": 1,
         "verifiedSealDays": 1,
         "streakBonus": 0,
-        "score": 2,
+        "score": 3,
         "sealedDays": [
           20579
         ]

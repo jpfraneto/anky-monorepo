@@ -57,7 +57,7 @@ Use `--include-non-finalized` only for live UI reconciliation. Final reward snap
 Expected score rule:
 
 ```text
-score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)
+score = unique_seal_days + (2 * verified_seal_days) + streak_bonus
 ```
 
 Reward participant selection is capped at 3,456 wallets by default. The indexer sorts by `score` descending, then wallet address ascending for deterministic ties, and only capped participant rows receive allocation. Use `--max-participants <n>` only for tests or a future published season rule.
@@ -120,7 +120,7 @@ node solana/scripts/indexer/auditScoreSnapshot.mjs \
   --snapshot /tmp/anky-live-devnet-signature-score-snapshot-20579.json
 ```
 
-Observed on 2026-05-06: the known-signature snapshot indexed `2` finalized events, one sealed day, one verified day, and score `2` for wallet `5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q`; the score auditor returned `ok: true`.
+Observed on 2026-05-06: the known-signature snapshot indexed `2` finalized events, one sealed day, one verified day, and score `3` under the current canonical formula for wallet `5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q`; the score auditor returned `ok: true`.
 
 After the target backend has `019_mobile_verified_seal_receipts`, `020_mobile_helius_webhook_events`, and `021_mobile_helius_webhook_signature_dedupe` applied, plus `022_credit_ledger_entries` if applying the full backend chain, and the indexer secret configured outside Codex, post only public seal/verified metadata from the same finalized transaction pair:
 

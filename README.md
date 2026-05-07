@@ -1,5 +1,18 @@
 # anky
 
+## Sojourn 9 launch scope
+
+This root README describes the broad historical Anky monorepo. It includes legacy web, EVM/Base, x402, facilitator, AI marketplace, and training surfaces that are not the current 3-day Sojourn 9 launch claim set.
+
+For launch claims, use:
+
+- `docs/anky-system/ANKY_PUBLIC_LAUNCH_CLAIMS.md`
+- `docs/anky-system/ANKY_TECHNICAL_SOURCE_OF_TRUTH.md`
+- `docs/anky-system/ANKY_3_DAY_LAUNCH_GAP_AUDIT.md`
+- `runbooks/sojourn9-mainnet-launch-checklist.md`
+
+Current Sojourn 9 public framing is narrower: mobile `.anky` writing, SHA-256 over exact `.anky` UTF-8 bytes, Metaplex Core Loom ownership, Anky Seal Program hash seals, SP1-enabled off-chain proof, verifier-authority-attested `VerifiedSeal`, and finalized public-metadata indexing. Do not infer mainnet deployment, direct on-chain SP1 verification, global plaintext-free storage, or ready `$ANKY` distribution from this README.
+
 Anky is a daily practice for unedited thought.
 
 Users write for 8 minutes without stopping. When a session becomes an anky, the system turns that writing into a reflection, an image, a personalized meditation, and a mood-matched breathwork session. Over time it builds memory, supports mobile clients and agent workflows, and can connect people with human facilitators when AI is not enough.

@@ -16,6 +16,7 @@
     a { color:inherit; text-decoration:none; }
     button { font:inherit; }
     img { max-width:100%; display:block; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .wrap { width:min(1180px,calc(100vw - 40px)); margin:0 auto; }
     .site-header { position:sticky; top:0; z-index:20; backdrop-filter:blur(18px); background:linear-gradient(180deg,rgba(6,8,18,.86),rgba(6,8,18,.56)); border-bottom:1px solid rgba(240,191,114,.1); }
     .nav { display:flex; justify-content:space-between; align-items:center; gap:22px; min-width:0; min-height:82px; }
@@ -185,6 +186,20 @@
     .final-cta-content { position:relative; max-width:620px; }
     .final-cta h2 { max-width:620px; color:var(--cream); }
     .final-cta p { max-width:560px; margin:18px 0 30px; color:var(--muted); font-size:18px; line-height:1.55; }
+    .download-modal { position:fixed; inset:0; z-index:2000; display:none; place-items:center; padding:24px; }
+    .download-modal.is-open,.download-modal:target { display:grid; }
+    .download-modal-backdrop { position:absolute; inset:0; background:rgba(3,5,12,.78); backdrop-filter:blur(14px); }
+    .download-modal-panel { position:relative; width:min(560px,100%); padding:34px; border:1px solid rgba(240,191,114,.32); border-radius:28px; background:linear-gradient(180deg,rgba(18,25,52,.98),rgba(7,9,21,.96)); box-shadow:0 34px 120px rgba(0,0,0,.58),0 0 42px rgba(124,60,255,.18); overflow:hidden; }
+    .download-modal-panel:before { content:""; position:absolute; inset:-32% -28% auto auto; width:260px; height:260px; border-radius:50%; background:radial-gradient(circle,rgba(240,191,114,.18),transparent 68%); pointer-events:none; }
+    .download-modal-close { position:absolute; top:16px; right:16px; width:42px; height:42px; display:grid; place-items:center; border:1px solid rgba(240,191,114,.22); border-radius:50%; background:rgba(255,248,231,.06); color:var(--gold-soft); font-size:24px; line-height:1; cursor:pointer; }
+    .download-modal-close:hover { background:rgba(240,191,114,.12); color:var(--cream); }
+    .download-modal h2 { position:relative; margin:0; max-width:410px; font-size:44px; line-height:1.04; color:var(--cream); }
+    .download-modal p { position:relative; margin:16px 0 0; color:var(--muted); font-size:17px; line-height:1.55; }
+    .launch-countdown { position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:28px; }
+    .launch-countdown div { min-width:0; padding:16px 8px 14px; border:1px solid rgba(240,191,114,.2); border-radius:18px; background:rgba(255,248,231,.06); text-align:center; }
+    .launch-countdown strong { display:block; color:var(--gold-soft); font-family:Georgia,"Times New Roman",serif; font-size:36px; line-height:1; font-weight:500; font-variant-numeric:tabular-nums; }
+    .launch-countdown span { display:block; margin-top:8px; color:var(--soft); font-size:12px; font-weight:850; letter-spacing:0; text-transform:uppercase; }
+    .download-modal-time { color:var(--gold-soft) !important; font-size:14px !important; font-weight:800; }
     footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:14px; padding:30px 0 46px; color:var(--soft); font-size:13px; }
     @media (max-width:1040px) {
       .hero { grid-template-columns:1fr; min-height:auto; padding-top:44px; }
@@ -239,6 +254,11 @@
       .archive-tools,.desktop-demo-link { display:none; }
       .writing-open .last-word { font-size:96px; }
       .reveal-text { max-height:48dvh; }
+      .download-modal { padding:14px; align-items:end; }
+      .download-modal-panel { padding:26px 18px 20px; border-radius:24px; }
+      .download-modal h2 { padding-right:42px; font-size:34px; }
+      .launch-countdown { grid-template-columns:repeat(2,1fr); gap:8px; }
+      .launch-countdown strong { font-size:32px; }
     }
     @media (max-width:420px) {
       h1 { font-size:43px; }
@@ -262,7 +282,7 @@
           <a href="#how">how it works</a>
           <a href="#privacy">privacy</a>
           <a href="#download">download app</a>
-          <a href="{{ install_url | default(value='/mobile') }}" class="button primary small">download app</a>
+          <a href="#mobile-launch" class="button primary small mobile-download-trigger">download app</a>
         </div>
         <details class="mobile-menu">
           <summary class="menu-button" aria-label="Open menu"><span></span><span></span><span></span></summary>
@@ -284,7 +304,7 @@
           <h1>write for 8 <br class="mobile-only">minutes. listen to <br class="mobile-only">yourself again.</h1>
           <p>Anky is a private writing ritual. No editing. No performance. Just 8 minutes to let what is alive in you come through — and a gentle mirror that helps you see what was there.</p>
           <div class="hero-actions">
-            <a class="button primary" href="{{ install_url | default(value='/mobile') }}">download the app</a>
+            <a class="button primary mobile-download-trigger" href="#mobile-launch">download the app</a>
             <a class="button secondary" href="#write">write 8 minutes</a>
           </div>
           <div class="hero-note">private by default · your writing stays yours</div>
@@ -347,7 +367,7 @@
             <h2>your first 8 credits are a gift</h2>
             <p>Install Anky and receive 8 free credits to try the mirror before paying anything.</p>
           </div>
-          <a class="button primary" href="{{ install_url | default(value='/mobile') }}">download app</a>
+          <a class="button primary mobile-download-trigger" href="#mobile-launch">download app</a>
         </div>
       </section>
       <section class="landing-section" id="privacy">
@@ -380,15 +400,37 @@
         <div class="final-cta-content">
           <h2>open the loom. write what moves.</h2>
           <p>Download the app and begin with your first 8-minute session.</p>
-          <div class="hero-actions" style="margin-top:0;"><a class="button primary" href="{{ install_url | default(value='/mobile') }}">download the mobile app</a><a class="button secondary desktop-demo-link" href="#write">try the writing demo</a></div>
+          <div class="hero-actions" style="margin-top:0;"><a class="button primary mobile-download-trigger" href="#mobile-launch">download the mobile app</a><a class="button secondary desktop-demo-link" href="#write">try the writing demo</a></div>
         </div>
       </section>
     </main>
     <footer><span>© Anky, Inc.</span><span>The writing is the seed. Everything else is fruit.</span></footer>
   </div>
+  <div class="download-modal" id="mobile-launch" aria-hidden="true">
+    <div class="download-modal-backdrop" data-mobile-download-close></div>
+    <section class="download-modal-panel" role="dialog" aria-modal="true" aria-labelledby="mobileLaunchTitle" aria-describedby="mobileLaunchDescription">
+      <a class="download-modal-close" href="#download" role="button" aria-label="Close mobile launch countdown" data-mobile-download-close>×</a>
+      <h2 id="mobileLaunchTitle">anky opens in:</h2>
+      <p id="mobileLaunchDescription" class="sr-only">Countdown to May 11, 2026 at 00:00 UTC.</p>
+      <div class="launch-countdown" aria-label="Countdown to May 11, 2026 at 00:00 UTC">
+        <div><strong id="launchDays">0</strong><span>days</span></div>
+        <div><strong id="launchHours">00</strong><span>hours</span></div>
+        <div><strong id="launchMinutes">00</strong><span>minutes</span></div>
+        <div><strong id="launchSeconds">00</strong><span>seconds</span></div>
+      </div>
+      <p class="download-modal-time" id="launchStatusText" hidden></p>
+    </section>
+  </div>
   <script>
-    const target = new Date('2026-05-08T00:00:00Z').getTime();
+    const target = new Date('2026-05-11T00:00:00Z').getTime();
     const countdownText = document.getElementById('countdownText');
+    const mobileLaunchModal = document.getElementById('mobile-launch');
+    const launchDaysEl = document.getElementById('launchDays');
+    const launchHoursEl = document.getElementById('launchHours');
+    const launchMinutesEl = document.getElementById('launchMinutes');
+    const launchSecondsEl = document.getElementById('launchSeconds');
+    const launchStatusTextEl = document.getElementById('launchStatusText');
+    let mobileLaunchLastFocus = null;
     const phone = document.getElementById('phoneDemo');
     const screenEl = phone.querySelector('.screen');
     const lastWordEl = document.getElementById('lastWord');
@@ -424,7 +466,53 @@
     const lineBreak = String.fromCharCode(10);
     const archiveKey = 'anky_landing_archive';
     const state = { active:false, started:false, closed:false, finishedAsAnky:false, savedToArchive:false, rawText:'', currentWord:'', lastChar:'', threadText:'', ankyLines:[], startTime:0, lastKeyTime:0, lastInputAt:0, tick:null, silenceTimeout:null };
-    function countdown() { let diff = target - Date.now(); if (diff <= 0) { countdownText.textContent = 'mint is live now'; return; } const d = Math.floor(diff / 86400000); diff = diff - d * 86400000; const h = Math.floor(diff / 3600000); diff = diff - h * 3600000; const m = Math.floor(diff / 60000); diff = diff - m * 60000; const s = Math.floor(diff / 1000); countdownText.textContent = d + 'd ' + String(h).padStart(2,'0') + 'h ' + String(m).padStart(2,'0') + 'm ' + String(s).padStart(2,'0') + 's'; }
+    function countdown() {
+      let diff = target - Date.now();
+      if (diff <= 0) {
+        countdownText.textContent = 'mobile app launch is live';
+        launchDaysEl.textContent = '0';
+        launchHoursEl.textContent = '00';
+        launchMinutesEl.textContent = '00';
+        launchSecondsEl.textContent = '00';
+        launchStatusTextEl.textContent = 'The May 11 UTC launch window is open.';
+        return;
+      }
+      const d = Math.floor(diff / 86400000);
+      diff = diff - d * 86400000;
+      const h = Math.floor(diff / 3600000);
+      diff = diff - h * 3600000;
+      const m = Math.floor(diff / 60000);
+      diff = diff - m * 60000;
+      const s = Math.floor(diff / 1000);
+      const hh = String(h).padStart(2,'0');
+      const mm = String(m).padStart(2,'0');
+      const ss = String(s).padStart(2,'0');
+      countdownText.textContent = d + 'd ' + hh + 'h ' + mm + 'm ' + ss + 's';
+      launchDaysEl.textContent = String(d);
+      launchHoursEl.textContent = hh;
+      launchMinutesEl.textContent = mm;
+      launchSecondsEl.textContent = ss;
+      launchStatusTextEl.textContent = 'May 11, 2026 · 00:00 UTC';
+    }
+    function openMobileLaunchModal(event) {
+      if (event) event.preventDefault();
+      countdown();
+      mobileLaunchLastFocus = document.activeElement;
+      mobileLaunchModal.classList.add('is-open');
+      mobileLaunchModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      const closeButton = mobileLaunchModal.querySelector('.download-modal-close');
+      if (closeButton) closeButton.focus();
+    }
+    function closeMobileLaunchModal(event) {
+      if (event) event.preventDefault();
+      mobileLaunchModal.classList.remove('is-open');
+      mobileLaunchModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      if (window.location.hash === '#mobile-launch' && window.history && window.history.replaceState) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      if (mobileLaunchLastFocus && mobileLaunchLastFocus.focus) mobileLaunchLastFocus.focus();
+    }
+    function mobileLaunchModalOpen() { return mobileLaunchModal && (mobileLaunchModal.classList.contains('is-open') || window.location.hash === '#mobile-launch'); }
     function safe(str) { return str.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;'); }
     function encodeAnkyChar(char) { return char === ' ' ? 'SPACE' : char; }
     function decodeAnkyChar(token) { return token === 'SPACE' ? ' ' : token; }
@@ -579,11 +667,18 @@
     function rejected(key) { return ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter','Tab'].includes(key); }
     function interactiveTarget(target) { return target && target.closest && target.closest('a,button,input,textarea,select,summary,[contenteditable="true"]'); }
     function writableKey(event) { if (event.metaKey || event.ctrlKey || event.altKey) return false; if (rejected(event.key) || event.key === 'Escape') return false; return event.key.length === 1; }
+    document.querySelectorAll('.mobile-download-trigger').forEach(function(link){ link.addEventListener('click', openMobileLaunchModal); });
+    document.querySelectorAll('[data-mobile-download-close]').forEach(function(el){ el.addEventListener('click', closeMobileLaunchModal); });
     phone.addEventListener('click', activate); writeAgainBtn.addEventListener('click', resetDemo); closeDemoBtn.addEventListener('click', closeModal); copyTextBtn.addEventListener('click', function(){ copy(state.rawText, 'raw text'); }); copyAnkyBtn.addEventListener('click', function(){ copy(rawAnky(), '.anky'); }); exportArchiveBtn.addEventListener('click', exportArchive); exportArchiveTopBtn.addEventListener('click', exportArchive);
     nativeInputEl.addEventListener('beforeinput', function(event){ if (!state.active || state.closed) return; const type = event.inputType || ''; if (type.indexOf('delete') === 0 || type === 'insertFromPaste' || type === 'insertLineBreak') event.preventDefault(); });
     nativeInputEl.addEventListener('input', function(){ if (!state.active || state.closed) { nativeInputEl.value = ''; return; } const value = nativeInputEl.value.replace(/\n/g, ' '); nativeInputEl.value = ''; Array.from(value).forEach(acceptChar); });
     document.addEventListener('paste', function(event){ if (!state.active || state.closed) return; event.preventDefault(); });
     document.addEventListener('keydown', function(event){
+      if (mobileLaunchModalOpen()) {
+        if (event.key === 'Escape') { event.preventDefault(); closeMobileLaunchModal(); }
+        if (event.key === 'Tab') { event.preventDefault(); mobileLaunchModal.querySelector('.download-modal-close').focus(); }
+        return;
+      }
       if (!state.active) {
         if (interactiveTarget(event.target) || !writableKey(event)) return;
         event.preventDefault();
