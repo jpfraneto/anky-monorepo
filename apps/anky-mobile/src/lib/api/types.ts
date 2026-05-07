@@ -153,6 +153,116 @@ export type MobileSealScoreResponse = {
   wallet: string;
 };
 
+export type ProofStatus =
+  | "none"
+  | "sealed"
+  | "queued"
+  | "proving"
+  | "syncing"
+  | "backfill_required"
+  | "confirmed"
+  | "finalized"
+  | "pending"
+  | "processed"
+  | "failed"
+  | "unavailable";
+
+export type MobileSealPointsEntry = {
+  loomId: string;
+  proofHash?: string;
+  proofPoints: number;
+  proofStatus: ProofStatus;
+  proofTxSignature?: string;
+  provedAt?: string;
+  sealPoints: number;
+  sealSignature: string;
+  sealStatus: string;
+  sealedAt: string;
+  sessionHash: string;
+  totalPoints: number;
+  utcDay: number;
+};
+
+export type MobileSealPointsHistory = {
+  entries: MobileSealPointsEntry[];
+  formula: string;
+  network: string;
+  score: number;
+  streakBonus: number;
+  uniqueSealDays: number;
+  verifiedSealDays: number;
+  wallet: string;
+};
+
+export type MobileSealProofRequest = {
+  coreCollection?: string;
+  loomAsset?: string;
+  network?: "devnet" | "mainnet-beta";
+  rawAnky: string;
+  sealSignature: string;
+  sessionHash: string;
+  utcDay: number;
+  wallet: string;
+};
+
+export type MobileSealProofAcceptedResponse = {
+  jobId: string;
+  pollAfterMs: number;
+  sessionHash: string;
+  status: "proving";
+  utcDay: number;
+  wallet: string;
+};
+
+export type MobileSealProofFinalizedResponse = {
+  proofHash: string;
+  proofTxSignature: string;
+  sessionHash: string;
+  status: "finalized";
+  utcDay: number;
+  wallet: string;
+};
+
+export type MobileSealProofUnavailableResponse = {
+  message: string;
+  status: "unavailable";
+};
+
+export type MobileSealProofSyncingResponse = {
+  message: string;
+  pollAfterMs: number;
+  proofHash?: string;
+  sessionHash: string;
+  status: "syncing" | "backfill_required";
+  utcDay: number;
+  verifiedSeal?: string;
+  wallet: string;
+};
+
+export type MobileSealProofResponse =
+  | MobileSealProofAcceptedResponse
+  | MobileSealProofFinalizedResponse
+  | MobileSealProofSyncingResponse
+  | MobileSealProofUnavailableResponse;
+
+export type MobileSealProofJob = {
+  jobId: string;
+  message?: string;
+  proofHash?: string;
+  proofTxSignature?: string;
+  sessionHash: string;
+  status:
+    | "queued"
+    | "proving"
+    | "syncing"
+    | "backfill_required"
+    | "finalized"
+    | "failed"
+    | "unavailable";
+  utcDay: number;
+  wallet: string;
+};
+
 export type MobileSolanaConfigResponse = {
   cluster: "devnet" | "mainnet-beta";
   collectionUri: string;

@@ -77,6 +77,7 @@ import {
   type AnkySessionSummary,
 } from "../../lib/sojourn";
 import { getSelectedLoom, shortAddress, type SelectedLoom } from "../../lib/solana/loomStorage";
+import type { MobileSealPointsHistory } from "../../lib/api/types";
 import {
   hasThreadProcessingConsent,
   markThreadProcessingConsent,
@@ -254,25 +255,25 @@ export function AccountScreen({ navigation }: AccountProps) {
             title="export wallet"
           />
         ) : null}
-    
+
       </View>
 
       <View style={styles.actions}>
-        <YouActionButton
-          label={connected ? "manage login" : "log in / connect"}
-          onPress={() =>
-            openAuthModal({
-              reason: "account features are optional. writing stays local.",
-            })
-          }
-        />
+
         {connected ? (
           <YouActionButton
-            label="logout / disconnect"
+            label="logout"
             onPress={() => void disconnectAccount()}
             variant="secondary"
           />
-        ) : null}
+        ) : <YouActionButton
+        label={"log in / connect"}
+        onPress={() =>
+          openAuthModal({
+            reason: "account features are optional. writing stays local.",
+          })
+        }
+      />}
       </View>
 
       <SectionTitle label="danger zone" />
@@ -565,57 +566,12 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
   return (
     <YouDetailShell
       onBack={() => navigation.goBack()}
-      subtitle="your writing belongs to you."
-      title="export data"
+      subtitle="backup, restore, or clear this device."
+      title="local data"
     >
-      <YouHeroCard
-        icon={assets.icons.exportData}
-        status={`${summary.ankyFiles} .anky`}
-        subtitle="Ankys live on this device. Deleting the app deletes local ankys unless you export them."
-        title="local archive"
-      >
-        <MetricGrid
-          metrics={[
-            { label: "ankys", value: summary.completeAnkys },
-            { label: "reflections", value: summary.reflections },
-            { label: "threads", value: summary.keepWritingThreads },
-            { label: "seals", value: summary.sealReceipts },
-          ]}
-        />
-      </YouHeroCard>
-
-      <View style={styles.stack}>
-        <ExportItemRow
-          count={summary.ankyFiles}
-          icon={assets.icons.exportData}
-          subtitle="original writing traces."
-          title=".anky files"
-        />
-        <ExportItemRow
-          count={summary.sessionIndexEntries}
-          icon={assets.icons.account}
-          subtitle="local map and entry lookup state."
-          title="session index entries"
-        />
-        <ExportItemRow
-          count={summary.reflections}
-          icon={assets.icons.credits}
-          subtitle="mirror letters saved beside entries."
-          title="reflections"
-        />
-        <ExportItemRow
-          count={summary.keepWritingThreads}
-          icon={assets.icons.account}
-          subtitle="local keep-writing conversations."
-          title="keep writing threads"
-        />
-        <ExportItemRow
-          count={summary.sealReceipts}
-          icon={assets.icons.loom}
-          subtitle="hash-only loom seal receipts."
-          title="seal receipts"
-        />
-      </View>
+      <Text style={styles.backupSummary}>
+        {formatBackupSummary(summary)}
+      </Text>
 
       <View style={styles.actions}>
         <YouActionButton
@@ -638,12 +594,16 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
       </View>
 
       <InlineMessage text={message} />
-      <OwnershipCard text="your backup is a zip you manage. no plaintext is sent to anky for backup." />
+      <Text style={styles.backupWarning}>
+        backups may include plaintext writing, reflections, conversations, images, and local seal
+        receipts. keep the zip somewhere you trust.
+      </Text>
     </YouDetailShell>
   );
 }
 
 export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
+  const { openAuthModal } = useAuthModal();
   const [balance, setBalance] = useState(0);
   const [displayBalance, setDisplayBalance] = useState(0);
   const balanceValue = useRef(new Animated.Value(0)).current;
@@ -658,6 +618,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const [successProductId, setSuccessProductId] = useState<string | null>(null);
   const [transferRun, setTransferRun] = useState<CreditTransferRun | null>(null);
   const [heroLayout, setHeroLayout] = useState<LayoutRectangle | null>(null);
+  const [historyReloadNonce, setHistoryReloadNonce] = useState(0);
   const [packListLayout, setPackListLayout] = useState<LayoutRectangle | null>(null);
   const [cardLayouts, setCardLayouts] = useState<Record<string, LayoutRectangle>>({});
   const pendingPurchaseSyncsRef = useRef<
@@ -688,13 +649,18 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     let mounted = true;
 
     async function load() {
+      if (mounted) {
+        setHistoryStatus("loading");
+      }
+
       const [localBalance, session, identityId] = await Promise.all([
         getReflectionCreditBalance(),
         getStoredBackendAuthSession(),
         getMobileApiIdentityId(),
       ]);
       let nextBalance = localBalance;
-      let nextLedgerEntries: CreditLedgerEntry[] = [];
+      let nextLedgerEntries: CreditLedgerEntry[] | null = null;
+      let nextHistoryStatus: CreditHistoryStatus = "loading";
       let nextStorePackages: Partial<Record<AnkyRevenueCatPackageId, AnkyCreditStorePackage>> = {};
       let nextMessage = "";
       const api = getAnkyApiClient();
@@ -702,12 +668,6 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       await configureRevenueCat().catch((error: unknown) => {
         console.warn("RevenueCat credits unavailable.", error);
       });
-
-      if (api != null && session != null) {
-        await api.claimWelcomeCreditGift(session.sessionToken).catch((error: unknown) => {
-          console.warn("Welcome credits grant failed.", error);
-        });
-      }
 
       if (getRevenueCatCreditStatus() === "available") {
         try {
@@ -730,17 +690,69 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         }
       }
 
-      if (api != null) {
-        nextLedgerEntries = await api
-          .getCreditLedgerHistory({
+      if (api == null) {
+        nextHistoryStatus = "unavailable";
+        devCreditLog("history unavailable: api client is not configured");
+      } else if (session == null) {
+        nextHistoryStatus = "requires_account";
+        devCreditLog("history requires backend session", { identityId });
+      } else {
+        let historyLoaded = false;
+
+        try {
+          devCreditLog("fetching credit history", { identityId, userId: session.userId });
+          const historyResponse = await api.getCreditLedgerHistory({
             identityId,
-            sessionToken: session?.sessionToken,
-          })
-          .then((response) => response.entries)
-          .catch((error: unknown) => {
-            console.warn("Credit history load failed.", error);
-            return [];
+            sessionToken: session.sessionToken,
           });
+          devCreditLog("credit history response", historyResponse);
+          nextLedgerEntries = historyResponse.entries;
+          nextHistoryStatus = "ready";
+          historyLoaded = true;
+        } catch (error) {
+          devCreditLog("credit history error", error);
+          console.warn("Credit history load failed.", error);
+          nextHistoryStatus = "unavailable";
+        }
+
+        if (welcomeGiftAttemptedForUserRef.current !== session.userId) {
+          devCreditLog("calling welcome gift endpoint", { userId: session.userId });
+
+          try {
+            const giftResponse = await api.claimWelcomeCreditGift(session.sessionToken);
+            devCreditLog("welcome gift response", giftResponse);
+            welcomeGiftAttemptedForUserRef.current = session.userId;
+            nextLedgerEntries = giftResponse.entries;
+          } catch (error) {
+            devCreditLog("welcome gift error", error);
+            console.warn("Welcome credit gift failed.", error);
+          }
+
+          try {
+            devCreditLog("refetching credit history after welcome gift", {
+              identityId,
+              userId: session.userId,
+            });
+            const historyResponse = await api.getCreditLedgerHistory({
+              identityId,
+              sessionToken: session.sessionToken,
+            });
+            devCreditLog("credit history response after welcome gift", historyResponse);
+            nextLedgerEntries = historyResponse.entries;
+            nextHistoryStatus = "ready";
+            historyLoaded = true;
+          } catch (error) {
+            devCreditLog("credit history refetch error", error);
+            console.warn("Credit history reload failed after welcome gift.", error);
+            if (!historyLoaded && nextLedgerEntries == null) {
+              nextHistoryStatus = "unavailable";
+            }
+          }
+        }
+
+        if (historyLoaded || nextHistoryStatus === "ready") {
+          void retryPendingPurchaseSyncs();
+        }
       }
 
       if (mounted) {
@@ -748,7 +760,12 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         setBalanceImmediately(nextBalance);
         setMessage(nextMessage);
         setPurchaseStatus(getRevenueCatCreditStatus());
-        setLedgerEntries(nextLedgerEntries);
+        setHistoryStatus(nextHistoryStatus);
+        if (nextLedgerEntries != null) {
+          setLedgerEntries((current) => mergeServerLedgerEntries(nextLedgerEntries, current));
+        } else if (nextHistoryStatus === "requires_account") {
+          setLedgerEntries((current) => current.filter((entry) => entry.optimistic === true));
+        }
         setStorePackages(nextStorePackages);
       }
     }
@@ -774,7 +791,21 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       mounted = false;
       unsubscribe();
     };
-  }, [navigation]);
+  }, [historyReloadNonce, navigation]);
+
+  function requestHistorySync() {
+    welcomeGiftAttemptedForUserRef.current = null;
+
+    if (historyStatus === "requires_account") {
+      openAuthModal({
+        afterSuccess: () => setHistoryReloadNonce((current) => current + 1),
+        reason: "sync your account to show credit history.",
+      });
+      return;
+    }
+
+    setHistoryReloadNonce((current) => current + 1);
+  }
 
   function startPurchase(product: CreditProduct) {
     if (purchaseBusyId != null) {
@@ -811,9 +842,8 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       const result = await purchaseCreditsPackage(product.revenueCatPackageId);
 
       if (result.status === "completed") {
-        await syncSuccessfulPurchase(product, result).catch((error: unknown) => {
-          console.warn("Credit purchase history sync failed.", error);
-        });
+        const transactionId = getPurchaseHistoryTransactionId(result);
+        addOptimisticPurchaseEntry(product, result, transactionId);
         const nextBalance = await getRevenueCatCreditBalance({ forceRefresh: true }).catch(
           () => balance + product.totalCredits,
         );
@@ -821,6 +851,11 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         setBalance(nextBalance);
         runPurchaseSuccess(product.id, nextBalance);
         await triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
+        void syncSuccessfulPurchase(product, result).catch((error: unknown) => {
+          devCreditLog("purchase sync error", error);
+          console.warn("Credit purchase history sync failed.", error);
+          markOptimisticPurchaseSyncing(transactionId);
+        });
         return;
       }
 
@@ -839,6 +874,45 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     }
   }
 
+  function addOptimisticPurchaseEntry(
+    product: CreditProduct,
+    result: Extract<Awaited<ReturnType<typeof purchaseCreditsPackage>>, { status: "completed" }>,
+    transactionId: string,
+  ) {
+    const optimisticEntry = buildOptimisticPurchaseEntry(product, transactionId);
+
+    pendingPurchaseSyncsRef.current = [
+      { product, result, transactionId },
+      ...pendingPurchaseSyncsRef.current.filter((pending) => pending.transactionId !== transactionId),
+    ];
+    setHistoryStatus("ready");
+    setLedgerEntries((current) => [
+      optimisticEntry,
+      ...current.filter((entry) => entry.referenceId !== transactionId),
+    ]);
+  }
+
+  function markOptimisticPurchaseSyncing(transactionId: string) {
+    setLedgerEntries((current) =>
+      current.map((entry) =>
+        entry.referenceId === transactionId && entry.optimistic === true
+          ? { ...entry, syncing: true }
+          : entry,
+      ),
+    );
+  }
+
+  async function retryPendingPurchaseSyncs() {
+    const pending = [...pendingPurchaseSyncsRef.current];
+
+    for (const item of pending) {
+      await syncSuccessfulPurchase(item.product, item.result).catch((error: unknown) => {
+        devCreditLog("pending purchase sync retry failed", error);
+        markOptimisticPurchaseSyncing(item.transactionId);
+      });
+    }
+  }
+
   async function syncSuccessfulPurchase(
     product: CreditProduct,
     result: Extract<Awaited<ReturnType<typeof purchaseCreditsPackage>>, { status: "completed" }>,
@@ -850,26 +924,39 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     const api = getAnkyApiClient();
 
     if (api == null) {
+      devCreditLog("purchase sync skipped: api client unavailable");
+      markOptimisticPurchaseSyncing(getPurchaseHistoryTransactionId(result));
       return;
     }
 
-    const transactionId =
-      result.transactionId.trim().length > 0
-        ? result.transactionId
-        : `${result.productId}:${result.purchasedAt}`;
+    if (session == null) {
+      devCreditLog("purchase sync skipped: backend session unavailable", { identityId });
+      markOptimisticPurchaseSyncing(getPurchaseHistoryTransactionId(result));
+      return;
+    }
+
+    const transactionId = getPurchaseHistoryTransactionId(result);
+    const payload = {
+      identityId,
+      packageId: product.id,
+      productId: result.productId,
+      purchaseToken: result.purchaseToken,
+      purchasedAt: result.purchasedAt,
+      transactionId,
+    };
+
+    devCreditLog("purchase sync payload", payload);
     const response = await api.syncCreditPurchaseHistory(
-      {
-        identityId,
-        packageId: product.id,
-        productId: result.productId,
-        purchaseToken: result.purchaseToken,
-        purchasedAt: result.purchasedAt,
-        transactionId,
-      },
-      session?.sessionToken,
+      payload,
+      session.sessionToken,
     );
 
-    setLedgerEntries(response.entries);
+    devCreditLog("purchase sync response", response);
+    pendingPurchaseSyncsRef.current = pendingPurchaseSyncsRef.current.filter(
+      (pending) => pending.transactionId !== transactionId,
+    );
+    setHistoryStatus("ready");
+    setLedgerEntries((current) => mergeServerLedgerEntries(response.entries, current));
   }
 
   function setBalanceImmediately(nextBalance: number) {
@@ -926,25 +1013,26 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   return (
     <YouDetailShell
       onBack={() => navigation.goBack()}
-      subtitle="fuel reflections and deeper mirrors."
+      showBottomOrnament={false}
+      subtitle="fuel reflections and deeper mirrors"
       title="credits"
+      variant="credits"
     >
       <View style={styles.creditsScene}>
-        <View onLayout={(event) => setHeroLayout(event.nativeEvent.layout)}>
-          <YouHeroCard
-            icon={assets.icons.credits}
-            subtitle="write freely. spend credits only when you ask anky to reflect."
-            title={`${displayBalance} available`}
-          />
-        </View>
+        <CreditsHero
+          balance={displayBalance}
+          onLayout={(layout) => setHeroLayout(layout)}
+        />
 
         <CreditTransferTrail progress={transferProgress} run={transferRun} />
 
-        <CreditCostCard />
+        <CreditRulesList />
+
+        <SectionTitle label="packages" />
 
         <View
           onLayout={(event) => setPackListLayout(event.nativeEvent.layout)}
-          style={styles.stack}
+          style={styles.creditPackageList}
         >
           {CREDIT_PRODUCTS.map((product) => (
             <CreditProductRow
@@ -963,26 +1051,33 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
             />
           ))}
         </View>
+
+        <SectionTitle label="history" />
+        {ledgerEntries.length === 0 ? (
+          <CreditHistoryEmptyState
+            balance={balance}
+            onSync={requestHistorySync}
+            status={historyStatus}
+          />
+        ) : (
+          <View style={styles.creditHistoryList}>
+            {ledgerEntries.map((entry) => (
+              <CreditHistoryRow entry={entry} key={entry.id} />
+            ))}
+          </View>
+        )}
+
+        <InlineMessage text={message} />
       </View>
-
-      <SectionTitle label="history" />
-      {ledgerEntries.length === 0 ? (
-        <Text style={styles.creditHistoryEmpty}>no credit history yet.</Text>
-      ) : (
-        <View style={styles.stack}>
-          {ledgerEntries.map((entry) => (
-            <CreditHistoryRow entry={entry} key={entry.id} />
-          ))}
-        </View>
-      )}
-
-      <InlineMessage text={message} />
     </YouDetailShell>
   );
 }
 
 export function LoomInfoScreen({ navigation }: LoomInfoProps) {
   const wallet = useAnkyPrivyWallet();
+  const [files, setFiles] = useState<SavedAnkyFile[]>([]);
+  const [pointsHistory, setPointsHistory] = useState<MobileSealPointsHistory | null>(null);
+  const [pointsState, setPointsState] = useState<"idle" | "loading" | "unavailable">("idle");
   const [selectedLoom, setSelectedLoom] = useState<SelectedLoom | null>(null);
   const [sessions, setSessions] = useState<AnkySessionSummary[]>([]);
 
@@ -990,14 +1085,45 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
     let mounted = true;
 
     async function load() {
-      const [nextSelectedLoom, nextSessions] = await Promise.all([
+      const [nextSelectedLoom, nextSessions, nextFiles] = await Promise.all([
         getSelectedLoom(),
         listAnkySessionSummaries(),
+        listSavedAnkyFiles(),
       ]);
 
       if (mounted) {
         setSelectedLoom(nextSelectedLoom);
         setSessions(nextSessions);
+        setFiles(nextFiles);
+      }
+
+      const api = getAnkyApiClient();
+
+      if (wallet.publicKey == null || api == null) {
+        if (mounted) {
+          setPointsHistory(null);
+          setPointsState(wallet.publicKey == null ? "idle" : "unavailable");
+        }
+        return;
+      }
+
+      if (mounted) {
+        setPointsState("loading");
+      }
+
+      try {
+        const nextPoints = await api.lookupMobileSealPoints(wallet.publicKey);
+
+        if (mounted) {
+          setPointsHistory(nextPoints);
+          setPointsState("idle");
+        }
+      } catch (error) {
+        console.warn("Could not restore loom points history.", error);
+        if (mounted) {
+          setPointsHistory(null);
+          setPointsState("unavailable");
+        }
       }
     }
 
@@ -1010,13 +1136,15 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
       mounted = false;
       unsubscribe();
     };
-  }, [navigation]);
+  }, [navigation, wallet.publicKey]);
 
   const loomState = useMemo(() => buildLoomState(selectedLoom, sessions, wallet.hasWallet), [
     selectedLoom,
     sessions,
     wallet.hasWallet,
   ]);
+  const fileByHash = useMemo(() => new Map(files.map((file) => [file.hash, file])), [files]);
+  const proofPoints = (pointsHistory?.verifiedSealDays ?? 0) * 2;
   const selectedLabel =
     selectedLoom == null ? "none" : `${selectedLoom.name} · ${shortAddress(selectedLoom.asset, 5)}`;
 
@@ -1065,10 +1193,80 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
           title="hash only — writing stays private"
         />
         <YouInfoRow
+          icon={assets.icons.loom}
+          rightText={pointsHistory == null ? "0" : String(pointsHistory.score)}
+          subtitle="seal hash = +1, prove rite = +2."
+          title="current score"
+        />
+        <YouInfoRow
+          icon={assets.icons.loom}
+          rightText={String(pointsHistory?.uniqueSealDays ?? 0)}
+          subtitle="finalized hash seals indexed by the backend."
+          title="sealed days"
+        />
+        <YouInfoRow
+          icon={assets.icons.loom}
+          rightText={String(proofPoints)}
+          subtitle="finalized SP1 receipt points indexed by the backend."
+          title="proof points"
+        />
+        <YouInfoRow
+          icon={assets.icons.loom}
+          rightText={String(pointsHistory?.streakBonus ?? 0)}
+          subtitle="the current backend streak rule."
+          title="streak bonus"
+        />
+        <YouInfoRow
           icon={assets.icons.exportData}
           subtitle="a loom is optional — never required."
           title="no loom? you can still write every day."
         />
+      </View>
+
+      <View style={styles.pointHistoryList}>
+        <SectionTitle label="points history" />
+        {pointsState === "loading" ? (
+          <Text style={styles.helperText}>syncing finalized proof-of-practice receipts.</Text>
+        ) : pointsHistory == null || pointsHistory.entries.length === 0 ? (
+          <Text style={styles.helperText}>
+            {pointsState === "unavailable" ? "points history unavailable." : "no indexed points yet."}
+          </Text>
+        ) : (
+          pointsHistory.entries.slice(0, 8).map((entry) => {
+            const file = fileByHash.get(entry.sessionHash);
+
+            return (
+              <Pressable
+                accessibilityRole="button"
+                disabled={file == null}
+                key={`${entry.sessionHash}:${entry.utcDay}`}
+                onPress={() => {
+                  if (file != null) {
+                    navigation.navigate("Entry", { fileName: file.fileName });
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.pointHistoryRow,
+                  file == null && styles.pointHistoryRowDisabled,
+                  pressed && file != null && styles.pressed,
+                ]}
+              >
+                <View style={styles.pointHistoryCopy}>
+                  <Text style={styles.pointHistoryTitle}>
+                    {formatProfileUtcDay(entry.utcDay)} · +{entry.totalPoints}
+                  </Text>
+                  <Text style={styles.pointHistoryMeta}>
+                    sealed +{entry.sealPoints}
+                    {entry.proofPoints > 0 ? ` · proved +${entry.proofPoints}` : ""}
+                    {` · ${formatProfileProofStatus(entry.proofStatus)}`}
+                    {file == null ? " · not on this device" : ""}
+                  </Text>
+                </View>
+                {file == null ? null : <Text style={styles.pointHistoryChevron}>›</Text>}
+              </Pressable>
+            );
+          })
+        )}
       </View>
 
       <View style={styles.actions}>
@@ -1086,33 +1284,45 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
 function YouDetailShell({
   children,
   onBack,
+  showBottomOrnament = true,
   subtitle,
   title,
   titleAccessory,
+  variant = "default",
 }: {
   children: ReactNode;
   onBack: () => void;
+  showBottomOrnament?: boolean;
   subtitle: string;
   title: string;
   titleAccessory?: ReactNode;
+  variant?: "credits" | "default";
 }) {
   const insets = useSafeAreaInsets();
+  const creditsVariant = variant === "credits";
 
   return (
     <ScreenBackground safe={false} variant="plain">
       <ImageBackground resizeMode="cover" source={assets.background} style={styles.screen}>
         <View pointerEvents="none" style={styles.cosmosWash} />
+        {creditsVariant ? <View pointerEvents="none" style={styles.creditsCosmosWash} /> : null}
         <View style={[styles.shell, { paddingTop: insets.top + 10 }]}>
-          <View style={styles.header}>
+          <View style={[styles.header, creditsVariant && styles.headerCredits]}>
             <SubtleIconButton accessibilityLabel="go back" icon="←" onPress={onBack} />
             <View style={styles.headerCenter}>
               <View style={styles.headerTitleRow}>
-                <Text numberOfLines={1} style={styles.headerTitle}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.headerTitle, creditsVariant && styles.headerTitleCredits]}
+                >
                   {title}
                 </Text>
                 {titleAccessory}
               </View>
-              <Text numberOfLines={2} style={styles.headerSubtitle}>
+              <Text
+                numberOfLines={2}
+                style={[styles.headerSubtitle, creditsVariant && styles.headerSubtitleCredits]}
+              >
                 {subtitle}
               </Text>
             </View>
@@ -1127,7 +1337,7 @@ function YouDetailShell({
             showsVerticalScrollIndicator={false}
           >
             {children}
-            <BottomOrnament />
+            {showBottomOrnament ? <BottomOrnament /> : null}
           </ScrollView>
         </View>
       </ImageBackground>
@@ -1372,6 +1582,67 @@ function ExportItemRow({
   );
 }
 
+function CreditsHero({
+  balance,
+  onLayout,
+}: {
+  balance: number;
+  onLayout?: (layout: LayoutRectangle) => void;
+}) {
+  return (
+    <View
+      onLayout={(event) => onLayout?.(event.nativeEvent.layout)}
+      style={styles.creditsHero}
+    >
+      <View style={styles.creditsHeroMain}>
+        <View style={styles.creditsHeroEmblem}>
+          <View style={styles.creditsHeroEmblemRing}>
+            <Text style={styles.creditsHeroEmblemGlyph}>✧</Text>
+          </View>
+        </View>
+        <View style={styles.creditsHeroBalanceCopy}>
+          <Text adjustsFontSizeToFit numberOfLines={1} style={styles.creditsHeroBalance}>
+            {balance}
+          </Text>
+          <Text style={styles.creditsHeroAvailable}>available</Text>
+        </View>
+      </View>
+      <Text style={styles.creditsHeroSubtitle}>
+        write freely. spend credits only when you ask anky to reflect.
+      </Text>
+    </View>
+  );
+}
+
+function CreditRulesList() {
+  return (
+    <View style={styles.creditRules}>
+      <CreditRuleRow icon="✧" label="1 credit = reflection" />
+      <CreditRuleRow icon="✦" label="5 credits = full reflection" />
+      <CreditRuleRow icon="⌁" label="writing is always free" last />
+    </View>
+  );
+}
+
+function CreditRuleRow({
+  icon,
+  label,
+  last = false,
+}: {
+  icon: string;
+  label: string;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.creditRuleRow, !last && styles.creditRuleRowBorder]}>
+      <View style={styles.creditRuleIconFrame}>
+        <Text style={styles.creditRuleIcon}>{icon}</Text>
+      </View>
+      <Text style={styles.creditRuleText}>{label}</Text>
+    </View>
+  );
+}
+
 function CreditProductRow({
   onLayout,
   onPress,
@@ -1390,6 +1661,7 @@ function CreditProductRow({
   const success = state === "success";
   const pulse = useRef(new Animated.Value(0)).current;
   const priceLabel = storePackage?.priceLabel ?? product.fallbackPriceLabel;
+  const accessibilityLabel = getCreditProductAccessibilityLabel(product);
 
   useEffect(() => {
     if (!active) {
@@ -1445,6 +1717,7 @@ function CreditProductRow({
       ]}
     >
       <Pressable
+        accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
         disabled={active || dimmed}
         onPress={onPress}
@@ -1456,15 +1729,22 @@ function CreditProductRow({
           pressed && !active && !dimmed && styles.pressed,
         ]}
       >
-        <View pointerEvents="none" style={styles.creditProductAura} />
-        {active ? <Animated.View pointerEvents="none" style={[styles.creditProductShimmer, {
-          opacity: pulse.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.18, 0.5],
-          }),
-        }]} /> : null}
+        {active || success ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.creditProductAura,
+              {
+                opacity: pulse.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: success ? [0.26, 0.38] : [0.14, 0.3],
+                }),
+              },
+            ]}
+          />
+        ) : null}
         <View style={styles.creditProductIconFrame}>
-          <Image accessibilityIgnoresInvertColors source={assets.icons.credits} style={styles.rowIcon} />
+          <Text style={styles.creditProductIconGlyph}>✧</Text>
         </View>
         <View style={styles.creditProductCopy}>
           <View style={styles.creditProductTitleRow}>
@@ -1473,42 +1753,283 @@ function CreditProductRow({
           </View>
           <Text style={styles.creditProductSubtitle}>{product.description}</Text>
         </View>
-        <Text style={styles.creditProductPrice}>{priceLabel}</Text>
+        <View style={styles.creditProductRight}>
+          <Text style={styles.creditProductPrice}>{priceLabel}</Text>
+          <Text style={styles.creditProductChevron}>›</Text>
+        </View>
       </Pressable>
     </Animated.View>
   );
 }
 
-function CreditCostCard() {
+function CreditHistoryRow({ entry }: { entry: CreditHistoryEntry }) {
+  const positive = entry.amount > 0;
+  const amount = `${positive ? "+" : ""}${entry.amount}`;
+  const subtitle = getCreditHistorySubtitle(entry);
+  const icon = getCreditHistoryIcon(entry);
+
   return (
-    <View style={styles.creditCostCard}>
-      {[
-        "1 credit = simple mirror",
-        "5 credits = full mirror",
-        "writing is always free",
-      ].map((line) => (
-        <View key={line} style={styles.creditCostLine}>
-          <View style={styles.creditCostDot} />
-          <Text style={styles.creditCostText}>{line}</Text>
-        </View>
-      ))}
+    <View style={styles.creditHistoryRow}>
+      <View style={styles.creditHistoryIconFrame}>
+        <Text style={styles.creditHistoryIcon}>{icon}</Text>
+      </View>
+      <View style={styles.creditHistoryCopy}>
+        <Text style={styles.creditHistoryTitle}>{entry.label}</Text>
+        <Text style={styles.creditHistorySubtitle}>{subtitle}</Text>
+      </View>
+      <View style={styles.creditHistoryRight}>
+        <Text
+          style={[
+            styles.creditHistoryAmount,
+            !positive && styles.creditHistoryAmountNegative,
+          ]}
+        >
+          {amount}
+        </Text>
+        <Text style={styles.creditHistoryDate}>{formatCreditHistoryDate(entry.createdAt)}</Text>
+      </View>
     </View>
   );
 }
 
-function CreditHistoryRow({ entry }: { entry: CreditLedgerEntry }) {
-  const positive = entry.amount > 0;
-  const amount = `${positive ? "+" : ""}${entry.amount}`;
+function CreditHistoryEmptyState({
+  balance,
+  onSync,
+  status,
+}: {
+  balance: number;
+  onSync: () => void;
+  status: CreditHistoryStatus;
+}) {
+  const actionLabel = getCreditHistoryActionLabel(status, balance);
 
   return (
-    <YouInfoRow
-      icon={assets.icons.credits}
-      rightText={amount}
-      subtitle={formatShortDate(entry.createdAt)}
-      title={entry.label}
-      variant={positive ? "highlight" : "normal"}
-    />
+    <View style={styles.creditHistoryEmptyWrap}>
+      <Text style={styles.creditHistoryEmpty}>{getCreditHistoryEmptyText(status, balance)}</Text>
+      {actionLabel == null ? null : (
+        <Pressable
+          accessibilityLabel={actionLabel}
+          accessibilityRole="button"
+          onPress={onSync}
+          style={({ pressed }) => [
+            styles.creditHistorySyncButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.creditHistorySyncText}>{actionLabel}</Text>
+        </Pressable>
+      )}
+    </View>
   );
+}
+
+function getCreditProductAccessibilityLabel(product: CreditProduct): string {
+  if (product.bonusCredits > 0) {
+    return `buy ${product.baseCredits} plus ${product.bonusCredits} bonus credits`;
+  }
+
+  return `buy ${product.totalCredits} credits`;
+}
+
+function getCreditHistorySubtitle(entry: CreditHistoryEntry): string {
+  if (entry.syncing === true) {
+    return "syncing";
+  }
+
+  if (entry.optimistic === true) {
+    return "just now";
+  }
+
+  if (entry.kind === "purchase" || (entry.amount > 0 && entry.source === "revenuecat")) {
+    return getCreditPurchaseSubtitle(entry);
+  }
+
+  if (entry.kind === "gift") {
+    return "welcome credits";
+  }
+
+  if (entry.amount < 0) {
+    if (entry.amount === -5) {
+      return "full reflection";
+    }
+
+    if (entry.amount === -1) {
+      return "reflection";
+    }
+
+    return "reflection";
+  }
+
+  return entry.source.length > 0 ? entry.source : entry.kind;
+}
+
+function getCreditPurchaseSubtitle(entry: CreditHistoryEntry): string {
+  const packageId = readMetadataString(entry.metadata, "packageId");
+
+  switch (packageId) {
+    case "credits_22":
+      return "22 credits";
+    case "credits_88_bonus_11":
+      return "88 + 11 bonus";
+    case "credits_333_bonus_88":
+      return "333 + 88 bonus";
+    default:
+      break;
+  }
+
+  switch (entry.amount) {
+    case 22:
+      return "22 credits";
+    case 99:
+      return "88 + 11 bonus";
+    case 421:
+      return "333 + 88 bonus";
+    default:
+      return `${entry.amount} credits`;
+  }
+}
+
+function getCreditHistoryIcon(entry: CreditHistoryEntry): string {
+  if (entry.kind === "purchase" || entry.kind === "gift" || entry.amount > 0) {
+    return "◔";
+  }
+
+  return "✧";
+}
+
+function readMetadataString(metadata: unknown, key: string): string | null {
+  if (typeof metadata !== "object" || metadata == null || !(key in metadata)) {
+    return null;
+  }
+
+  const value = (metadata as Record<string, unknown>)[key];
+
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function formatCreditHistoryDate(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "recent";
+  }
+
+  return date
+    .toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
+    .toLowerCase();
+}
+
+function getCreditHistoryEmptyText(status: CreditHistoryStatus, balance = 0): string {
+  switch (status) {
+    case "loading":
+      return "loading history...";
+    case "requires_account":
+      return "sync your account to show credit history.";
+    case "unavailable":
+      return "history could not sync yet.";
+    case "ready":
+    default:
+      if (balance > 0) {
+        return "history has not synced yet.";
+      }
+
+      return "no credit history yet.";
+  }
+}
+
+function getCreditHistoryActionLabel(status: CreditHistoryStatus, balance = 0): string | null {
+  switch (status) {
+    case "requires_account":
+      return "sync account";
+    case "unavailable":
+      return "retry sync";
+    case "ready":
+      return balance > 0 ? "sync history" : null;
+    case "loading":
+    default:
+      return null;
+  }
+}
+
+function buildOptimisticPurchaseEntry(
+  product: CreditProduct,
+  transactionId: string,
+): CreditHistoryEntry {
+  return {
+    amount: product.totalCredits,
+    createdAt: new Date().toISOString(),
+    id: `optimistic:${transactionId}`,
+    kind: "purchase",
+    label: "bought credits",
+    optimistic: true,
+    referenceId: transactionId,
+    source: "revenuecat",
+    syncing: false,
+    userId: "local",
+  };
+}
+
+function mergeServerLedgerEntries(
+  serverEntries: CreditLedgerEntry[],
+  currentEntries: CreditHistoryEntry[],
+): CreditHistoryEntry[] {
+  const serverIds = new Set(serverEntries.map((entry) => entry.id));
+  const serverReferenceIds = new Set(
+    serverEntries
+      .map((entry) => entry.referenceId)
+      .filter((referenceId): referenceId is string => referenceId != null && referenceId.length > 0),
+  );
+  const unresolvedOptimisticEntries = currentEntries.filter((entry) => {
+    if (entry.optimistic !== true) {
+      return false;
+    }
+
+    if (serverIds.has(entry.id)) {
+      return false;
+    }
+
+    return entry.referenceId == null || !serverReferenceIds.has(entry.referenceId);
+  });
+
+  return [...serverEntries, ...unresolvedOptimisticEntries].sort(compareCreditHistoryEntries);
+}
+
+function compareCreditHistoryEntries(
+  first: CreditHistoryEntry,
+  second: CreditHistoryEntry,
+): number {
+  const firstTime = Date.parse(first.createdAt);
+  const secondTime = Date.parse(second.createdAt);
+
+  if (Number.isNaN(firstTime) && Number.isNaN(secondTime)) {
+    return 0;
+  }
+
+  if (Number.isNaN(firstTime)) {
+    return 1;
+  }
+
+  if (Number.isNaN(secondTime)) {
+    return -1;
+  }
+
+  return secondTime - firstTime;
+}
+
+function getPurchaseHistoryTransactionId(
+  result: Extract<Awaited<ReturnType<typeof purchaseCreditsPackage>>, { status: "completed" }>,
+): string {
+  const transactionId = result.transactionId.trim();
+
+  if (transactionId.length > 0) {
+    return transactionId;
+  }
+
+  return `${result.productId}:${result.purchasedAt}`;
 }
 
 function CreditTransferTrail({
@@ -1599,6 +2120,19 @@ async function triggerNotificationHaptic(type: Haptics.NotificationFeedbackType)
   }
 }
 
+function devCreditLog(message: string, payload?: unknown) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  if (payload === undefined) {
+    console.log(`[credits] ${message}`);
+    return;
+  }
+
+  console.log(`[credits] ${message}`, payload);
+}
+
 function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: number }> }) {
   return (
     <View style={styles.metricGrid}>
@@ -1612,14 +2146,66 @@ function MetricGrid({ metrics }: { metrics: Array<{ label: string; value: number
   );
 }
 
+function formatProfileUtcDay(utcDay: number): string {
+  const date = new Date(utcDay * 86_400_000);
+
+  if (Number.isNaN(date.getTime())) {
+    return `day ${utcDay}`;
+  }
+
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  }).toLowerCase();
+}
+
+function formatProfileProofStatus(status: string): string {
+  switch (status) {
+    case "finalized":
+      return "verified";
+    case "backfill_required":
+    case "confirmed":
+    case "pending":
+    case "processed":
+    case "syncing":
+      return "verified on-chain · syncing";
+    case "failed":
+      return "proof failed";
+    case "queued":
+    case "proving":
+      return "proving";
+    case "unavailable":
+      return "proof unavailable";
+    default:
+      return "seal only";
+  }
+}
+
 function SectionTitle({ label }: { label: string }) {
-  return <Text style={styles.sectionTitle}>{label}</Text>;
+  return (
+    <View style={styles.sectionTitleRow}>
+      <Text style={styles.sectionTitle}>{label}</Text>
+      <View style={styles.sectionTitleLine} />
+    </View>
+  );
 }
 
 function Pill({ label, variant = "normal" }: { label: string; variant?: RowVariant }) {
   return (
-    <View style={[styles.pill, variant === "danger" && styles.pillDanger]}>
-      <Text style={[styles.pillText, variant === "danger" && styles.pillTextDanger]}>
+    <View
+      style={[
+        styles.pill,
+        variant === "danger" && styles.pillDanger,
+        variant === "highlight" && styles.pillHighlight,
+      ]}
+    >
+      <Text
+        style={[
+          styles.pillText,
+          variant === "danger" && styles.pillTextDanger,
+          variant === "highlight" && styles.pillTextHighlight,
+        ]}
+      >
         {label}
       </Text>
     </View>
@@ -1690,6 +2276,27 @@ async function loadArchiveSummary(): Promise<ArchiveSummary> {
 
 function countCompleteAnkys(files: SavedAnkyFile[]): number {
   return files.filter((file) => isCompleteRawAnky(file.raw)).length;
+}
+
+function formatBackupSummary(summary: ArchiveSummary): string {
+  const parts = [
+    `${summary.completeAnkys} ${summary.completeAnkys === 1 ? "anky" : "ankys"}`,
+    summary.reflections > 0
+      ? `${summary.reflections} ${summary.reflections === 1 ? "reflection" : "reflections"}`
+      : null,
+    summary.keepWritingThreads > 0
+      ? `${summary.keepWritingThreads} ${summary.keepWritingThreads === 1 ? "conversation" : "conversations"}`
+      : null,
+    summary.sealReceipts > 0
+      ? `${summary.sealReceipts} ${summary.sealReceipts === 1 ? "seal receipt" : "seal receipts"}`
+      : null,
+  ].filter((part): part is string => part != null);
+
+  if (summary.ankyFiles === 0) {
+    return "no local archive yet.";
+  }
+
+  return `${parts.join(" · ")} stored on this device.`;
 }
 
 function formatRestoreMessage(result: AnkyBackupRestoreResult): string {
@@ -1796,19 +2403,6 @@ function isEmail(value: string | null): value is string {
   return value != null && value.includes("@");
 }
 
-function formatShortDate(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "recent";
-  }
-
-  return date.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-  }).toLowerCase();
-}
-
 const styles = StyleSheet.create({
   actionButton: {
     alignItems: "center",
@@ -1865,6 +2459,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 22,
   },
+  backupSummary: {
+    color: COPY,
+    fontFamily: SERIF,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 4,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
+  backupWarning: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 16,
+    textAlign: "center",
+    textTransform: "lowercase",
+  },
   checkDot: {
     backgroundColor: GOLD_BRIGHT,
     borderRadius: 4,
@@ -1883,137 +2495,338 @@ const styles = StyleSheet.create({
   },
   cosmosWash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(5, 5, 14, 0.22)",
+    backgroundColor: "rgba(5, 5, 14, 0.34)",
   },
-  creditCostCard: {
-    backgroundColor: "rgba(9, 8, 20, 0.66)",
-    borderColor: "rgba(233, 190, 114, 0.24)",
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 8,
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  creditCostDot: {
-    backgroundColor: "rgba(242, 211, 146, 0.78)",
-    borderRadius: 3,
-    height: 6,
-    width: 6,
-  },
-  creditCostLine: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 9,
-  },
-  creditCostText: {
-    color: "rgba(216, 201, 212, 0.78)",
+  creditHistoryAmount: {
+    color: GOLD,
     fontFamily: SERIF,
-    fontSize: 12.5,
-    lineHeight: 17,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: "right",
+    textTransform: "lowercase",
+  },
+  creditHistoryAmountNegative: {
+    color: "rgba(233, 190, 114, 0.78)",
+  },
+  creditHistoryCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  creditHistoryDate: {
+    color: "rgba(216, 201, 212, 0.58)",
+    fontFamily: SERIF,
+    fontSize: 11.5,
+    lineHeight: 15,
+    marginTop: 2,
+    textAlign: "right",
     textTransform: "lowercase",
   },
   creditHistoryEmpty: {
     color: COPY_DIM,
     fontFamily: SERIF,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 10,
+    fontSize: 14,
+    lineHeight: 19,
     textAlign: "center",
     textTransform: "lowercase",
   },
+  creditHistoryEmptyWrap: {
+    alignItems: "center",
+    paddingVertical: 18,
+  },
+  creditHistoryIcon: {
+    color: GOLD,
+    fontSize: 20,
+    lineHeight: 23,
+    textAlign: "center",
+  },
+  creditHistoryIconFrame: {
+    alignItems: "center",
+    backgroundColor: "rgba(5, 6, 16, 0.54)",
+    borderColor: "rgba(233, 190, 114, 0.48)",
+    borderRadius: 21,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: "center",
+    marginRight: 14,
+    width: 42,
+  },
+  creditHistoryList: {
+    borderTopColor: "rgba(233, 190, 114, 0.18)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  creditHistoryRight: {
+    alignItems: "flex-end",
+    minWidth: 78,
+  },
+  creditHistoryRow: {
+    alignItems: "center",
+    borderBottomColor: "rgba(233, 190, 114, 0.16)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    minHeight: 66,
+    paddingVertical: 10,
+  },
+  creditHistorySubtitle: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 14,
+    lineHeight: 18,
+    marginTop: 1,
+    textTransform: "lowercase",
+  },
+  creditHistorySyncButton: {
+    alignItems: "center",
+    borderColor: "rgba(233, 190, 114, 0.34)",
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+    marginTop: 10,
+    minHeight: 34,
+    paddingHorizontal: 16,
+  },
+  creditHistorySyncText: {
+    color: GOLD,
+    fontFamily: SERIF,
+    fontSize: 13,
+    lineHeight: 17,
+    textTransform: "lowercase",
+  },
+  creditHistoryTitle: {
+    color: "rgba(242, 211, 146, 0.96)",
+    fontFamily: SERIF,
+    fontSize: 17,
+    lineHeight: 21,
+    textTransform: "lowercase",
+  },
+  creditPackageList: {
+    borderTopColor: "rgba(233, 190, 114, 0.18)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   creditProductAura: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(244, 211, 146, 0.035)",
+    backgroundColor: "rgba(242, 211, 146, 0.12)",
   },
   creditProductCopy: {
     flex: 1,
     minWidth: 0,
   },
   creditProductDimmed: {
-    opacity: 0.48,
+    opacity: 0.38,
+  },
+  creditProductChevron: {
+    color: "rgba(242, 211, 146, 0.82)",
+    fontFamily: SERIF,
+    fontSize: 24,
+    lineHeight: 28,
+    marginLeft: 8,
   },
   creditProductIconFrame: {
     alignItems: "center",
-    backgroundColor: "rgba(9, 8, 20, 0.72)",
-    borderColor: "rgba(217, 143, 63, 0.46)",
-    borderRadius: 16,
+    backgroundColor: "rgba(5, 6, 16, 0.52)",
+    borderColor: "rgba(233, 190, 114, 0.58)",
+    borderRadius: 24,
     borderWidth: 1,
-    height: 46,
+    height: 48,
     justifyContent: "center",
-    marginRight: 12,
-    width: 46,
+    marginRight: 14,
+    width: 48,
+  },
+  creditProductIconGlyph: {
+    color: GOLD_BRIGHT,
+    fontSize: 28,
+    lineHeight: 32,
+    textAlign: "center",
   },
   creditProductPanel: {
     alignItems: "center",
-    backgroundColor: "rgba(13, 12, 27, 0.78)",
-    borderColor: "rgba(217, 143, 63, 0.48)",
+    backgroundColor: "rgba(9, 8, 20, 0.18)",
+    borderColor: "transparent",
     borderRadius: 18,
     borderWidth: 1,
+    borderBottomColor: "rgba(233, 190, 114, 0.15)",
     flexDirection: "row",
-    minHeight: 76,
+    minHeight: 74,
     overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
   },
   creditProductPrice: {
-    color: "rgba(242, 211, 146, 0.92)",
+    color: GOLD,
     fontFamily: SERIF,
-    fontSize: 13,
-    lineHeight: 17,
-    marginLeft: 10,
-    minWidth: 54,
+    fontSize: 16,
+    lineHeight: 21,
     textAlign: "right",
+    textTransform: "lowercase",
   },
   creditProductProcessing: {
-    borderColor: "rgba(242, 211, 146, 0.82)",
-    backgroundColor: "rgba(31, 21, 54, 0.84)",
+    backgroundColor: "rgba(31, 21, 54, 0.38)",
+    borderColor: "rgba(242, 211, 146, 0.48)",
+    shadowColor: GOLD_BRIGHT,
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
   },
   creditProductRecommended: {
-    borderColor: "rgba(232, 113, 207, 0.58)",
+    backgroundColor: "rgba(18, 14, 32, 0.44)",
+    borderBottomColor: "rgba(177, 83, 214, 0.42)",
+    borderColor: "rgba(177, 83, 214, 0.56)",
+  },
+  creditProductRight: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginLeft: 10,
+    minWidth: 88,
   },
   creditProductShell: {
     borderRadius: 18,
     shadowColor: GOLD_BRIGHT,
     shadowOffset: { height: 0, width: 0 },
-    shadowRadius: 18,
-  },
-  creditProductShimmer: {
-    bottom: -20,
-    position: "absolute",
-    right: -36,
-    top: -20,
-    transform: [{ rotate: "12deg" }],
-    width: 78,
-    backgroundColor: "rgba(242, 211, 146, 0.18)",
+    shadowRadius: 14,
   },
   creditProductSubtitle: {
     color: COPY_DIM,
     fontFamily: SERIF,
-    fontSize: 12.5,
-    lineHeight: 17,
-    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 18,
+    marginTop: 3,
     textTransform: "lowercase",
   },
   creditProductSuccess: {
-    backgroundColor: "rgba(20, 43, 31, 0.72)",
-    borderColor: "rgba(139, 234, 166, 0.72)",
+    backgroundColor: "rgba(28, 42, 31, 0.48)",
+    borderColor: "rgba(139, 234, 166, 0.46)",
+    shadowColor: "#8BEAA6",
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
   },
   creditProductTitle: {
     color: GOLD_BRIGHT,
     flexShrink: 1,
     fontFamily: SERIF,
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 18,
+    lineHeight: 23,
     textTransform: "lowercase",
   },
   creditProductTitleRow: {
     alignItems: "center",
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
+  },
+  creditRuleIcon: {
+    color: GOLD,
+    fontSize: 21,
+    lineHeight: 25,
+    textAlign: "center",
+  },
+  creditRuleIconFrame: {
+    alignItems: "center",
+    height: 38,
+    justifyContent: "center",
+    marginRight: 16,
+    width: 34,
+  },
+  creditRuleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    minHeight: 54,
+  },
+  creditRuleRowBorder: {
+    borderBottomColor: "rgba(233, 190, 114, 0.18)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  creditRules: {
+    marginTop: 22,
+  },
+  creditRuleText: {
+    color: "rgba(244, 231, 206, 0.9)",
+    flex: 1,
+    fontFamily: SERIF,
+    fontSize: 16,
+    lineHeight: 21,
+    textTransform: "lowercase",
+  },
+  creditsCosmosWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(2, 4, 12, 0.18)",
+  },
+  creditsHero: {
+    alignItems: "center",
+    marginTop: 10,
+  },
+  creditsHeroAvailable: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 24,
+    lineHeight: 29,
+    marginTop: -6,
+    textTransform: "lowercase",
+  },
+  creditsHeroBalance: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 64,
+    lineHeight: 72,
+    maxWidth: 152,
+    textShadowColor: "rgba(233, 190, 114, 0.22)",
+    textShadowOffset: { height: 0, width: 0 },
+    textShadowRadius: 16,
+    textTransform: "lowercase",
+  },
+  creditsHeroBalanceCopy: {
+    alignItems: "flex-start",
+    flexShrink: 1,
+    justifyContent: "center",
+    marginLeft: 22,
+  },
+  creditsHeroEmblem: {
+    alignItems: "center",
+    borderColor: "rgba(233, 190, 114, 0.12)",
+    borderRadius: 50,
+    borderWidth: 1,
+    height: 100,
+    justifyContent: "center",
+    width: 100,
+  },
+  creditsHeroEmblemGlyph: {
+    color: GOLD_BRIGHT,
+    fontSize: 48,
+    lineHeight: 56,
+    textAlign: "center",
+    textShadowColor: "rgba(177, 83, 214, 0.75)",
+    textShadowOffset: { height: 0, width: 0 },
+    textShadowRadius: 10,
+  },
+  creditsHeroEmblemRing: {
+    alignItems: "center",
+    backgroundColor: "rgba(5, 6, 16, 0.45)",
+    borderColor: GOLD,
+    borderRadius: 36,
+    borderWidth: 1,
+    height: 72,
+    justifyContent: "center",
+    width: 72,
+  },
+  creditsHeroMain: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    width: "100%",
+  },
+  creditsHeroSubtitle: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 16,
+    lineHeight: 23,
+    marginTop: 14,
+    maxWidth: 292,
+    textAlign: "center",
+    textTransform: "lowercase",
   },
   creditsScene: {
+    paddingTop: 2,
     position: "relative",
   },
   creditTransferCore: {
@@ -2069,6 +2882,10 @@ const styles = StyleSheet.create({
   headerSide: {
     width: 36,
   },
+  headerCredits: {
+    minHeight: 66,
+    paddingHorizontal: 22,
+  },
   headerSubtitle: {
     color: "rgba(223, 209, 213, 0.78)",
     fontFamily: SERIF,
@@ -2077,6 +2894,12 @@ const styles = StyleSheet.create({
     marginTop: -1,
     textAlign: "center",
     textTransform: "lowercase",
+  },
+  headerSubtitleCredits: {
+    color: "rgba(216, 201, 212, 0.72)",
+    fontSize: 16,
+    lineHeight: 21,
+    marginTop: 2,
   },
   headerTitle: {
     color: GOLD_BRIGHT,
@@ -2089,12 +2912,27 @@ const styles = StyleSheet.create({
     textShadowRadius: 14,
     textTransform: "lowercase",
   },
+  headerTitleCredits: {
+    color: GOLD,
+    fontSize: 38,
+    lineHeight: 45,
+    textShadowColor: "rgba(233, 190, 114, 0.18)",
+    textShadowRadius: 18,
+  },
   headerTitleRow: {
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
     minWidth: 0,
+  },
+  helperText: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    textTransform: "lowercase",
   },
   heroBody: {
     color: COPY,
@@ -2236,6 +3074,12 @@ const styles = StyleSheet.create({
   pillDanger: {
     borderColor: "rgba(241, 154, 114, 0.54)",
   },
+  pillHighlight: {
+    backgroundColor: "rgba(18, 10, 29, 0.52)",
+    borderColor: "rgba(177, 83, 214, 0.72)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+  },
   pillText: {
     color: "rgba(233, 213, 170, 0.88)",
     fontFamily: SERIF,
@@ -2245,6 +3089,51 @@ const styles = StyleSheet.create({
   },
   pillTextDanger: {
     color: DANGER,
+  },
+  pillTextHighlight: {
+    color: "rgba(225, 181, 243, 0.9)",
+  },
+  pointHistoryChevron: {
+    color: GOLD_BRIGHT,
+    fontSize: 24,
+    marginLeft: 8,
+  },
+  pointHistoryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pointHistoryList: {
+    marginTop: 4,
+  },
+  pointHistoryMeta: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+    textTransform: "lowercase",
+  },
+  pointHistoryRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(244, 241, 234, 0.055)",
+    borderColor: "rgba(244, 241, 234, 0.13)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginTop: 8,
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pointHistoryRowDisabled: {
+    opacity: 0.56,
+  },
+  pointHistoryTitle: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 15,
+    lineHeight: 19,
+    textTransform: "lowercase",
   },
   pressed: {
     opacity: 0.72,
@@ -2365,13 +3254,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionTitle: {
-    color: "rgba(242, 211, 146, 0.88)",
+    color: GOLD,
     fontFamily: SERIF,
-    fontSize: 14,
-    lineHeight: 18,
-    marginBottom: 8,
-    marginTop: 18,
+    fontSize: 17,
+    lineHeight: 21,
+    marginRight: 12,
     textTransform: "lowercase",
+  },
+  sectionTitleLine: {
+    backgroundColor: "rgba(233, 190, 114, 0.16)",
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  sectionTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    marginBottom: 4,
+    marginTop: 20,
   },
   shell: {
     flex: 1,

@@ -30,11 +30,11 @@ test("scores unique finalized sealed and verified days from Anchor event logs", 
   assert.equal(snapshot.summary.sealedEvents, 1);
   assert.equal(snapshot.summary.verifiedEvents, 1);
   assert.equal(snapshot.summary.scoreRows, 1);
-  assert.equal(snapshot.summary.totalScore, 2);
+  assert.equal(snapshot.summary.totalScore, 3);
   assert.deepEqual(snapshot.scores[0].sealedDays, [19999]);
   assert.equal(snapshot.scores[0].uniqueSealDays, 1);
   assert.equal(snapshot.scores[0].verifiedSealDays, 1);
-  assert.equal(snapshot.scores[0].score, 2);
+  assert.equal(snapshot.scores[0].score, 3);
 });
 
 test("excludes non-finalized events unless explicitly requested", async () => {
@@ -56,7 +56,7 @@ test("excludes non-finalized events unless explicitly requested", async () => {
     "--include-non-finalized",
   ]);
   assert.equal(includeNonFinalized.code, 0, includeNonFinalized.stderr);
-  assert.equal(JSON.parse(includeNonFinalized.stdout).summary.totalScore, 2);
+  assert.equal(JSON.parse(includeNonFinalized.stdout).summary.totalScore, 3);
 });
 
 test("ignores matching Anchor event data emitted outside the Anky Seal Program invocation", async () => {
@@ -272,7 +272,7 @@ test("decodes Helius enhanced instruction payloads when Anchor logs are absent",
   assert.equal(snapshot.summary.indexedEvents, 2);
   assert.equal(snapshot.summary.sealedEvents, 1);
   assert.equal(snapshot.summary.verifiedEvents, 1);
-  assert.equal(snapshot.scores[0].score, 2);
+  assert.equal(snapshot.scores[0].score, 3);
   assert.equal(snapshot.events[0].kind, "sealed");
   assert.equal(snapshot.events[0].sessionHash, sessionHash);
   assert.equal(snapshot.events[1].kind, "verified");
@@ -420,7 +420,7 @@ test("scores public operator VerifiedSeal metadata when it includes utcDay", asy
   assert.equal(snapshot.summary.sealedEvents, 1);
   assert.equal(snapshot.summary.verifiedEvents, 1);
   assert.equal(snapshot.scores[0].verifiedSealDays, 1);
-  assert.equal(snapshot.scores[0].score, 2);
+  assert.equal(snapshot.scores[0].score, 3);
   assert.equal(snapshot.events[1].kind, "verified");
   assert.equal(snapshot.events[1].signature, SECOND_VALID_SIGNATURE);
   assert.equal(snapshot.events[1].proofHash, "c".repeat(64));
@@ -1208,7 +1208,7 @@ test("fetches known finalized signatures with Helius getTransaction", async () =
     ]);
     const snapshot = JSON.parse(result.stdout);
     assert.equal(snapshot.summary.indexedEvents, 2);
-    assert.equal(snapshot.summary.totalScore, 2);
+    assert.equal(snapshot.summary.totalScore, 3);
     assert.equal(snapshot.events[0].finalitySource, "known_signature_finalized_getTransaction");
     assert.equal(snapshot.events[0].finalized, true);
     assert.equal(snapshot.events[1].finalized, true);

@@ -725,7 +725,7 @@ function buildSnapshot(
         uniqueSealDays,
         verifiedSealDays,
         streakBonus,
-        score: uniqueSealDays + verifiedSealDays + streakBonus,
+        score: uniqueSealDays + (2 * verifiedSealDays) + streakBonus,
         sealedDays,
       };
     })
@@ -750,10 +750,10 @@ function buildSnapshot(
     scoringRule: {
       version: 1,
       uniqueFinalizedDailySeal: 1,
-      finalizedVerifiedSealBonus: 1,
+      finalizedVerifiedSealBonus: 2,
       completedSevenDayStreakBonus: 2,
       maxParticipants,
-      formula: "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)",
+      formula: "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus",
     },
     scores: participantScores,
     summary: {

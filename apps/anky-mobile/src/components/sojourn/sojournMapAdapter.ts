@@ -7,11 +7,7 @@ import {
 } from "../../lib/thread/threadLogic";
 import type { SojournMapAnky, SojournMapDay } from "./SojournMap.types";
 
-const avatarDefault = require("../../../assets/sojourn-map/avatars/anky-default.png");
-const avatarBegin = require("../../../assets/sojourn-map/avatars/begin-again-softly.png");
-const avatarBreathe = require("../../../assets/sojourn-map/avatars/room-to-breathe.png");
-const avatarCalm = require("../../../assets/sojourn-map/avatars/carry-this-calm.png");
-const AVATARS = [avatarDefault, avatarBegin, avatarBreathe, avatarCalm] as const;
+const avatarDefault = require("../../../assets/small-placeholder.jpg");
 
 export function buildSojournMapDays({
   currentDay,
@@ -71,10 +67,10 @@ function mapSessionToAnky({
   const firstLine =
     firstVisibleLine(file?.preview) ??
     (isFragment ? "open this fragment to remember what arrived." : "open this anky to remember what was written.");
-  const durationLabel = buildDurationLabel({ durationMs, session });
+  const durationLabel = buildDurationLabel({ durationMs, file, session });
 
   return {
-    avatar: AVATARS[(day + index) % AVATARS.length],
+    avatar: resolveAvatar(file),
     day,
     durationLabel,
     fileName: file?.fileName,
@@ -87,24 +83,55 @@ function mapSessionToAnky({
 }
 
 function buildDurationLabel({
+  file,
   durationMs,
   session,
 }: {
+  file?: SavedAnkyFile;
   durationMs?: number;
   session: AnkySessionSummary;
 }): string {
   const minutes =
     durationMs == null ? 8 : Math.max(1, Math.round(durationMs / 60000));
+  const sealStatus = getSealStatusLabel(file, session);
   const status = [
     session.kind === "fragment" ? "fragment" : `${minutes} min`,
     session.kind === "fragment" ? `${minutes} min` : null,
-    session.sealedOnchain === true ? "sealed" : "local",
+    sealStatus ?? "local",
     session.reflectionId != null ? "reflected" : null,
   ]
     .filter(Boolean)
     .join(" • ");
 
   return status.length === 0 ? "8 min • local" : status;
+}
+
+function resolveAvatar(file?: SavedAnkyFile) {
+  if (file?.imageUri != null && file.imageUri.trim().length > 0) {
+    return { uri: file.imageUri };
+  }
+
+  return avatarDefault;
+}
+
+function getSealStatusLabel(file: SavedAnkyFile | undefined, session: AnkySessionSummary): string | null {
+  if (file?.localState === "proof_verified") {
+    return "sealed +1 • proof +2 • 3 pts";
+  }
+
+  if (file?.localState === "proving") {
+    return "sealed +1 • proof pending";
+  }
+
+  if (file?.localState === "proof_failed") {
+    return "sealed +1 • proof failed";
+  }
+
+  if ((file?.sealCount ?? 0) > 0 || session.sealedOnchain === true) {
+    return "sealed +1";
+  }
+
+  return null;
 }
 
 function buildTitle({

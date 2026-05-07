@@ -693,15 +693,15 @@ Sojourn 9 reward target:
 Recommended Score V1:
 
 ```text
-score = unique_seal_days + verified_days + streak_bonus
+score = unique_seal_days + (2 * verified_seal_days) + streak_bonus
 ```
 
 Concrete version:
 
 - `+1` per valid finalized `DailySeal`.
-- `+1` extra if that day/hash has a finalized `VerifiedSeal`.
+- `+2` extra if that day/hash has a finalized `VerifiedSeal`.
 - Small streak bonus, for example `+2` per completed 7-day streak.
-- Max base score per wallet/day: `2` before streaks.
+- Max base score per wallet/day: `3` before streaks.
 - No token balance multiplier.
 - No wealth multiplier.
 - Final allocation: `wallet_allocation = 8% supply * wallet_score / total_scores`.

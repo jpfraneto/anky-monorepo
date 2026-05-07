@@ -1,0 +1,66 @@
+# EAS uploads this Expo project directory before building.
+# Keep local outputs, credentials, and non-runtime source assets out of that tarball.
+
+# Dependencies and generated build output
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+ios/
+android/
+expo-env.d.ts
+*.tsbuildinfo
+
+# Local env and signing material
+.env
+.env.*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*service-account*.json
+*service_account*.json
+
+# Logs and local editor/system files
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+.metro-health-check*
+
+# Repo-only docs and tests
+AGENTS.md
+ANKY_SOJOURN9_ALIGNMENT_AUDIT.md
+README.md
+docs/
+src/**/*.test.ts
+src/**/*.test.tsx
+src/**/*.spec.ts
+src/**/*.spec.tsx
+
+# Asset source files and unused media that are not imported by app source/config.
+assets/ChatGPT Image*.png
+assets/2c6f08ab-99b3-4fed-b8c2-5dbccf713ae6.png
+assets/8c506da0-cec8-4f8c-a7d5-90d1f2717f0e.jpeg
+assets/904f3d62-eef8-44b4-abc7-cefa45e49a75.png
+assets/a16d6617-4f75-4357-934e-201c942dd2d4.png
+assets/ac398260-6dde-4da8-8091-e836b8fafea8.png
+assets/d6feff37-9db1-49d3-8efc-064ea2f60048.png
+assets/*.pdf
+assets/anky-logo-source.png
+assets/logo-*.png
+assets/map-background.png
+assets/feather.png
+
+# Animation source/previews. Runtime imports use normalized frames and thread frames.
+assets/anky-animation/README.md
+assets/anky-animation/assets/anky/anky-sprite.png
+assets/anky-animation/assets/anky/atlas.json
+assets/anky-animation/assets/anky/frames/contact-sheet.*
+assets/anky-animation/assets/anky/frames/raw/
+assets/anky-animation/assets/anky/previews/

@@ -558,8 +558,8 @@ async function assertScoreContract({ database, port, socketDir }) {
   }
 
   return {
-    formula: "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)",
-    score: score.sealedDays.length + score.verifiedDays.length + 2,
+    formula: "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus",
+    score: score.sealedDays.length + (2 * score.verifiedDays.length) + 2,
     sealedDays: score.sealedDays,
     streakBonus: 2,
     verifiedDays: score.verifiedDays,

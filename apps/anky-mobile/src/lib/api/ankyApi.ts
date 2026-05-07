@@ -13,6 +13,10 @@ import {
   MobileLoomLookupResponse,
   MobileMintAuthorizationRequest,
   MobileMintAuthorizationResponse,
+  MobileSealPointsHistory,
+  MobileSealProofJob,
+  MobileSealProofRequest,
+  MobileSealProofResponse,
   PrepareMobileLoomMintRequest,
   PrepareMobileLoomMintResponse,
   MobileReflectionJobResponse,
@@ -281,11 +285,42 @@ export class AnkyApiClient {
     );
   }
 
+  lookupMobileSealPoints(wallet: string): Promise<MobileSealPointsHistory> {
+    const params = new URLSearchParams({ wallet });
+
+    return this.request<MobileSealPointsHistory>(
+      `/api/mobile/seals/points?${params.toString()}`,
+    );
+  }
+
   recordMobileSeal(request: RecordMobileSealRequest): Promise<RecordMobileSealResponse> {
     return this.request<RecordMobileSealResponse>("/api/mobile/seals/record", {
       body: JSON.stringify(request),
       method: "POST",
     });
+  }
+
+  requestMobileSealProof(
+    request: MobileSealProofRequest,
+  ): Promise<MobileSealProofResponse> {
+    return this.request<MobileSealProofResponse>("/api/mobile/seals/prove", {
+      body: JSON.stringify(request),
+      method: "POST",
+    }).catch((error: unknown) => {
+      const unavailable = parseUnavailableProofBody(error);
+
+      if (unavailable != null) {
+        return unavailable;
+      }
+
+      throw error;
+    });
+  }
+
+  getMobileSealProofJob(jobId: string): Promise<MobileSealProofJob> {
+    return this.request<MobileSealProofJob>(
+      `/api/mobile/seals/prove/${encodeURIComponent(jobId)}`,
+    );
   }
 
   sendThreadMessage(
@@ -354,6 +389,34 @@ function withBearerAuth(init: RequestInit, sessionToken?: string): RequestInit {
     ...init,
     headers,
   };
+}
+
+function parseUnavailableProofBody(error: unknown): MobileSealProofResponse | null {
+  if (!(error instanceof AnkyApiError) || error.status !== 503 || error.body == null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(error.body) as unknown;
+
+    if (
+      typeof parsed === "object" &&
+      parsed != null &&
+      "status" in parsed &&
+      parsed.status === "unavailable" &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
+    ) {
+      return {
+        message: parsed.message,
+        status: "unavailable",
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 export function createAnkyApiClient(options: AnkyApiClientOptions): AnkyApiClient {

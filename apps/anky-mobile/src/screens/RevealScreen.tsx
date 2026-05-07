@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -20,16 +21,19 @@ import { Connection } from "@solana/web3.js";
 import type { RootStackParamList } from "../../App";
 import { useAuthModal } from "../auth/AuthModalContext";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
+import { SimpleMarkdownText } from "../components/markdown/SimpleMarkdownText";
 import { SubtleIconButton } from "../components/navigation/SubtleIconButton";
 import { GoldenThreadSpinner } from "../components/session/AnkySessionSurface";
 import { getAnkyApiClient } from "../lib/api/client";
 import { CREDIT_COSTS } from "../lib/api/types";
+import type { MobileSealProofJob } from "../lib/api/types";
 import { addAnkySessionSummary, listAnkySessionSummaries } from "../lib/ankySessionIndex";
 import { computeSessionHash, parseAnky, reconstructText, verifyHash } from "../lib/ankyProtocol";
 import {
   clearActiveDraft,
   clearPendingReveal,
   readAnkyFile,
+  readAnkyImageUri,
   readLoomSealsForHash,
   readPendingReveal,
   readReflectionSidecar,
@@ -49,19 +53,28 @@ import { getSelectedLoom, type SelectedLoom } from "../lib/solana/loomStorage";
 import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
 import { getUtcDayFromUnixMs, isCurrentUtcDay, sealAnky } from "../lib/solana/sealAnky";
-import { getLoomSealProofState } from "../lib/solana/types";
+import { getLoomSealProofState, type LoomSeal } from "../lib/solana/types";
 import { sendThreadMessage } from "../lib/thread/threadClient";
 import {
   FULL_ANKY_DURATION_MS,
   getRiteDurationMs,
   isCompleteParsedAnky,
 } from "../lib/thread/threadLogic";
+import { saveThread } from "../lib/thread/threadStorage";
 import type { ThreadMessage } from "../lib/thread/types";
 import { useAnkyPresenceScreen } from "../presence/useAnkyPresenceScreen";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Entry" | "Reveal">;
-type ActionState = "copying" | "error" | "idle" | "reflecting" | "saving" | "sealing";
+type ActionState =
+  | "copying"
+  | "error"
+  | "idle"
+  | "proving"
+  | "reflecting"
+  | "saving"
+  | "sealing";
+type ProofState = "failed" | "none" | "proving" | "syncing" | "unavailable" | "verified";
 type RevealKind = "complete" | "short";
 type ScreenMode = "review" | "chat";
 type ReflectionKind = "quick" | "full";
@@ -80,10 +93,16 @@ type PendingReplyRetry = {
 };
 
 type SealProof = {
+  coreCollection?: string;
+  jobId?: string;
+  loomAsset?: string;
   network?: "devnet" | "mainnet-beta";
-  proofState?: "failed" | "none" | "proving" | "verified";
+  proofHash?: string;
+  proofState?: ProofState;
   proofTxSignature?: string;
+  sealUtcDay?: number;
   txSignature: string;
+  writer?: string;
 };
 
 const GOLD = "#E8C879";
@@ -93,12 +112,14 @@ const PAPER = "#FFF0C9";
 const INK = "#080713";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const SPANISH_LOCALE = "es-CL";
+const VERIFIED_POINTS_LABEL = "sealed +1 · proof +2 · 3 pts";
 
 export function RevealScreen({ navigation, route }: Props) {
   const { user } = usePrivy();
   const { openAuthModal } = useAuthModal();
   const wallet = useAnkyPrivyWallet();
   const autoIndexedHashRef = useRef<string | null>(null);
+  const proofPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealScrollRef = useRef<ScrollView>(null);
   const [actionState, setActionState] = useState<ActionState>("saving");
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
@@ -107,6 +128,7 @@ export function RevealScreen({ navigation, route }: Props) {
   const [fileName, setFileName] = useState<string | null>(route.params?.fileName ?? null);
   const [hash, setHash] = useState("");
   const [hashMatches, setHashMatches] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -114,6 +136,7 @@ export function RevealScreen({ navigation, route }: Props) {
   const [pendingRetry, setPendingRetry] = useState<PendingReplyRetry | null>(null);
   const [pendingReflectionConfirm, setPendingReflectionConfirm] =
     useState<ReflectionKind | null>(null);
+  const [pendingProofConfirm, setPendingProofConfirm] = useState(false);
   const [raw, setRaw] = useState<string | null>(null);
   const [reflection, setReflection] = useState<string | null>(null);
   const [reflectionKind, setReflectionKind] = useState<ReflectionKind | null>(null);
@@ -146,19 +169,24 @@ export function RevealScreen({ navigation, route }: Props) {
     existingSummary?.kind ?? (revealKind === "complete" ? completeSessionKind : "fragment");
   const isSaving = actionState === "saving";
   const isLoggedIn = user != null;
+  const hasExistingReflection =
+    (reflection != null && reflection.trim().length > 0) || existingSummary?.reflectionId != null;
   const canUseAnky = raw != null && parsed?.valid === true && hashMatches;
   const canCopy = reconstructed.length > 0 && actionState !== "copying";
-  const canRequestReflection = canUseAnky && isFullAnky && !isSaving && !isLoading;
+  const canRequestReflection =
+    canUseAnky && isFullAnky && !hasExistingReflection && !isSaving && !isLoading;
+  const canProveCurrentUtcDay = sessionUtcDay != null && isCurrentUtcDay(sessionUtcDay);
   const canShowSealWithLoom =
     canUseAnky &&
     isFullAnky &&
-    selectedLoom != null &&
-    wallet.hasWallet &&
     currentHash != null &&
-    !isSaving;
-  const canSealCurrentUtcDay = sessionUtcDay != null && isCurrentUtcDay(sessionUtcDay);
+    !isSaving &&
+    (didSeal || (canProveCurrentUtcDay && selectedLoom != null && wallet.hasWallet));
+  const canSealCurrentUtcDay = canProveCurrentUtcDay;
   const canSealWithLoom =
     canShowSealWithLoom &&
+    selectedLoom != null &&
+    wallet.hasWallet &&
     canSealCurrentUtcDay &&
     !didSeal &&
     actionState !== "sealing";
@@ -173,6 +201,24 @@ export function RevealScreen({ navigation, route }: Props) {
     currentHash != null &&
     reflectionKind != null &&
     !isLoading;
+  const backendConfigured = hasConfiguredBackend();
+  const proofState = sealProof?.proofState ?? "none";
+  const canRequestProof =
+    backendConfigured &&
+    canUseAnky &&
+    isFullAnky &&
+    canProveCurrentUtcDay &&
+    didSeal &&
+    sealProof != null &&
+    proofState !== "verified" &&
+    proofState !== "proving" &&
+    proofState !== "syncing" &&
+    proofState !== "unavailable" &&
+    actionState !== "proving" &&
+    actionState !== "saving" &&
+    currentHash != null &&
+    sessionUtcDay != null &&
+    raw != null;
   const dateParts = useMemo(() => formatRevealDateParts(parsed?.startedAt ?? null), [parsed]);
   const durationLabel = formatWrittenDuration(riteDurationMs);
   const wordCountLabel = formatWordCount(countWords(reconstructed));
@@ -193,18 +239,27 @@ export function RevealScreen({ navigation, route }: Props) {
     return () => clearTimeout(timer);
   }, [fileName]);
 
+  useEffect(
+    () => () => {
+      clearProofPollTimer(proofPollTimerRef);
+    },
+    [],
+  );
+
   useEffect(() => {
     let mounted = true;
 
     async function loadReveal() {
       setActionState("saving");
       setError("");
+      setImageUri(null);
       setInputText("");
       setIsLoading(false);
       setMessage("");
       setMessages([]);
       setPendingRetry(null);
       setPendingReflectionConfirm(null);
+      setPendingProofConfirm(false);
       setReflectionKind(null);
       setSealError("");
       setSealProof(null);
@@ -230,6 +285,7 @@ export function RevealScreen({ navigation, route }: Props) {
       let nextDidSeal = false;
       let nextMessage = "";
       let nextReflection: string | null = null;
+      let nextImageUri: string | null = null;
       let nextSealProof: SealProof | null = null;
 
       if (nextRaw == null) {
@@ -257,15 +313,12 @@ export function RevealScreen({ navigation, route }: Props) {
           nextSealProof =
             latestSeal == null
               ? null
-              : {
-                  network: latestSeal.network,
-                  proofState: getLoomSealProofState(
-                    latestSeal,
-                    nextSolanaConfig.proofVerifierAuthority,
-                  ),
-                  proofTxSignature: latestSeal.proofTxSignature,
-                  txSignature: latestSeal.txSignature,
-                };
+              : toSealProof(
+                  latestSeal,
+                  nextSolanaConfig.proofVerifierAuthority ?? "",
+                  nextSelectedLoom?.collection,
+                );
+          nextImageUri = saved.imageUri ?? (await readAnkyImageUri(saved.hash));
           nextReflection = await readReflectionSidecar(saved.hash);
 
           if (!isEntryRoute && autoIndexedHashRef.current !== saved.hash) {
@@ -295,6 +348,7 @@ export function RevealScreen({ navigation, route }: Props) {
 
       setRaw(nextRaw);
       setReflection(nextReflection);
+      setImageUri(nextImageUri);
       setFileName(nextFileName);
       setCreditBalance(nextCredits);
       setSessions(nextSessions);
@@ -434,9 +488,13 @@ export function RevealScreen({ navigation, route }: Props) {
 
       setDidSeal(true);
       setSealProof({
+        coreCollection: selectedLoom.collection,
+        loomAsset: selectedLoom.asset,
         network: receipt.network,
         proofState: "none",
+        sealUtcDay: sessionUtcDay,
         txSignature: receipt.signature,
+        writer: receipt.writer,
       });
       setActionState("idle");
     } catch (sealError) {
@@ -447,6 +505,333 @@ export function RevealScreen({ navigation, route }: Props) {
       setMessage("");
       setActionState("error");
     }
+  }
+
+  function requestProofWithConfirm() {
+    if (!canRequestProof) {
+      return;
+    }
+
+    setPendingProofConfirm(true);
+  }
+
+  async function handleStartProof() {
+    setPendingProofConfirm(false);
+
+    if (!canRequestProof || raw == null || currentHash == null || sessionUtcDay == null || sealProof == null) {
+      return;
+    }
+
+    const api = getAnkyApiClient();
+
+    if (api == null) {
+      setSealProof({ ...sealProof, proofState: "unavailable" });
+      setMessage("sealed +1 · proof unavailable");
+      return;
+    }
+
+    const writer = sealProof.writer ?? wallet.publicKey;
+
+    if (writer == null) {
+      setSealError("wallet is required to prove this rite.");
+      return;
+    }
+
+    try {
+      setActionState("proving");
+      setMessage("proving rite");
+      setSealError("");
+
+      const config = await loadMobileSolanaConfig();
+      const response = await api.requestMobileSealProof({
+        coreCollection: sealProof.coreCollection ?? selectedLoom?.collection,
+        loomAsset: sealProof.loomAsset ?? selectedLoom?.asset,
+        network: sealProof.network ?? config.network,
+        rawAnky: raw,
+        sealSignature: sealProof.txSignature,
+        sessionHash: currentHash,
+        utcDay: sealProof.sealUtcDay ?? sessionUtcDay,
+        wallet: writer,
+      });
+
+      if (response.status === "unavailable") {
+        setSealProof({ ...sealProof, proofState: "unavailable" });
+        setMessage("sealed +1 · proof unavailable");
+        setActionState("idle");
+        return;
+      }
+
+      if (response.status === "finalized") {
+        const nextProof: SealProof = {
+          ...sealProof,
+          proofHash: response.proofHash,
+          proofState: "verified",
+          proofTxSignature: response.proofTxSignature,
+          writer: response.wallet,
+        };
+
+        setSealProof(nextProof);
+        await hydrateLatestSealProof(currentHash, nextProof);
+        setMessage(VERIFIED_POINTS_LABEL);
+        setActionState("idle");
+        return;
+      }
+
+      if (response.status === "syncing" || response.status === "backfill_required") {
+        const nextProof: SealProof = {
+          ...sealProof,
+          proofHash: response.proofHash,
+          proofState: "syncing",
+        };
+
+        setSealProof(nextProof);
+        setMessage("verified on-chain · syncing");
+        setActionState("idle");
+        scheduleProofReceiptPoll(currentHash, response.pollAfterMs);
+        return;
+      }
+
+      if (response.status !== "proving") {
+        return;
+      }
+
+      const nextProof: SealProof = {
+        ...sealProof,
+        jobId: response.jobId,
+        proofState: "proving",
+      };
+
+      setSealProof(nextProof);
+      scheduleProofPoll(response.jobId, response.pollAfterMs);
+    } catch (proofError) {
+      console.error(proofError);
+      const hydrated = await hydrateLatestSealProof(currentHash, sealProof).catch(() => null);
+
+      if (hydrated?.proofState === "verified") {
+        setMessage(VERIFIED_POINTS_LABEL);
+        setActionState("idle");
+        return;
+      }
+
+      if (hydrated?.proofState === "syncing") {
+        setMessage("verified on-chain · syncing");
+        setActionState("idle");
+        scheduleProofReceiptPoll(currentHash);
+        return;
+      }
+
+      setSealProof({ ...sealProof, proofState: "failed" });
+      setMessage("sealed +1 · proof failed");
+      setActionState("idle");
+    }
+  }
+
+  async function hydrateLatestSealProof(
+    sessionHash: string,
+    fallbackProof?: SealProof,
+  ): Promise<SealProof | null> {
+    const config = await loadMobileSolanaConfig();
+    await hydrateMobileSealReceiptsForHashes([sessionHash]);
+    const latestSeal = selectLatestSeal(await readLoomSealsForHash(sessionHash));
+
+    if (latestSeal == null) {
+      return fallbackProof ?? null;
+    }
+
+    const hydratedProof = toSealProof(
+      latestSeal,
+      config.proofVerifierAuthority ?? "",
+      fallbackProof?.coreCollection ?? selectedLoom?.collection,
+      fallbackProof?.jobId,
+    );
+    const nextProof =
+      hydratedProof.proofState === "none" &&
+      (fallbackProof?.proofState === "verified" || fallbackProof?.proofState === "syncing")
+        ? fallbackProof
+        : hydratedProof;
+
+    setDidSeal(true);
+    setSealProof(nextProof);
+
+    return nextProof;
+  }
+
+  function scheduleProofPoll(jobId: string, delayMs = 4_000) {
+    clearProofPollTimer(proofPollTimerRef);
+    proofPollTimerRef.current = setTimeout(() => {
+      void pollProofJob(jobId);
+    }, Math.max(1_000, delayMs));
+  }
+
+  function scheduleProofReceiptPoll(sessionHash: string, delayMs = 4_000) {
+    clearProofPollTimer(proofPollTimerRef);
+    proofPollTimerRef.current = setTimeout(() => {
+      void pollProofReceipt(sessionHash);
+    }, Math.max(1_000, delayMs));
+  }
+
+  async function pollProofReceipt(sessionHash: string) {
+    try {
+      const hydrated = await hydrateLatestSealProof(sessionHash, sealProof ?? undefined);
+
+      if (hydrated?.proofState === "verified") {
+        clearProofPollTimer(proofPollTimerRef);
+        setMessage(VERIFIED_POINTS_LABEL);
+        setActionState("idle");
+        return;
+      }
+
+      if (hydrated?.proofState === "failed") {
+        setMessage("sealed +1 · proof failed");
+        setActionState("idle");
+        return;
+      }
+
+      setSealProof((current) =>
+        current == null ? current : { ...current, proofState: "syncing" },
+      );
+      setMessage("verified on-chain · syncing");
+      scheduleProofReceiptPoll(sessionHash);
+    } catch (error) {
+      console.warn("Could not sync proof receipt.", error);
+      setSealProof((current) =>
+        current == null ? current : { ...current, proofState: "syncing" },
+      );
+      setMessage("verified on-chain · syncing");
+      scheduleProofReceiptPoll(sessionHash);
+    }
+  }
+
+  async function pollProofJob(jobId: string) {
+    const api = getAnkyApiClient();
+
+    if (api == null || currentHash == null) {
+      setSealProof((current) => (current == null ? current : { ...current, proofState: "unavailable" }));
+      setActionState("idle");
+      return;
+    }
+
+    try {
+      const job = await api.getMobileSealProofJob(jobId);
+      await handleProofJobUpdate(job);
+    } catch (pollError) {
+      console.warn("Could not poll proof job.", pollError);
+      const hydrated = await hydrateLatestSealProof(currentHash, sealProof ?? undefined).catch(() => null);
+
+      if (hydrated?.proofState === "verified") {
+        clearProofPollTimer(proofPollTimerRef);
+        setMessage(VERIFIED_POINTS_LABEL);
+        setActionState("idle");
+        return;
+      }
+
+      if (hydrated?.proofState === "syncing") {
+        setMessage("verified on-chain · syncing");
+        setActionState("idle");
+        scheduleProofReceiptPoll(currentHash);
+        return;
+      }
+
+      scheduleProofPoll(jobId);
+    }
+  }
+
+  async function handleProofJobUpdate(job: MobileSealProofJob) {
+    if (currentHash == null) {
+      return;
+    }
+
+    const remoteProof = await hydrateLatestSealProof(currentHash, sealProof ?? undefined).catch(
+      () => null,
+    );
+
+    if (remoteProof?.proofState === "verified") {
+      clearProofPollTimer(proofPollTimerRef);
+      setMessage(VERIFIED_POINTS_LABEL);
+      setActionState("idle");
+      return;
+    }
+
+    if (remoteProof?.proofState === "syncing" && job.status !== "finalized") {
+      setMessage("verified on-chain · syncing");
+      setActionState("idle");
+      scheduleProofReceiptPoll(currentHash);
+      return;
+    }
+
+    if (job.status === "finalized") {
+      const nextProof: SealProof = {
+        ...(sealProof ?? { txSignature: "" }),
+        jobId: job.jobId,
+        proofHash: job.proofHash,
+        proofState: "verified",
+        proofTxSignature: job.proofTxSignature,
+        sealUtcDay: job.utcDay,
+        writer: job.wallet,
+      };
+
+      clearProofPollTimer(proofPollTimerRef);
+      setSealProof(nextProof);
+      await hydrateLatestSealProof(currentHash, nextProof);
+      setMessage(VERIFIED_POINTS_LABEL);
+      setActionState("idle");
+      return;
+    }
+
+    if (job.status === "syncing" || job.status === "backfill_required") {
+      const nextProof: SealProof = {
+        ...(sealProof ?? { txSignature: "" }),
+        jobId: job.jobId,
+        proofHash: job.proofHash,
+        proofState: "syncing",
+        sealUtcDay: job.utcDay,
+        writer: job.wallet,
+      };
+
+      setSealProof(nextProof);
+      setMessage("verified on-chain · syncing");
+      setActionState("idle");
+      scheduleProofReceiptPoll(currentHash);
+      return;
+    }
+
+    if (job.status === "failed" || job.status === "unavailable") {
+      const hydrated = await hydrateLatestSealProof(currentHash, sealProof ?? undefined).catch(() => null);
+
+      if (hydrated?.proofState === "verified") {
+        clearProofPollTimer(proofPollTimerRef);
+        setMessage(VERIFIED_POINTS_LABEL);
+        setActionState("idle");
+        return;
+      }
+
+      if (hydrated?.proofState === "syncing") {
+        setMessage("verified on-chain · syncing");
+        setActionState("idle");
+        scheduleProofReceiptPoll(currentHash);
+        return;
+      }
+
+      clearProofPollTimer(proofPollTimerRef);
+      setSealProof((current) =>
+        current == null
+          ? current
+          : {
+              ...current,
+              jobId: job.jobId,
+              proofState: job.status === "unavailable" ? "unavailable" : "failed",
+            },
+      );
+      setMessage(job.status === "unavailable" ? "sealed +1 · proof unavailable" : "sealed +1 · proof failed");
+      setActionState("idle");
+      return;
+    }
+
+    setSealProof((current) =>
+      current == null ? current : { ...current, jobId: job.jobId, proofState: "proving" },
+    );
+    setMessage("proving rite");
+    scheduleProofPoll(job.jobId);
   }
 
   function requestReflectionWithConfirm(kind: ReflectionKind) {
@@ -501,11 +886,10 @@ export function RevealScreen({ navigation, route }: Props) {
     setError("");
     setInputText("");
     setIsLoading(true);
-    setMessage("");
+    setMessage("anky is reading");
     setMessages([]);
     setPendingRetry(null);
     setReflectionKind(kind);
-    setScreenMode("chat");
     scrollRevealToEnd();
 
     try {
@@ -514,6 +898,7 @@ export function RevealScreen({ navigation, route }: Props) {
         saved.fileName,
         kind === "full" ? "full" : "simple",
       );
+      const nextImageUri = await readAnkyImageUri(saved.hash);
       const assistantMessage = createRevealChatMessage({
         content: result.markdown,
         role: "assistant",
@@ -530,7 +915,10 @@ export function RevealScreen({ navigation, route }: Props) {
 
       setCreditBalance(result.creditsRemaining);
       setReflection(result.markdown);
+      setImageUri(nextImageUri);
       setMessages([assistantMessage]);
+      setMessage("");
+      setScreenMode("review");
       setActionState("idle");
     } catch (reflectionError) {
       console.error(reflectionError);
@@ -577,8 +965,17 @@ export function RevealScreen({ navigation, route }: Props) {
         sessionHash: currentHash,
         userMessage: trimmed,
       });
+      const nextMessages = [...committedMessages, assistantMessage];
 
-      setMessages([...committedMessages, assistantMessage]);
+      await persistRevealConversation(currentHash, nextMessages);
+      const saved = await ensureSavedFile();
+      await addAnkySessionSummary({
+        ...buildSessionSummary(saved, raw, summaryKind, didSeal || saved.sealCount > 0),
+        hasThread: true,
+        reflectionId: saved.hash,
+      });
+
+      setMessages(nextMessages);
     } catch (replyError) {
       console.error(replyError);
       setError(
@@ -617,8 +1014,10 @@ export function RevealScreen({ navigation, route }: Props) {
         sessionHash: currentHash,
         userMessage: pendingRetry.userMessage.content,
       });
+      const nextMessages = [...messages, assistantMessage];
 
-      setMessages((current) => [...current, assistantMessage]);
+      await persistRevealConversation(currentHash, nextMessages);
+      setMessages(nextMessages);
       setPendingRetry(null);
     } catch (replyError) {
       console.error(replyError);
@@ -695,16 +1094,19 @@ export function RevealScreen({ navigation, route }: Props) {
             {screenMode === "review" ? (
               <ReviewActions
                 canCopy={canCopy}
+                canRequestProof={canRequestProof}
                 canSealWithLoom={canSealWithLoom}
                 canRequestReflection={canRequestReflection}
                 canShowSealWithLoom={canShowSealWithLoom}
                 creditBalance={creditBalance}
                 fullCost={fullReflectionCost}
+                hasReflection={hasExistingReflection}
                 isLoggedIn={isLoggedIn}
                 isFullAnky={isFullAnky}
                 onBuyCredits={handleBuyCredits}
                 onCopy={() => void handleCopy()}
                 onFullReflection={() => requestReflectionWithConfirm("full")}
+                onRequestProof={requestProofWithConfirm}
                 onQuickReflection={() => requestReflectionWithConfirm("quick")}
                 onSealWithLoom={() => void handleSealWithLoom()}
                 onWriteAgain={handleWriteAgain}
@@ -712,6 +1114,7 @@ export function RevealScreen({ navigation, route }: Props) {
                 sealError={sealError || sealUtcDayError}
                 sealProof={sealProof}
                 sealed={didSeal}
+                proofBusy={actionState === "proving"}
                 sealing={actionState === "sealing"}
               />
             ) : (
@@ -727,6 +1130,10 @@ export function RevealScreen({ navigation, route }: Props) {
                 onSend={() => void handleSendChatMessage()}
               />
             )}
+
+            {screenMode === "review" && reflection != null && reflection.trim().length > 0 ? (
+              <SavedReflectionPanel imageUri={imageUri} reflection={reflection} />
+            ) : null}
 
             {screenMode === "review" && message.length > 0 ? (
               <Text style={styles.message}>{message}</Text>
@@ -750,6 +1157,11 @@ export function RevealScreen({ navigation, route }: Props) {
               }
             }}
             quickCost={quickReflectionCost}
+          />
+          <ProofConsentModal
+            onCancel={() => setPendingProofConfirm(false)}
+            onConfirm={() => void handleStartProof()}
+            visible={pendingProofConfirm}
           />
         </View>
       </KeyboardAvoidingView>
@@ -803,24 +1215,49 @@ function PrivacyDivider() {
         <View style={styles.dividerLine} />
       </View>
       <Text style={styles.privacyText}>
-        tu escritura es tuya. solo sale de tu dispositivo si pides una reflexión
+        tu escritura es tuya. solo sale de tu dispositivo si pides una reflexión o una prueba
       </Text>
+    </View>
+  );
+}
+
+function SavedReflectionPanel({
+  imageUri,
+  reflection,
+}: {
+  imageUri: string | null;
+  reflection: string;
+}) {
+  return (
+    <View style={styles.savedReflectionCard}>
+      {imageUri == null ? null : (
+        <Image
+          accessibilityIgnoresInvertColors
+          resizeMode="cover"
+          source={{ uri: imageUri }}
+          style={styles.reflectionImage}
+        />
+      )}
+      <SimpleMarkdownText text={reflection} textStyle={styles.savedReflectionText} />
     </View>
   );
 }
 
 function ReviewActions({
   canCopy,
+  canRequestProof,
   canSealWithLoom,
   canRequestReflection,
   canShowSealWithLoom,
   creditBalance,
   fullCost,
+  hasReflection,
   isLoggedIn,
   isFullAnky,
   onBuyCredits,
   onCopy,
   onFullReflection,
+  onRequestProof,
   onQuickReflection,
   onSealWithLoom,
   onWriteAgain,
@@ -828,19 +1265,23 @@ function ReviewActions({
   sealError,
   sealProof,
   sealed,
+  proofBusy,
   sealing,
 }: {
   canCopy: boolean;
+  canRequestProof: boolean;
   canSealWithLoom: boolean;
   canRequestReflection: boolean;
   canShowSealWithLoom: boolean;
   creditBalance: number | null;
   fullCost: number;
+  hasReflection: boolean;
   isLoggedIn: boolean;
   isFullAnky: boolean;
   onBuyCredits: () => void;
   onCopy: () => void;
   onFullReflection: () => void;
+  onRequestProof: () => void;
   onQuickReflection: () => void;
   onSealWithLoom: () => void;
   onWriteAgain: () => void;
@@ -848,6 +1289,7 @@ function ReviewActions({
   sealError: string;
   sealProof: SealProof | null;
   sealed: boolean;
+  proofBusy: boolean;
   sealing: boolean;
 }) {
   const notEnoughForQuick = isLoggedIn && creditBalance != null && creditBalance < quickCost;
@@ -863,8 +1305,12 @@ function ReviewActions({
       : creditBalance == null
         ? "credits load when anky is reachable"
         : `you have ${creditBalance} ${creditBalance === 1 ? "credit" : "credits"}`;
+  const shouldShowReflectionActions = isFullAnky && !hasReflection;
   const shouldShowBuyCredits =
-    isFullAnky && isLoggedIn && creditBalance != null && (notEnoughForQuick || notEnoughForFull);
+    shouldShowReflectionActions &&
+    isLoggedIn &&
+    creditBalance != null &&
+    (notEnoughForQuick || notEnoughForFull);
 
   return (
     <View style={styles.reviewActions}>
@@ -877,9 +1323,12 @@ function ReviewActions({
       />
       <LoomSealStatus
         canSeal={canSealWithLoom}
+        canProve={canRequestProof}
         canShow={canShowSealWithLoom}
         error={sealError}
+        isProving={proofBusy}
         isSealing={sealing}
+        onProve={onRequestProof}
         onSeal={onSealWithLoom}
         proofState={sealProof?.proofState}
         proofSignature={sealProof?.proofTxSignature}
@@ -887,34 +1336,31 @@ function ReviewActions({
         sealSignature={sealProof?.txSignature}
         sealed={sealed}
       />
-      {!isFullAnky ? (
-        <RevealActionButton
-          icon="↻"
-          label="write again"
-          onPress={onWriteAgain}
-          variant="primary"
-        />
+
+      {shouldShowReflectionActions ? (
+        <>
+          <View style={styles.actionSeparator} />
+          <View style={styles.reflectionIntro}>
+            <Text style={styles.reflectionStatus}>{statusLine}</Text>
+          </View>
+          <RevealActionButton
+            badge={quickBadge}
+            disabled={quickDisabled}
+            icon="✦"
+            label="ask for reflection"
+            onPress={onQuickReflection}
+            variant="primary"
+          />
+          <RevealActionButton
+            badge={fullBadge}
+            disabled={fullDisabled}
+            icon="◎"
+            label="full anky reflection"
+            onPress={onFullReflection}
+            variant="accent"
+          />
+        </>
       ) : null}
-      <View style={styles.actionSeparator} />
-      <View style={styles.reflectionIntro}>
-        <Text style={styles.reflectionStatus}>{statusLine}</Text>
-      </View>
-      <RevealActionButton
-        badge={quickBadge}
-        disabled={quickDisabled}
-        icon="✦"
-        label="ask for reflection"
-        onPress={onQuickReflection}
-        variant="primary"
-      />
-      <RevealActionButton
-        badge={fullBadge}
-        disabled={fullDisabled}
-        icon="◎"
-        label="full anky reflection"
-        onPress={onFullReflection}
-        variant="accent"
-      />
       {shouldShowBuyCredits ? (
         <Pressable accessibilityRole="button" onPress={onBuyCredits} style={styles.buyCreditsLink}>
           <Text style={styles.buyCreditsText}>buy credits</Text>
@@ -1005,24 +1451,93 @@ function ReflectionSpendConfirmModal({
   );
 }
 
+function ProofConsentModal({
+  onCancel,
+  onConfirm,
+  visible,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  visible: boolean;
+}) {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={onCancel} transparent visible>
+      <View style={styles.confirmBackdrop}>
+        <Pressable
+          accessibilityLabel="close proof confirmation"
+          accessibilityRole="button"
+          onPress={onCancel}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.confirmCard}>
+          <View pointerEvents="none" style={styles.confirmThreadOverlay}>
+            <View style={styles.confirmThreadWash} />
+            <View style={styles.confirmThreadLineTop} />
+            <View style={styles.confirmThreadLineBottom} />
+          </View>
+          <Text style={styles.confirmEyebrow}>optional proof</Text>
+          <Text style={styles.confirmTitle}>prove this rite?</Text>
+          <Text style={styles.confirmBody}>
+            to earn the proof points, this exact .anky will be sent once to the anky prover. it is used to generate an SP1 proof and is not stored. only public proof metadata is saved.
+          </Text>
+
+          <View style={styles.confirmActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.confirmSecondaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.confirmSecondaryText}>cancel</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={onConfirm}
+              style={({ pressed }) => [
+                styles.confirmPrimaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.confirmPrimaryText}>prove for +2</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 type LoomSealStatusProps = {
+  canProve: boolean;
   canSeal: boolean;
   canShow: boolean;
   error: string;
+  isProving: boolean;
   isSealing: boolean;
+  onProve: () => void;
   onSeal: () => void;
   proofSignature?: string;
-  proofState?: "failed" | "none" | "proving" | "verified";
+  proofState?: ProofState;
   sealNetwork?: "devnet" | "mainnet-beta";
   sealSignature?: string;
   sealed: boolean;
 };
 
 function LoomSealStatus({
+  canProve,
   canSeal,
   canShow,
   error,
+  isProving,
   isSealing,
+  onProve,
   onSeal,
   proofSignature,
   proofState = "none",
@@ -1035,13 +1550,18 @@ function LoomSealStatus({
   const visibleSignature = proofSignature ?? sealSignature;
   const sealedLabel =
     proofState === "verified"
-      ? "proof verified"
+      ? VERIFIED_POINTS_LABEL
+      : proofState === "syncing"
+        ? "verified on-chain · syncing"
       : proofState === "proving"
-        ? "proving"
+        ? "proving rite"
         : proofState === "failed"
-          ? "proof failed"
-          : "sealed";
-  const proofHasReceipt = proofState === "verified" || proofState === "failed";
+          ? "sealed +1 · proof failed"
+          : proofState === "unavailable"
+            ? "sealed +1 · proof unavailable"
+            : "sealed +1";
+  const proofHasReceipt =
+    proofState === "verified" || proofState === "syncing" || proofState === "failed";
 
   if (!canShow && !sealed) {
     return null;
@@ -1056,6 +1576,16 @@ function LoomSealStatus({
           label={sealedLabel}
           variant={proofState === "failed" ? "sealFailed" : "seal"}
         />
+        {canProve ? (
+          <RevealActionButton
+            helper="+2 points · sends this .anky once to the prover"
+            icon="✦"
+            label="prove rite"
+            loading={isProving}
+            onPress={onProve}
+            variant={proofState === "failed" ? "sealFailed" : "seal"}
+          />
+        ) : null}
         {visibleSignature != null && visibleSignature.length > 0 ? (
           <Pressable
             accessibilityLabel="view seal transaction on orb"
@@ -1071,11 +1601,13 @@ function LoomSealStatus({
             </Text>
           </Pressable>
         ) : null}
-        {proofState === "proving" && !hasSignature ? (
-          <Text style={styles.txHashMuted}>sp1 receipt pending</Text>
+        {(proofState === "proving" || proofState === "syncing") && !hasSignature ? (
+          <Text style={styles.txHashMuted}>
+            {proofState === "syncing" ? "backend receipt syncing" : "sp1 receipt pending"}
+          </Text>
         ) : null}
         {proofState === "failed" ? (
-          <Text style={styles.txHashMuted}>sp1 receipt failed</Text>
+          <Text style={styles.txHashMuted}>retry is available while the local .anky remains here</Text>
         ) : null}
       </View>
     );
@@ -1086,8 +1618,8 @@ function LoomSealStatus({
       <View style={styles.loomSealWrap}>
         <RevealActionButton
           disabled
-          helper="weaving your hash seal into the ankyverse"
-          label="sealing..."
+          helper="+1 point · writing stays on this phone"
+          label="sealing hash"
           loading
           variant="seal"
         />
@@ -1112,7 +1644,13 @@ function LoomSealStatus({
   if (canShow && canSeal) {
     return (
       <View style={styles.loomSealWrap}>
-        <RevealActionButton icon="◇" label="seal with loom" onPress={onSeal} variant="seal" />
+        <RevealActionButton
+          helper="+1 point · writing stays on this phone"
+          icon="◇"
+          label="seal hash"
+          onPress={onSeal}
+          variant="seal"
+        />
       </View>
     );
   }
@@ -1337,9 +1875,13 @@ function RevealMessageBubble({ message }: { message: RevealChatMessage }) {
     <View style={[styles.messageRow, isAssistant ? styles.assistantRow : styles.userRow]}>
       <View style={[styles.bubble, isAssistant ? styles.assistantBubble : styles.userBubble]}>
         <Text style={styles.bubbleLabel}>{isAssistant ? "anky" : "tú"}</Text>
-        <Text selectable style={styles.bubbleText}>
-          {message.content}
-        </Text>
+        {isAssistant ? (
+          <SimpleMarkdownText text={message.content} textStyle={styles.bubbleText} />
+        ) : (
+          <Text selectable style={styles.bubbleText}>
+            {message.content}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -1400,6 +1942,26 @@ function toThreadMessages(messages: RevealChatMessage[]): ThreadMessage[] {
   }));
 }
 
+async function persistRevealConversation(
+  sessionHash: string,
+  messages: RevealChatMessage[],
+): Promise<void> {
+  const threadMessages = toThreadMessages(messages);
+  const firstMessage = threadMessages[0];
+  const lastMessage = threadMessages.at(-1);
+  const now = new Date().toISOString();
+
+  await saveThread({
+    version: 1,
+    createdAt: firstMessage?.createdAt ?? now,
+    messages: threadMessages,
+    mode: "reflection",
+    sessionHash,
+    updatedAt: lastMessage?.createdAt ?? now,
+    userMessageCount: threadMessages.filter((message) => message.role === "user").length,
+  });
+}
+
 function createRevealChatMessage({
   content,
   createdAt = new Date().toISOString(),
@@ -1453,6 +2015,47 @@ async function openOrbTx(
   if (canOpen) {
     await Linking.openURL(url);
   }
+}
+
+function clearProofPollTimer(ref: MutableRefObject<ReturnType<typeof setTimeout> | null>) {
+  if (ref.current != null) {
+    clearTimeout(ref.current);
+    ref.current = null;
+  }
+}
+
+function selectLatestSeal(seals: LoomSeal[]): LoomSeal | null {
+  const finalizedSeal = [...seals].reverse().find((seal) => seal.proofStatus === "finalized");
+  const syncingSeal = [...seals]
+    .reverse()
+    .find(
+      (seal) =>
+        seal.proofStatus === "confirmed" ||
+        seal.proofStatus === "syncing" ||
+        seal.proofStatus === "backfill_required",
+    );
+
+  return finalizedSeal ?? syncingSeal ?? seals.at(-1) ?? null;
+}
+
+function toSealProof(
+  seal: LoomSeal,
+  proofVerifierAuthority: string,
+  coreCollection?: string,
+  jobId?: string,
+): SealProof {
+  return {
+    coreCollection,
+    jobId,
+    loomAsset: seal.loomId,
+    network: seal.network,
+    proofHash: seal.proofHash,
+    proofState: getLoomSealProofState(seal, proofVerifierAuthority),
+    proofTxSignature: seal.proofTxSignature,
+    sealUtcDay: seal.utcDay,
+    txSignature: seal.txSignature,
+    writer: seal.writer,
+  };
 }
 
 function buildSessionSummary(
@@ -1991,6 +2594,7 @@ const styles = StyleSheet.create({
   },
   loomSealWrap: {
     alignItems: "center",
+    gap: spacing.sm,
     width: "100%",
   },
   message: {
@@ -2032,6 +2636,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "lowercase",
   },
+  reflectionImage: {
+    aspectRatio: 1,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+    width: "100%",
+  },
   reviewActions: {
     gap: spacing.sm,
     marginTop: spacing.lg,
@@ -2047,6 +2657,56 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: "center",
     textTransform: "lowercase",
+  },
+  savedConversation: {
+    borderTopColor: "rgba(232, 200, 121, 0.16)",
+    borderTopWidth: 1,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  savedConversationAnky: {
+    alignSelf: "stretch",
+    backgroundColor: "rgba(232, 200, 121, 0.07)",
+    borderColor: "rgba(232, 200, 121, 0.2)",
+  },
+  savedConversationBubble: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  savedConversationLabel: {
+    color: GOLD,
+    fontSize: fontSize.sm,
+    fontWeight: "800",
+    textTransform: "lowercase",
+  },
+  savedConversationRole: {
+    color: GOLD_DIM,
+    fontSize: fontSize.xs,
+    fontWeight: "800",
+    marginBottom: 5,
+    textTransform: "lowercase",
+  },
+  savedConversationText: {
+    color: PAPER,
+    fontSize: fontSize.sm,
+    lineHeight: 21,
+  },
+  savedConversationUser: {
+    alignSelf: "flex-end",
+    backgroundColor: "rgba(255, 255, 255, 0.045)",
+    borderColor: "rgba(255, 240, 201, 0.14)",
+    maxWidth: "92%",
+  },
+  savedReflectionCard: {
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  savedReflectionText: {
+    color: PAPER,
+    fontSize: fontSize.md,
+    lineHeight: 25,
   },
   sendButton: {
     alignItems: "center",

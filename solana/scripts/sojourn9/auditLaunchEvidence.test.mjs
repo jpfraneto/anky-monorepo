@@ -17,7 +17,7 @@ const VALID_SIGNATURE =
   "2hntvJaJzRkFWt3hTa7Q9oiGyVsTpjMwmzY8WcN52UDMsTyMuzKUtcEhupAe7BcZGeq49dFBhhgoYgeZ79m53sNh";
 const SECOND_VALID_SIGNATURE = "5".repeat(88);
 const SCORE_FORMULA =
-  "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)";
+  "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus";
 
 test("accepts complete public devnet launch evidence without reading secrets", async () => {
   const evidencePath = writeEvidence(publicEvidence());

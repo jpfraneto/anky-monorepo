@@ -43,6 +43,18 @@ describe("getLoomSealProofState", () => {
     );
   });
 
+  it("treats confirmed or recovery proof metadata as syncing until finalized", () => {
+    expect(getLoomSealProofState(validSeal({ proofStatus: "confirmed" }), EXPECTED_VERIFIER)).toBe(
+      "syncing",
+    );
+    expect(getLoomSealProofState(validSeal({ proofStatus: "syncing" }), EXPECTED_VERIFIER)).toBe(
+      "syncing",
+    );
+    expect(
+      getLoomSealProofState(validSeal({ proofStatus: "backfill_required" }), EXPECTED_VERIFIER),
+    ).toBe("syncing");
+  });
+
   it("preserves proving and failed states without requiring verifier metadata", () => {
     expect(getLoomSealProofState(validSeal({ proofStatus: "pending" }), EXPECTED_VERIFIER)).toBe(
       "proving",
@@ -53,6 +65,9 @@ describe("getLoomSealProofState", () => {
     expect(getLoomSealProofState(validSeal({ proofStatus: "failed" }), EXPECTED_VERIFIER)).toBe(
       "failed",
     );
+    expect(
+      getLoomSealProofState(validSeal({ proofStatus: "unavailable" }), EXPECTED_VERIFIER),
+    ).toBe("unavailable");
     expect(getLoomSealProofState(null, EXPECTED_VERIFIER)).toBe("none");
   });
 });

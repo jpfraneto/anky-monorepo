@@ -9,6 +9,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_PRIVY_APP_ID": "cmivv85zt00ftla0cjpaw155h",
+       "EXPO_PUBLIC_PRIVY_CLIENT_ID": "client-WY6TQNMf79CLc1pwhjeRdVbEdsaP85e9Esk8RLHPY9ebF",
         "EXPO_PUBLIC_ANKY_API_URL": "https://anky.app",
         "EXPO_PUBLIC_APP_URL": "https://anky.app",
         "EXPO_PUBLIC_SOLANA_CLUSTER": "devnet",
@@ -16,13 +17,16 @@
         "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.devnet.solana.com",
         "EXPO_PUBLIC_ANKY_CORE_COLLECTION": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
         "EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
-        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app"
+        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app",
+        "EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+        "EXPO_PUBLIC_ANKY_CORE_PROGRAM_ID": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_PRIVY_APP_ID": "cmivv85zt00ftla0cjpaw155h",
+"EXPO_PUBLIC_PRIVY_CLIENT_ID": "client-WY6TQNMf79CLc1pwhjeRdVbEdsaP85e9Esk8RLHPY9ebF",
         "EXPO_PUBLIC_ANKY_API_URL": "https://anky.app",
         "EXPO_PUBLIC_APP_URL": "https://anky.app",
         "EXPO_PUBLIC_SOLANA_CLUSTER": "devnet",
@@ -30,13 +34,16 @@
         "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.devnet.solana.com",
         "EXPO_PUBLIC_ANKY_CORE_COLLECTION": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
         "EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
-        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app"
+        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app",
+        "EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+        "EXPO_PUBLIC_ANKY_CORE_PROGRAM_ID": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_PRIVY_APP_ID": "cmivv85zt00ftla0cjpaw155h",
+"EXPO_PUBLIC_PRIVY_CLIENT_ID": "client-WY6TQNMf79CLc1pwhjeRdVbEdsaP85e9Esk8RLHPY9ebF",
         "EXPO_PUBLIC_ANKY_API_URL": "https://anky.app",
         "EXPO_PUBLIC_APP_URL": "https://anky.app",
         "EXPO_PUBLIC_SOLANA_CLUSTER": "devnet",
@@ -44,7 +51,9 @@
         "EXPO_PUBLIC_SOLANA_RPC_URL": "https://api.devnet.solana.com",
         "EXPO_PUBLIC_ANKY_CORE_COLLECTION": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
         "EXPO_PUBLIC_ANKY_SEAL_PROGRAM_ID": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
-        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app"
+        "EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL": "https://export.anky.app",
+        "EXPO_PUBLIC_ANKY_PROOF_VERIFIER_AUTHORITY": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+        "EXPO_PUBLIC_ANKY_CORE_PROGRAM_ID": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
       }
     }
   },

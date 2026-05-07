@@ -56,7 +56,9 @@ export async function configureRevenueCat(): Promise<void> {
   }
 
   if (configurePromise != null) {
-    return configurePromise;
+    await configurePromise;
+    await syncConfiguredRevenueCatIdentity();
+    return;
   }
 
   configurePromise = configureRevenueCatOnce().finally(() => {
@@ -141,14 +143,26 @@ export async function purchaseCreditsPackage(
     const purchase = await purchasesModule.default.purchasePackage(storePackage.revenueCatPackage);
     await purchasesModule.default.invalidateVirtualCurrenciesCache().catch(() => undefined);
     await purchasesModule.default.getVirtualCurrencies().catch(() => undefined);
+    const productId =
+      purchase.productIdentifier.trim().length > 0
+        ? purchase.productIdentifier
+        : storePackage.productId;
+    const purchasedAt =
+      purchase.transaction.purchaseDate.trim().length > 0
+        ? purchase.transaction.purchaseDate
+        : new Date().toISOString();
+    const transactionId =
+      purchase.transaction.transactionIdentifier.trim().length > 0
+        ? purchase.transaction.transactionIdentifier
+        : `${productId}:${purchasedAt}`;
 
     return {
       message: "credits added.",
-      productId: purchase.productIdentifier,
-      purchasedAt: purchase.transaction.purchaseDate,
+      productId,
+      purchasedAt,
       purchaseToken: purchase.transaction.purchaseToken ?? undefined,
       status: "completed",
-      transactionId: purchase.transaction.transactionIdentifier,
+      transactionId,
     };
   } catch (error) {
     if (isRevenueCatPurchaseCancelled(error)) {
@@ -193,6 +207,7 @@ async function configureRevenueCatOnce(): Promise<void> {
 
   if (apiKey == null) {
     status = "unavailable";
+    devRevenueCatLog("revenuecat api key unavailable", { platform: Platform.OS });
     return;
   }
 
@@ -200,6 +215,7 @@ async function configureRevenueCatOnce(): Promise<void> {
 
   try {
     const nextModule = await import("react-native-purchases");
+    purchasesModule = nextModule;
     const Purchases = nextModule.default;
     const appUserID = await getMobileApiIdentityId();
     const alreadyConfigured = await Purchases.isConfigured().catch(() => false);
@@ -207,22 +223,41 @@ async function configureRevenueCatOnce(): Promise<void> {
     if (!alreadyConfigured) {
       Purchases.configure({ apiKey, appUserID });
       configuredAppUserId = appUserID;
+      devRevenueCatLog("configured revenuecat", { appUserID });
     } else {
-      const currentAppUserId = await Purchases.getAppUserID().catch(() => configuredAppUserId);
-
-      if (currentAppUserId != null && currentAppUserId !== appUserID) {
-        await Purchases.logIn(appUserID);
-      }
-
-      configuredAppUserId = appUserID;
+      await syncConfiguredRevenueCatIdentity(appUserID);
     }
 
-    purchasesModule = nextModule;
     status = "available";
   } catch (error) {
     status = "unavailable";
     throw error;
   }
+}
+
+async function syncConfiguredRevenueCatIdentity(appUserID?: string): Promise<void> {
+  if (purchasesModule == null) {
+    return;
+  }
+
+  const Purchases = purchasesModule.default;
+  const targetAppUserId = appUserID ?? await getMobileApiIdentityId();
+  const currentAppUserId = await Purchases.getAppUserID().catch(() => configuredAppUserId);
+
+  devRevenueCatLog("revenuecat app user id", {
+    currentAppUserId,
+    targetAppUserId,
+  });
+
+  if (currentAppUserId !== targetAppUserId) {
+    devRevenueCatLog("logging revenuecat into backend identity", {
+      currentAppUserId,
+      targetAppUserId,
+    });
+    await Purchases.logIn(targetAppUserId);
+  }
+
+  configuredAppUserId = targetAppUserId;
 }
 
 function getRevenueCatApiKey(): string | null {
@@ -334,4 +369,17 @@ function getRevenueCatErrorMessage(error: unknown): string {
   }
 
   return "purchase failed.";
+}
+
+function devRevenueCatLog(message: string, payload?: unknown) {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  if (payload === undefined) {
+    console.log(`[revenuecat] ${message}`);
+    return;
+  }
+
+  console.log(`[revenuecat] ${message}`, payload);
 }

@@ -38,7 +38,17 @@ export type LoomSeal = SealAnkyResult & {
   proofProtocolVersion?: number;
   proofUtcDay?: number;
   proofSlot?: number;
-  proofStatus?: "confirmed" | "failed" | "finalized" | "pending" | "processed";
+  proofStatus?:
+    | "backfill_required"
+    | "confirmed"
+    | "failed"
+    | "finalized"
+    | "pending"
+    | "processed"
+    | "proving"
+    | "queued"
+    | "syncing"
+    | "unavailable";
   proofTxSignature?: string;
   proofVerifier?: string;
 };
@@ -46,8 +56,8 @@ export type LoomSeal = SealAnkyResult & {
 export function getLoomSealProofState(
   seal: LoomSeal | null | undefined,
   expectedProofVerifier?: string,
-): "failed" | "none" | "proving" | "verified" {
-  if (seal?.proofStatus === "confirmed" || seal?.proofStatus === "finalized") {
+): "failed" | "none" | "proving" | "syncing" | "unavailable" | "verified" {
+  if (seal?.proofStatus === "finalized") {
     if (
       typeof expectedProofVerifier !== "string" ||
       expectedProofVerifier.length === 0 ||
@@ -64,8 +74,24 @@ export function getLoomSealProofState(
     return "verified";
   }
 
-  if (seal?.proofStatus === "pending" || seal?.proofStatus === "processed") {
+  if (
+    seal?.proofStatus === "backfill_required" ||
+    seal?.proofStatus === "confirmed" ||
+    seal?.proofStatus === "pending" ||
+    seal?.proofStatus === "processed" ||
+    seal?.proofStatus === "proving" ||
+    seal?.proofStatus === "queued" ||
+    seal?.proofStatus === "syncing"
+  ) {
+    if (seal.proofStatus === "backfill_required" || seal.proofStatus === "confirmed" || seal.proofStatus === "syncing") {
+      return "syncing";
+    }
+
     return "proving";
+  }
+
+  if (seal?.proofStatus === "unavailable") {
+    return "unavailable";
   }
 
   if (seal?.proofStatus === "failed") {

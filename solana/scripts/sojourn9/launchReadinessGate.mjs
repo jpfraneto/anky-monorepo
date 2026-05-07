@@ -373,7 +373,7 @@ const SOURCE_CHECKS = [
     required: [
       "/api/mobile/seals/score",
       "status = 'finalized'",
-      "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)",
+      "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus",
     ],
   },
   {
@@ -395,15 +395,16 @@ const SOURCE_CHECKS = [
     ],
   },
   {
-    name: "Mobile Loom screen surfaces indexed score",
+    name: "Mobile Loom screen surfaces indexed points",
     path: "apps/anky-mobile/src/screens/LoomScreen.tsx",
     required: [
-      "lookupMobileSealScore",
+      "lookupMobileSealPoints",
       "indexed score",
       "backend score unavailable",
       "finalized receipts only",
       "hash seals, ownership, and verified receipts when they exist",
-      "proof days",
+      "proof +2",
+      "points history",
     ],
     forbidden: ["solana records proof, ownership, and the ritual trace"],
   },
@@ -411,10 +412,11 @@ const SOURCE_CHECKS = [
     name: "Mobile reveal separates hash seal from SP1 proof state",
     path: "apps/anky-mobile/src/screens/RevealScreen.tsx",
     required: [
-      "proof verified",
-      "weaving your hash seal into the ankyverse",
+      "verified +2",
+      "+1 point · writing stays on this phone",
+      "+2 points · sends this .anky once to the prover",
       "sp1 receipt pending",
-      "sp1 receipt failed",
+      "proof failed",
     ],
     forbidden: ["weaving your proof into the ankyverse"],
   },

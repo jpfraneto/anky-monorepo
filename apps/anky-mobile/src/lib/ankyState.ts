@@ -12,7 +12,7 @@ type LocalStateInput = {
   artifactCount?: number;
   closed: boolean;
   hashMatches: boolean;
-  proofStatus?: "failed" | "none" | "proving" | "verified";
+  proofStatus?: "failed" | "none" | "proving" | "syncing" | "unavailable" | "verified";
   sealCount?: number;
   valid: boolean;
 };
@@ -33,7 +33,7 @@ export function resolveAnkyLocalState({
     return "proof_verified";
   }
 
-  if (proofStatus === "proving") {
+  if (proofStatus === "proving" || proofStatus === "syncing") {
     return "proving";
   }
 

@@ -18,6 +18,7 @@ const ACTIVE_DRAFT_FILE = "active.anky.draft";
 const PENDING_REVEAL_FILE = "pending.anky";
 const HASH_FILE_PATTERN = /^[a-f0-9]{64}\.anky$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
+const IMAGE_SIDECAR_PATTERN = /^[a-f0-9]{64}\.image\.(jpe?g|png|webp)$/;
 const SEAL_FILE_PATTERN = /^[a-f0-9]{64}\.seals\.json$/;
 const SEAL_RECEIPT_FILE_PATTERN = /^[a-f0-9]{64}\.seal\.json$/;
 
@@ -36,6 +37,7 @@ export type SavedAnkyFile = {
   fileName: string;
   hash: string;
   hashMatches: boolean;
+  imageUri?: string;
   latestSeal?: LoomSeal;
   localState: AnkyLocalState;
   preview: string;
@@ -315,7 +317,13 @@ export async function readLoomSealsForHash(sessionHash: string): Promise<LoomSea
     return legacySeals;
   }
 
-  return [...legacySeals, toLoomSeal(singleSeal)];
+  const bySignature = new Map<string, LoomSeal>();
+  bySignature.set(singleSeal.signature, toLoomSeal(singleSeal));
+  legacySeals.forEach((seal) => {
+    bySignature.set(seal.txSignature, seal);
+  });
+
+  return [...bySignature.values()];
 }
 
 export async function listLocalLoomSeals(): Promise<LoomSeal[]> {
@@ -493,6 +501,35 @@ export async function readReflectionSidecar(sessionHash: string): Promise<string
   return readOptionalUtf8Sidecar(`${sessionHash}.reflection.md`);
 }
 
+export async function readAnkyImageUri(sessionHash: string): Promise<string | null> {
+  validateHash(sessionHash);
+  await ensureAnkyDirectory();
+
+  const fileNames = await FileSystem.readDirectoryAsync(getAnkyDirectoryUri());
+  const localImageFile = fileNames.find(
+    (fileName) => fileName.startsWith(`${sessionHash}.image.`) && IMAGE_SIDECAR_PATTERN.test(fileName),
+  );
+
+  if (localImageFile != null) {
+    return `${getAnkyDirectoryUri()}${localImageFile}`;
+  }
+
+  const metaRaw = await readOptionalUtf8Sidecar(`${sessionHash}.meta.json`);
+
+  if (metaRaw == null) {
+    return null;
+  }
+
+  try {
+    const meta = JSON.parse(metaRaw) as Partial<{ imageUrl: string }>;
+    const imageUrl = typeof meta.imageUrl === "string" ? meta.imageUrl.trim() : "";
+
+    return imageUrl.length > 0 ? imageUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readProcessingReceipt(
   sessionHash: string,
 ): Promise<ProcessingReceiptSidecar | null> {
@@ -522,12 +559,14 @@ async function toSavedAnkyFile(
   const seals = await readLoomSealsForHash(hash);
   const latestSeal = seals.at(-1);
   const artifactKinds = await listArtifactKindsForHash(hash);
+  const imageUri = await readAnkyImageUri(hash);
 
   return {
     artifactKinds,
     fileName,
     hash,
     hashMatches,
+    imageUri: imageUri ?? undefined,
     latestSeal,
     localState: resolveAnkyLocalState({
       artifactCount: artifactKinds.length,

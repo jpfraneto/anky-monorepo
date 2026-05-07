@@ -76,9 +76,33 @@ export function SojournMap({
     return () => clearTimeout(timer);
   }, [height, orderedDays, selectedDayNumber]);
 
+  function scrollToDay(dayNumber: number, animated: boolean) {
+    const index = orderedDays.findIndex((day) => day.day === dayNumber);
+
+    if (index < 0) {
+      return;
+    }
+
+    scrollRef.current?.scrollTo({
+      animated,
+      y: Math.max(0, index * sojournMapTokens.dayNode.rowHeight - height * 0.23),
+    });
+  }
+
   function selectDay(day: SojournMapDay) {
     setSelectedDayNumber(day.day);
     onSelectDay?.(day);
+  }
+
+  function travelToToday() {
+    const today = days.find((day) => day.day === currentDay);
+
+    if (today == null) {
+      return;
+    }
+
+    selectDay(today);
+    setTimeout(() => scrollToDay(currentDay, true), 40);
   }
 
   return (
@@ -118,8 +142,10 @@ export function SojournMap({
         {selectedDay == null ? null : (
           <SelectedDayPanel
             bottomInset={bottomInset}
+            currentDay={currentDay}
             day={selectedDay}
             onPressAnky={onPressAnky}
+            onTravelToToday={travelToToday}
           />
         )}
       </View>
@@ -233,16 +259,21 @@ function AnkyCountLabel({
 
 function SelectedDayPanel({
   bottomInset,
+  currentDay,
   day,
   onPressAnky,
+  onTravelToToday,
 }: {
   bottomInset: number;
+  currentDay: number;
   day: SojournMapDay;
   onPressAnky?: (anky: SojournMapAnky) => void;
+  onTravelToToday: () => void;
 }) {
   const completeAnkys = day.ankys.filter((anky) => anky.kind === "anky");
   const fragments = day.ankys.filter((anky) => anky.kind === "fragment");
   const hasWriting = completeAnkys.length > 0 || fragments.length > 0;
+  const isPastDay = day.day < currentDay;
 
   return (
     <View style={[styles.panel, { paddingBottom: sojournMapTokens.spacing.lg + bottomInset }]}>
@@ -251,12 +282,8 @@ function SelectedDayPanel({
 
       {!hasWriting ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>
-            {day.isFuture ? "not open yet" : "nothing here yet"}
-          </Text>
-          <Text style={styles.emptyCopy}>
-            {day.isFuture ? "this day has not arrived." : "write when the day calls."}
-          </Text>
+          <Text style={styles.emptyTitle}>{getEmptyDayTitle(day, currentDay)}</Text>
+          <Text style={styles.emptyCopy}>{getEmptyDayCopy(day, currentDay)}</Text>
         </View>
       ) : (
         <ScrollView
@@ -292,6 +319,19 @@ function SelectedDayPanel({
           ) : null}
         </ScrollView>
       )}
+
+      {isPastDay ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onTravelToToday}
+          style={({ pressed }) => [styles.todayTravelButton, pressed && styles.pressed]}
+        >
+          <View style={styles.todayTravelLine} />
+          <Text style={styles.todayTravelText}>return to today</Text>
+          <View style={styles.todayTravelDiamond} />
+          <View style={styles.todayTravelLine} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -380,6 +420,30 @@ function countWords(value: string): number {
     .filter(Boolean);
 
   return words.length;
+}
+
+function getEmptyDayTitle(day: SojournMapDay, currentDay: number): string {
+  if (day.isFuture) {
+    return "not open yet";
+  }
+
+  if (day.day < currentDay) {
+    return "this day passed unwritten";
+  }
+
+  return "nothing here yet";
+}
+
+function getEmptyDayCopy(day: SojournMapDay, currentDay: number): string {
+  if (day.isFuture) {
+    return "this day has not arrived.";
+  }
+
+  if (day.day < currentDay) {
+    return "anky simply witnessed the quiet.";
+  }
+
+  return "write when the day calls.";
 }
 
 function withAlpha(hex: string, alpha: string) {
@@ -701,5 +765,37 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(216,176,107,0.25)",
     textShadowOffset: { height: 0, width: 0 },
     textShadowRadius: 12,
+  },
+  todayTravelButton: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: sojournMapTokens.spacing.sm,
+    justifyContent: "center",
+    marginTop: sojournMapTokens.spacing.sm,
+    minHeight: 36,
+    paddingHorizontal: sojournMapTokens.spacing.md,
+  },
+  todayTravelDiamond: {
+    borderColor: sojournMapTokens.colors.gold,
+    borderWidth: 1,
+    height: 7,
+    opacity: 0.74,
+    transform: [{ rotate: "45deg" }],
+    width: 7,
+  },
+  todayTravelLine: {
+    backgroundColor: sojournMapTokens.colors.trackGold,
+    flex: 1,
+    height: 1,
+    maxWidth: 72,
+    opacity: 0.55,
+  },
+  todayTravelText: {
+    color: sojournMapTokens.colors.goldBright,
+    fontFamily: SERIF,
+    fontSize: sojournMapTokens.typography.caption,
+    lineHeight: 17,
+    opacity: 0.88,
+    textTransform: "lowercase",
   },
 });

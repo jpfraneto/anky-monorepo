@@ -208,7 +208,7 @@ test("reports local artifacts present but keeps launch blocked on live gates", a
   assert.ok(
     report.localChecks.some(
       (check) =>
-        check.name === "Mobile Loom screen surfaces indexed score" &&
+        check.name === "Mobile Loom screen surfaces indexed points" &&
         check.status === "ok",
     ),
   );

@@ -70,7 +70,7 @@ test(
           "idx_mobile_helius_webhook_events_network_signature_unique",
         ),
       );
-      assert.equal(scenario.scoreContract.score, 12);
+      assert.equal(scenario.scoreContract.score, 14);
       assert.equal(scenario.scoreContract.streakBonus, 2);
       assert.deepEqual(scenario.scoreContract.verifiedDays, [21000, 21006]);
       assert.deepEqual(scenario.scoreContract.sealedDays, [

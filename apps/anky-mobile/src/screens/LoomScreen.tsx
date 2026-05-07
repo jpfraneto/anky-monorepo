@@ -20,7 +20,11 @@ import { ChakanaLoom, getLoomCompletion } from "../components/sojourn/ChakanaLoo
 import { KingdomBadge } from "../components/sojourn/KingdomBadge";
 import { AnkyApiError } from "../lib/api/ankyApi";
 import { getAnkyApiClient } from "../lib/api/client";
-import type { MobileLoomMint, MobileSealScoreResponse } from "../lib/api/types";
+import type {
+  MobileLoomMint,
+  MobileSealPointsHistory,
+  MobileSealScoreResponse,
+} from "../lib/api/types";
 import { hasConfiguredBackend } from "../lib/auth/backendSession";
 import { listAnkySessionSummaries } from "../lib/ankySessionIndex";
 import { listLocalLoomSeals, listSavedAnkyFiles, type SavedAnkyFile } from "../lib/ankyStorage";
@@ -67,6 +71,7 @@ export function LoomScreen({ navigation }: Props) {
   const [recordedLooms, setRecordedLooms] = useState<MobileLoomMint[]>([]);
   const [runtimeConfig, setRuntimeConfig] = useState<MobileSolanaRuntimeConfig | null>(null);
   const [selectedLoom, setSelectedLoom] = useState<SelectedLoom | null>(null);
+  const [sealPoints, setSealPoints] = useState<MobileSealPointsHistory | null>(null);
   const [sealScore, setSealScore] = useState<MobileSealScoreResponse | null>(null);
   const [sealScoreState, setSealScoreState] = useState<"idle" | "loading" | "unavailable">("idle");
   const [seals, setSeals] = useState<LoomSeal[]>([]);
@@ -143,9 +148,10 @@ export function LoomScreen({ navigation }: Props) {
         if (walletState.publicKey != null && backendConfigured) {
           await Promise.all([
             restoreWalletLooms(walletState.publicKey, mounted),
-            restoreSealScore(walletState.publicKey, mounted),
+            restoreSealPoints(walletState.publicKey, mounted),
           ]);
         } else if (mounted) {
+          setSealPoints(null);
           setSealScore(null);
           setSealScoreState(walletState.publicKey != null ? "unavailable" : "idle");
         }
@@ -165,11 +171,12 @@ export function LoomScreen({ navigation }: Props) {
     };
   }, [backendConfigured, navigation, walletState.publicKey]);
 
-  async function restoreSealScore(wallet: string, mounted = true) {
+  async function restoreSealPoints(wallet: string, mounted = true) {
     const api = getAnkyApiClient();
 
     if (api == null) {
       if (mounted) {
+        setSealPoints(null);
         setSealScore(null);
         setSealScoreState("unavailable");
       }
@@ -180,17 +187,19 @@ export function LoomScreen({ navigation }: Props) {
       if (mounted) {
         setSealScoreState("loading");
       }
-      const score = await api.lookupMobileSealScore(wallet);
+      const points = await api.lookupMobileSealPoints(wallet);
 
       if (!mounted) {
         return;
       }
 
-      setSealScore(score);
+      setSealPoints(points);
+      setSealScore(null);
       setSealScoreState("idle");
     } catch (error) {
-      console.warn("Could not restore mobile seal score.", error);
+      console.warn("Could not restore mobile seal points.", error);
       if (mounted) {
+        setSealPoints(null);
         setSealScore(null);
         setSealScoreState("unavailable");
       }
@@ -525,18 +534,21 @@ export function LoomScreen({ navigation }: Props) {
           <GlassCard style={styles.card}>
             <Text style={styles.label}>indexed score</Text>
             <View style={styles.metrics}>
-              <Metric label="score" value={sealScore == null ? "0" : String(sealScore.score)} />
               <Metric
-                label="sealed"
-                value={sealScore == null ? "0" : String(sealScore.uniqueSealDays)}
+                label="score"
+                value={String(sealPoints?.score ?? sealScore?.score ?? 0)}
               />
               <Metric
-                label="proof days"
-                value={sealScore == null ? "0" : String(sealScore.verifiedSealDays)}
+                label="sealed"
+                value={String(sealPoints?.uniqueSealDays ?? sealScore?.uniqueSealDays ?? 0)}
+              />
+              <Metric
+                label="proof +2"
+                value={String((sealPoints?.verifiedSealDays ?? sealScore?.verifiedSealDays ?? 0) * 2)}
               />
               <Metric
                 label="bonus"
-                value={sealScore == null ? "0" : String(sealScore.streakBonus)}
+                value={String(sealPoints?.streakBonus ?? sealScore?.streakBonus ?? 0)}
               />
             </View>
             <Text style={styles.note}>
@@ -546,10 +558,60 @@ export function LoomScreen({ navigation }: Props) {
                   ? "backend score unavailable"
                   : sealScoreState === "unavailable"
                     ? "score sync unavailable"
-                    : sealScore == null
+                    : sealPoints == null && sealScore == null
                       ? "no finalized score yet"
-                      : `${sealScore.network} · finalized receipts only`}
+                      : `${sealPoints?.network ?? sealScore?.network} · finalized receipts only`}
             </Text>
+            <Text style={styles.note}>seal hash = +1, prove rite = +2.</Text>
+          </GlassCard>
+        )}
+
+        {walletState.publicKey == null ? null : (
+          <GlassCard style={styles.card}>
+            <Text style={styles.label}>points history</Text>
+            {sealPoints == null || sealPoints.entries.length === 0 ? (
+              <Text style={styles.note}>no finalized points indexed yet.</Text>
+            ) : (
+              <View style={styles.sealedList}>
+                {sealPoints.entries.slice(0, 20).map((entry) => {
+                  const file = fileByHash.get(entry.sessionHash);
+
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={file == null}
+                      key={`${entry.sessionHash}:${entry.utcDay}`}
+                      onPress={() => {
+                        if (file != null) {
+                          navigation.navigate("Entry", { fileName: file.fileName });
+                        }
+                      }}
+                      style={({ pressed }) => [
+                        styles.sealedRow,
+                        file == null && styles.disabledRow,
+                        pressed && file != null && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.sealedDot} />
+                      <View style={styles.sealedCopy}>
+                        <Text style={styles.sealedTitle}>
+                          {formatUtcDay(entry.utcDay)} · +{entry.totalPoints}
+                        </Text>
+                        <Text style={styles.sealedMeta}>
+                          sealed +{entry.sealPoints}
+                          {entry.proofPoints > 0 ? ` · proved +${entry.proofPoints}` : ""}
+                          {` · ${formatProofStatus(entry.proofStatus)}`}
+                        </Text>
+                        {file == null ? (
+                          <Text style={styles.sealedMeta}>not on this device</Text>
+                        ) : null}
+                      </View>
+                      {file == null ? null : <Text style={styles.sealedChevron}>›</Text>}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </GlassCard>
         )}
 
@@ -672,6 +734,41 @@ function formatLoomDate(value: string): string {
     month: "short",
     year: "numeric",
   }).toLowerCase();
+}
+
+function formatUtcDay(utcDay: number): string {
+  const date = new Date(utcDay * 86_400_000);
+
+  if (Number.isNaN(date.getTime())) {
+    return `day ${utcDay}`;
+  }
+
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  }).toLowerCase();
+}
+
+function formatProofStatus(status: string): string {
+  switch (status) {
+    case "finalized":
+      return "verified";
+    case "backfill_required":
+    case "confirmed":
+    case "pending":
+    case "processed":
+    case "syncing":
+      return "verified on-chain · syncing";
+    case "failed":
+      return "proof failed";
+    case "queued":
+    case "proving":
+      return "proving";
+    case "unavailable":
+      return "proof unavailable";
+    default:
+      return "seal only";
+  }
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

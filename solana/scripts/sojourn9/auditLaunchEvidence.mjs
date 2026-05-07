@@ -7,7 +7,7 @@ import { redactSecretValues } from "./redactSecrets.mjs";
 const DEFAULT_MAX_PARTICIPANTS = 3_456;
 const DEFAULT_REWARD_BPS = 800;
 const SCORE_FORMULA =
-  "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)";
+  "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus";
 const CREDIT_LEDGER_MIGRATION = "022_credit_ledger_entries";
 const VERIFIED_SEAL_BACKEND_MIGRATIONS = [
   "019_mobile_verified_seal_receipts",

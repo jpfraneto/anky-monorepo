@@ -17,6 +17,7 @@ import { AnkyGlyph } from "../components/anky/AnkyGlyph";
 import { GlassCard } from "../components/anky/GlassCard";
 import { RitualButton } from "../components/anky/RitualButton";
 import { ScreenBackground } from "../components/anky/ScreenBackground";
+import { SimpleMarkdownText } from "../components/markdown/SimpleMarkdownText";
 import { SubtleIconButton } from "../components/navigation/SubtleIconButton";
 import { parseAnky, reconstructText } from "../lib/ankyProtocol";
 import { readReflectionSidecar, readSavedAnkyFile } from "../lib/ankyStorage";
@@ -376,7 +377,11 @@ function ThreadMessageCard({ message }: { message: ThreadMessage }) {
       ) : null}
       <View style={[styles.messageCard, isAnky ? styles.ankyMessage : styles.userMessage]}>
         <Text style={styles.messageLabel}>{isAnky ? "anky" : "you"}</Text>
-        <Text style={styles.messageText}>{message.content}</Text>
+        {isAnky ? (
+          <SimpleMarkdownText selectable={false} text={message.content} textStyle={styles.messageText} />
+        ) : (
+          <Text style={styles.messageText}>{message.content}</Text>
+        )}
       </View>
     </View>
   );

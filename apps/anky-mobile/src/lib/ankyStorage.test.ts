@@ -221,6 +221,12 @@ describe(".anky storage", () => {
 
     await writeProcessingArtifacts([
       {
+        imageBase64: "aW1hZ2U=",
+        kind: "image",
+        mimeType: "image/png",
+        sessionHash: saved.hash,
+      },
+      {
         kind: "reflection",
         markdown: "# reflection",
         sessionHash: saved.hash,
@@ -235,6 +241,7 @@ describe(".anky storage", () => {
     const [entry] = await listSavedAnkyFiles();
 
     expect(entry.localState).toBe("processed");
-    expect(entry.artifactKinds).toEqual(["reflection", "title"]);
+    expect(entry.artifactKinds).toEqual(["reflection", "title", "image"]);
+    expect(entry.imageUri).toBe(`file:///documents/anky/${saved.hash}.image.png`);
   });
 });

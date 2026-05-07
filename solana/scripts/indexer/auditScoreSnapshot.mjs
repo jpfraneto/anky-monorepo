@@ -9,7 +9,7 @@ const DEFAULT_MAX_PARTICIPANTS = 3_456;
 const DEFAULT_REWARD_BPS = 800;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const SCORE_FORMULA =
-  "score = unique_seal_days + verified_days + 2 * floor(each_consecutive_day_run / 7)";
+  "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus";
 const BOOLEAN_FLAGS = new Set([
   "--allow-inferred-finality",
   "--allow-non-finalized-events",
@@ -230,7 +230,7 @@ function recomputeScores(events, { maxParticipants, proofVerifierAuthority, requ
       const streakBonus = computeStreakBonus(sealedDays);
       return {
         sealedDays,
-        score: uniqueSealDays + verifiedSealDays + streakBonus,
+        score: uniqueSealDays + (2 * verifiedSealDays) + streakBonus,
         streakBonus,
         uniqueSealDays,
         verifiedSealDays,

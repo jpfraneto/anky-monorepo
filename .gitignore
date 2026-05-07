@@ -1,13 +1,18 @@
 /target
 node_modules/
 .wrangler/
+.expo/
 .env
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
 data/
 *.log
 .secrets/
 .DS_Store
+.claude/settings.local.json
+codex/
 
 # Mobile signing credentials and private keys
 *.jks
@@ -20,6 +25,10 @@ data/
 *service-account*.json
 *service_account*.json
 .idea
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
 anky.db
 scripts/__pycache__/
 videos/
@@ -61,3 +70,4 @@ static/anky-training-data.tar.gz
 static/anky-speech-video.mp4
 static/anky-speech-square.mp4
 static/autonomous/
+tatic*
