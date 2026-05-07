@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-05-07T17:45:38.503Z",
+  "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "cluster": "devnet",
+  "proofVerifierAuthority": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+  "requireFinalized": true,
+  "backendPosts": [],
+  "events": [
+    {
+      "kind": "sealed",
+      "loomAsset": "6oEyFPQPksvKyCtdjsSEzL6JMxAPPwBPkMBBAMvUnNLJ",
+      "rollingRoot": "7cd243bfa277bab11a0a5d6a82e05ba7f1351f4bfe083a4fd7e2f9fbf7876c81",
+      "sessionHash": "d301bf83d402d197042c9418028579ef0d1e2f2eb9d09cb1d1b3ee5ec288d1e5",
+      "timestamp": 1778175482,
+      "totalSeals": 2,
+      "utcDay": 20580,
+      "writer": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+      "blockTime": 1778175482,
+      "commitment": "finalized",
+      "failed": false,
+      "finalitySource": "known_signature_finalized_getTransaction",
+      "finalized": true,
+      "signature": "4r1LuKhGHpDiYKjF6HQ9HvvzThxNUHzgknywciRVepXvDG143ehsZvvWuC1yo8hCC9ZnF3tHSJAhQUd2VGSqcR4e",
+      "slot": 460760076
+    },
+    {
+      "kind": "verified",
+      "proofHash": "cd61237a0c7e00f20e47deb940613fff90e3923c1245f582c478e3e0604bcf90",
+      "protocolVersion": 1,
+      "sessionHash": "d301bf83d402d197042c9418028579ef0d1e2f2eb9d09cb1d1b3ee5ec288d1e5",
+      "timestamp": 1778175668,
+      "utcDay": 20580,
+      "verifier": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "writer": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+      "blockTime": 1778175668,
+      "commitment": "finalized",
+      "failed": false,
+      "finalitySource": "known_signature_finalized_getTransaction",
+      "finalized": true,
+      "signature": "56anm3Va83spZ33ffFRtvMjuuTDZT6XRwkcRLUxehsTHfWYSQFXTV4LzLbGXVRxB4pVfnbdmmZEq3qEGcnabznZE",
+      "slot": 460760563
+    }
+  ],
+  "scoringRule": {
+    "version": 1,
+    "uniqueFinalizedDailySeal": 1,
+    "finalizedVerifiedSealBonus": 2,
+    "completedSevenDayStreakBonus": 2,
+    "maxParticipants": 3456,
+    "formula": "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus"
+  },
+  "scores": [
+    {
+      "wallet": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+      "uniqueSealDays": 1,
+      "verifiedSealDays": 1,
+      "streakBonus": 0,
+      "score": 3,
+      "sealedDays": [
+        20580
+      ]
+    }
+  ],
+  "summary": {
+    "excludedByParticipantCap": 0,
+    "indexedEvents": 2,
+    "participantCap": 3456,
+    "scoreRows": 1,
+    "sealedEvents": 1,
+    "finalizedEventsInferredFromBackfillRequest": 0,
+    "totalScore": 3,
+    "uncappedScoreRows": 1,
+    "verifiedEvents": 1,
+    "rejectedVerifiedEvents": 0
+  }
+}

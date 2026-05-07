@@ -1,0 +1,68 @@
+{
+  "cluster": "devnet",
+  "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "coreCollection": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
+  "proofVerifierAuthority": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+  "protocolVersion": 1,
+  "sp1Vkey": "0x00418281239458876cbe43d5431998057856f03e0b47d85695fce2a45b200da4",
+  "snapshotTime": "2026-05-07T17:49:43.217Z",
+  "devnetE2E": {
+    "writer": "5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q",
+    "loomAsset": "6oEyFPQPksvKyCtdjsSEzL6JMxAPPwBPkMBBAMvUnNLJ",
+    "sessionHash": "d301bf83d402d197042c9418028579ef0d1e2f2eb9d09cb1d1b3ee5ec288d1e5",
+    "proofHash": "cd61237a0c7e00f20e47deb940613fff90e3923c1245f582c478e3e0604bcf90",
+    "utcDay": 20580,
+    "utcDayStatus": {
+      "currentUtcDay": 20580,
+      "receiptUtcDay": 20580,
+      "isCurrentDay": true,
+      "sealWindow": "open",
+      "secondsUntilRollover": 23194,
+      "dayRolloverAt": "2026-05-08T00:00:00.000Z"
+    },
+    "sp1ProofVerified": true,
+    "hashSealLanded": true,
+    "verifiedSealLanded": true,
+    "sealSignature": "4r1LuKhGHpDiYKjF6HQ9HvvzThxNUHzgknywciRVepXvDG143ehsZvvWuC1yo8hCC9ZnF3tHSJAhQUd2VGSqcR4e",
+    "sealOrbUrl": "https://orbmarkets.io/tx/4r1LuKhGHpDiYKjF6HQ9HvvzThxNUHzgknywciRVepXvDG143ehsZvvWuC1yo8hCC9ZnF3tHSJAhQUd2VGSqcR4e",
+    "verifiedSignature": "56anm3Va83spZ33ffFRtvMjuuTDZT6XRwkcRLUxehsTHfWYSQFXTV4LzLbGXVRxB4pVfnbdmmZEq3qEGcnabznZE",
+    "verifiedOrbUrl": "https://orbmarkets.io/tx/56anm3Va83spZ33ffFRtvMjuuTDZT6XRwkcRLUxehsTHfWYSQFXTV4LzLbGXVRxB4pVfnbdmmZEq3qEGcnabznZE"
+  },
+  "backend": {
+    "url": "https://anky.app",
+    "requireVerifiedSealChainProof": true,
+    "migrationsApplied": [
+      "019_mobile_verified_seal_receipts",
+      "020_mobile_helius_webhook_events",
+      "021_mobile_helius_webhook_signature_dedupe",
+      "022_credit_ledger_entries"
+    ]
+  },
+  "helius": {
+    "webhookId": "known-signature-helius-getTransaction-devnet",
+    "webhookType": "enhancedDevnet",
+    "webhookAccountAddresses": [
+      "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX"
+    ],
+    "receiverPath": "/api/helius/anky-seal",
+    "backfillMethod": "getTransactionsForAddress",
+    "backfillCommitment": "finalized",
+    "requireFinalized": true,
+    "dedupeBySignature": true,
+    "backfillAudited": true
+  },
+  "scoreSnapshot": {
+    "path": "../../runbooks/devnet-20580-score-snapshot.json",
+    "audited": true,
+    "requireFinalized": true,
+    "formula": "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus",
+    "rewardBps": 800,
+    "participantCap": 3456
+  },
+  "claims": {
+    "directOnchainSp1": false,
+    "mainnetDeployment": false,
+    "hashEncryptsWriting": false,
+    "anonymousWriting": false
+  }
+}
