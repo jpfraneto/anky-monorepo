@@ -112,7 +112,7 @@ const PAPER = "#FFF0C9";
 const INK = "#080713";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const SPANISH_LOCALE = "es-CL";
-const VERIFIED_POINTS_LABEL = "sealed +1 · proof +2 · 3 pts";
+const VERIFIED_POINTS_LABEL = "sealed +1 · verified +2 · 3 pts";
 
 export function RevealScreen({ navigation, route }: Props) {
   const { user } = usePrivy();

@@ -191,3 +191,35 @@ Controlled mainnet proof launch is allowed by policy, but this worktree is not r
 ```text
 FAIL
 ```
+
+## Local Readiness Fix Update
+
+Updated: 2026-05-07
+
+The local readiness failure was reproduced and fixed without weakening the mainnet gate.
+
+Root cause:
+
+- `RevealScreen.tsx` still separated hash seal, proving, syncing, failed, unavailable, and verified proof states.
+- The verified success label had drifted from the readiness marker `verified +2` to `proof +2`.
+- The gate correctly kept local readiness false because the reveal UI marker no longer made the verified receipt distinction explicit.
+
+Fix:
+
+- Updated `apps/anky-mobile/src/screens/RevealScreen.tsx` so the verified state now shows `sealed +1 · verified +2 · 3 pts`.
+- Added `docs/anky-system/ANKY_LOCAL_READINESS_FIX.md`.
+
+Post-fix command results:
+
+| Command | Result |
+|---|---|
+| `cd solana/anky-seal-program && npm run sojourn9:readiness` | PASS: `localReady: true`, `launchReady: false`. |
+| `node --test solana/scripts/sojourn9/launchReadinessGate.test.mjs` | PASS: 4 tests. |
+| `cd solana/anky-seal-program && npm run sojourn9:test` | PASS: 161 tests. |
+| `cd apps/anky-mobile && npm run typecheck` | PASS. |
+
+What did not change:
+
+- Mainnet readiness is still false.
+- No deployment, signing, keypair read, secret read, mainnet transaction, paid Helius mutation, or App Store action was performed.
+- Fresh devnet `HashSeal -> SP1 verify -> VerifiedSeal -> index`, verifier custody, target backend migration, Helius production indexing, real Core Loom integration, and final mainnet values remain manual gates.
