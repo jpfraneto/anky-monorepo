@@ -21,6 +21,8 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { usePrivy } from "@privy-io/expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import * as Clipboard from "expo-clipboard";
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 import type { RootStackParamList } from "../../../App";
 import { useAuthModal } from "../../auth/AuthModalContext";
@@ -82,6 +84,7 @@ import {
   shortAddress,
   type SelectedLoom,
 } from "../../lib/solana/loomStorage";
+import { ankySolanaConfig } from "../../lib/solana/ankySolanaConfig";
 import type { MobileSealPointsHistory } from "../../lib/api/types";
 import {
   hasThreadProcessingConsent,
@@ -98,6 +101,7 @@ type PrivacyProps = NativeStackScreenProps<RootStackParamList, "Privacy">;
 type ExportDataProps = NativeStackScreenProps<RootStackParamList, "ExportData">;
 type CreditsInfoProps = NativeStackScreenProps<RootStackParamList, "CreditsInfo">;
 type LoomInfoProps = NativeStackScreenProps<RootStackParamList, "LoomInfo">;
+type AnkyTokenProps = NativeStackScreenProps<RootStackParamList, "AnkyToken">;
 type IconName = "account" | "credits" | "exportData" | "loom" | "privacy";
 type RowVariant = "danger" | "highlight" | "normal";
 type ActionVariant = "danger" | "primary" | "secondary";
@@ -107,6 +111,7 @@ type CreditHistoryEntry = CreditLedgerEntry & {
   syncing?: boolean;
 };
 type CreditProductVisualState = "dimmed" | "idle" | "processing" | "success";
+type SolBalanceState = "idle" | "loading" | "unavailable";
 type CreditTransferRun = {
   from: LayoutRectangle;
   productId: string;
@@ -134,6 +139,32 @@ const PANEL = "rgba(13, 12, 27, 0.76)";
 const PANEL_DEEP = "rgba(9, 8, 20, 0.88)";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const PRIVACY_POLICY_URL = "https://www.anky.app/privacy-policy.md";
+const ANKY_TOKEN_CA = "6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump";
+const ANKY_TOKEN_SECTIONS = [
+  {
+    body: "a memecoin is the simplest possible expression of an idea on the internet. no pitch deck, no roadmap, no Series A. just a name, a ticker, and a bet that enough people will recognize what it points to.",
+  },
+  {
+    body: "$ANKY was launched on pump.fun on Solana. that's it. no presale, no team allocation, no vesting schedule. the bonding curve did what bonding curves do.",
+  },
+  {
+    body: "anky is a writing practice. you sit down, you write for 8 minutes without stopping, and something emerges that your conscious mind didn't plan. the token doesn't change what the practice is. it doesn't unlock features or grant access. it's a flag planted in the ground that says: this idea exists, and the market gets to decide what it's worth.",
+    title: "what it points to",
+  },
+  {
+    body: "the old internet released ideas through products. you built something, charged for it, and hoped people would pay. the new internet releases ideas through tokens. the idea itself becomes tradeable the moment it has a name.",
+    title: "memecoins and the new internet",
+  },
+  {
+    body: "this is either profoundly stupid or profoundly honest. probably both. a memecoin strips away every pretension about what makes something valuable and reduces it to the only question that ever mattered: do people care about this?",
+  },
+  {
+    body: "most memecoins are jokes. some jokes contain more truth than business plans. the cosmic joke of $ANKY is that a tool designed to bypass your conscious mind - to help you stop thinking and just write - now has a price feed that people watch with their conscious minds, thinking very hard about whether the number will go up.",
+  },
+  {
+    body: "the mirror doesn't care about the price. the practice remains free. write for 8 minutes. meet yourself. whether the token is worth a penny or a dollar, the words you wrote are still yours.",
+  },
+];
 
 export function AccountScreen({ navigation }: AccountProps) {
   const { logout, user } = usePrivy();
@@ -146,7 +177,11 @@ export function AccountScreen({ navigation }: AccountProps) {
   const [notificationSettings, setNotificationSettings] = useState<AnkyNotificationSettings>(
     DEFAULT_NOTIFICATION_SETTINGS,
   );
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [solBalanceState, setSolBalanceState] = useState<SolBalanceState>("idle");
+  const [walletCopied, setWalletCopied] = useState(false);
   const [walletExportVisible, setWalletExportVisible] = useState(false);
+  const walletCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const walletExportUrl = getPublicEnv("EXPO_PUBLIC_PRIVY_WALLET_EXPORT_URL") ?? "";
 
   useEffect(() => {
@@ -175,6 +210,53 @@ export function AccountScreen({ navigation }: AccountProps) {
     };
   }, [navigation]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadBalance() {
+      if (wallet.publicKey == null) {
+        setSolBalance(null);
+        setSolBalanceState("idle");
+        return;
+      }
+
+      setSolBalanceState("loading");
+
+      try {
+        const nextBalance = await getSolBalance(wallet.publicKey);
+
+        if (mounted) {
+          setSolBalance(nextBalance);
+          setSolBalanceState("idle");
+        }
+      } catch (error) {
+        console.warn("Could not load SOL balance.", error);
+        if (mounted) {
+          setSolBalance(null);
+          setSolBalanceState("unavailable");
+        }
+      }
+    }
+
+    void loadBalance();
+    const unsubscribe = navigation.addListener("focus", () => {
+      void loadBalance();
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [navigation, wallet.publicKey]);
+
+  useEffect(() => {
+    return () => {
+      if (walletCopiedTimerRef.current != null) {
+        clearTimeout(walletCopiedTimerRef.current);
+      }
+    };
+  }, []);
+
   const email = backendSession?.email ?? getPrivyEmail(user) ?? null;
   const connected = user != null || backendSession != null || wallet.authenticated || wallet.hasWallet;
   const loginMethod = getAccountLoginMethod({
@@ -183,10 +265,8 @@ export function AccountScreen({ navigation }: AccountProps) {
     user,
     walletKind: wallet.walletKind,
   });
-  const walletLabel =
-    wallet.publicKey == null
-      ? "wallet setup pending"
-      : shortAddress(wallet.publicKey, 6);
+  const walletBalanceLabel = getSolBalanceLabel(solBalance, solBalanceState);
+  const walletSubtitle = wallet.publicKey ?? "wallet setup pending.";
   const identityTitle = connected ? `logged in via ${loginMethod}` : "local account";
   const notificationSubtitle = notificationSettings.enabled
     ? `daily reminder at ${formatReminderTime(notificationSettings.hour, notificationSettings.minute)}`
@@ -212,6 +292,29 @@ export function AccountScreen({ navigation }: AccountProps) {
     }
   }
 
+  async function copyWalletAddress() {
+    if (wallet.publicKey == null) {
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(wallet.publicKey);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
+      setWalletCopied(true);
+
+      if (walletCopiedTimerRef.current != null) {
+        clearTimeout(walletCopiedTimerRef.current);
+      }
+
+      walletCopiedTimerRef.current = setTimeout(() => {
+        setWalletCopied(false);
+        walletCopiedTimerRef.current = null;
+      }, 1000);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   return (
     <YouDetailShell
       onBack={() => navigation.goBack()}
@@ -220,16 +323,10 @@ export function AccountScreen({ navigation }: AccountProps) {
     >
       <YouHeroCard
         icon={assets.avatar}
-        status={connected ? "connected" : "local-first"}
-        subtitle="no login required to write."
+        compact
+        subtitle=""
         title={identityTitle}
-      >
-        <Text style={styles.heroBody}>
-          {connected
-            ? "account features can help with recovery, credits, and loom actions."
-            : "writing works fully on this device without creating an account."}
-        </Text>
-      </YouHeroCard>
+      />
 
       <View style={styles.stack}>
         {email == null ? null : (
@@ -242,16 +339,13 @@ export function AccountScreen({ navigation }: AccountProps) {
         )}
         <YouInfoRow
           icon={assets.icons.loom}
-          rightText={walletLabel}
-          subtitle="your solana wallet for loom minting and hash sealing."
-          title="wallet"
-        >
-          {wallet.publicKey == null ? null : (
-            <Text selectable style={styles.walletAddressText}>
-              {wallet.publicKey}
-            </Text>
-          )}
-        </YouInfoRow>
+          onPress={wallet.publicKey == null ? undefined : () => void copyWalletAddress()}
+          preserveSubtitleCase={wallet.publicKey != null}
+          rightText={walletBalanceLabel}
+          showChevron={false}
+          subtitle={walletSubtitle}
+          title={walletCopied ? "copied" : "wallet"}
+        />
         <YouInfoRow
           icon={assets.icons.privacy}
           onPress={() => setNotificationModalVisible(true)}
@@ -335,6 +429,39 @@ export function AccountScreen({ navigation }: AccountProps) {
       ],
     );
   }
+}
+
+async function getSolBalance(walletAddress: string): Promise<number> {
+  const connection = new Connection(ankySolanaConfig.rpcUrl, "confirmed");
+  const lamports = await connection.getBalance(new PublicKey(walletAddress), "confirmed");
+
+  return lamports / LAMPORTS_PER_SOL;
+}
+
+function getSolBalanceLabel(balance: number | null, state: SolBalanceState): string | undefined {
+  if (state === "loading") {
+    return "syncing";
+  }
+
+  if (balance != null) {
+    return `${formatSolBalance(balance)} SOL`;
+  }
+
+  if (state === "unavailable") {
+    return "unavailable";
+  }
+
+  return undefined;
+}
+
+function formatSolBalance(balance: number): string {
+  if (!Number.isFinite(balance) || balance <= 0) {
+    return "0";
+  }
+
+  const precision = balance >= 1 ? 2 : balance >= 0.01 ? 3 : 5;
+
+  return balance.toFixed(precision).replace(/\.?0+$/, "");
 }
 
 export function PrivacyScreen({ navigation }: PrivacyProps) {
@@ -440,6 +567,74 @@ export function PrivacyScreen({ navigation }: PrivacyProps) {
 
       <InlineMessage text={message} />
       <OwnershipCard text="your words are yours. anky is here to protect that." />
+    </YouDetailShell>
+  );
+}
+
+export function AnkyTokenScreen({ navigation }: AnkyTokenProps) {
+  const [copied, setCopied] = useState(false);
+  const resetCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetCopiedTimerRef.current != null) {
+        clearTimeout(resetCopiedTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function copyContractAddress() {
+    try {
+      await Clipboard.setStringAsync(ANKY_TOKEN_CA);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
+      setCopied(true);
+
+      if (resetCopiedTimerRef.current != null) {
+        clearTimeout(resetCopiedTimerRef.current);
+      }
+
+      resetCopiedTimerRef.current = setTimeout(() => {
+        setCopied(false);
+        resetCopiedTimerRef.current = null;
+      }, 1000);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  return (
+    <YouDetailShell
+      onBack={() => navigation.goBack()}
+      preserveTitleCase
+      subtitle="the unpredictable memetic distribution layer."
+      title="$ANKY"
+    >
+      <View style={styles.tokenArticle}>
+        {ANKY_TOKEN_SECTIONS.map((section, index) => (
+          <View key={`${section.title ?? "section"}-${index}`} style={styles.tokenArticleBlock}>
+            {section.title == null ? null : (
+              <Text style={styles.tokenArticleTitle}>{section.title}</Text>
+            )}
+            <Text style={styles.tokenArticleBody}>{section.body}</Text>
+          </View>
+        ))}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void copyContractAddress()}
+        style={({ pressed }) => [styles.tokenBuyButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.tokenBuyButtonText}>{copied ? "CA COPIED" : "BUY $ANKY"}</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="copy $ANKY contract address"
+        accessibilityRole="button"
+        onPress={() => void copyContractAddress()}
+        style={({ pressed }) => [styles.tokenCaButton, pressed && styles.pressed]}
+      >
+        <Text selectable style={styles.tokenCaText}>{ANKY_TOKEN_CA}</Text>
+      </Pressable>
     </YouDetailShell>
   );
 }
@@ -1105,6 +1300,8 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
   const [pointsState, setPointsState] = useState<"idle" | "loading" | "unavailable">("idle");
   const [selectedLoom, setSelectedLoom] = useState<SelectedLoom | null>(null);
   const [sessions, setSessions] = useState<AnkySessionSummary[]>([]);
+  const [walletCopied, setWalletCopied] = useState(false);
+  const walletCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -1163,6 +1360,37 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
     };
   }, [navigation, wallet.publicKey]);
 
+  useEffect(() => {
+    return () => {
+      if (walletCopiedTimerRef.current != null) {
+        clearTimeout(walletCopiedTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function copyWalletAddress() {
+    if (wallet.publicKey == null) {
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(wallet.publicKey);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => undefined);
+      setWalletCopied(true);
+
+      if (walletCopiedTimerRef.current != null) {
+        clearTimeout(walletCopiedTimerRef.current);
+      }
+
+      walletCopiedTimerRef.current = setTimeout(() => {
+        setWalletCopied(false);
+        walletCopiedTimerRef.current = null;
+      }, 1000);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   const loomState = useMemo(() => buildLoomState(selectedLoom, sessions, wallet.hasWallet), [
     selectedLoom,
     sessions,
@@ -1172,7 +1400,7 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
   const proofPoints = (pointsHistory?.verifiedSealDays ?? 0) * 2;
   const selectedLabel =
     selectedLoom == null ? "none" : shortAddress(selectedLoom.asset, 5);
-  const walletLabel = wallet.publicKey == null ? "not ready" : shortAddress(wallet.publicKey, 6);
+  const walletSubtitle = wallet.publicKey ?? "wallet setup pending.";
 
   return (
     <YouDetailShell
@@ -1180,39 +1408,40 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
       subtitle="owned by your wallet."
       title="loom"
     >
-      <YouHeroCard
-        icon={assets.icons.loom}
-        status={loomState.status}
-        subtitle={
-          wallet.publicKey == null
-            ? "log in to see the loom for this wallet."
-            : selectedLoom == null
-              ? "this wallet does not have a loom yet."
-              : "this loom belongs to the connected wallet."
-        }
-        title={selectedLoom == null ? "no loom for this wallet" : selectedLoom.name}
-      >
-        <Text style={styles.heroBody}>
-          {selectedLoom == null
-            ? "writing remains fully available."
-            : `asset ${selectedLoom.asset}`}
-        </Text>
-      </YouHeroCard>
+      {selectedLoom == null ? null : (
+        <YouHeroCard
+          icon={assets.icons.loom}
+          status={loomState.status}
+          subtitle="this loom belongs to the connected wallet."
+          title={selectedLoom.name}
+        >
+          <Text style={styles.heroBody}>asset {selectedLoom.asset}</Text>
+        </YouHeroCard>
+      )}
 
       <View style={styles.stack}>
         <YouInfoRow
           icon={assets.icons.account}
-          rightText={walletLabel}
-          subtitle="the wallet that owns or mints the loom."
-          title="wallet"
+          onPress={wallet.publicKey == null ? undefined : () => void copyWalletAddress()}
+          preserveSubtitleCase={wallet.publicKey != null}
+          showChevron={false}
+          subtitle={walletSubtitle}
+          title={walletCopied ? "copied" : "wallet"}
+        />
+        <YouInfoRow
+          icon={assets.icons.loom}
+          subtitle="a wallet-owned Solana artifact that gathers your sealed daily practice. it never stores your writing."
+          title="what a loom is"
         />
         {selectedLoom == null ? (
           <YouInfoRow
-            badge={loomState.badge}
             icon={assets.icons.loom}
-            subtitle={loomState.detail}
-            title="loom status"
-            variant={loomState.variant}
+            subtitle={
+              wallet.hasWallet
+                ? "not minted yet."
+                : "log in to see the loom for this wallet."
+            }
+            title="loom"
           />
         ) : (
           <>
@@ -1235,6 +1464,11 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
           icon={assets.icons.privacy}
           subtitle="only a hash is sealed. your writing stays private."
           title="hash only — writing stays private"
+        />
+        <YouInfoRow
+          icon={assets.icons.privacy}
+          subtitle="SP1 proofs can show a valid .anky was completed without revealing the writing."
+          title="zk proof of practice"
         />
         {selectedLoom == null ? null : (
           <>
@@ -1329,6 +1563,7 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
 function YouDetailShell({
   children,
   onBack,
+  preserveTitleCase = false,
   showBottomOrnament = true,
   subtitle,
   title,
@@ -1337,6 +1572,7 @@ function YouDetailShell({
 }: {
   children: ReactNode;
   onBack: () => void;
+  preserveTitleCase?: boolean;
   showBottomOrnament?: boolean;
   subtitle: string;
   title: string;
@@ -1358,7 +1594,11 @@ function YouDetailShell({
               <View style={styles.headerTitleRow}>
                 <Text
                   numberOfLines={1}
-                  style={[styles.headerTitle, creditsVariant && styles.headerTitleCredits]}
+                  style={[
+                    styles.headerTitle,
+                    preserveTitleCase && styles.headerTitlePreserve,
+                    creditsVariant && styles.headerTitleCredits,
+                  ]}
                 >
                   {title}
                 </Text>
@@ -1392,19 +1632,21 @@ function YouDetailShell({
 
 function YouHeroCard({
   children,
+  compact = false,
   icon,
   status,
   subtitle,
   title,
 }: {
   children?: ReactNode;
+  compact?: boolean;
   icon: ImageSourcePropType;
   status?: string;
   subtitle: string;
   title: string;
 }) {
   return (
-    <View style={styles.heroCard}>
+    <View style={[styles.heroCard, compact && styles.heroCardCompact]}>
       <View style={styles.heroTop}>
         <View style={styles.heroIconFrame}>
           <Image accessibilityIgnoresInvertColors source={icon} style={styles.heroIcon} />
@@ -1414,7 +1656,7 @@ function YouHeroCard({
             <Text style={styles.heroTitle}>{title}</Text>
             {status == null ? null : <Pill label={status} />}
           </View>
-          <Text style={styles.heroSubtitle}>{subtitle}</Text>
+          {subtitle.length === 0 ? null : <Text style={styles.heroSubtitle}>{subtitle}</Text>}
         </View>
       </View>
       {children == null ? null : <View style={styles.heroChildren}>{children}</View>}
@@ -1428,7 +1670,9 @@ function YouInfoRow({
   disabled = false,
   icon,
   onPress,
+  preserveSubtitleCase = false,
   rightText,
+  showChevron = true,
   subtitle,
   title,
   variant = "normal",
@@ -1438,7 +1682,9 @@ function YouInfoRow({
   disabled?: boolean;
   icon: ImageSourcePropType;
   onPress?: () => void;
+  preserveSubtitleCase?: boolean;
   rightText?: string;
+  showChevron?: boolean;
   subtitle: string;
   title: string;
   variant?: RowVariant;
@@ -1471,7 +1717,9 @@ function YouInfoRow({
         <Text style={[styles.rowTitle, variant === "danger" && styles.rowTitleDanger]}>
           {title}
         </Text>
-        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+        <Text style={[styles.rowSubtitle, preserveSubtitleCase && styles.rowSubtitlePreserve]}>
+          {subtitle}
+        </Text>
         {children}
       </View>
       {rightText == null ? null : (
@@ -1480,7 +1728,7 @@ function YouInfoRow({
         </Text>
       )}
       {badge == null ? null : <Pill label={badge} variant={variant} />}
-      {pressable ? <Text style={styles.chevron}>›</Text> : null}
+      {pressable && showChevron ? <Text style={styles.chevron}>›</Text> : null}
     </Pressable>
   );
 }
@@ -3016,6 +3264,9 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(233, 190, 114, 0.18)",
     textShadowRadius: 18,
   },
+  headerTitlePreserve: {
+    textTransform: "none",
+  },
   headerTitleRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -3048,6 +3299,9 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 0, width: 0 },
     shadowOpacity: 0.12,
     shadowRadius: 14,
+  },
+  heroCardCompact: {
+    paddingVertical: 14,
   },
   heroChildren: {
     marginTop: 14,
@@ -3296,6 +3550,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textTransform: "lowercase",
   },
+  rowSubtitlePreserve: {
+    textTransform: "none",
+  },
   rowTitle: {
     color: GOLD_BRIGHT,
     fontFamily: SERIF,
@@ -3342,13 +3599,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     textTransform: "lowercase",
   },
-  walletAddressText: {
-    color: "rgba(242, 211, 146, 0.82)",
-    fontFamily: SERIF,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 8,
-  },
   walletExportWebView: {
     backgroundColor: "#080713",
     flex: 1,
@@ -3382,6 +3632,67 @@ const styles = StyleSheet.create({
   stack: {
     gap: 10,
     marginTop: 14,
+  },
+  tokenArticle: {
+    marginTop: 2,
+    paddingHorizontal: 2,
+  },
+  tokenArticleBlock: {
+    marginBottom: 17,
+  },
+  tokenArticleBody: {
+    color: COPY,
+    fontFamily: SERIF,
+    fontSize: 13.5,
+    lineHeight: 20,
+  },
+  tokenArticleTitle: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 18,
+    lineHeight: 23,
+    marginBottom: 6,
+    textTransform: "lowercase",
+  },
+  tokenBuyButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(233, 190, 114, 0.18)",
+    borderColor: "rgba(242, 211, 146, 0.72)",
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: "center",
+    marginTop: 14,
+    minHeight: 50,
+    paddingHorizontal: 18,
+  },
+  tokenBuyButtonText: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  tokenCaButton: {
+    alignItems: "center",
+    marginTop: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  tokenCaLabel: {
+    color: GOLD,
+    fontFamily: SERIF,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0,
+    lineHeight: 14,
+  },
+  tokenCaText: {
+    color: COPY_DIM,
+    fontFamily: SERIF,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+    textAlign: "center",
   },
   toggleWrap: {
     alignItems: "flex-start",

@@ -145,7 +145,7 @@ export function SojournMap({
               onPress={travelToToday}
               style={({ pressed }) => [styles.mapTodayButton, pressed && styles.pressed]}
             >
-              <Text style={styles.mapTodayButtonText}>today</Text>
+              <Text style={styles.mapTodayButtonText}>return to today</Text>
             </Pressable>
           ) : null}
         </View>
@@ -155,6 +155,7 @@ export function SojournMap({
             bottomInset={bottomInset}
             currentDay={currentDay}
             day={selectedDay}
+            maxHeight={height * 0.5}
             onPressAnky={onPressAnky}
           />
         )}
@@ -271,11 +272,13 @@ function SelectedDayPanel({
   bottomInset,
   currentDay,
   day,
+  maxHeight,
   onPressAnky,
 }: {
   bottomInset: number;
   currentDay: number;
   day: SojournMapDay;
+  maxHeight: number;
   onPressAnky?: (anky: SojournMapAnky) => void;
 }) {
   const completeAnkys = day.ankys.filter((anky) => anky.kind === "anky");
@@ -285,7 +288,15 @@ function SelectedDayPanel({
   const hasWriting = completeAnkys.length > 0 || fragments.length > 0;
 
   return (
-    <View style={[styles.panel, { paddingBottom: sojournMapTokens.spacing.lg + bottomInset }]}>
+    <View
+      style={[
+        styles.panel,
+        {
+          maxHeight,
+          paddingBottom: sojournMapTokens.spacing.lg + bottomInset,
+        },
+      ]}
+    >
       <View style={styles.panelTopDiamond} />
       <Text style={styles.panelTitle}>Day {day.day}</Text>
 
@@ -328,7 +339,6 @@ function SelectedDayPanel({
           ) : null}
         </ScrollView>
       )}
-
     </View>
   );
 }
@@ -614,6 +624,7 @@ const styles = StyleSheet.create({
     width: 94,
   },
   dayList: {
+    flexShrink: 1,
     maxHeight: 336,
   },
   dayListContent: {
@@ -677,6 +688,30 @@ const styles = StyleSheet.create({
   },
   mapArea: {
     flex: 1,
+    position: "relative",
+  },
+  mapTodayButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(5, 5, 14, 0.82)",
+    borderColor: "rgba(216, 176, 107, 0.52)",
+    borderRadius: sojournMapTokens.radius.pill,
+    borderWidth: 1,
+    bottom: sojournMapTokens.spacing.md,
+    minHeight: 36,
+    minWidth: 132,
+    paddingHorizontal: sojournMapTokens.spacing.lg,
+    position: "absolute",
+    right: sojournMapTokens.spacing.lg,
+    justifyContent: "center",
+    zIndex: 4,
+  },
+  mapTodayButtonText: {
+    color: sojournMapTokens.colors.goldBright,
+    fontFamily: SERIF,
+    fontSize: sojournMapTokens.typography.caption,
+    fontWeight: "700",
+    lineHeight: 17,
+    textTransform: "lowercase",
   },
   openGlyph: {
     color: sojournMapTokens.colors.gold,
@@ -762,37 +797,5 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(216,176,107,0.25)",
     textShadowOffset: { height: 0, width: 0 },
     textShadowRadius: 12,
-  },
-  todayTravelButton: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: sojournMapTokens.spacing.sm,
-    justifyContent: "center",
-    marginTop: sojournMapTokens.spacing.sm,
-    minHeight: 36,
-    paddingHorizontal: sojournMapTokens.spacing.md,
-  },
-  todayTravelDiamond: {
-    borderColor: sojournMapTokens.colors.gold,
-    borderWidth: 1,
-    height: 7,
-    opacity: 0.74,
-    transform: [{ rotate: "45deg" }],
-    width: 7,
-  },
-  todayTravelLine: {
-    backgroundColor: sojournMapTokens.colors.trackGold,
-    flex: 1,
-    height: 1,
-    maxWidth: 72,
-    opacity: 0.55,
-  },
-  todayTravelText: {
-    color: sojournMapTokens.colors.goldBright,
-    fontFamily: SERIF,
-    fontSize: sojournMapTokens.typography.caption,
-    lineHeight: 17,
-    opacity: 0.88,
-    textTransform: "lowercase",
   },
 });

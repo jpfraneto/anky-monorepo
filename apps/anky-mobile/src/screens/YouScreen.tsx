@@ -62,19 +62,8 @@ const GOLD_BRIGHT = "#F2D392";
 const GOLD_DIM = "rgba(214, 147, 68, 0.55)";
 const COPY = "#D8C9D4";
 const PANEL = "rgba(13, 12, 27, 0.74)";
-const PANEL_DEEP = "rgba(9, 8, 20, 0.86)";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const PRIVACY_POLICY_URL = "https://www.anky.app/privacy-policy.md";
-const ANKY_TOKEN_URL = "http://dexscreener.com/solana/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump";
-const ANKY_TOKEN_COPY = [
-  "a memecoin is the simplest possible expression of an idea on the internet. no pitch deck, no roadmap, no Series A. just a name, a ticker, and a bet that enough people will recognize what it points to.",
-  "$ANKY was launched on pump.fun on Solana. that's it. no presale, no team allocation, no vesting schedule. the bonding curve did what bonding curves do.",
-  "what it points to\nanky is a writing practice. you sit down, you write for 8 minutes without stopping, and something emerges that your conscious mind didn't plan. the token doesn't change what the practice is. it doesn't unlock features or grant access. it's a flag planted in the ground that says: this idea exists, and the market gets to decide what it's worth.",
-  "memecoins and the new internet\nthe old internet released ideas through products. you built something, charged for it, and hoped people would pay. the new internet releases ideas through tokens. the idea itself becomes tradeable the moment it has a name.",
-  "this is either profoundly stupid or profoundly honest. probably both. a memecoin strips away every pretension about what makes something valuable and reduces it to the only question that ever mattered: do people care about this?",
-  "most memecoins are jokes. some jokes contain more truth than business plans. the cosmic joke of $ANKY is that a tool designed to bypass your conscious mind - to help you stop thinking and just write - now has a price feed that people watch with their conscious minds, thinking very hard about whether the number will go up.",
-  "the mirror doesn't care about the price. the practice remains free. write for 8 minutes. meet yourself. whether the token is worth a penny or a dollar, the words you wrote are still yours.",
-];
 
 export function YouScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -195,7 +184,6 @@ export function YouScreen({ navigation }: Props) {
               />
               <MenuRow
                 icon="credits"
-                last
                 onPress={() => navigation.navigate("CreditsInfo")}
                 subtitle={
                   credits == null
@@ -204,34 +192,23 @@ export function YouScreen({ navigation }: Props) {
                 }
                 title="credits"
               />
+              <MenuRow
+                icon="loom"
+                onPress={() => navigation.navigate("LoomInfo")}
+                subtitle="weave your writing to solana privately"
+                title="loom"
+              />
+              <MenuRow
+                icon="credits"
+                last
+                onPress={() => navigation.navigate("AnkyToken")}
+                preserveTitleCase
+                subtitle="the memecoin around the writing practice."
+                title="$anky"
+              />
             </View>
 
-            <AnkyTokenSection />
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => navigation.navigate("LoomInfo")}
-              style={({ pressed }) => [styles.loomCard, pressed && styles.pressed]}
-            >
-              <Image accessibilityIgnoresInvertColors source={assets.icons.loom} style={styles.menuIcon} />
-              <View style={styles.menuCopy}>
-                <View style={styles.loomTitleRow}>
-                  <Text style={styles.menuTitle}>loom</Text>
-                </View>
-                <Text style={styles.menuSubtitle}>seal hashes when you choose. writing never requires it.</Text>
-              </View>
-              <Image accessibilityIgnoresInvertColors source={assets.icons.chevronRight} style={styles.chevron} />
-            </Pressable>
-
-            <View style={styles.privacySeal}>
-              <Image accessibilityIgnoresInvertColors source={assets.icons.privacy} style={styles.privacySealIcon} />
-              <View style={styles.privacySealCopy}>
-                <Text style={styles.privacySealTitle}>Your writing belongs to you.</Text>
-                <Text style={styles.privacySealText}>100% local-first • Private • Sovereign</Text>
-              </View>
-            </View>
-
-            
+           
           </View>
 
           <RootTabBar active="You" onSelect={selectTab} />
@@ -259,28 +236,6 @@ function ProfileHero() {
   );
 }
 
-function AnkyTokenSection() {
-  return (
-    <View style={styles.tokenCard}>
-      <Text style={styles.tokenTitle}>$ANKY</Text>
-      {ANKY_TOKEN_COPY.map((paragraph) => (
-        <Text key={paragraph} style={styles.tokenCopy}>
-          {paragraph}
-        </Text>
-      ))}
-      <Pressable
-        accessibilityRole="link"
-        onPress={() => {
-          void Linking.openURL(ANKY_TOKEN_URL);
-        }}
-        style={({ pressed }) => [styles.tokenButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.tokenButtonText}>BUY $ANKY</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 function StatCell({ icon, label, value }: { icon: StatIcon; label: string; value: number }) {
   return (
     <View style={styles.statCell}>
@@ -295,12 +250,14 @@ function MenuRow({
   icon,
   last = false,
   onPress,
+  preserveTitleCase = false,
   subtitle,
   title,
 }: {
   icon: MenuIcon;
   last?: boolean;
   onPress: () => void;
+  preserveTitleCase?: boolean;
   subtitle: string;
   title: string;
 }) {
@@ -308,7 +265,9 @@ function MenuRow({
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}>
       <Image accessibilityIgnoresInvertColors source={assets.icons[icon]} style={styles.menuIcon} />
       <View style={styles.menuCopy}>
-        <Text style={styles.menuTitle}>{title}</Text>
+        <Text style={[styles.menuTitle, preserveTitleCase && styles.menuTitlePreserve]}>
+          {title}
+        </Text>
         <Text numberOfLines={2} style={styles.menuSubtitle}>
           {subtitle}
         </Text>
@@ -493,27 +452,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: -6,
   },
-  loomCard: {
-    alignItems: "center",
-    backgroundColor: PANEL_DEEP,
-    borderColor: "rgba(232, 113, 207, 0.68)",
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: "row",
-    marginTop: 8,
-    minHeight: 56,
-    overflow: "hidden",
-    paddingLeft: 16,
-    paddingRight: 12,
-    shadowColor: "#CB65D7",
-    shadowOffset: { height: 0, width: 0 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-  },
-  loomTitleRow: {
-    alignItems: "center",
-    flexDirection: "row",
-  },
   memoryCard: {
     backgroundColor: "rgba(18, 16, 34, 0.66)",
     borderColor: "rgba(217, 143, 63, 0.5)",
@@ -574,6 +512,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 22,
     textTransform: "lowercase",
+  },
+  menuTitlePreserve: {
+    textTransform: "none",
   },
   nameDiamond: {
     borderColor: GOLD,
@@ -760,45 +701,5 @@ const styles = StyleSheet.create({
   },
   topSide: {
     width: 48,
-  },
-  tokenButton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(233, 190, 114, 0.18)",
-    borderColor: "rgba(242, 211, 146, 0.72)",
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 10,
-    minHeight: 42,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  tokenButtonText: {
-    color: GOLD_BRIGHT,
-    fontFamily: SERIF,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0,
-  },
-  tokenCard: {
-    backgroundColor: PANEL_DEEP,
-    borderColor: "rgba(217, 143, 63, 0.54)",
-    borderRadius: 16,
-    borderWidth: 1,
-    marginTop: 8,
-    padding: 16,
-  },
-  tokenCopy: {
-    color: COPY,
-    fontFamily: SERIF,
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginTop: 10,
-  },
-  tokenTitle: {
-    color: GOLD_BRIGHT,
-    fontFamily: SERIF,
-    fontSize: 21,
-    lineHeight: 26,
   },
 });

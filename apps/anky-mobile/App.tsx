@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import {
   AccountScreen,
+  AnkyTokenScreen,
   CreditsInfoScreen,
   ExportDataScreen,
   LoomInfoScreen,
@@ -43,6 +44,7 @@ export type RootStackParamList = {
   ExportData: undefined;
   CreditsInfo: undefined;
   LoomInfo: undefined;
+  AnkyToken: undefined;
   ActiveWriting:
     | {
         dayNumber?: number;
@@ -146,6 +148,11 @@ export default function App() {
               <Stack.Screen
                 component={LoomInfoScreen}
                 name="LoomInfo"
+                options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
+              />
+              <Stack.Screen
+                component={AnkyTokenScreen}
+                name="AnkyToken"
                 options={{ animation: "slide_from_right", gestureEnabled: true, headerShown: false }}
               />
               <Stack.Screen
