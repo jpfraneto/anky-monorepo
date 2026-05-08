@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -26,6 +27,7 @@ import { YouScreen } from './src/screens/YouScreen';
 import { WriteRootScreen } from './src/screens/WriteRootScreen';
 import { WriteScreen } from './src/screens/WriteScreen';
 import { AnkyPrivyProvider } from './src/lib/privy/PrivyProvider';
+import { useAnkyPrivyWallet } from './src/lib/privy/useAnkyPrivyWallet';
 import { AuthModalProvider } from './src/auth/AuthModalContext';
 import { AnkyPresenceProvider } from './src/presence/AnkyPresenceContext';
 import { AnkyPresenceOverlay } from './src/presence/AnkyPresenceOverlay';
@@ -92,6 +94,7 @@ export default function App() {
     <SafeAreaProvider>
       <AnkyPrivyProvider>
         <AuthModalProvider>
+          <EmbeddedWalletBootstrapper />
           <AnkyPresenceProvider>
             <NavigationContainer theme={navigationTheme}>
               <StatusBar style="light" />
@@ -182,4 +185,36 @@ export default function App() {
       </AnkyPrivyProvider>
     </SafeAreaProvider>
   );
+}
+
+function EmbeddedWalletBootstrapper() {
+  const wallet = useAnkyPrivyWallet();
+  const attemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!wallet.authenticated) {
+      attemptedRef.current = false;
+      return;
+    }
+
+    if (
+      attemptedRef.current ||
+      wallet.hasWallet ||
+      !wallet.canCreateEmbeddedWallet
+    ) {
+      return;
+    }
+
+    attemptedRef.current = true;
+    void wallet.createWallet().catch((error: unknown) => {
+      console.warn("Embedded Solana wallet bootstrap failed.", error);
+    });
+  }, [
+    wallet.authenticated,
+    wallet.canCreateEmbeddedWallet,
+    wallet.createWallet,
+    wallet.hasWallet,
+  ]);
+
+  return null;
 }

@@ -83,6 +83,7 @@ describe("anky-seal-program", () => {
       .sealAnky(Array.from(firstHash), new anchor.BN(utcDay))
       .accounts({
         writer,
+        payer: writer,
         loomAsset,
         loomCollection,
         dailySeal,

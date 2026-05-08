@@ -51,9 +51,11 @@ export type AnkySealSidecar = {
   created_at: string;
   loom_asset: string;
   network: AnkySolanaCluster;
+  payer?: string;
   session_hash: string;
   signature: string;
   status: "confirmed";
+  sponsored?: boolean;
   utc_day?: number;
   version: 1;
   writer: string;
@@ -679,7 +681,9 @@ function toLoomSeal(seal: AnkySealSidecar): LoomSeal {
     createdAt: seal.created_at,
     loomId: seal.loom_asset,
     network: seal.network,
+    payer: seal.payer,
     sessionHash: seal.session_hash,
+    sponsored: seal.sponsored,
     txSignature: seal.signature,
     utcDay: seal.utc_day,
     writer: seal.writer,

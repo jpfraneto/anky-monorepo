@@ -141,7 +141,7 @@ export function AnkySessionSurface({
               />
               <SessionActionButton
                 disabled={!canFullReflect}
-                label="full reflection"
+                label={canFullReflect ? "full reflection" : "full reflection coming soon"}
                 onPress={onFullReflect}
                 variant="secondary"
               />

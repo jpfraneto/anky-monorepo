@@ -2,6 +2,7 @@ import type { ImageSourcePropType } from "react-native";
 
 export type SojournMapAnky = {
   avatar: ImageSourcePropType;
+  createdAt: string;
   day: number;
   durationLabel: string;
   fileName?: string;

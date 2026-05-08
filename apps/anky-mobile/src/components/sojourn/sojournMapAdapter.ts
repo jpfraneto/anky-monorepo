@@ -71,6 +71,7 @@ function mapSessionToAnky({
 
   return {
     avatar: resolveAvatar(file),
+    createdAt: session.createdAt,
     day,
     durationLabel,
     fileName: file?.fileName,
@@ -97,13 +98,11 @@ function buildDurationLabel({
   const status = [
     session.kind === "fragment" ? "fragment" : `${minutes} min`,
     session.kind === "fragment" ? `${minutes} min` : null,
-    sealStatus ?? "local",
-    session.reflectionId != null ? "reflected" : null,
   ]
     .filter(Boolean)
     .join(" • ");
 
-  return status.length === 0 ? "8 min • local" : status;
+  return status.length === 0 ? "8 min" : status;
 }
 
 function resolveAvatar(file?: SavedAnkyFile) {
@@ -115,21 +114,10 @@ function resolveAvatar(file?: SavedAnkyFile) {
 }
 
 function getSealStatusLabel(file: SavedAnkyFile | undefined, session: AnkySessionSummary): string | null {
-  if (file?.localState === "proof_verified") {
-    return "sealed +1 • proof +2 • 3 pts";
-  }
+ 
 
-  if (file?.localState === "proving") {
-    return "sealed +1 • proof pending";
-  }
+  
 
-  if (file?.localState === "proof_failed") {
-    return "sealed +1 • proof failed";
-  }
-
-  if ((file?.sealCount ?? 0) > 0 || session.sealedOnchain === true) {
-    return "sealed +1";
-  }
 
   return null;
 }

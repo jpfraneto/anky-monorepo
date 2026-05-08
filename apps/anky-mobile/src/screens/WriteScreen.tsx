@@ -114,6 +114,9 @@ export function WriteScreen({ navigation, route }: Props) {
 
   const [inputValue, setInputValue] = useState("");
   const [isExiting, setIsExiting] = useState(false);
+  const [initialKeyboardReady, setInitialKeyboardReady] = useState(
+    Platform.OS !== "ios" && Platform.OS !== "android",
+  );
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [lastCharacter, setLastCharacter] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -128,9 +131,21 @@ export function WriteScreen({ navigation, route }: Props) {
   const [silenceMs, setSilenceMs] = useState(0);
   const [typedText, setTypedText] = useState("");
   const hasWritten = typedText.length > 0;
+  const isShowingClosedWriting = revealPhase !== "active";
+  const chamberReady = initialKeyboardReady || isShowingClosedWriting || isExiting;
 
   useAnkyPresenceScreen(
-    hasWritten
+    !chamberReady
+      ? {
+          avoidKeyboard: true,
+          emotion: "idle",
+          intensity: "minimal",
+          maxMode: "hidden",
+          placement: "left",
+          preferredMode: "hidden",
+          sequence: "shy_listening",
+        }
+      : hasWritten
       ? {
           avoidKeyboard: true,
           emotion: "listening",
@@ -222,6 +237,10 @@ export function WriteScreen({ navigation, route }: Props) {
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setKeyboardHeight(event.endCoordinates.height);
     });
+    const readySubscription = Keyboard.addListener("keyboardDidShow", (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+      setInitialKeyboardReady(true);
+    });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
       if (!closedRef.current) {
@@ -231,9 +250,22 @@ export function WriteScreen({ navigation, route }: Props) {
 
     return () => {
       showSubscription.remove();
+      readySubscription.remove();
       hideSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (initialKeyboardReady || revealPhase !== "active") {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setInitialKeyboardReady(true);
+    }, 1800);
+
+    return () => clearTimeout(timer);
+  }, [initialKeyboardReady, revealPhase]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -305,7 +337,19 @@ export function WriteScreen({ navigation, route }: Props) {
     }
 
     revealNavigationRequestedRef.current = true;
-    navigation.replace("Reveal", { fileName: savedSession.fileName });
+    setIsExiting(true);
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      const timer = setTimeout(() => {
+        navigation.replace("Reveal", { fileName: savedSession.fileName });
+      }, 120);
+
+      focusTimersRef.current.push(timer);
+    });
+
+    return () => {
+      interaction.cancel();
+    };
   }, [navigation, revealPhase, savedSession]);
 
   function handleChangeText(input: string) {
@@ -546,7 +590,6 @@ export function WriteScreen({ navigation, route }: Props) {
 
   const visibleLastCharacter = lastCharacter == null ? "" : visibleCharacter(lastCharacter);
   const isRevealed = revealPhase === "revealed";
-  const isShowingClosedWriting = revealPhase !== "active";
   const estimatedKeyboardHeight = getEstimatedKeyboardHeight(height);
   const effectiveKeyboardHeight =
     keyboardHeight > 0 ? keyboardHeight : isShowingClosedWriting ? 0 : estimatedKeyboardHeight;
@@ -570,7 +613,13 @@ export function WriteScreen({ navigation, route }: Props) {
   return (
     <ScreenBackground safe={false} variant="plain">
       <View style={styles.root}>
-        <View style={[styles.workspace, { bottom: workspaceBottom, opacity: isExiting ? 0 : 1 }]}>
+        <View
+          pointerEvents={chamberReady ? "auto" : "none"}
+          style={[
+            styles.workspace,
+            { bottom: workspaceBottom, opacity: isExiting ? 0 : chamberReady ? 1 : 0 },
+          ]}
+        >
           <ScrollView
             contentContainerStyle={[
               styles.backgroundWritingContent,
@@ -671,9 +720,17 @@ export function WriteScreen({ navigation, route }: Props) {
             keyboardHeight={effectiveKeyboardHeight}
             prompt={promptSuggestion}
             safeBottom={insets.bottom}
-            visible={openingPromptVisible && revealPhase === "active" && !hasWritten && !isExiting}
+            visible={
+              chamberReady &&
+              openingPromptVisible &&
+              revealPhase === "active" &&
+              !hasWritten &&
+              !isExiting
+            }
           />
         </View>
+
+        {!chamberReady ? <KeyboardOpeningVeil /> : null}
 
         <TextInput
           ref={inputRef}
@@ -703,6 +760,14 @@ export function WriteScreen({ navigation, route }: Props) {
         />
       </View>
     </ScreenBackground>
+  );
+}
+
+function KeyboardOpeningVeil() {
+  return (
+    <View pointerEvents="none" style={styles.keyboardOpeningVeil}>
+      <View style={styles.keyboardOpeningMark} />
+    </View>
   );
 }
 
@@ -1072,6 +1137,21 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 1,
     zIndex: 2,
+  },
+  keyboardOpeningMark: {
+    backgroundColor: "rgba(244, 241, 234, 0.72)",
+    borderRadius: 2,
+    height: 4,
+    opacity: 0.72,
+    transform: [{ rotate: "45deg" }],
+    width: 4,
+  },
+  keyboardOpeningVeil: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    zIndex: 1,
   },
   postSessionActions: {
     backgroundColor: "rgba(8, 9, 11, 0.88)",

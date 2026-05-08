@@ -5,17 +5,18 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use base64::Engine as _;
 use base64::engine::general_purpose::{
     STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD,
 };
-use jsonwebtoken::{Algorithm, EncodingKey, Header, encode as jwt_encode};
+use base64::Engine as _;
+use jsonwebtoken::{encode as jwt_encode, Algorithm, EncodingKey, Header};
 use mpl_core::instructions::CreateV2Builder;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use solana_sdk::{
     hash::Hash as SolanaHash,
+    instruction::{AccountMeta as SolanaAccountMeta, Instruction as SolanaInstruction},
     pubkey::Pubkey as SolanaPubkey,
     signature::{Keypair as SolanaKeypair, Signer as SolanaSigner},
     transaction::Transaction as SolanaTransaction,
@@ -50,6 +51,18 @@ const MAX_LOOM_INDEX: u32 = 3_456;
 const MAX_HELIUS_WEBHOOK_PAYLOAD_BYTES: usize = 2_000_000;
 const HELIUS_WEBHOOK_SOURCE: &str = "helius_enhanced_webhook";
 const VERIFIED_SEAL_SEED: &[u8] = b"verified_seal";
+const LOOM_STATE_SEED: &[u8] = b"loom_state";
+const DAILY_SEAL_SEED: &[u8] = b"daily_seal";
+const HASH_SEAL_SEED: &[u8] = b"hash_seal";
+const MEMO_PROGRAM_ID: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const DEFAULT_USER_MINT_MIN_LAMPORTS: u64 = 12_000_000;
+const DEFAULT_USER_SEAL_MIN_LAMPORTS: u64 = 6_000_000;
+const DEFAULT_SPONSORED_LOOM_MINT_ESTIMATED_LAMPORTS: u64 = 20_000_000;
+const DEFAULT_SPONSORED_SEAL_ESTIMATED_LAMPORTS: u64 = 8_000_000;
+const DEFAULT_SPONSORED_PROOF_ESTIMATED_LAMPORTS: u64 = 8_000_000;
+const CORE_KEY_ASSET_V1: u8 = 1;
+const CORE_KEY_COLLECTION_V1: u8 = 5;
+const CORE_UPDATE_AUTHORITY_COLLECTION: u8 = 2;
 const PLACEHOLDER_IMAGE_PNG_BASE64: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -98,6 +111,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/mobile/seals", get(lookup_mobile_seals))
         .route("/api/mobile/seals/score", get(get_mobile_seal_score))
         .route("/api/mobile/seals/points", get(get_mobile_seal_points))
+        .route("/api/mobile/seals/prepare", post(prepare_mobile_seal))
         .route("/api/mobile/seals/record", post(record_mobile_seal))
         .route("/api/mobile/seals/prove", post(create_mobile_seal_proof))
         .route(
@@ -461,13 +475,22 @@ pub async fn create_mobile_mint_authorization(
     Json(req): Json<MobileMintAuthorizationRequest>,
 ) -> Result<Json<MobileMintAuthorizationResponse>, AppError> {
     let wallet = validate_public_key("wallet", &req.wallet)?;
-    let payer = match req.payer.as_deref() {
-        Some(payer) => validate_public_key("payer", payer)?,
-        None => wallet.clone(),
-    };
+    if let Some(payer) = req.payer.as_deref() {
+        validate_public_key("payer", payer)?;
+    }
     let collection = req.collection.unwrap_or_else(core_collection);
     validate_expected_collection(&collection)?;
     validate_loom_index(req.loom_index)?;
+    let existing_loom: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM mobile_loom_mints
+             WHERE network = $1 AND wallet = $2 AND status IN ('pending', 'processed', 'confirmed', 'finalized')
+         )",
+    )
+    .bind(solana_cluster())
+    .bind(&wallet)
+    .fetch_one(&state.db)
+    .await?;
 
     let mode = if req.invite_code.is_some() {
         "invite_code"
@@ -480,28 +503,44 @@ pub async fn create_mobile_mint_authorization(
         .as_deref()
         .map(invite_code_is_allowed)
         .unwrap_or(true);
-    let allowed = req.invite_code.is_none() || invite_allowed;
-    let reason = if allowed {
-        None
-    } else {
-        Some("invite code is not authorized for devnet Loom minting".to_string())
-    };
-    let sponsor = allowed && req.invite_code.is_some() && env_flag("ANKY_DEV_SPONSOR_INVITE_MINTS");
-    let sponsor_payer = if sponsor {
-        env_nonempty("ANKY_SPONSOR_PAYER")
-    } else {
-        None
-    };
+    let mut decision = mobile_mint_authorization_policy(
+        &wallet,
+        existing_loom,
+        req.invite_code.is_some(),
+        invite_allowed,
+        fetch_solana_balance_lamports(&wallet).await.ok(),
+        user_mint_min_lamports(),
+    );
+    if decision.needs_sponsorship {
+        match prepare_sponsorship_event(
+            &state.db,
+            "mint_loom",
+            &wallet,
+            None,
+            None,
+            None,
+            sponsored_loom_mint_estimated_lamports(),
+        )
+        .await
+        {
+            Ok(event) => {
+                decision.apply_sponsorship_event(&event);
+            }
+            Err(error) => {
+                decision.reject_sponsorship(error.to_string());
+            }
+        }
+    }
     let authorization_id = uuid::Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + chrono::Duration::minutes(15);
     let signature = sign_mint_authorization(
         &authorization_id,
         &wallet,
-        &payer,
+        &decision.payer,
         &collection,
         req.loom_index,
         mode,
-        allowed,
+        decision.allowed,
         expires_at.timestamp_millis(),
     );
 
@@ -513,32 +552,32 @@ pub async fn create_mobile_mint_authorization(
     .bind(&authorization_id)
     .bind(solana_cluster())
     .bind(&wallet)
-    .bind(&payer)
+    .bind(&decision.payer)
     .bind(&collection)
     .bind(req.loom_index as i32)
     .bind(mode)
     .bind(invite_code_hash)
-    .bind(allowed)
-    .bind(sponsor)
-    .bind(sponsor_payer.as_deref())
-    .bind(&reason)
+    .bind(decision.allowed)
+    .bind(decision.sponsor)
+    .bind(decision.sponsor_payer.as_deref())
+    .bind(&decision.reason)
     .bind(expires_at)
     .execute(&state.db)
     .await?;
 
     Ok(Json(MobileMintAuthorizationResponse {
-        allowed,
+        allowed: decision.allowed,
         authorization_id,
         collection,
         expires_at: expires_at.to_rfc3339(),
         loom_index: req.loom_index,
         mode: mode.to_string(),
         owner: wallet,
-        payer,
-        reason,
+        payer: decision.payer,
+        reason: decision.reason,
         signature,
-        sponsor,
-        sponsor_payer,
+        sponsor: decision.sponsor,
+        sponsor_payer: decision.sponsor_payer,
     }))
 }
 
@@ -564,6 +603,13 @@ pub async fn prepare_mobile_loom_mint(
         req.loom_index,
     )
     .await?;
+    if payer != wallet
+        && (!authorization.sponsor || authorization.sponsor_payer.as_deref() != Some(&payer))
+    {
+        return Err(AppError::Forbidden(
+            "sponsored Loom mint payer is not authorized for this wallet".into(),
+        ));
+    }
 
     let loom_number = format_loom_number(req.loom_index);
     let name = format!("Anky Sojourn 9 Loom #{}", loom_number);
@@ -625,6 +671,16 @@ pub async fn record_mobile_loom_mint(
     .bind(req.metadata_uri.as_deref())
     .bind(&status)
     .fetch_one(&state.db)
+    .await?;
+    mark_sponsorship_event_landed(
+        &state.db,
+        "mint_loom",
+        &wallet,
+        None,
+        None,
+        &signature,
+        &status,
+    )
     .await?;
 
     Ok(Json(RecordMobileLoomMintResponse {
@@ -1002,6 +1058,14 @@ pub async fn create_mobile_seal_proof(
     }
 
     let proof_input = validate_mobile_seal_proof_request(&req)?;
+    enforce_mobile_proof_retry_limit(
+        &state.db,
+        &proof_input.wallet,
+        &proof_input.network,
+        &proof_input.session_hash,
+        proof_input.utc_day,
+    )
+    .await?;
 
     let prover_config = match mobile_prover_config() {
         Ok(config) => config,
@@ -1016,6 +1080,16 @@ pub async fn create_mobile_seal_proof(
                 .into_response());
         }
     };
+    prepare_sponsorship_event(
+        &state.db,
+        "proof",
+        &proof_input.wallet,
+        Some(proof_input.utc_day),
+        Some(&proof_input.session_hash),
+        proof_input.loom_asset.as_deref(),
+        sponsored_proof_estimated_lamports(),
+    )
+    .await?;
 
     let job_id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
@@ -1082,6 +1156,113 @@ pub async fn get_mobile_seal_proof_job(
     Ok(Json(mobile_proof_job_from_row(&row)?))
 }
 
+pub async fn prepare_mobile_seal(
+    State(state): State<AppState>,
+    Json(req): Json<PrepareMobileSealRequest>,
+) -> Result<Json<PrepareMobileSealResponse>, AppError> {
+    let eligibility = validate_prepare_mobile_seal_request(
+        &req,
+        current_utc_day(),
+        env_flag("ANKY_SPONSOR_EXTRA_SEALS"),
+    )?;
+    let wallet = eligibility.wallet;
+    let loom_asset = eligibility.loom_asset;
+    let core_collection = eligibility.core_collection;
+    let session_hash = eligibility.session_hash;
+    let utc_day = eligibility.utc_day;
+
+    let wallet_balance = fetch_solana_balance_lamports(&wallet).await.ok();
+    if wallet_balance
+        .map(|balance| balance >= user_seal_min_lamports())
+        .unwrap_or(true)
+    {
+        return Ok(Json(PrepareMobileSealResponse {
+            blockhash: String::new(),
+            estimated_lamports: 0,
+            idempotency_key: format!("seal:{wallet}:{utc_day}:{session_hash}"),
+            last_valid_block_height: 0,
+            message: Some("wallet has enough SOL; user should pay for this seal".into()),
+            payer: wallet,
+            sponsor: false,
+            sponsor_payer: None,
+            transaction_base64: None,
+        }));
+    }
+
+    verify_core_loom_for_sponsored_seal(&wallet, &loom_asset, &core_collection).await?;
+    let sponsorship = prepare_sponsorship_event(
+        &state.db,
+        "seal",
+        &wallet,
+        Some(utc_day),
+        Some(&session_hash),
+        Some(&loom_asset),
+        sponsored_seal_estimated_lamports(),
+    )
+    .await?;
+    let prepared = build_sponsored_seal_transaction(
+        &wallet,
+        &sponsorship.sponsor_payer,
+        &loom_asset,
+        &core_collection,
+        &session_hash,
+        utc_day,
+    )
+    .await?;
+
+    Ok(Json(PrepareMobileSealResponse {
+        blockhash: prepared.blockhash,
+        estimated_lamports: sponsorship.estimated_lamports,
+        idempotency_key: sponsorship.idempotency_key,
+        last_valid_block_height: prepared.last_valid_block_height,
+        message: None,
+        payer: sponsorship.sponsor_payer.clone(),
+        sponsor: true,
+        sponsor_payer: Some(sponsorship.sponsor_payer),
+        transaction_base64: Some(prepared.transaction_base64),
+    }))
+}
+
+#[derive(Debug)]
+struct PrepareMobileSealEligibility {
+    wallet: String,
+    loom_asset: String,
+    core_collection: String,
+    session_hash: String,
+    utc_day: i64,
+}
+
+fn validate_prepare_mobile_seal_request(
+    req: &PrepareMobileSealRequest,
+    current_utc_day: i64,
+    sponsor_extra_seals: bool,
+) -> Result<PrepareMobileSealEligibility, AppError> {
+    let wallet = validate_public_key("wallet", &req.wallet)?;
+    let loom_asset = validate_public_key("loomAsset", &req.loom_asset)?;
+    let core_collection = validate_public_key("coreCollection", &req.core_collection)?;
+    validate_expected_collection(&core_collection)?;
+    let session_hash = normalize_hash(&req.session_hash)?;
+    let utc_day = validate_optional_utc_day(Some(req.utc_day))?.unwrap_or(req.utc_day);
+    if utc_day != current_utc_day {
+        return Err(AppError::BadRequest(
+            "sponsored seal preparation only supports the current UTC day".into(),
+        ));
+    }
+    if !req.canonical.unwrap_or(true) && !sponsor_extra_seals {
+        return Err(AppError::Forbidden(
+            "only the canonical daily seal is eligible for sponsorship".into(),
+        ));
+    }
+
+    Ok(PrepareMobileSealEligibility {
+        wallet,
+        loom_asset,
+        core_collection,
+        session_hash,
+        utc_day,
+    })
+}
+
 pub async fn record_mobile_seal(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1132,6 +1313,16 @@ pub async fn record_mobile_seal(
                 .into(),
         )
     })?;
+    mark_sponsorship_event_landed(
+        &state.db,
+        "seal",
+        &wallet,
+        utc_day,
+        Some(&session_hash),
+        &signature,
+        &status,
+    )
+    .await?;
 
     Ok(Json(RecordMobileSealResponse {
         recorded: true,
@@ -2039,6 +2230,34 @@ pub struct RecordMobileSealResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PrepareMobileSealRequest {
+    wallet: String,
+    loom_asset: String,
+    core_collection: String,
+    session_hash: String,
+    utc_day: i64,
+    canonical: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareMobileSealResponse {
+    blockhash: String,
+    estimated_lamports: u64,
+    idempotency_key: String,
+    last_valid_block_height: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    payer: String,
+    sponsor: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sponsor_payer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transaction_base64: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MobileSealProofRequest {
     wallet: String,
     network: Option<String>,
@@ -2555,6 +2774,9 @@ fn mobile_thread_safety_response() -> String {
 struct MobileMintAuthorizationRecord {
     authorization_id: String,
     mode: String,
+    payer: String,
+    sponsor: bool,
+    sponsor_payer: Option<String>,
 }
 
 struct PreparedCoreLoomMintTransaction {
@@ -2563,6 +2785,47 @@ struct PreparedCoreLoomMintTransaction {
     collection_authority: String,
     last_valid_block_height: u64,
     transaction_base64: String,
+}
+
+struct PreparedSponsoredSealTransaction {
+    blockhash: String,
+    last_valid_block_height: u64,
+    transaction_base64: String,
+}
+
+struct SponsorshipEvent {
+    estimated_lamports: u64,
+    idempotency_key: String,
+    sponsor_payer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MobileMintAuthorizationDecision {
+    allowed: bool,
+    needs_sponsorship: bool,
+    payer: String,
+    reason: Option<String>,
+    sponsor: bool,
+    sponsor_payer: Option<String>,
+}
+
+impl MobileMintAuthorizationDecision {
+    fn apply_sponsorship_event(&mut self, event: &SponsorshipEvent) {
+        self.allowed = true;
+        self.needs_sponsorship = false;
+        self.payer = event.sponsor_payer.clone();
+        self.reason = None;
+        self.sponsor = true;
+        self.sponsor_payer = Some(event.sponsor_payer.clone());
+    }
+
+    fn reject_sponsorship(&mut self, reason: String) {
+        self.allowed = false;
+        self.needs_sponsorship = false;
+        self.reason = Some(reason);
+        self.sponsor = false;
+        self.sponsor_payer = None;
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2581,6 +2844,17 @@ struct LatestBlockhashRpcResult {
 struct LatestBlockhashRpcValue {
     blockhash: String,
     last_valid_block_height: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GetBalanceRpcResponse {
+    result: Option<GetBalanceRpcResult>,
+    error: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GetBalanceRpcResult {
+    value: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2626,7 +2900,7 @@ async fn lookup_mobile_mint_authorization(
 ) -> Result<MobileMintAuthorizationRecord, AppError> {
     let authorization_id = validate_short_text("authorizationId", authorization_id, 128)?;
     let row = sqlx::query(
-        "SELECT id, mode, allowed, expires_at
+        "SELECT id, mode, payer, sponsor, sponsor_payer, allowed, expires_at
          FROM mobile_mint_authorizations
          WHERE id = $1
            AND network = $2
@@ -2660,7 +2934,41 @@ async fn lookup_mobile_mint_authorization(
     Ok(MobileMintAuthorizationRecord {
         authorization_id: row.try_get("id")?,
         mode: row.try_get("mode")?,
+        payer: row.try_get("payer")?,
+        sponsor: row.try_get("sponsor")?,
+        sponsor_payer: row.try_get("sponsor_payer")?,
     })
+}
+
+fn mobile_mint_authorization_policy(
+    wallet: &str,
+    existing_loom: bool,
+    invite_code_present: bool,
+    invite_allowed: bool,
+    wallet_balance_lamports: Option<u64>,
+    user_min_lamports: u64,
+) -> MobileMintAuthorizationDecision {
+    let invite_gate_allowed = (!invite_code_present || invite_allowed) && !existing_loom;
+    let wallet_can_pay = wallet_balance_lamports
+        .map(|balance| balance >= user_min_lamports)
+        .unwrap_or(true);
+    let needs_sponsorship = invite_gate_allowed && !wallet_can_pay;
+    let reason = if existing_loom {
+        Some("this wallet already has a Loom recorded".to_string())
+    } else if invite_gate_allowed {
+        None
+    } else {
+        Some("invite code is not authorized for devnet Loom minting".to_string())
+    };
+
+    MobileMintAuthorizationDecision {
+        allowed: invite_gate_allowed && !needs_sponsorship,
+        needs_sponsorship,
+        payer: wallet.to_string(),
+        reason,
+        sponsor: false,
+        sponsor_payer: None,
+    }
 }
 
 async fn build_core_loom_mint_transaction(
@@ -2680,11 +2988,23 @@ async fn build_core_loom_mint_transaction(
     let payer_pubkey = solana_pubkey("payer", payer)?;
     let collection_pubkey = solana_pubkey("collection", collection)?;
     let collection_authority = load_core_collection_authority_keypair()?;
+    let sponsor_payer = if payer == wallet {
+        None
+    } else {
+        let keypair = load_sponsor_payer_keypair()?;
+        if keypair.pubkey() != payer_pubkey {
+            return Err(AppError::Unavailable(
+                "configured sponsor payer does not match the authorized Loom mint payer".into(),
+            ));
+        }
+        Some(keypair)
+    };
     let asset = SolanaKeypair::new();
     let latest_blockhash = fetch_latest_blockhash().await?;
     let recent_blockhash = SolanaHash::from_str(&latest_blockhash.blockhash)
         .map_err(|_| AppError::Internal("RPC returned an invalid blockhash".into()))?;
 
+    let owner_authorization = owner_authorization_memo_instruction(owner_pubkey)?;
     let instruction = CreateV2Builder::new()
         .asset(asset.pubkey())
         .collection(Some(collection_pubkey))
@@ -2694,8 +3014,16 @@ async fn build_core_loom_mint_transaction(
         .name(name.to_string())
         .uri(uri.to_string())
         .instruction();
-    let mut transaction = SolanaTransaction::new_with_payer(&[instruction], Some(&payer_pubkey));
-    transaction.partial_sign(&[&asset, &collection_authority], recent_blockhash);
+    let mut transaction =
+        SolanaTransaction::new_with_payer(&[owner_authorization, instruction], Some(&payer_pubkey));
+    if let Some(sponsor_payer) = sponsor_payer.as_ref() {
+        transaction.partial_sign(
+            &[&asset, &collection_authority, sponsor_payer],
+            recent_blockhash,
+        );
+    } else {
+        transaction.partial_sign(&[&asset, &collection_authority], recent_blockhash);
+    }
     let serialized = bincode::serialize(&transaction).map_err(|error| {
         AppError::Internal(format!(
             "could not serialize Loom mint transaction: {error}"
@@ -2709,6 +3037,175 @@ async fn build_core_loom_mint_transaction(
         last_valid_block_height: latest_blockhash.last_valid_block_height,
         transaction_base64: BASE64_STANDARD.encode(serialized),
     })
+}
+
+async fn build_sponsored_seal_transaction(
+    wallet: &str,
+    payer: &str,
+    loom_asset: &str,
+    core_collection: &str,
+    session_hash: &str,
+    utc_day: i64,
+) -> Result<PreparedSponsoredSealTransaction, AppError> {
+    let writer_pubkey = solana_pubkey("wallet", wallet)?;
+    let payer_pubkey = solana_pubkey("payer", payer)?;
+    let loom_asset_pubkey = solana_pubkey("loomAsset", loom_asset)?;
+    let core_collection_pubkey = solana_pubkey("coreCollection", core_collection)?;
+    let program_pubkey = solana_pubkey("sealProgramId", &seal_program_id())?;
+    let session_hash_bytes = decode_hash_bytes(session_hash)?;
+    let payer_keypair = load_sponsor_payer_keypair()?;
+    if payer_keypair.pubkey() != payer_pubkey {
+        return Err(AppError::Unavailable(
+            "configured sponsor payer does not match requested seal payer".into(),
+        ));
+    }
+
+    let (loom_state, _) = SolanaPubkey::find_program_address(
+        &[LOOM_STATE_SEED, loom_asset_pubkey.as_ref()],
+        &program_pubkey,
+    );
+    let (daily_seal, _) = SolanaPubkey::find_program_address(
+        &[
+            DAILY_SEAL_SEED,
+            writer_pubkey.as_ref(),
+            &utc_day.to_le_bytes(),
+        ],
+        &program_pubkey,
+    );
+    let (hash_seal, _) = SolanaPubkey::find_program_address(
+        &[HASH_SEAL_SEED, writer_pubkey.as_ref(), &session_hash_bytes],
+        &program_pubkey,
+    );
+
+    let mut data = Vec::with_capacity(48);
+    data.extend_from_slice(&anchor_discriminator("global:seal_anky"));
+    data.extend_from_slice(&session_hash_bytes);
+    data.extend_from_slice(&utc_day.to_le_bytes());
+
+    let instruction = SolanaInstruction {
+        program_id: program_pubkey,
+        accounts: vec![
+            SolanaAccountMeta::new_readonly(writer_pubkey, true),
+            SolanaAccountMeta::new(payer_pubkey, true),
+            SolanaAccountMeta::new_readonly(loom_asset_pubkey, false),
+            SolanaAccountMeta::new_readonly(core_collection_pubkey, false),
+            SolanaAccountMeta::new(loom_state, false),
+            SolanaAccountMeta::new(daily_seal, false),
+            SolanaAccountMeta::new(hash_seal, false),
+            SolanaAccountMeta::new_readonly(SolanaPubkey::default(), false),
+        ],
+        data,
+    };
+
+    let latest_blockhash = fetch_latest_blockhash().await?;
+    let recent_blockhash = SolanaHash::from_str(&latest_blockhash.blockhash)
+        .map_err(|_| AppError::Internal("RPC returned an invalid blockhash".into()))?;
+    let mut transaction = SolanaTransaction::new_with_payer(&[instruction], Some(&payer_pubkey));
+    transaction.partial_sign(&[&payer_keypair], recent_blockhash);
+    let serialized = bincode::serialize(&transaction).map_err(|error| {
+        AppError::Internal(format!(
+            "could not serialize sponsored seal transaction: {error}"
+        ))
+    })?;
+
+    Ok(PreparedSponsoredSealTransaction {
+        blockhash: latest_blockhash.blockhash,
+        last_valid_block_height: latest_blockhash.last_valid_block_height,
+        transaction_base64: BASE64_STANDARD.encode(serialized),
+    })
+}
+
+async fn verify_core_loom_for_sponsored_seal(
+    wallet: &str,
+    loom_asset: &str,
+    core_collection: &str,
+) -> Result<(), AppError> {
+    let writer_pubkey = solana_pubkey("wallet", wallet)?;
+    let expected_collection = solana_pubkey("coreCollection", core_collection)?;
+    let expected_core_program = core_program_id();
+
+    let asset_account = fetch_solana_account_base64_optional(loom_asset)
+        .await?
+        .ok_or_else(|| AppError::BadRequest("Loom asset account not found on-chain".into()))?;
+    if asset_account.owner.as_deref() != Some(expected_core_program.as_str()) {
+        return Err(AppError::BadRequest(
+            "Loom asset is not owned by the configured Metaplex Core program".into(),
+        ));
+    }
+    let asset_data_base64 = solana_account_data_base64(&asset_account.data)?;
+    let asset_data = BASE64_STANDARD
+        .decode(asset_data_base64.as_bytes())
+        .map_err(|_| AppError::Unavailable("Loom asset account data is not base64".into()))?;
+    let asset = parse_core_asset_base_fields(&asset_data)?;
+    if asset.owner != writer_pubkey.to_bytes() {
+        return Err(AppError::Forbidden(
+            "this wallet does not own the supplied Loom asset".into(),
+        ));
+    }
+    if asset.collection != expected_collection.to_bytes() {
+        return Err(AppError::BadRequest(
+            "Loom asset is not attached to the configured Core collection".into(),
+        ));
+    }
+
+    let collection_account = fetch_solana_account_base64_optional(core_collection)
+        .await?
+        .ok_or_else(|| AppError::BadRequest("Core collection account not found on-chain".into()))?;
+    if collection_account.owner.as_deref() != Some(expected_core_program.as_str()) {
+        return Err(AppError::BadRequest(
+            "Core collection is not owned by the configured Metaplex Core program".into(),
+        ));
+    }
+    let collection_data_base64 = solana_account_data_base64(&collection_account.data)?;
+    let collection_data = BASE64_STANDARD
+        .decode(collection_data_base64.as_bytes())
+        .map_err(|_| AppError::Unavailable("Core collection account data is not base64".into()))?;
+    parse_core_collection_base_fields(&collection_data)?;
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CoreAssetBaseFields {
+    owner: [u8; 32],
+    collection: [u8; 32],
+}
+
+fn parse_core_asset_base_fields(data: &[u8]) -> Result<CoreAssetBaseFields, AppError> {
+    if data.first().copied() != Some(CORE_KEY_ASSET_V1) {
+        return Err(AppError::BadRequest(
+            "Loom account is not a Metaplex Core asset".into(),
+        ));
+    }
+    let owner = read_core_pubkey(data, 1, "Loom asset owner")?;
+    if data.get(33).copied() != Some(CORE_UPDATE_AUTHORITY_COLLECTION) {
+        return Err(AppError::BadRequest(
+            "Loom asset update authority is not its Core collection".into(),
+        ));
+    }
+    let collection = read_core_pubkey(data, 34, "Loom asset collection")?;
+
+    Ok(CoreAssetBaseFields { owner, collection })
+}
+
+fn parse_core_collection_base_fields(data: &[u8]) -> Result<(), AppError> {
+    if data.first().copied() != Some(CORE_KEY_COLLECTION_V1) {
+        return Err(AppError::BadRequest(
+            "Core collection account is not a Metaplex Core collection".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn read_core_pubkey(data: &[u8], offset: usize, label: &str) -> Result<[u8; 32], AppError> {
+    let bytes = data.get(offset..offset + 32).ok_or_else(|| {
+        AppError::BadRequest(format!("{label} is missing from Core account data"))
+    })?;
+    let mut pubkey = [0u8; 32];
+    pubkey.copy_from_slice(bytes);
+
+    Ok(pubkey)
 }
 
 async fn fetch_latest_blockhash() -> Result<LatestBlockhashRpcValue, AppError> {
@@ -2738,6 +3235,326 @@ async fn fetch_latest_blockhash() -> Result<LatestBlockhashRpcValue, AppError> {
         .ok_or_else(|| AppError::Unavailable("Solana RPC returned no blockhash".into()))
 }
 
+async fn fetch_solana_balance_lamports(wallet: &str) -> Result<u64, AppError> {
+    let wallet = validate_public_key("wallet", wallet)?;
+    let response = reqwest::Client::new()
+        .post(solana_rpc_url())
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": "anky-wallet-balance",
+            "method": "getBalance",
+            "params": [wallet, { "commitment": "confirmed" }]
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<GetBalanceRpcResponse>()
+        .await?;
+
+    if let Some(error) = response.error {
+        return Err(AppError::Unavailable(format!(
+            "Solana RPC getBalance failed: {error}"
+        )));
+    }
+
+    response
+        .result
+        .map(|result| result.value)
+        .ok_or_else(|| AppError::Unavailable("Solana RPC returned no balance".into()))
+}
+
+async fn prepare_sponsorship_event(
+    pool: &sqlx::PgPool,
+    action: &str,
+    wallet: &str,
+    utc_day: Option<i64>,
+    session_hash: Option<&str>,
+    loom_asset: Option<&str>,
+    estimated_lamports: u64,
+) -> Result<SponsorshipEvent, AppError> {
+    if !sponsorship_enabled() {
+        return Err(AppError::Unavailable(
+            "Anky sponsorship is not enabled on this backend".into(),
+        ));
+    }
+    if solana_cluster() == "mainnet-beta" && !env_flag("ANKY_ENABLE_MAINNET_SPONSORSHIP") {
+        return Err(AppError::Unavailable(
+            "Anky sponsorship is not enabled for mainnet".into(),
+        ));
+    }
+
+    let sponsor_payer = if action == "proof" {
+        validate_public_key("proofVerifierAuthority", &proof_verifier_authority())?
+    } else {
+        load_sponsor_payer_keypair()?.pubkey().to_string()
+    };
+    let budget = sponsorship_daily_budget_lamports();
+    if budget == 0 {
+        return Err(AppError::Unavailable(
+            "Anky sponsorship budget is not configured".into(),
+        ));
+    }
+
+    let idempotency_key = sponsorship_idempotency_key(action, wallet, utc_day, session_hash)?;
+
+    enforce_sponsorship_uniqueness(pool, action, wallet, utc_day, session_hash).await?;
+    enforce_sponsorship_budget(pool, action, &idempotency_key, estimated_lamports, budget).await?;
+
+    sqlx::query(
+        "INSERT INTO mobile_sponsorship_events
+         (id, network, wallet, action, idempotency_key, utc_day, session_hash, loom_asset, sponsor_payer, estimated_lamports, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'prepared')
+         ON CONFLICT (network, action, idempotency_key) DO UPDATE
+         SET updated_at = NOW(),
+             sponsor_payer = EXCLUDED.sponsor_payer,
+             estimated_lamports = EXCLUDED.estimated_lamports,
+             status = CASE
+                 WHEN mobile_sponsorship_events.status IN ('submitted', 'confirmed', 'finalized')
+                 THEN mobile_sponsorship_events.status
+                 ELSE 'prepared'
+             END",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(solana_cluster())
+    .bind(wallet)
+    .bind(action)
+    .bind(&idempotency_key)
+    .bind(utc_day)
+    .bind(session_hash)
+    .bind(loom_asset)
+    .bind(&sponsor_payer)
+    .bind(estimated_lamports as i64)
+    .execute(pool)
+    .await?;
+
+    Ok(SponsorshipEvent {
+        estimated_lamports,
+        idempotency_key,
+        sponsor_payer,
+    })
+}
+
+async fn enforce_sponsorship_uniqueness(
+    pool: &sqlx::PgPool,
+    action: &str,
+    wallet: &str,
+    utc_day: Option<i64>,
+    session_hash: Option<&str>,
+) -> Result<(), AppError> {
+    if action == "mint_loom" {
+        let existing_loom: bool = sqlx::query_scalar(
+            "SELECT EXISTS (
+                 SELECT 1 FROM mobile_loom_mints
+                 WHERE network = $1 AND wallet = $2 AND status IN ('pending', 'processed', 'confirmed', 'finalized')
+             )",
+        )
+        .bind(solana_cluster())
+        .bind(wallet)
+        .fetch_one(pool)
+        .await?;
+        if existing_loom {
+            return Err(AppError::Forbidden(
+                "this wallet already has a Loom recorded".into(),
+            ));
+        }
+    }
+
+    let duplicate: bool = match action {
+        "mint_loom" => false,
+        "seal" => {
+            let Some(utc_day) = utc_day else {
+                return Err(AppError::BadRequest(
+                    "utcDay is required for seal sponsorship".into(),
+                ));
+            };
+            let Some(session_hash) = session_hash else {
+                return Err(AppError::BadRequest(
+                    "sessionHash is required for seal sponsorship".into(),
+                ));
+            };
+            sqlx::query_scalar(
+                "SELECT EXISTS (
+                     SELECT 1 FROM mobile_sponsorship_events
+                     WHERE network = $1 AND wallet = $2 AND action = 'seal' AND utc_day = $3
+                       AND session_hash <> $4
+                       AND status IN ('prepared', 'submitted', 'confirmed', 'finalized')
+                 )",
+            )
+            .bind(solana_cluster())
+            .bind(wallet)
+            .bind(utc_day)
+            .bind(session_hash)
+            .fetch_one(pool)
+            .await?
+        }
+        _ => false,
+    };
+    if duplicate {
+        return Err(AppError::Forbidden(
+            "sponsorship for this action has already been used".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+async fn enforce_sponsorship_budget(
+    pool: &sqlx::PgPool,
+    action: &str,
+    idempotency_key: &str,
+    estimated_lamports: u64,
+    budget: u64,
+) -> Result<(), AppError> {
+    let day_start = (current_utc_day() * 86_400) as f64;
+    let used: Option<i64> = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(estimated_lamports), 0)::BIGINT
+         FROM mobile_sponsorship_events
+         WHERE network = $1
+           AND created_at >= to_timestamp($2::double precision)
+           AND NOT (action = $3 AND idempotency_key = $4)
+           AND status IN ('prepared', 'submitted', 'confirmed', 'finalized')",
+    )
+    .bind(solana_cluster())
+    .bind(day_start)
+    .bind(action)
+    .bind(idempotency_key)
+    .fetch_one(pool)
+    .await?;
+    let used = used.unwrap_or(0).max(0) as u64;
+    if used.saturating_add(estimated_lamports) > budget {
+        return Err(AppError::RateLimited(86_400));
+    }
+
+    Ok(())
+}
+
+async fn mark_sponsorship_event_landed(
+    pool: &sqlx::PgPool,
+    action: &str,
+    wallet: &str,
+    utc_day: Option<i64>,
+    session_hash: Option<&str>,
+    signature: &str,
+    receipt_status: &str,
+) -> Result<(), AppError> {
+    let Some(status) = sponsorship_status_from_receipt_status(receipt_status) else {
+        return Ok(());
+    };
+    if !matches!(action, "mint_loom" | "seal" | "proof") {
+        return Ok(());
+    }
+    let idempotency_key = sponsorship_idempotency_key(action, wallet, utc_day, session_hash)?;
+
+    sqlx::query(
+        "UPDATE mobile_sponsorship_events
+         SET signature = $5,
+             status = $6,
+             updated_at = NOW()
+         WHERE network = $1
+           AND action = $2
+           AND wallet = $3
+           AND idempotency_key = $4",
+    )
+    .bind(solana_cluster())
+    .bind(action)
+    .bind(wallet)
+    .bind(idempotency_key)
+    .bind(signature)
+    .bind(status)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+fn sponsorship_status_from_receipt_status(receipt_status: &str) -> Option<&'static str> {
+    match receipt_status {
+        "finalized" => Some("finalized"),
+        "confirmed" => Some("confirmed"),
+        "pending" | "processed" => Some("submitted"),
+        "failed" => Some("failed"),
+        _ => None,
+    }
+}
+
+async fn mark_mobile_proof_sponsorship_failed(
+    pool: &sqlx::PgPool,
+    job: &MobileProofJobWork,
+    reason: &str,
+) -> Result<(), AppError> {
+    mark_sponsorship_event_failed(
+        pool,
+        "proof",
+        &job.wallet,
+        Some(job.utc_day),
+        Some(&job.session_hash),
+        reason,
+    )
+    .await
+}
+
+async fn mark_sponsorship_event_failed(
+    pool: &sqlx::PgPool,
+    action: &str,
+    wallet: &str,
+    utc_day: Option<i64>,
+    session_hash: Option<&str>,
+    reason: &str,
+) -> Result<(), AppError> {
+    if !matches!(action, "mint_loom" | "seal" | "proof") {
+        return Ok(());
+    }
+    let idempotency_key = sponsorship_idempotency_key(action, wallet, utc_day, session_hash)?;
+
+    sqlx::query(
+        "UPDATE mobile_sponsorship_events
+         SET status = 'failed',
+             reason = $5,
+             updated_at = NOW()
+         WHERE network = $1
+           AND action = $2
+           AND wallet = $3
+           AND idempotency_key = $4
+           AND status IN ('prepared', 'submitted')",
+    )
+    .bind(solana_cluster())
+    .bind(action)
+    .bind(wallet)
+    .bind(idempotency_key)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+fn sponsorship_idempotency_key(
+    action: &str,
+    wallet: &str,
+    utc_day: Option<i64>,
+    session_hash: Option<&str>,
+) -> Result<String, AppError> {
+    match action {
+        "mint_loom" => Ok(format!("mint_loom:{wallet}")),
+        "seal" => {
+            let utc_day = utc_day.ok_or_else(|| {
+                AppError::BadRequest("utcDay is required for seal sponsorship".into())
+            })?;
+            let session_hash = session_hash.ok_or_else(|| {
+                AppError::BadRequest("sessionHash is required for seal sponsorship".into())
+            })?;
+            Ok(format!("seal:{wallet}:{utc_day}:{session_hash}"))
+        }
+        "proof" => {
+            let session_hash = session_hash.ok_or_else(|| {
+                AppError::BadRequest("sessionHash is required for proof sponsorship".into())
+            })?;
+            Ok(format!("proof:{wallet}:{session_hash}"))
+        }
+        _ => Err(AppError::BadRequest("unknown sponsorship action".into())),
+    }
+}
+
 fn load_core_collection_authority_keypair() -> Result<SolanaKeypair, AppError> {
     if let Some(value) = env_nonempty("ANKY_CORE_COLLECTION_AUTHORITY_KEYPAIR") {
         return parse_solana_keypair(&value);
@@ -2761,6 +3578,26 @@ fn load_core_collection_authority_keypair() -> Result<SolanaKeypair, AppError> {
     parse_solana_keypair(&value)
 }
 
+fn load_sponsor_payer_keypair() -> Result<SolanaKeypair, AppError> {
+    if let Some(value) = env_nonempty("ANKY_SPONSOR_PAYER_KEYPAIR") {
+        return parse_solana_keypair(&value);
+    }
+
+    let keypair_path = env_nonempty("ANKY_SPONSOR_PAYER_KEYPAIR_PATH")
+        .or_else(|| env_nonempty("ANKY_PAYER_KEYPAIR_PATH"));
+    let Some(keypair_path) = keypair_path else {
+        return Err(AppError::Unavailable(
+            "sponsor payer is not configured".into(),
+        ));
+    };
+
+    let path = expand_home(&keypair_path);
+    let value = std::fs::read_to_string(&path)
+        .map_err(|_| AppError::Unavailable("sponsor payer is not configured".into()))?;
+
+    parse_solana_keypair(&value)
+}
+
 fn parse_solana_keypair(value: &str) -> Result<SolanaKeypair, AppError> {
     let trimmed = value.trim();
     let bytes = if trimmed.starts_with('[') {
@@ -2775,12 +3612,25 @@ fn parse_solana_keypair(value: &str) -> Result<SolanaKeypair, AppError> {
 
     if bytes.len() != 64 {
         return Err(AppError::BadRequest(
-            "Core collection authority keypair must contain 64 bytes".into(),
+            "Solana keypair must contain 64 bytes".into(),
         ));
     }
 
     SolanaKeypair::try_from(bytes.as_slice())
         .map_err(|_| AppError::BadRequest("Core collection authority keypair is invalid".into()))
+}
+
+fn owner_authorization_memo_instruction(
+    owner: SolanaPubkey,
+) -> Result<SolanaInstruction, AppError> {
+    let memo_program = SolanaPubkey::from_str(MEMO_PROGRAM_ID)
+        .map_err(|_| AppError::Internal("invalid memo program id".into()))?;
+
+    Ok(SolanaInstruction {
+        program_id: memo_program,
+        accounts: vec![SolanaAccountMeta::new_readonly(owner, true)],
+        data: b"anky owner authorization".to_vec(),
+    })
 }
 
 fn solana_pubkey(name: &str, value: &str) -> Result<SolanaPubkey, AppError> {
@@ -4416,6 +5266,36 @@ async fn lookup_matching_mobile_seal_receipt(
     })
 }
 
+async fn enforce_mobile_proof_retry_limit(
+    pool: &sqlx::PgPool,
+    wallet: &str,
+    network: &str,
+    session_hash: &str,
+    utc_day: i64,
+) -> Result<(), AppError> {
+    let max_attempts = env_u64("ANKY_PROOF_MAX_ATTEMPTS_PER_SEAL", 3).max(1);
+    let attempts: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM mobile_proof_jobs
+         WHERE network = $1
+           AND wallet = $2
+           AND session_hash = $3
+           AND utc_day = $4
+           AND created_at >= NOW() - INTERVAL '1 day'",
+    )
+    .bind(network)
+    .bind(wallet)
+    .bind(session_hash)
+    .bind(utc_day)
+    .fetch_one(pool)
+    .await?;
+    if attempts as u64 >= max_attempts {
+        return Err(AppError::RateLimited(86_400));
+    }
+
+    Ok(())
+}
+
 fn validate_matching_proof_seal(
     proof_input: &MobileSealProofInput,
     seal: &MobileSealReceiptForProof,
@@ -4597,6 +5477,15 @@ async fn run_mobile_proof_job(
                 Some(&redacted),
             )
             .await?;
+            if let Err(error) =
+                mark_mobile_proof_sponsorship_failed(&state.db, &job, &redacted).await
+            {
+                tracing::warn!(
+                    error = %error,
+                    job_id = %job.id,
+                    "could not mark failed proof sponsorship event"
+                );
+            }
         }
     }
 
@@ -4618,6 +5507,16 @@ async fn finalize_mobile_proof_job(
     )
     .await?;
     upsert_finalized_verified_receipt(pool, job, output).await?;
+    mark_sponsorship_event_landed(
+        pool,
+        "proof",
+        &job.wallet,
+        Some(job.utc_day),
+        Some(&job.session_hash),
+        &output.proof_signature,
+        "finalized",
+    )
+    .await?;
     update_mobile_proof_job_status(
         pool,
         &job.id,
@@ -4760,8 +5659,11 @@ fn parse_mobile_proof_output(
             continue;
         };
         if let Some(expected) = expected {
-            if !json_field_matches(&value, &["sessionHash", "session_hash"], &expected.session_hash)
-            {
+            if !json_field_matches(
+                &value,
+                &["sessionHash", "session_hash"],
+                &expected.session_hash,
+            ) {
                 continue;
             }
             if !json_i64_field_matches(&value, &["utcDay", "utc_day"], expected.utc_day) {
@@ -4830,7 +5732,8 @@ fn json_objects(text: &str) -> Vec<&str> {
 }
 
 fn string_field<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
-    keys.iter().find_map(|key| value.get(*key).and_then(Value::as_str))
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
 }
 
 fn json_field_matches(value: &Value, keys: &[&str], expected: &str) -> bool {
@@ -4971,6 +5874,16 @@ async fn try_recover_mobile_proof_job(
                     None,
                 )
                 .await?;
+                mark_sponsorship_event_landed(
+                    pool,
+                    "proof",
+                    &job.wallet,
+                    Some(job.utc_day),
+                    Some(&job.session_hash),
+                    &recovered.proof_signature,
+                    "finalized",
+                )
+                .await?;
                 return Ok(true);
             }
         }
@@ -5028,8 +5941,7 @@ async fn recover_verified_seal_receipt_from_chain(
         return Ok(None);
     };
 
-    let signature =
-        fetch_finalized_signature_for_address(&account.verified_seal_pda).await?;
+    let signature = fetch_finalized_signature_for_address(&account.verified_seal_pda).await?;
     let Some(signature) = signature else {
         return Ok(Some(VerifiedSealRecovery::BackfillRequired(
             BackfillRequiredVerifiedSeal {
@@ -5228,7 +6140,8 @@ async fn read_verified_seal_account_for_recovery(
         ],
         &seal_program,
     );
-    let Some(account) = fetch_solana_account_base64_optional(&verified_seal_pda.to_string()).await?
+    let Some(account) =
+        fetch_solana_account_base64_optional(&verified_seal_pda.to_string()).await?
     else {
         return Ok(None);
     };
@@ -6286,10 +7199,65 @@ fn initial_mobile_credits() -> u32 {
         .unwrap_or(DEFAULT_INITIAL_MOBILE_CREDITS)
 }
 
+fn sponsorship_enabled() -> bool {
+    env_flag("ANKY_ENABLE_SPONSORSHIP")
+        || env_flag("ANKY_SPONSORED_TRANSACTIONS_ENABLED")
+        || env_flag("ANKY_SPONSORSHIP_ENABLED")
+}
+
+fn sponsorship_daily_budget_lamports() -> u64 {
+    env_u64("ANKY_SPONSOR_DAILY_BUDGET_LAMPORTS", 0)
+}
+
+fn user_mint_min_lamports() -> u64 {
+    env_u64(
+        "ANKY_USER_MINT_MIN_LAMPORTS",
+        DEFAULT_USER_MINT_MIN_LAMPORTS,
+    )
+}
+
+fn user_seal_min_lamports() -> u64 {
+    env_u64(
+        "ANKY_USER_SEAL_MIN_LAMPORTS",
+        DEFAULT_USER_SEAL_MIN_LAMPORTS,
+    )
+}
+
+fn sponsored_loom_mint_estimated_lamports() -> u64 {
+    env_u64(
+        "ANKY_SPONSORED_LOOM_MINT_ESTIMATED_LAMPORTS",
+        DEFAULT_SPONSORED_LOOM_MINT_ESTIMATED_LAMPORTS,
+    )
+}
+
+fn sponsored_seal_estimated_lamports() -> u64 {
+    env_u64(
+        "ANKY_SPONSORED_SEAL_ESTIMATED_LAMPORTS",
+        DEFAULT_SPONSORED_SEAL_ESTIMATED_LAMPORTS,
+    )
+}
+
+fn sponsored_proof_estimated_lamports() -> u64 {
+    env_u64(
+        "ANKY_SPONSORED_PROOF_ESTIMATED_LAMPORTS",
+        DEFAULT_SPONSORED_PROOF_ESTIMATED_LAMPORTS,
+    )
+}
+
+fn current_utc_day() -> i64 {
+    chrono::Utc::now().timestamp().div_euclid(86_400)
+}
+
 fn env_flag(name: &str) -> bool {
     std::env::var(name)
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
+}
+
+fn env_u64(name: &str, default_value: u64) -> u64 {
+    env_nonempty(name)
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default_value)
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
@@ -6451,13 +7419,11 @@ mod tests {
 
     #[test]
     fn verified_seal_record_requires_configured_verifier_authority() {
-        assert!(
-            validate_expected_proof_verifier_value(
-                DEFAULT_PROOF_VERIFIER_AUTHORITY,
-                DEFAULT_PROOF_VERIFIER_AUTHORITY
-            )
-            .is_ok()
-        );
+        assert!(validate_expected_proof_verifier_value(
+            DEFAULT_PROOF_VERIFIER_AUTHORITY,
+            DEFAULT_PROOF_VERIFIER_AUTHORITY
+        )
+        .is_ok());
         let error = validate_expected_proof_verifier_value(
             "11111111111111111111111111111111",
             DEFAULT_PROOF_VERIFIER_AUTHORITY,
@@ -6519,14 +7485,12 @@ mod tests {
         assert!(error.to_string().contains("finalized seal metadata"));
 
         headers.insert("x-anky-indexer-secret", "expected-secret".parse().unwrap());
-        assert!(
-            require_indexer_write_secret_value(
-                &headers,
-                "expected-secret",
-                "finalized seal metadata",
-            )
-            .is_ok()
-        );
+        assert!(require_indexer_write_secret_value(
+            &headers,
+            "expected-secret",
+            "finalized seal metadata",
+        )
+        .is_ok());
     }
 
     #[test]
@@ -6625,6 +7589,344 @@ mod tests {
     }
 
     #[test]
+    fn mobile_sponsorship_migration_has_no_private_input_columns() {
+        let migration = include_str!("../../migrations/025_mobile_sponsorship_events.sql");
+        let column_names = migration
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with("--"))
+            .filter_map(|line| line.split_whitespace().next())
+            .map(|column| column.trim_matches(',').to_ascii_lowercase())
+            .collect::<Vec<_>>();
+
+        for forbidden in [
+            "raw_anky",
+            "plaintext",
+            "witness",
+            "content",
+            "writing",
+            "private",
+            "keypair",
+            "secret",
+        ] {
+            assert!(
+                !column_names.iter().any(|column| column.contains(forbidden)),
+                "mobile_sponsorship_events migration must not contain private column name {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn mobile_sponsorship_migration_tracks_proof_budget_metadata() {
+        let migration = include_str!("../../migrations/025_mobile_sponsorship_events.sql");
+
+        assert!(migration.contains("'proof'"));
+        assert!(migration.contains("sponsor_payer TEXT NOT NULL"));
+        assert!(migration.contains("estimated_lamports BIGINT NOT NULL"));
+        assert!(migration.contains("idx_mobile_sponsorship_events_budget"));
+        assert!(migration.contains("idx_mobile_sponsorship_events_idempotency"));
+    }
+
+    #[test]
+    fn mobile_mint_authorization_policy_lets_funded_wallet_pay() {
+        let wallet = "11111111111111111111111111111112";
+        let decision =
+            mobile_mint_authorization_policy(wallet, false, false, true, Some(50_000), 10_000);
+
+        assert!(decision.allowed);
+        assert!(!decision.needs_sponsorship);
+        assert_eq!(decision.payer, wallet);
+        assert!(!decision.sponsor);
+        assert_eq!(decision.sponsor_payer, None);
+        assert_eq!(decision.reason, None);
+    }
+
+    #[test]
+    fn mobile_mint_authorization_policy_sponsors_unfunded_eligible_wallet() {
+        let wallet = "11111111111111111111111111111112";
+        let sponsor = "So11111111111111111111111111111111111111112";
+        let mut decision =
+            mobile_mint_authorization_policy(wallet, false, false, true, Some(9_999), 10_000);
+
+        assert!(!decision.allowed);
+        assert!(decision.needs_sponsorship);
+        assert_eq!(decision.payer, wallet);
+
+        decision.apply_sponsorship_event(&SponsorshipEvent {
+            estimated_lamports: 12_345,
+            idempotency_key: format!("mint_loom:{wallet}"),
+            sponsor_payer: sponsor.to_string(),
+        });
+
+        assert!(decision.allowed);
+        assert!(!decision.needs_sponsorship);
+        assert_eq!(decision.payer, sponsor);
+        assert!(decision.sponsor);
+        assert_eq!(decision.sponsor_payer.as_deref(), Some(sponsor));
+        assert_eq!(decision.reason, None);
+    }
+
+    #[test]
+    fn mobile_mint_authorization_policy_blocks_existing_loom_and_bad_invite() {
+        let wallet = "11111111111111111111111111111112";
+        let existing_loom =
+            mobile_mint_authorization_policy(wallet, true, false, true, Some(0), 10_000);
+        assert!(!existing_loom.allowed);
+        assert!(!existing_loom.needs_sponsorship);
+        assert!(existing_loom
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("already has a Loom"));
+
+        let bad_invite =
+            mobile_mint_authorization_policy(wallet, false, true, false, Some(0), 10_000);
+        assert!(!bad_invite.allowed);
+        assert!(!bad_invite.needs_sponsorship);
+        assert!(bad_invite
+            .reason
+            .as_deref()
+            .unwrap()
+            .contains("invite code"));
+    }
+
+    #[test]
+    fn mobile_mint_authorization_policy_rejects_when_sponsorship_unavailable() {
+        let wallet = "11111111111111111111111111111112";
+        let mut decision =
+            mobile_mint_authorization_policy(wallet, false, false, true, Some(0), 10_000);
+
+        assert!(decision.needs_sponsorship);
+        decision.reject_sponsorship("Anky sponsorship is not enabled on this backend".to_string());
+
+        assert!(!decision.allowed);
+        assert!(!decision.needs_sponsorship);
+        assert_eq!(decision.payer, wallet);
+        assert!(!decision.sponsor);
+        assert_eq!(decision.sponsor_payer, None);
+        assert!(decision.reason.as_deref().unwrap().contains("not enabled"));
+    }
+
+    #[test]
+    fn mobile_mint_authorization_policy_treats_unknown_balance_as_user_paid() {
+        let wallet = "11111111111111111111111111111112";
+        let decision = mobile_mint_authorization_policy(wallet, false, false, true, None, 10_000);
+
+        assert!(decision.allowed);
+        assert!(!decision.needs_sponsorship);
+        assert_eq!(decision.payer, wallet);
+        assert!(!decision.sponsor);
+    }
+
+    #[test]
+    fn sponsorship_status_mapping_tracks_submitted_landed_and_failed_receipts() {
+        assert_eq!(
+            sponsorship_status_from_receipt_status("pending"),
+            Some("submitted")
+        );
+        assert_eq!(
+            sponsorship_status_from_receipt_status("processed"),
+            Some("submitted")
+        );
+        assert_eq!(
+            sponsorship_status_from_receipt_status("confirmed"),
+            Some("confirmed")
+        );
+        assert_eq!(
+            sponsorship_status_from_receipt_status("finalized"),
+            Some("finalized")
+        );
+        assert_eq!(
+            sponsorship_status_from_receipt_status("failed"),
+            Some("failed")
+        );
+        assert_eq!(sponsorship_status_from_receipt_status("expired"), None);
+        assert_eq!(sponsorship_status_from_receipt_status("unknown"), None);
+    }
+
+    #[test]
+    fn sponsorship_idempotency_keys_are_action_scoped_and_require_seal_inputs() {
+        let wallet = "11111111111111111111111111111112";
+        let session_hash = "ab".repeat(32);
+
+        assert_eq!(
+            sponsorship_idempotency_key("mint_loom", wallet, None, None).unwrap(),
+            format!("mint_loom:{wallet}")
+        );
+        assert_eq!(
+            sponsorship_idempotency_key("seal", wallet, Some(20_580), Some(&session_hash)).unwrap(),
+            format!("seal:{wallet}:20580:{session_hash}")
+        );
+        assert_eq!(
+            sponsorship_idempotency_key("proof", wallet, None, Some(&session_hash)).unwrap(),
+            format!("proof:{wallet}:{session_hash}")
+        );
+
+        let missing_day =
+            sponsorship_idempotency_key("seal", wallet, None, Some(&session_hash)).unwrap_err();
+        assert!(matches!(missing_day, AppError::BadRequest(_)));
+        assert!(missing_day.to_string().contains("utcDay"));
+
+        let missing_hash = sponsorship_idempotency_key("proof", wallet, None, None).unwrap_err();
+        assert!(matches!(missing_hash, AppError::BadRequest(_)));
+        assert!(missing_hash.to_string().contains("sessionHash"));
+    }
+
+    #[test]
+    fn prepare_mobile_seal_eligibility_accepts_current_canonical_hash_only_by_default() {
+        let mut req = prepare_mobile_seal_request();
+        req.session_hash = "AB".repeat(32);
+
+        let eligibility = validate_prepare_mobile_seal_request(&req, 20_580, false).unwrap();
+
+        assert_eq!(eligibility.wallet, req.wallet);
+        assert_eq!(eligibility.loom_asset, req.loom_asset);
+        assert_eq!(eligibility.core_collection, DEFAULT_CORE_COLLECTION);
+        assert_eq!(eligibility.session_hash, "ab".repeat(32));
+        assert_eq!(eligibility.utc_day, 20_580);
+    }
+
+    #[test]
+    fn prepare_mobile_seal_eligibility_rejects_wrong_day_noncanonical_and_bad_hash() {
+        let mut wrong_day = prepare_mobile_seal_request();
+        wrong_day.utc_day = 20_579;
+        let error = validate_prepare_mobile_seal_request(&wrong_day, 20_580, false).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("current UTC day"));
+
+        let mut noncanonical = prepare_mobile_seal_request();
+        noncanonical.canonical = Some(false);
+        let error = validate_prepare_mobile_seal_request(&noncanonical, 20_580, false).unwrap_err();
+        assert!(matches!(error, AppError::Forbidden(_)));
+        assert!(error.to_string().contains("canonical daily seal"));
+        assert!(validate_prepare_mobile_seal_request(&noncanonical, 20_580, true).is_ok());
+
+        let mut bad_hash = prepare_mobile_seal_request();
+        bad_hash.session_hash = "not-a-hash".to_string();
+        let error = validate_prepare_mobile_seal_request(&bad_hash, 20_580, false).unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("32-byte hex"));
+    }
+
+    #[test]
+    fn owner_authorization_memo_requires_user_wallet_signature() {
+        let owner = SolanaPubkey::from_str("11111111111111111111111111111112").unwrap();
+        let instruction = owner_authorization_memo_instruction(owner).unwrap();
+
+        assert_eq!(
+            instruction.program_id,
+            SolanaPubkey::from_str(MEMO_PROGRAM_ID).unwrap()
+        );
+        assert_eq!(instruction.accounts.len(), 1);
+        assert_eq!(instruction.accounts[0].pubkey, owner);
+        assert!(instruction.accounts[0].is_signer);
+        assert!(!instruction.accounts[0].is_writable);
+        assert_eq!(instruction.data, b"anky owner authorization");
+    }
+
+    #[test]
+    fn sponsored_core_loom_parser_accepts_owner_and_collection() {
+        let owner = SolanaPubkey::new_unique();
+        let collection = SolanaPubkey::new_unique();
+        let mut data = vec![CORE_KEY_ASSET_V1];
+        data.extend_from_slice(owner.as_ref());
+        data.push(CORE_UPDATE_AUTHORITY_COLLECTION);
+        data.extend_from_slice(collection.as_ref());
+
+        let parsed = parse_core_asset_base_fields(&data).unwrap();
+
+        assert_eq!(parsed.owner, owner.to_bytes());
+        assert_eq!(parsed.collection, collection.to_bytes());
+        assert!(parse_core_collection_base_fields(&[CORE_KEY_COLLECTION_V1]).is_ok());
+    }
+
+    #[test]
+    fn sponsored_core_loom_parser_accepts_public_devnet_asset_layout() {
+        // Public devnet account 4ENNjitn7223tyNAyzdhZ4QWo4iQD5j5DiM3fDz2wLS9.
+        // Mirrors the on-chain parser fixture for observed Metaplex Core AssetV1 base bytes.
+        let data = [
+            1, 123, 50, 61, 79, 177, 164, 97, 159, 25, 89, 170, 143, 236, 239, 55, 15, 204, 37,
+            239, 73, 200, 78, 167, 56, 150, 238, 47, 16, 252, 244, 58, 93, 2, 210, 47, 111, 71,
+            123, 77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43, 57, 1, 123,
+            3, 29, 86, 67, 192, 150, 220, 78, 108,
+        ];
+
+        let parsed = parse_core_asset_base_fields(&data).unwrap();
+
+        assert_eq!(
+            parsed.owner,
+            SolanaPubkey::from_str("9HuaaPXSfYvf2qK9r7jwtVmsJU97KX3f827sgpxgiiEp")
+                .unwrap()
+                .to_bytes()
+        );
+        assert_eq!(
+            parsed.collection,
+            SolanaPubkey::from_str(DEFAULT_CORE_COLLECTION)
+                .unwrap()
+                .to_bytes()
+        );
+    }
+
+    #[test]
+    fn sponsored_core_loom_parser_accepts_live_sojourn9_devnet_asset_layout() {
+        // Public devnet account 6oEyFPQPksvKyCtdjsSEzL6JMxAPPwBPkMBBAMvUnNLJ.
+        // Minted during the live SP1 -> VerifiedSeal smoke on 2026-05-06.
+        let data = [
+            1, 73, 176, 201, 24, 88, 198, 118, 14, 10, 64, 251, 176, 103, 244, 250, 176, 119, 61,
+            16, 50, 69, 247, 111, 156, 36, 125, 79, 110, 24, 61, 213, 19, 2, 210, 47, 111, 71, 123,
+            77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43, 57, 1, 123, 3,
+            29, 86, 67, 192, 150, 220, 78, 108,
+        ];
+
+        let parsed = parse_core_asset_base_fields(&data).unwrap();
+
+        assert_eq!(
+            parsed.owner,
+            SolanaPubkey::from_str("5xf7VcURsgiy3SvkBUirAYSPu3SYhto9qX6AFrLTvN1Q")
+                .unwrap()
+                .to_bytes()
+        );
+        assert_eq!(
+            parsed.collection,
+            SolanaPubkey::from_str(DEFAULT_CORE_COLLECTION)
+                .unwrap()
+                .to_bytes()
+        );
+    }
+
+    #[test]
+    fn sponsored_core_collection_parser_accepts_public_devnet_collection_layout() {
+        // Public devnet account F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u.
+        // Mirrors the on-chain parser fixture for observed Metaplex Core CollectionV1 bytes.
+        let data = [
+            5, 218, 17, 98, 174, 13, 198, 23, 222, 176, 140, 170, 43, 220, 153, 231, 177, 91, 125,
+            197, 231, 2, 160, 199, 57, 222, 88, 253, 84, 153, 197, 119, 96, 20, 0, 0, 0, 65, 110,
+            107, 121, 32, 83, 111, 106, 111, 117, 114, 110, 32, 57, 32, 76, 111, 111, 109, 115, 53,
+            0, 0, 0, 104, 116, 116, 112, 115, 58, 47, 47, 97, 110, 107, 121, 46, 97, 112, 112, 47,
+            100, 101, 118, 110, 101, 116, 47, 109, 101, 116, 97, 100, 97, 116, 97, 47, 115, 111,
+            106, 111, 117, 114, 110, 45, 57, 45, 108, 111, 111, 109, 115, 46, 106, 115, 111, 110,
+            1, 0, 0, 0, 1, 0, 0, 0,
+        ];
+
+        assert!(parse_core_collection_base_fields(&data).is_ok());
+    }
+
+    #[test]
+    fn sponsored_core_loom_parser_rejects_non_collection_update_authority() {
+        let owner = SolanaPubkey::new_unique();
+        let collection = SolanaPubkey::new_unique();
+        let mut data = vec![CORE_KEY_ASSET_V1];
+        data.extend_from_slice(owner.as_ref());
+        data.push(0);
+        data.extend_from_slice(collection.as_ref());
+
+        let error = parse_core_asset_base_fields(&data).unwrap_err();
+
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(error.to_string().contains("update authority"));
+    }
+
+    #[test]
     fn mobile_proof_job_recovery_migration_adds_syncing_statuses() {
         let migration = include_str!("../../migrations/024_mobile_proof_job_recovery_statuses.sql");
 
@@ -6672,8 +7974,8 @@ mod tests {
     #[test]
     fn mobile_seal_proof_public_request_does_not_require_raw_anky_for_recovery() {
         let mut req = mobile_proof_request("not a valid private witness");
-        req.session_hash = "dd38d3413c7c016c822e90600bcd08f16db15a5001c665f97727c8462e83f277"
-            .to_string();
+        req.session_hash =
+            "dd38d3413c7c016c822e90600bcd08f16db15a5001c665f97727c8462e83f277".to_string();
         req.utc_day = 20_580;
 
         let proof_input = validate_mobile_seal_proof_public_request(&req).unwrap();
@@ -6781,6 +8083,36 @@ mod tests {
     }
 
     #[test]
+    fn prover_error_redaction_removes_private_paths_and_raw_anky() {
+        let mut job = mobile_proof_job_work();
+        job.raw_anky = mobile_proof_fixture_anky();
+        let config = MobileProverConfig {
+            keypair_path: PathBuf::from("/private/keys/verifier-authority.json"),
+            protoc_path: PathBuf::from("/private/tools/protoc"),
+            work_dir: PathBuf::from("/private/proof-work"),
+        };
+        let error = format!(
+            "prover failed with keypair {} in workdir {} using protoc {}\nraw witness: {}",
+            config.keypair_path.display(),
+            config.work_dir.display(),
+            config.protoc_path.display(),
+            job.raw_anky
+        );
+
+        let redacted = redact_prover_error(&error, &config, &job);
+
+        assert!(redacted.contains("<verifier-keypair>"));
+        assert!(redacted.contains("<proof-work-dir>"));
+        assert!(redacted.contains("<protoc>"));
+        assert!(redacted.contains("<raw-anky>"));
+        assert!(!redacted.contains("/private/keys"));
+        assert!(!redacted.contains("/private/proof-work"));
+        assert!(!redacted.contains("/private/tools/protoc"));
+        assert!(!redacted.contains(&job.raw_anky));
+        assert!(!redacted.contains("1710000000000"));
+    }
+
+    #[test]
     fn verified_metadata_requires_landed_matching_seal_status() {
         assert!(require_landed_seal_receipt_status("confirmed").is_ok());
         assert!(require_landed_seal_receipt_status("finalized").is_ok());
@@ -6825,18 +8157,16 @@ mod tests {
         let data =
             verified_seal_account_data(writer, session_hash, 20_000, proof_hash, verifier, 1);
 
-        assert!(
-            verify_verified_seal_account_data(
-                &data,
-                &writer,
-                &session_hash,
-                20_000,
-                &proof_hash,
-                &verifier,
-                1,
-            )
-            .is_ok()
-        );
+        assert!(verify_verified_seal_account_data(
+            &data,
+            &writer,
+            &session_hash,
+            20_000,
+            &proof_hash,
+            &verifier,
+            1,
+        )
+        .is_ok());
 
         let mismatch = verify_verified_seal_account_data(
             &data,
@@ -7017,12 +8347,10 @@ mod tests {
 
         assert!(mobile_thread_needs_immediate_safety_response(&req));
         assert_eq!(response["message"]["role"], "anky");
-        assert!(
-            response["message"]["content"]
-                .as_str()
-                .unwrap()
-                .contains("local emergency number")
-        );
+        assert!(response["message"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("local emergency number"));
     }
 
     #[tokio::test]
@@ -7058,6 +8386,17 @@ mod tests {
             ],
             "userMessage": "what is still alive here?"
         })
+    }
+
+    fn prepare_mobile_seal_request() -> PrepareMobileSealRequest {
+        PrepareMobileSealRequest {
+            wallet: "11111111111111111111111111111112".to_string(),
+            loom_asset: "4ENNjitn7223tyNAyzdhZ4QWo4iQD5j5DiM3fDz2wLS9".to_string(),
+            core_collection: DEFAULT_CORE_COLLECTION.to_string(),
+            session_hash: "ab".repeat(32),
+            utc_day: 20_580,
+            canonical: Some(true),
+        }
     }
 
     fn mobile_proof_fixture_anky() -> String {

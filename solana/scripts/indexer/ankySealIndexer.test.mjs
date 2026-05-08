@@ -236,6 +236,7 @@ test("decodes Helius enhanced instruction payloads when Anchor logs are absent",
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "anky-indexer-"));
   const fixturePath = path.join(tempDir, "enhanced-instructions.json");
   const wallet = "9HuaaPXSfYvf2qK9r7jwtVmsJU97KX3f827sgpxgiiEp";
+  const payer = "11111111111111111111111111111111";
   const loomAsset = "4ENNjitn7223tyNAyzdhZ4QWo4iQD5j5DiM3fDz2wLS9";
   const sessionHash = "a".repeat(64);
   const proofHash = "b".repeat(64);
@@ -244,7 +245,7 @@ test("decodes Helius enhanced instruction payloads when Anchor logs are absent",
     `${JSON.stringify(
       [
         enhancedInstructionTransaction({
-          accounts: [wallet, loomAsset],
+          accounts: [wallet, payer, loomAsset],
           data: sealInstructionData({ sessionHash, utcDay: 20000 }),
           signature: VALID_SIGNATURE,
         }),
@@ -275,6 +276,7 @@ test("decodes Helius enhanced instruction payloads when Anchor logs are absent",
   assert.equal(snapshot.scores[0].score, 3);
   assert.equal(snapshot.events[0].kind, "sealed");
   assert.equal(snapshot.events[0].sessionHash, sessionHash);
+  assert.equal(snapshot.events[0].payer, payer);
   assert.equal(snapshot.events[1].kind, "verified");
   assert.equal(snapshot.events[1].proofHash, proofHash);
 });

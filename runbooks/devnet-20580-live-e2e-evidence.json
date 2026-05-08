@@ -1,4 +1,7 @@
 {
+  "staleForSponsoredPayerProgramModel": true,
+  "staleReason": "This UTC day 20580 evidence predates the sponsored-payer Anchor account model with separate writer and payer signer accounts. It must not be used as validation of the new sponsored-payer program model.",
+  "replacementSponsoredPayerEvidence": "runbooks/devnet-20581-sponsored-payer-validation-evidence.json",
   "cluster": "devnet",
   "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
   "coreCollection": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",

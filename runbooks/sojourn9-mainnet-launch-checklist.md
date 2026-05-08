@@ -10,6 +10,13 @@ write on phone -> hash exact .anky bytes -> seal_anky -> SP1 prove/verify -> rec
 
 This checklist does not authorize mainnet signing, deployment, webhook creation, or paid API changes. It is a gate list for the human operator. Do not paste `.env` values, keypair JSON, private keys, Helius API keys, backend write secrets, or wallet file contents into Codex or into committed files.
 
+Sponsored-payer update:
+
+- The previous UTC day 20580 devnet evidence is stale for the new sponsored-payer program model.
+- Before mainnet, use `docs/anky-system/ANKY_SPONSORED_TRANSACTIONS_DEVNET_VALIDATION.md` and `runbooks/devnet-20581-sponsored-payer-validation-evidence.json` as the current payer-split seal/index evidence.
+- The 20581 validation proves writer-paid seal, sponsor-paid seal, sponsor cannot seal without writer signature, wrong Loom owner rejection, and indexer parsing after the account model change.
+- It does not replace the full SP1 -> VerifiedSeal rerun requirement below.
+
 ## Required Public Values
 
 Mainnet public values to publish before the season begins:
@@ -44,6 +51,25 @@ node solana/scripts/sojourn9/launchReadinessGate.mjs
 ```
 
 Expected before final launch: `localReady: true` and `launchReady: false` until every human gate below is completed and documented. This gate does not read secret files.
+
+1a. Confirm the sponsored-payer devnet gate remains current:
+
+```bash
+test -f docs/anky-system/ANKY_SPONSORED_TRANSACTIONS_DEVNET_VALIDATION.md
+test -f runbooks/devnet-20581-sponsored-payer-validation-evidence.json
+```
+
+Required evidence before mainnet:
+
+- Devnet deploy signature for the payer-split program.
+- One finalized writer-paid `seal_anky`.
+- One finalized sponsor-paid `seal_anky`.
+- Proof that sponsor-only signing fails because the writer signature is missing.
+- Proof that wrong Loom owner is rejected.
+- Known-signature indexer output after the payer-split IDL/program change.
+- `localReady: true` and `launchReady: false`.
+
+Stop if the only available evidence is UTC day 20580 evidence; that evidence predates the sponsored-payer account model.
 
 2. Confirm mainnet public account configuration with explicit read-only approval:
 

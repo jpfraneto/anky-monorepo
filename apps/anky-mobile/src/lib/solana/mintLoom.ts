@@ -20,6 +20,7 @@ export type InviteMintAuthorization = {
   allowed: boolean;
   authorizationId?: string;
   mode?: "self_funded" | "invite_code";
+  payer?: string;
   sponsor?: boolean;
   sponsorPayer?: string;
   expiresAt?: string;
@@ -140,13 +141,13 @@ export async function mintAnkyLoom({
   buildCoreLoomMintTransaction,
 }: MintAnkyLoomInput): Promise<MintAnkyLoomResult> {
   const owner = new PublicKey(wallet.publicKey);
-  const payerPublicKey = new PublicKey(payer ?? wallet.publicKey);
   const collectionPublicKey = new PublicKey(collection);
   const loomNumber = formatLoomNumber(loomIndex);
   const name = `Anky Sojourn 9 Loom #${loomNumber}`;
   const uri = metadataUri ?? `${DEFAULT_LOOM_METADATA_BASE_URL}/${loomNumber}.json`;
 
   let authorization: InviteMintAuthorization | undefined;
+  let payerPublicKey = new PublicKey(payer ?? wallet.publicKey);
   if (createMintAuthorization) {
     onStatus?.("authorizing");
     authorization = await createMintAuthorization({
@@ -160,6 +161,9 @@ export async function mintAnkyLoom({
     if (!authorization.allowed) {
       throw new Error(authorization.reason ?? "Loom minting is not authorized.");
     }
+    payerPublicKey = new PublicKey(
+      authorization.payer ?? authorization.sponsorPayer ?? payerPublicKey.toBase58(),
+    );
   } else if (inviteCode) {
     if (!validateInviteCode) {
       throw new Error(
@@ -179,6 +183,9 @@ export async function mintAnkyLoom({
     if (!authorization.allowed) {
       throw new Error(authorization.reason ?? "Invite code is not authorized for Loom minting.");
     }
+    payerPublicKey = new PublicKey(
+      authorization.payer ?? authorization.sponsorPayer ?? payerPublicKey.toBase58(),
+    );
   }
 
   onStatus?.("preparing");

@@ -1,0 +1,112 @@
+{
+  "cluster": "devnet",
+  "utcDay": 20581,
+  "generatedAt": "2026-05-08T00:46:30Z",
+  "scope": "sponsored-payer seal model validation",
+  "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "coreCollection": "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u",
+  "coreProgramId": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+  "proofVerifierAuthority": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+  "devnetDeploy": {
+    "deployed": true,
+    "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+    "signature": "2UEhpCCu2tGAxzY2c2gZEXkDShsVPkwTAujLSrSPpWaeygeacjLCPjDVdFWVXVUenfbZq7Rt8DSHQejM1BZfBFWA",
+    "cluster": "devnet"
+  },
+  "loomMints": [
+    {
+      "case": "writer_pays",
+      "loomAsset": "DHVdX41WRKmHFW2q8MUoJDRYPCmowpC5VJEvdjyviU1g",
+      "owner": "6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX",
+      "payer": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "signature": "5w31EFoRHqqVT91RfFLZP2VJ3ykhABwGQMpchVuEKuTbqwbNWpcWMVXJamdepnHqgLXUvN4C6w57pE9W2Nb8qBau",
+      "coreConfigCheckOk": true
+    },
+    {
+      "case": "sponsor_pays",
+      "loomAsset": "L5woSyRnN2P1G4v13BH95AVAVZftWN513axR59d9VGy",
+      "owner": "HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR",
+      "payer": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "signature": "4L86mkMw7Nbs1eQp7hqZaesJ2ym6awNoEHeLyNVY4wMJfHVrB8KkXJZ5dAq3PJrzkbeLMuEyJJhctduLfV9kUSjP",
+      "coreConfigCheckOk": true
+    }
+  ],
+  "sealValidations": [
+    {
+      "case": "writer_pays",
+      "status": "pass",
+      "writer": "6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX",
+      "payer": "6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX",
+      "payerEqualsWriter": true,
+      "sponsored": false,
+      "loomAsset": "DHVdX41WRKmHFW2q8MUoJDRYPCmowpC5VJEvdjyviU1g",
+      "sessionHash": "cf13b495beee2469907a55b3c80f31d106049937a9237625443d8602e044defe",
+      "dailySeal": "7voBHt9B6HvGkgfpaKNFjksKyV2NJhsr7fesJfskQkwZ",
+      "hashSeal": "4iYrTdMC6EAi9J5gyZMEX5SUoJEE9rtCQHopFZgiZs1q",
+      "loomState": "AqwLtRPKSGT8ZYZUwQmhNSBji7v7V7C8z9BZpbsgsNuX",
+      "signature": "5XTh9SmXvkNcFD1ZXyDsLf6aFjqL9hCubWRKp3kBw2osyijg9U718ezutsCbY9EGdbbLw8L1kH4H1FXjXkEukRNE"
+    },
+    {
+      "case": "sponsor_pays",
+      "status": "pass",
+      "writer": "HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR",
+      "payer": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "payerEqualsWriter": false,
+      "sponsored": true,
+      "loomAsset": "L5woSyRnN2P1G4v13BH95AVAVZftWN513axR59d9VGy",
+      "sessionHash": "69910f6a590418dc0f673c6f75167b0641c6c381cfa14a9b88f24735ec4fb2c2",
+      "dailySeal": "ACiZLxMKduBSbVeQ5EXiU6iyX3PUv9rBZxWoPYRFrFFd",
+      "hashSeal": "5nmKTMQEjyMYZnPoG52Pyg5bSpqfJpMBp7tjVpghbZU1",
+      "loomState": "8UbnwanzC85Q494j1QEPJhogt2731svAL4MkvjjktdDM",
+      "signature": "4jPvBKCt81SgQxA2vPBkgeVPCU4xsAkg1RN17W1WaHrYzgnDCDjWWC1aokai875hcCBqdqZVEWPNaCAzUUtRtSJJ"
+    },
+    {
+      "case": "sponsor_without_writer_signature",
+      "status": "pass",
+      "writer": "HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR",
+      "payer": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "expectedFailure": "Signature verification failed. Missing signature for writer.",
+      "unlandedBypassPreflightSignature": "QZTkMuDNzdjXCPiEzWntJxmVgdNvbbwmqiGRYfpndkTVLWaiULHKzFwX1x6oWGZm2ZQN1b76i3vG2dQBeKbLxfH",
+      "unlandedBypassPreflightStatus": "not found"
+    },
+    {
+      "case": "wrong_loom_owner",
+      "status": "pass",
+      "writer": "948dM9J4LrJshvRbNHMaDZjqiTHGkg5ez5jy8Ko84wn1",
+      "payer": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+      "loomAsset": "L5woSyRnN2P1G4v13BH95AVAVZftWN513axR59d9VGy",
+      "expectedFailure": "Seal preflight failed: Core Loom asset owner does not match writer"
+    }
+  ],
+  "indexer": {
+    "status": "pass",
+    "method": "known-signature finalized getTransaction",
+    "snapshotPath": "runbooks/devnet-20581-sponsored-payer-score-snapshot.json",
+    "indexedEvents": 2,
+    "sealedEvents": 2,
+    "verifiedEvents": 0,
+    "scoreRows": 2,
+    "totalScore": 2,
+    "signatures": [
+      "5XTh9SmXvkNcFD1ZXyDsLf6aFjqL9hCubWRKp3kBw2osyijg9U718ezutsCbY9EGdbbLw8L1kH4H1FXjXkEukRNE",
+      "4jPvBKCt81SgQxA2vPBkgeVPCU4xsAkg1RN17W1WaHrYzgnDCDjWWC1aokai875hcCBqdqZVEWPNaCAzUUtRtSJJ"
+    ]
+  },
+  "readiness": {
+    "localReady": true,
+    "launchReady": false
+  },
+  "limits": {
+    "mainnetTouched": false,
+    "appStoreSubmission": false,
+    "paidApiMutation": false,
+    "sp1VerifiedSealRerun": false,
+    "mainnetReady": false
+  },
+  "stalePriorEvidence": {
+    "utcDay": 20580,
+    "summaryPath": "runbooks/devnet-20580-live-e2e-summary.md",
+    "evidencePath": "runbooks/devnet-20580-live-e2e-evidence.json",
+    "reason": "The 20580 evidence predates the sponsored-payer Anchor account model and is stale for validating the payer-split program model."
+  }
+}

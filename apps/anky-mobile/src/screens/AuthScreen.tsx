@@ -35,7 +35,7 @@ import {
 } from "../lib/privy/ExternalSolanaWalletProvider";
 import { toPrivySiwsSignature } from "../lib/privy/siwsSignature";
 import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
-import { shortAddress } from "../lib/solana/loomStorage";
+import { clearSelectedLoom, shortAddress } from "../lib/solana/loomStorage";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Auth">;
@@ -286,6 +286,7 @@ export function AuthScreen({ navigation }: Props) {
             : externalWallet.disconnectWallet(provider),
         ),
       );
+      await clearSelectedLoom();
       await clearBackendAuthSession();
       await logout();
       setMessage("logged out");
@@ -389,12 +390,12 @@ export function AuthScreen({ navigation }: Props) {
               <View style={styles.buttonGroup}>
                 <RitualButton label="continue" onPress={() => navigation.replace("You")} />
                 {!privyWallet.hasEmbeddedWallet && connectedExternalWallet == null ? (
-                  <RitualButton
-                    disabled={isBusy}
-                    label="create embedded wallet"
-                    onPress={() => void handleCreateEmbeddedWallet()}
-                    variant="secondary"
-                  />
+	                  <RitualButton
+	                    disabled={isBusy}
+	                    label="finish wallet setup"
+	                    onPress={() => void handleCreateEmbeddedWallet()}
+	                    variant="secondary"
+	                  />
                 ) : null}
                 <RitualButton
                   disabled={isBusy}

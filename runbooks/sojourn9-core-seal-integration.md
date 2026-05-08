@@ -12,6 +12,8 @@ The default Anchor test suite does not fabricate Core account data. The integrat
 - The provider wallet needs enough devnet SOL for the `seal_anky` transaction.
 - No keypair path or secret value should be printed in logs.
 
+Do not run this without explicit human approval. Even on devnet, this command sends a real transaction and consumes the current-day seal slot for the test wallet.
+
 Do not run this against mainnet before the separate mainnet launch checklist is complete.
 
 ## Devnet Command
@@ -22,7 +24,8 @@ ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
 ANCHOR_WALLET=<provider_wallet_keypair_path> \
 ANKY_CORE_INTEGRATION_LOOM_ASSET=<owned_core_loom_asset> \
 ANKY_CORE_INTEGRATION_COLLECTION=F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u \
-npm test -- --skip-local-validator --skip-deploy
+ANKY_ALLOW_LIVE_ANCHOR_TEST=true \
+npm run test:anchor:live -- --skip-local-validator --skip-deploy
 ```
 
 Expected result:

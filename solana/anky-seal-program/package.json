@@ -20,10 +20,11 @@
     "sojourn9:readiness": "node ../scripts/sojourn9/launchReadinessGate.mjs",
     "sojourn9:test": "node --test scripts/*.test.mjs ../scripts/indexer/*.test.mjs ../scripts/sojourn9/*.test.mjs",
     "sojourn9:webhook-manifest": "node ../scripts/indexer/heliusWebhookManifest.mjs",
+    "test:anchor:live": "node -e \"if (process.env.ANKY_ALLOW_LIVE_ANCHOR_TEST !== 'true') { console.error('Refusing to run anchor test without ANKY_ALLOW_LIVE_ANCHOR_TEST=true because Anchor.toml may target a live cluster.'); process.exit(1); }\" && anchor test",
     "test:config": "node --test scripts/checkLaunchConfig.test.mjs",
     "test:operator": "node --test scripts/recordVerifiedAnky.test.mjs",
     "test:seal": "node --test scripts/sealAnky.test.mjs",
-    "test": "anchor test",
+    "test": "npm run typecheck && npm run test:config && npm run test:operator && npm run test:seal",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

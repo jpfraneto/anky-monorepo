@@ -36,6 +36,8 @@ const VALUE_FLAGS = new Set([
   "--core-program-id",
   "--keypair",
   "--loom-asset",
+  "--payer",
+  "--payer-keypair",
   "--program-id",
   "--rpc-url",
   "--session-hash",
@@ -96,6 +98,7 @@ async function main() {
   }
 
   let signer = null;
+  let payerSigner = null;
   let writer =
     args.writer == null ? null : readPublicKey(args.writer, "writer wallet");
   if (send) {
@@ -109,6 +112,16 @@ async function main() {
   }
   if (writer == null) {
     throw new Error("--writer is required unless --send loads a sealer keypair.");
+  }
+  const payer =
+    args.payer == null ? writer : readPublicKey(args.payer, "transaction payer");
+  if (send && !payer.equals(writer)) {
+    payerSigner = loadPayerKeypair(args.payerKeypair);
+    if (!payerSigner.publicKey.equals(payer)) {
+      throw new Error(
+        `Payer keypair public key ${payerSigner.publicKey.toBase58()} does not match payer ${payer.toBase58()}.`,
+      );
+    }
   }
   if (send && utcDay !== currentUtcDay) {
     throw new Error(
@@ -127,6 +140,7 @@ async function main() {
     utcDay,
     writer,
     loomAsset,
+    payer,
   });
   const summary = {
     chainPreflight: null,
@@ -142,6 +156,7 @@ async function main() {
     loomAsset: loomAsset.toBase58(),
     loomState: pdas.loomState.toBase58(),
     programId: programId.toBase58(),
+    payer: payer.toBase58(),
     receiptUtcDayIsCurrent: utcDay === currentUtcDay,
     rpcUrl: redactRpcUrl(resolveRpcUrl(cluster, args.rpcUrl)),
     sessionHash,
@@ -149,6 +164,7 @@ async function main() {
     sealedChain: null,
     utcDay,
     writer: writer.toBase58(),
+    sponsored: !payer.equals(writer),
   };
 
   const connection =
@@ -208,13 +224,16 @@ async function main() {
     hashSeal: pdas.hashSeal,
     loomAsset,
     loomState: pdas.loomState,
+    payer,
     programId,
     sessionHash,
     utcDay,
     writer,
   });
   const transaction = new Transaction().add(instruction);
-  summary.signature = await sendAndConfirmTransaction(connection, transaction, [signer], {
+  transaction.feePayer = payer;
+  const signers = payerSigner == null ? [signer] : [signer, payerSigner];
+  summary.signature = await sendAndConfirmTransaction(connection, transaction, signers, {
     commitment: "confirmed",
     skipPreflight: false,
   });
@@ -499,6 +518,7 @@ function buildSealAnkyInstruction({
   hashSeal,
   loomAsset,
   loomState,
+  payer,
   programId,
   sessionHash,
   utcDay,
@@ -507,7 +527,8 @@ function buildSealAnkyInstruction({
   return new TransactionInstruction({
     data: buildSealAnkyInstructionData(sessionHash, utcDay),
     keys: [
-      { pubkey: writer, isSigner: true, isWritable: true },
+      { pubkey: writer, isSigner: true, isWritable: false },
+      { pubkey: payer, isSigner: true, isWritable: true },
       { pubkey: loomAsset, isSigner: false, isWritable: false },
       { pubkey: coreCollection, isSigner: false, isWritable: false },
       { pubkey: loomState, isSigner: false, isWritable: true },
@@ -650,6 +671,25 @@ function loadSealerKeypair(pathArg) {
   return Keypair.fromSecretKey(Uint8Array.from(parsed));
 }
 
+function loadPayerKeypair(pathArg) {
+  const keypairPath =
+    pathArg ??
+    process.env.ANKY_SPONSOR_PAYER_KEYPAIR_PATH ??
+    process.env.ANKY_PAYER_KEYPAIR_PATH;
+  if (keypairPath == null || keypairPath.trim() === "") {
+    throw new Error(
+      "ANKY_SPONSOR_PAYER_KEYPAIR_PATH, ANKY_PAYER_KEYPAIR_PATH, or --payer-keypair is required when --payer differs from --writer.",
+    );
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(keypairPath, "utf8"));
+  if (!Array.isArray(parsed) || parsed.length !== 64) {
+    throw new Error("Payer keypair file must contain a Solana keypair byte array.");
+  }
+
+  return Keypair.fromSecretKey(Uint8Array.from(parsed));
+}
+
 function parseArgs(argv) {
   const args = {};
 
@@ -738,6 +778,8 @@ function printUsage() {
 
 Options:
   --writer <pubkey>           Writer wallet; required unless --send loads a sealer keypair.
+  --payer <pubkey>            Fee/rent payer. Defaults to writer. May be a sponsor on devnet.
+  --payer-keypair <path>      Payer keypair path when --payer differs from writer for --send.
   --loom-asset <pubkey>       Metaplex Core Loom asset owned by writer.
   --session-hash <hex>        SHA-256 over exact .anky UTF-8 bytes.
   --utc-day <number>          UTC day derived from .anky started_at_ms.
@@ -754,5 +796,6 @@ Options:
   --core-program-id <pubkey>  Defaults to ANKY_CORE_PROGRAM_ID or Metaplex Core.
 
 This helper never reads .anky plaintext. It needs only public hash/day/Loom values.
+When --payer differs from --writer, the writer still owns the Loom and authorizes the seal; the payer only funds fees/rent.
 It refuses mainnet; do the full devnet E2E before any separate mainnet checklist.`);
 }

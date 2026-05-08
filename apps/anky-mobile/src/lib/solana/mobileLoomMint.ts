@@ -8,8 +8,9 @@ import {
   type MintAnkyLoomStatus,
 } from "./mintLoom";
 import {
+  clearSelectedLoom,
   createDevnetLoomRecord,
-  getSelectedLoom,
+  getSelectedLoomForWallet,
   saveSelectedLoom,
 } from "./loomStorage";
 import type { SelectedLoom } from "./loomStorage";
@@ -161,13 +162,15 @@ export async function restoreRecordedLoomSelection({
   selectedLoom: SelectedLoom | null;
 }> {
   const response = await api.lookupMobileLooms(wallet);
-  const selectedLoom = await getSelectedLoom();
+  const selectedLoom = await getSelectedLoomForWallet(wallet);
   const confirmed = newestConfirmedLoom(response.looms);
 
-  if (selectedLoom == null && confirmed != null) {
+  if (confirmed != null) {
     const restored = toSelectedLoom(confirmed);
 
-    await saveSelectedLoom(restored);
+    if (selectedLoom?.asset !== restored.asset) {
+      await saveSelectedLoom(restored);
+    }
 
     return {
       looms: response.looms,
@@ -175,9 +178,13 @@ export async function restoreRecordedLoomSelection({
     };
   }
 
+  if (selectedLoom != null) {
+    await clearSelectedLoom();
+  }
+
   return {
     looms: response.looms,
-    selectedLoom,
+    selectedLoom: null,
   };
 }
 

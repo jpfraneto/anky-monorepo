@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -39,7 +39,7 @@ import type { AnkySessionSummary, DayState } from "../lib/sojourn";
 import {
   clearSelectedLoom,
   createDevnetLoomRecord,
-  getSelectedLoom,
+  getSelectedLoomForWallet,
   saveSelectedLoom,
   shortAddress,
 } from "../lib/solana/loomStorage";
@@ -59,6 +59,7 @@ import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Loom">;
 type MintState = "error" | "idle" | "loading" | "restoring" | "retrying" | MintAndSaveLoomStatus;
+const DEVNET_SOL_FAUCET_URL = "https://faucet.solana.com";
 
 export function LoomScreen({ navigation }: Props) {
   const { width } = useWindowDimensions();
@@ -134,7 +135,7 @@ export function LoomScreen({ navigation }: Props) {
           listSavedAnkyFiles(),
           listLocalLoomSeals(),
           loadMobileSolanaConfig(),
-          getSelectedLoom(),
+          getSelectedLoomForWallet(walletState.publicKey),
         ]);
 
         if (mounted) {
@@ -251,7 +252,7 @@ export function LoomScreen({ navigation }: Props) {
   async function handleWalletAction() {
     if (!walletState.authenticated) {
       openAuthModal({
-        reason: "login or connect a wallet only if you want to mint a loom.",
+        reason: "log in to see or mint the loom for this wallet.",
       });
       return;
     }
@@ -414,23 +415,29 @@ export function LoomScreen({ navigation }: Props) {
     setMessage("loom selection cleared.");
   }
 
+  function handleGetGas() {
+    void Linking.openURL(DEVNET_SOL_FAUCET_URL);
+  }
+
   return (
     <ScreenBackground variant="plain">
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>loom</Text>
         <Text style={styles.sojourn}>
-          a loom is the onchain place where your ankys can be sealed. your writing stays private; solana records hash seals, ownership, and verified receipts when they exist.
+          a loom belongs to your wallet. writing stays private; solana records hash seals, ownership, and verified receipts when they exist.
         </Text>
 
         <GlassCard style={styles.card}>
           <Text style={styles.label}>{runtimeConfig?.network ?? "solana"} loom</Text>
           <Text style={styles.cardTitle}>
-            {selectedLoom == null ? "no loom yet" : selectedLoom.name}
+            {selectedLoom == null ? "no loom for this wallet" : selectedLoom.name}
           </Text>
 
           <Text style={styles.note}>
             {walletState.publicKey == null
-              ? "no solana wallet connected."
+              ? walletState.authenticated
+                ? "solana wallet setup is not finished yet."
+                : "log in to see this wallet's loom."
               : `${walletState.walletLabel ?? "wallet"} ${shortAddress(walletState.publicKey, 6)}`}
           </Text>
           {!backendConfigured ? (
@@ -439,7 +446,7 @@ export function LoomScreen({ navigation }: Props) {
 
           {selectedLoom == null ? (
             <Text style={styles.note}>
-              minting creates your loom on solana. writing does not require this.
+              this wallet has no loom recorded yet. minting needs a little SOL for gas unless sponsorship is enabled by the backend.
             </Text>
           ) : (
             <View style={styles.loomDetails}>
@@ -491,7 +498,7 @@ export function LoomScreen({ navigation }: Props) {
                   walletState.hasWallet
                     ? "continue with wallet"
                     : walletState.authenticated
-                      ? "create embedded wallet"
+                      ? "finish wallet setup"
                       : "login / connect wallet"
                 }
                 onPress={() => void handleWalletAction()}
@@ -517,20 +524,20 @@ export function LoomScreen({ navigation }: Props) {
                 variant="secondary"
               />
             ) : null}
-            {selectedLoom == null ? null : (
+            {needsGasForMint(message) ? (
               <RitualButton
                 disabled={mintBusy}
-                label="clear selected loom"
-                onPress={() => void handleClearSelectedLoom()}
-                variant="ghost"
+                label="get devnet SOL for gas"
+                onPress={handleGetGas}
+                variant="secondary"
               />
-            )}
+            ) : null}
           </View>
 
           {message.length === 0 ? null : <Text style={styles.message}>{message}</Text>}
         </GlassCard>
 
-        {walletState.publicKey == null ? null : (
+        {walletState.publicKey == null || selectedLoom == null ? null : (
           <GlassCard style={styles.card}>
             <Text style={styles.label}>indexed score</Text>
             <View style={styles.metrics}>
@@ -566,7 +573,7 @@ export function LoomScreen({ navigation }: Props) {
           </GlassCard>
         )}
 
-        {walletState.publicKey == null ? null : (
+        {walletState.publicKey == null || selectedLoom == null ? null : (
           <GlassCard style={styles.card}>
             <Text style={styles.label}>points history</Text>
             {sealPoints == null || sealPoints.entries.length === 0 ? (
@@ -716,10 +723,18 @@ function formatMintError(error: unknown): string {
       return "wallet signing was rejected. no loom was saved.";
     }
 
+    if (needsGasForMint(error.message)) {
+      return "this wallet needs SOL for gas before it can mint a loom. no loom was minted.";
+    }
+
     return error.message;
   }
 
   return "loom mint failed. no loom was saved.";
+}
+
+function needsGasForMint(message: string): boolean {
+  return /no record of a prior credit|attempted to debit|insufficient|lamports|fund/i.test(message);
 }
 
 function formatLoomDate(value: string): string {

@@ -545,15 +545,18 @@ function decodeSealAnkyInstruction(buffer, accounts) {
     return null;
   }
   const accountKeys = normalizeInstructionAccounts(accounts);
+  const hasSeparatePayer = accountKeys.length === 3 || accountKeys.length >= 8;
   const writer = accountKeys[0];
-  const loomAsset = accountKeys[1];
-  if (!isBase58PublicKey(writer) || !isBase58PublicKey(loomAsset)) {
+  const payer = hasSeparatePayer ? accountKeys[1] : writer;
+  const loomAsset = hasSeparatePayer ? accountKeys[2] : accountKeys[1];
+  if (!isBase58PublicKey(writer) || !isBase58PublicKey(payer) || !isBase58PublicKey(loomAsset)) {
     return null;
   }
 
   return {
     kind: "sealed",
     loomAsset,
+    payer,
     sessionHash: readHash(buffer, 8),
     utcDay: readI64(buffer, 40),
     writer,

@@ -44,10 +44,35 @@ test("dry-runs seal_anky without reading keypairs or RPC state", async () => {
   assert.equal(summary.instruction, "seal_anky");
   assert.equal(summary.programId, PROGRAM_ID);
   assert.equal(summary.writer, WRITER);
+  assert.equal(summary.payer, WRITER);
+  assert.equal(summary.sponsored, false);
   assert.equal(summary.loomAsset, LOOM_ASSET);
   assert.equal(summary.sessionHash, SESSION_HASH);
   assert.equal(summary.receiptUtcDayIsCurrent, true);
   assert.equal(summary.rpcUrl, "https://devnet.helius-rpc.com/?api-key=<redacted>");
+});
+
+test("dry-runs seal_anky with a separate sponsor payer while keeping writer identity", async () => {
+  const payer = "11111111111111111111111111111111";
+  const result = await runNode([
+    SCRIPT_PATH,
+    "--writer",
+    WRITER,
+    "--payer",
+    payer,
+    "--loom-asset",
+    LOOM_ASSET,
+    "--session-hash",
+    SESSION_HASH,
+    "--utc-day",
+    String(currentUtcDay()),
+  ]);
+
+  assert.equal(result.code, 0, result.stderr);
+  const summary = JSON.parse(result.stdout.split("\n").slice(0, -2).join("\n"));
+  assert.equal(summary.writer, WRITER);
+  assert.equal(summary.payer, payer);
+  assert.equal(summary.sponsored, true);
 });
 
 test("check-chain passes when the Core Loom is owned by the writer and seals are absent", async () => {

@@ -76,7 +76,12 @@ import {
   SOJOURN_LENGTH_DAYS,
   type AnkySessionSummary,
 } from "../../lib/sojourn";
-import { getSelectedLoom, shortAddress, type SelectedLoom } from "../../lib/solana/loomStorage";
+import {
+  clearSelectedLoom,
+  getSelectedLoomForWallet,
+  shortAddress,
+  type SelectedLoom,
+} from "../../lib/solana/loomStorage";
 import type { MobileSealPointsHistory } from "../../lib/api/types";
 import {
   hasThreadProcessingConsent,
@@ -172,11 +177,17 @@ export function AccountScreen({ navigation }: AccountProps) {
 
   const email = backendSession?.email ?? getPrivyEmail(user) ?? null;
   const connected = user != null || backendSession != null || wallet.authenticated || wallet.hasWallet;
+  const loginMethod = getAccountLoginMethod({
+    email,
+    externalWalletLabel: externalWallet.activeWallet?.label,
+    user,
+    walletKind: wallet.walletKind,
+  });
   const walletLabel =
     wallet.publicKey == null
-      ? "optional"
-      : `${wallet.walletLabel ?? "wallet"} ${shortAddress(wallet.publicKey, 6)}`;
-  const identityTitle = wallet.hasWallet ? "wallet connected" : connected ? "signed in" : "local account";
+      ? "wallet setup pending"
+      : shortAddress(wallet.publicKey, 6);
+  const identityTitle = connected ? `logged in via ${loginMethod}` : "local account";
   const notificationSubtitle = notificationSettings.enabled
     ? `daily reminder at ${formatReminderTime(notificationSettings.hour, notificationSettings.minute)}`
     : "choose when anky should quietly remind you.";
@@ -192,6 +203,7 @@ export function AccountScreen({ navigation }: AccountProps) {
       }
 
       await clearBackendAuthSession();
+      await clearSelectedLoom();
       setBackendSession(null);
       setMessage("disconnected.");
     } catch (error) {
@@ -231,9 +243,15 @@ export function AccountScreen({ navigation }: AccountProps) {
         <YouInfoRow
           icon={assets.icons.loom}
           rightText={walletLabel}
-          subtitle="used only for optional loom minting and hash sealing."
+          subtitle="your solana wallet for loom minting and hash sealing."
           title="wallet"
-        />
+        >
+          {wallet.publicKey == null ? null : (
+            <Text selectable style={styles.walletAddressText}>
+              {wallet.publicKey}
+            </Text>
+          )}
+        </YouInfoRow>
         <YouInfoRow
           icon={assets.icons.privacy}
           onPress={() => setNotificationModalVisible(true)}
@@ -605,6 +623,7 @@ export function ExportDataScreen({ navigation }: ExportDataProps) {
 export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
   const { openAuthModal } = useAuthModal();
   const [balance, setBalance] = useState(0);
+  const [balanceLoading, setBalanceLoading] = useState(true);
   const [displayBalance, setDisplayBalance] = useState(0);
   const balanceValue = useRef(new Animated.Value(0)).current;
   const displayBalanceRef = useRef(0);
@@ -651,6 +670,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
     async function load() {
       if (mounted) {
         setHistoryStatus("loading");
+        setBalanceLoading(true);
       }
 
       const [localBalance, session, identityId] = await Promise.all([
@@ -761,6 +781,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
         setMessage(nextMessage);
         setPurchaseStatus(getRevenueCatCreditStatus());
         setHistoryStatus(nextHistoryStatus);
+        setBalanceLoading(false);
         if (nextLedgerEntries != null) {
           setLedgerEntries((current) => mergeServerLedgerEntries(nextLedgerEntries, current));
         } else if (nextHistoryStatus === "requires_account") {
@@ -775,14 +796,17 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       console.error(error);
       if (mounted) {
         setPurchaseStatus(getRevenueCatCreditStatus());
+        setBalanceLoading(false);
       }
     });
     const unsubscribe = navigation.addListener("focus", () => {
       setPurchaseStatus("pending");
+      setBalanceLoading(true);
       void load().catch((error: unknown) => {
         console.error(error);
         if (mounted) {
           setPurchaseStatus(getRevenueCatCreditStatus());
+          setBalanceLoading(false);
         }
       });
     });
@@ -1021,6 +1045,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
       <View style={styles.creditsScene}>
         <CreditsHero
           balance={displayBalance}
+          loading={balanceLoading}
           onLayout={(layout) => setHeroLayout(layout)}
         />
 
@@ -1052,7 +1077,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
           ))}
         </View>
 
-        <SectionTitle label="history" />
+        {/* <SectionTitle label="history" />
         {ledgerEntries.length === 0 ? (
           <CreditHistoryEmptyState
             balance={balance}
@@ -1065,7 +1090,7 @@ export function CreditsInfoScreen({ navigation }: CreditsInfoProps) {
               <CreditHistoryRow entry={entry} key={entry.id} />
             ))}
           </View>
-        )}
+        )} */}
 
         <InlineMessage text={message} />
       </View>
@@ -1086,7 +1111,7 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
 
     async function load() {
       const [nextSelectedLoom, nextSessions, nextFiles] = await Promise.all([
-        getSelectedLoom(),
+        getSelectedLoomForWallet(wallet.publicKey),
         listAnkySessionSummaries(),
         listSavedAnkyFiles(),
       ]);
@@ -1146,84 +1171,103 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
   const fileByHash = useMemo(() => new Map(files.map((file) => [file.hash, file])), [files]);
   const proofPoints = (pointsHistory?.verifiedSealDays ?? 0) * 2;
   const selectedLabel =
-    selectedLoom == null ? "none" : `${selectedLoom.name} · ${shortAddress(selectedLoom.asset, 5)}`;
+    selectedLoom == null ? "none" : shortAddress(selectedLoom.asset, 5);
+  const walletLabel = wallet.publicKey == null ? "not ready" : shortAddress(wallet.publicKey, 6);
 
   return (
     <YouDetailShell
       onBack={() => navigation.goBack()}
-      subtitle="seal a hash when available."
+      subtitle="owned by your wallet."
       title="loom"
-      titleAccessory={<Pill label="optional" />}
     >
       <YouHeroCard
         icon={assets.icons.loom}
         status={loomState.status}
-        subtitle="writing never requires a loom."
-        title={selectedLoom == null ? "no loom selected" : selectedLoom.name}
+        subtitle={
+          wallet.publicKey == null
+            ? "log in to see the loom for this wallet."
+            : selectedLoom == null
+              ? "this wallet does not have a loom yet."
+              : "this loom belongs to the connected wallet."
+        }
+        title={selectedLoom == null ? "no loom for this wallet" : selectedLoom.name}
       >
         <Text style={styles.heroBody}>
           {selectedLoom == null
-            ? "you can write every day without choosing a loom."
-            : `selected on ${selectedLoom.network}. only hashes are sealed.`}
+            ? "writing remains fully available."
+            : `asset ${selectedLoom.asset}`}
         </Text>
       </YouHeroCard>
 
       <View style={styles.stack}>
         <YouInfoRow
-          icon={assets.icons.loom}
-          subtitle="creates a daily seal from your writing hash when you choose."
-          title="what a loom does"
-        />
-        <YouInfoRow
           icon={assets.icons.account}
-          rightText={selectedLabel}
-          subtitle="the loom currently remembered on this device."
-          title="selected loom"
+          rightText={walletLabel}
+          subtitle="the wallet that owns or mints the loom."
+          title="wallet"
         />
-        <YouInfoRow
-          badge={loomState.badge}
-          icon={assets.icons.loom}
-          subtitle={loomState.detail}
-          title="daily seal"
-          variant={loomState.variant}
-        />
+        {selectedLoom == null ? (
+          <YouInfoRow
+            badge={loomState.badge}
+            icon={assets.icons.loom}
+            subtitle={loomState.detail}
+            title="loom status"
+            variant={loomState.variant}
+          />
+        ) : (
+          <>
+            <YouInfoRow
+              icon={assets.icons.loom}
+              rightText={selectedLabel}
+              subtitle={`owned on ${selectedLoom.network}.`}
+              title="loom asset"
+            />
+            <YouInfoRow
+              badge={loomState.badge}
+              icon={assets.icons.loom}
+              subtitle={loomState.detail}
+              title="daily seal"
+              variant={loomState.variant}
+            />
+          </>
+        )}
         <YouInfoRow
           icon={assets.icons.privacy}
           subtitle="only a hash is sealed. your writing stays private."
           title="hash only — writing stays private"
         />
-        <YouInfoRow
-          icon={assets.icons.loom}
-          rightText={pointsHistory == null ? "0" : String(pointsHistory.score)}
-          subtitle="seal hash = +1, prove rite = +2."
-          title="current score"
-        />
-        <YouInfoRow
-          icon={assets.icons.loom}
-          rightText={String(pointsHistory?.uniqueSealDays ?? 0)}
-          subtitle="finalized hash seals indexed by the backend."
-          title="sealed days"
-        />
-        <YouInfoRow
-          icon={assets.icons.loom}
-          rightText={String(proofPoints)}
-          subtitle="finalized SP1 receipt points indexed by the backend."
-          title="proof points"
-        />
-        <YouInfoRow
-          icon={assets.icons.loom}
-          rightText={String(pointsHistory?.streakBonus ?? 0)}
-          subtitle="the current backend streak rule."
-          title="streak bonus"
-        />
-        <YouInfoRow
-          icon={assets.icons.exportData}
-          subtitle="a loom is optional — never required."
-          title="no loom? you can still write every day."
-        />
+        {selectedLoom == null ? null : (
+          <>
+            <YouInfoRow
+              icon={assets.icons.loom}
+              rightText={pointsHistory == null ? "0" : String(pointsHistory.score)}
+              subtitle="seal hash = +1, prove rite = +2."
+              title="current score"
+            />
+            <YouInfoRow
+              icon={assets.icons.loom}
+              rightText={String(pointsHistory?.uniqueSealDays ?? 0)}
+              subtitle="finalized hash seals indexed by the backend."
+              title="sealed days"
+            />
+            <YouInfoRow
+              icon={assets.icons.loom}
+              rightText={String(proofPoints)}
+              subtitle="finalized SP1 receipt points indexed by the backend."
+              title="proof points"
+            />
+            <YouInfoRow
+              icon={assets.icons.loom}
+              rightText={String(pointsHistory?.streakBonus ?? 0)}
+              subtitle="the current backend streak rule."
+              title="streak bonus"
+            />
+          </>
+        )}
       </View>
 
-      <View style={styles.pointHistoryList}>
+      {selectedLoom == null ? null : (
+        <View style={styles.pointHistoryList}>
         <SectionTitle label="points history" />
         {pointsState === "loading" ? (
           <Text style={styles.helperText}>syncing finalized proof-of-practice receipts.</Text>
@@ -1267,7 +1311,8 @@ export function LoomInfoScreen({ navigation }: LoomInfoProps) {
             );
           })
         )}
-      </View>
+        </View>
+      )}
 
       <View style={styles.actions}>
         <YouActionButton
@@ -1584,9 +1629,11 @@ function ExportItemRow({
 
 function CreditsHero({
   balance,
+  loading,
   onLayout,
 }: {
   balance: number;
+  loading: boolean;
   onLayout?: (layout: LayoutRectangle) => void;
 }) {
   return (
@@ -1601,10 +1648,14 @@ function CreditsHero({
           </View>
         </View>
         <View style={styles.creditsHeroBalanceCopy}>
-          <Text adjustsFontSizeToFit numberOfLines={1} style={styles.creditsHeroBalance}>
-            {balance}
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={1}
+            style={[styles.creditsHeroBalance, loading && styles.creditsHeroBalanceLoading]}
+          >
+            {loading ? "•••" : balance}
           </Text>
-          <Text style={styles.creditsHeroAvailable}>available</Text>
+          <Text style={styles.creditsHeroAvailable}>{loading ? "syncing" : "available"}</Text>
         </View>
       </View>
       <Text style={styles.creditsHeroSubtitle}>
@@ -1618,7 +1669,7 @@ function CreditRulesList() {
   return (
     <View style={styles.creditRules}>
       <CreditRuleRow icon="✧" label="1 credit = reflection" />
-      <CreditRuleRow icon="✦" label="5 credits = full reflection" />
+      <CreditRuleRow icon="✦" label="full reflection is coming soon" />
       <CreditRuleRow icon="⌁" label="writing is always free" last />
     </View>
   );
@@ -2323,9 +2374,9 @@ function buildLoomState(
 } {
   if (selectedLoom == null) {
     return {
-      badge: "not selected",
-      detail: "choose a loom only if you want optional hash sealing.",
-      status: "no loom selected",
+      badge: "none",
+      detail: hasWallet ? "this wallet has no loom yet." : "log in to see the loom for this wallet.",
+      status: "no loom",
       variant: "normal",
     };
   }
@@ -2333,7 +2384,7 @@ function buildLoomState(
   if (!hasWallet) {
     return {
       badge: "connect",
-      detail: "connect a wallet only if you want to seal a hash.",
+      detail: "log in to see the loom for this wallet.",
       status: "wallet not connected",
       variant: "normal",
     };
@@ -2357,6 +2408,48 @@ function buildLoomState(
     status: "today sealed",
     variant: "normal",
   };
+}
+
+function getAccountLoginMethod({
+  email,
+  externalWalletLabel,
+  user,
+  walletKind,
+}: {
+  email: string | null;
+  externalWalletLabel?: string;
+  user: unknown;
+  walletKind?: "embedded" | "external";
+}): string {
+  if (externalWalletLabel != null || walletKind === "external") {
+    return externalWalletLabel?.toLowerCase() ?? "wallet";
+  }
+
+  const linkedAccounts = readArrayField(user, "linkedAccounts");
+
+  if (linkedAccounts.some((account) => hasLinkedAccountProvider(account, "google"))) {
+    return "google";
+  }
+
+  if (linkedAccounts.some((account) => hasLinkedAccountProvider(account, "apple"))) {
+    return "apple";
+  }
+
+  if (email != null || linkedAccounts.some((account) => isEmail(readStringField(account, "email")))) {
+    return "email";
+  }
+
+  return "privy";
+}
+
+function hasLinkedAccountProvider(value: unknown, provider: string): boolean {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  return Object.values(value as Record<string, unknown>).some(
+    (field) => typeof field === "string" && field.toLowerCase().includes(provider),
+  );
 }
 
 function getPrivyEmail(user: unknown): string | null {
@@ -2774,6 +2867,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { height: 0, width: 0 },
     textShadowRadius: 16,
     textTransform: "lowercase",
+  },
+  creditsHeroBalanceLoading: {
+    opacity: 0.42,
+    textShadowRadius: 22,
   },
   creditsHeroBalanceCopy: {
     alignItems: "flex-start",
@@ -3244,6 +3341,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 30,
     textTransform: "lowercase",
+  },
+  walletAddressText: {
+    color: "rgba(242, 211, 146, 0.82)",
+    fontFamily: SERIF,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
   },
   walletExportWebView: {
     backgroundColor: "#080713",

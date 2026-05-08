@@ -87,7 +87,12 @@ export function CreditsScreen({ navigation, route }: Props) {
       return;
     }
 
-    if (processingType !== "reflection" && processingType !== "full_anky") {
+    if (processingType === "full_anky") {
+      setMessage("full reflection is coming soon.");
+      return;
+    }
+
+    if (processingType !== "reflection") {
       setMessage("this mirror is not available in this build.");
       return;
     }
@@ -102,7 +107,7 @@ export function CreditsScreen({ navigation, route }: Props) {
       setMessage("");
       const result = await processReflectionWithMode(
         selectedFile.fileName,
-        processingType === "full_anky" ? "full" : "simple",
+        "simple",
       );
 
       setBalance(result.creditsRemaining);
@@ -157,7 +162,7 @@ export function CreditsScreen({ navigation, route }: Props) {
                 <Text style={styles.optionText}>{labelForProcessingType(type)}</Text>
                 <Text style={styles.optionCost}>
                   {CREDIT_COSTS[type]} credits
-                  {type === "reflection" || type === "full_anky" ? "" : " · unavailable"}
+                  {type === "reflection" ? "" : " · unavailable"}
                 </Text>
               </Pressable>
             ))}
@@ -170,7 +175,9 @@ export function CreditsScreen({ navigation, route }: Props) {
             {selectedFile == null ? "no local .anky file" : selectedFile.fileName}
           </Text>
           <Text style={styles.cost}>
-            {CREDIT_COSTS[processingType]} credits will be spent
+            {processingType === "full_anky"
+              ? "full reflection is coming soon"
+              : `${CREDIT_COSTS[processingType]} credits will be spent`}
           </Text>
         </GlassCard>
 
@@ -216,7 +223,7 @@ function labelForProcessingType(type: ProcessingType): string {
     case "image":
       return "Image";
     case "full_anky":
-      return "Full Anky";
+      return "Full Anky coming soon";
     case "deep_mirror":
       return "Deep Mirror";
     case "full_sojourn_archive":

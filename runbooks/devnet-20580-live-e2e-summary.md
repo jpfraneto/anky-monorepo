@@ -2,6 +2,15 @@
 
 Date: 2026-05-07 UTC day 20580
 
+Status for sponsored-payer launch evidence: STALE.
+
+This evidence predates the sponsored-payer Anchor account model where `seal_anky`
+has separate `writer` and `payer` signer accounts. It remains useful historical
+evidence for the old HashSeal -> SP1 -> VerifiedSeal -> index loop, but it must
+not be used as validation of the new sponsored-payer program model. Use
+`runbooks/devnet-20581-sponsored-payer-validation-evidence.json` for the
+devnet sponsored-payer seal/index validation.
+
 This run proves the current worktree can execute:
 
 demo witness -> SP1 proof -> HashSeal -> VerifiedSeal -> known-signature Helius indexing -> score snapshot -> evidence audit.

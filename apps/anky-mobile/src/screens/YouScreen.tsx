@@ -22,10 +22,14 @@ import { parseAnky } from "../lib/ankyProtocol";
 import { listAnkySessionSummaries } from "../lib/ankySessionIndex";
 import { listSavedAnkyFiles, SavedAnkyFile } from "../lib/ankyStorage";
 import { getReflectionCreditBalance } from "../lib/credits/processAnky";
+import {
+  configureRevenueCat,
+  getRevenueCatCreditBalance,
+  getRevenueCatCreditStatus,
+} from "../lib/credits/revenueCatCredits";
 import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
 import { getCurrentSojournDay, SOJOURN_LENGTH_DAYS } from "../lib/sojourn";
 import type { AnkySessionSummary } from "../lib/sojourn";
-import { shortAddress } from "../lib/solana/loomStorage";
 import {
   getRiteDurationMs,
   isCompleteRawAnky,
@@ -61,22 +65,27 @@ const PANEL = "rgba(13, 12, 27, 0.74)";
 const PANEL_DEEP = "rgba(9, 8, 20, 0.86)";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const PRIVACY_POLICY_URL = "https://www.anky.app/privacy-policy.md";
+const ANKY_TOKEN_URL = "http://dexscreener.com/solana/6GsRbp2Bz9QZsoAEmUSGgTpTW7s59m7R3EGtm1FPpump";
+const ANKY_TOKEN_COPY = [
+  "a memecoin is the simplest possible expression of an idea on the internet. no pitch deck, no roadmap, no Series A. just a name, a ticker, and a bet that enough people will recognize what it points to.",
+  "$ANKY was launched on pump.fun on Solana. that's it. no presale, no team allocation, no vesting schedule. the bonding curve did what bonding curves do.",
+  "what it points to\nanky is a writing practice. you sit down, you write for 8 minutes without stopping, and something emerges that your conscious mind didn't plan. the token doesn't change what the practice is. it doesn't unlock features or grant access. it's a flag planted in the ground that says: this idea exists, and the market gets to decide what it's worth.",
+  "memecoins and the new internet\nthe old internet released ideas through products. you built something, charged for it, and hoped people would pay. the new internet releases ideas through tokens. the idea itself becomes tradeable the moment it has a name.",
+  "this is either profoundly stupid or profoundly honest. probably both. a memecoin strips away every pretension about what makes something valuable and reduces it to the only question that ever mattered: do people care about this?",
+  "most memecoins are jokes. some jokes contain more truth than business plans. the cosmic joke of $ANKY is that a tool designed to bypass your conscious mind - to help you stop thinking and just write - now has a price feed that people watch with their conscious minds, thinking very hard about whether the number will go up.",
+  "the mirror doesn't care about the price. the practice remains free. write for 8 minutes. meet yourself. whether the token is worth a penny or a dollar, the words you wrote are still yours.",
+];
 
 export function YouScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { user } = usePrivy();
   const { openAuthModal } = useAuthModal();
   const wallet = useAnkyPrivyWallet();
-  const [credits, setCredits] = useState(0);
+  const [credits, setCredits] = useState<number | null>(null);
   const [files, setFiles] = useState<SavedAnkyFile[]>([]);
   const [sessions, setSessions] = useState<AnkySessionSummary[]>([]);
   const stats = useMemo(() => buildStats(files, sessions), [files, sessions]);
-  const accountLabel =
-    wallet.publicKey != null
-      ? `connected ${wallet.walletLabel ?? "wallet"} ${shortAddress(wallet.publicKey, 6)}`
-      : user == null
-        ? "local-first. no login required to write."
-        : `connected ${shortAddress(user.id, 8)}`;
+  const accountLabel = getYouAccountLabel(user, wallet);
 
   useAnkyPresenceScreen({
     emotion: "idle",
@@ -91,7 +100,7 @@ export function YouScreen({ navigation }: Props) {
       const [nextSessions, nextFiles, nextCredits] = await Promise.all([
         listAnkySessionSummaries(),
         listSavedAnkyFiles(),
-        getReflectionCreditBalance(),
+        getVisibleCreditBalance(),
       ]);
 
       if (mounted) {
@@ -188,10 +197,16 @@ export function YouScreen({ navigation }: Props) {
                 icon="credits"
                 last
                 onPress={() => navigation.navigate("CreditsInfo")}
-                subtitle={`${credits} credit${credits === 1 ? "" : "s"} available. writing is free.`}
+                subtitle={
+                  credits == null
+                    ? "credits syncing. writing is free."
+                    : `${credits} credit${credits === 1 ? "" : "s"} available. writing is free.`
+                }
                 title="credits"
               />
             </View>
+
+            <AnkyTokenSection />
 
             <Pressable
               accessibilityRole="button"
@@ -202,9 +217,6 @@ export function YouScreen({ navigation }: Props) {
               <View style={styles.menuCopy}>
                 <View style={styles.loomTitleRow}>
                   <Text style={styles.menuTitle}>loom</Text>
-                  <View style={styles.optionalPill}>
-                    <Text style={styles.optionalText}>optional</Text>
-                  </View>
                 </View>
                 <Text style={styles.menuSubtitle}>seal hashes when you choose. writing never requires it.</Text>
               </View>
@@ -247,6 +259,28 @@ function ProfileHero() {
   );
 }
 
+function AnkyTokenSection() {
+  return (
+    <View style={styles.tokenCard}>
+      <Text style={styles.tokenTitle}>$ANKY</Text>
+      {ANKY_TOKEN_COPY.map((paragraph) => (
+        <Text key={paragraph} style={styles.tokenCopy}>
+          {paragraph}
+        </Text>
+      ))}
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => {
+          void Linking.openURL(ANKY_TOKEN_URL);
+        }}
+        style={({ pressed }) => [styles.tokenButton, pressed && styles.pressed]}
+      >
+        <Text style={styles.tokenButtonText}>BUY $ANKY</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function StatCell({ icon, label, value }: { icon: StatIcon; label: string; value: number }) {
   return (
     <View style={styles.statCell}>
@@ -283,6 +317,87 @@ function MenuRow({
       {last ? null : <View style={styles.rowDivider} />}
     </Pressable>
   );
+}
+
+async function getVisibleCreditBalance(): Promise<number> {
+  const backendBalance = await getReflectionCreditBalance();
+
+  try {
+    await configureRevenueCat();
+
+    if (getRevenueCatCreditStatus() === "available") {
+      return await getRevenueCatCreditBalance({ forceRefresh: true });
+    }
+  } catch (error) {
+    console.warn("RevenueCat credits unavailable on You screen.", error);
+  }
+
+  return backendBalance;
+}
+
+function getYouAccountLabel(user: unknown, wallet: ReturnType<typeof useAnkyPrivyWallet>): string {
+  if (user == null && wallet.publicKey == null) {
+    return "local-first. no login required to write.";
+  }
+
+  const method = getLoginMethodLabel(user, wallet);
+
+  return `logged in via ${method}`;
+}
+
+function getLoginMethodLabel(
+  user: unknown,
+  wallet: ReturnType<typeof useAnkyPrivyWallet>,
+): string {
+  if (wallet.hasExternalWallet) {
+    return wallet.walletLabel?.toLowerCase() ?? "wallet";
+  }
+
+  const linkedAccounts = readArrayField(user, "linkedAccounts");
+
+  if (linkedAccounts.some((account) => hasProvider(account, "google"))) {
+    return "google";
+  }
+
+  if (linkedAccounts.some((account) => hasProvider(account, "apple"))) {
+    return "apple";
+  }
+
+  if (linkedAccounts.some((account) => isEmail(readStringField(account, "email")))) {
+    return "email";
+  }
+
+  if (isEmail(readStringField(user, "email") ?? readStringField(user, "emailAddress"))) {
+    return "email";
+  }
+
+  return "account";
+}
+
+function hasProvider(value: unknown, provider: string): boolean {
+  return Object.values(readRecord(value)).some(
+    (field) => typeof field === "string" && field.toLowerCase().includes(provider),
+  );
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value != null ? value as Record<string, unknown> : {};
+}
+
+function readArrayField(value: unknown, key: string): unknown[] {
+  const field = readRecord(value)[key];
+
+  return Array.isArray(field) ? field : [];
+}
+
+function readStringField(value: unknown, key: string): string | null {
+  const field = readRecord(value)[key];
+
+  return typeof field === "string" && field.length > 0 ? field : null;
+}
+
+function isEmail(value: string | null): value is string {
+  return value != null && value.includes("@");
 }
 
 function buildStats(files: SavedAnkyFile[], sessions: AnkySessionSummary[]) {
@@ -479,21 +594,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 1,
   },
-  optionalPill: {
-    backgroundColor: "rgba(11, 10, 22, 0.55)",
-    borderColor: "rgba(233, 190, 114, 0.48)",
-    borderRadius: 8,
-    borderWidth: 1,
-    marginLeft: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  optionalText: {
-    color: "rgba(233, 213, 170, 0.88)",
-    fontFamily: SERIF,
-    fontSize: 10.5,
-    textTransform: "lowercase",
-  },
   pageSubtitle: {
     color: "rgba(223, 209, 213, 0.78)",
     fontFamily: SERIF,
@@ -660,5 +760,45 @@ const styles = StyleSheet.create({
   },
   topSide: {
     width: 48,
+  },
+  tokenButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(233, 190, 114, 0.18)",
+    borderColor: "rgba(242, 211, 146, 0.72)",
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 10,
+    minHeight: 42,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  tokenButtonText: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  tokenCard: {
+    backgroundColor: PANEL_DEEP,
+    borderColor: "rgba(217, 143, 63, 0.54)",
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 8,
+    padding: 16,
+  },
+  tokenCopy: {
+    color: COPY,
+    fontFamily: SERIF,
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  tokenTitle: {
+    color: GOLD_BRIGHT,
+    fontFamily: SERIF,
+    fontSize: 21,
+    lineHeight: 26,
   },
 });

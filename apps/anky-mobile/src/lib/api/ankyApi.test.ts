@@ -104,6 +104,60 @@ describe("AnkyApiClient", () => {
     });
   });
 
+  it("prepares a sponsored mobile seal transaction", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          blockhash: "blockhash",
+          estimatedLamports: 8_000_000,
+          idempotencyKey: "seal:wallet one:20579:bbbb",
+          lastValidBlockHeight: 123,
+          payer: "sponsor payer",
+          sponsor: true,
+          sponsorPayer: "sponsor payer",
+          transactionBase64: "prepared transaction",
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+    const client = new AnkyApiClient({
+      baseUrl: "https://anky.example/",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const prepared = await client.prepareMobileSeal({
+      canonical: true,
+      coreCollection: "collection one",
+      loomAsset: "loom one",
+      sessionHash: "b".repeat(64),
+      utcDay: 20579,
+      wallet: "wallet one",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [[url, init]] = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(url).toBe("https://anky.example/api/mobile/seals/prepare");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      canonical: true,
+      coreCollection: "collection one",
+      loomAsset: "loom one",
+      sessionHash: "b".repeat(64),
+      utcDay: 20579,
+      wallet: "wallet one",
+    });
+    expect(prepared).toMatchObject({
+      estimatedLamports: 8_000_000,
+      payer: "sponsor payer",
+      sponsor: true,
+      sponsorPayer: "sponsor payer",
+      transactionBase64: "prepared transaction",
+    });
+  });
+
   it("requests a mobile seal proof and parses the accepted job response", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(

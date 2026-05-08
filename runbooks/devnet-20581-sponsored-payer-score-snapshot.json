@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-05-08T00:46:09.964Z",
+  "programId": "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX",
+  "cluster": "devnet",
+  "proofVerifierAuthority": "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP",
+  "requireFinalized": true,
+  "backendPosts": [],
+  "events": [
+    {
+      "kind": "sealed",
+      "loomAsset": "DHVdX41WRKmHFW2q8MUoJDRYPCmowpC5VJEvdjyviU1g",
+      "rollingRoot": "078e5166c3c8beae4fb70abb92c9cff771e94c8cdce13b8d5b9a03d16c836d43",
+      "sessionHash": "cf13b495beee2469907a55b3c80f31d106049937a9237625443d8602e044defe",
+      "timestamp": 1778201023,
+      "totalSeals": 1,
+      "utcDay": 20581,
+      "writer": "6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX",
+      "blockTime": 1778201023,
+      "commitment": "finalized",
+      "failed": false,
+      "finalitySource": "known_signature_finalized_getTransaction",
+      "finalized": true,
+      "signature": "5XTh9SmXvkNcFD1ZXyDsLf6aFjqL9hCubWRKp3kBw2osyijg9U718ezutsCbY9EGdbbLw8L1kH4H1FXjXkEukRNE",
+      "slot": 460827187
+    },
+    {
+      "kind": "sealed",
+      "loomAsset": "L5woSyRnN2P1G4v13BH95AVAVZftWN513axR59d9VGy",
+      "rollingRoot": "bd781bf723c44c86260ac48c84498dc3fe1de53a955a49c760b1957d88c557df",
+      "sessionHash": "69910f6a590418dc0f673c6f75167b0641c6c381cfa14a9b88f24735ec4fb2c2",
+      "timestamp": 1778201035,
+      "totalSeals": 1,
+      "utcDay": 20581,
+      "writer": "HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR",
+      "blockTime": 1778201035,
+      "commitment": "finalized",
+      "failed": false,
+      "finalitySource": "known_signature_finalized_getTransaction",
+      "finalized": true,
+      "signature": "4jPvBKCt81SgQxA2vPBkgeVPCU4xsAkg1RN17W1WaHrYzgnDCDjWWC1aokai875hcCBqdqZVEWPNaCAzUUtRtSJJ",
+      "slot": 460827218
+    }
+  ],
+  "scoringRule": {
+    "version": 1,
+    "uniqueFinalizedDailySeal": 1,
+    "finalizedVerifiedSealBonus": 2,
+    "completedSevenDayStreakBonus": 2,
+    "maxParticipants": 3456,
+    "formula": "score = unique_seal_days + (2 * verified_seal_days) + streak_bonus"
+  },
+  "scores": [
+    {
+      "wallet": "6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX",
+      "uniqueSealDays": 1,
+      "verifiedSealDays": 0,
+      "streakBonus": 0,
+      "score": 1,
+      "sealedDays": [
+        20581
+      ]
+    },
+    {
+      "wallet": "HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR",
+      "uniqueSealDays": 1,
+      "verifiedSealDays": 0,
+      "streakBonus": 0,
+      "score": 1,
+      "sealedDays": [
+        20581
+      ]
+    }
+  ],
+  "summary": {
+    "excludedByParticipantCap": 0,
+    "indexedEvents": 2,
+    "participantCap": 3456,
+    "scoreRows": 2,
+    "sealedEvents": 2,
+    "finalizedEventsInferredFromBackfillRequest": 0,
+    "totalScore": 2,
+    "uncappedScoreRows": 2,
+    "verifiedEvents": 0,
+    "rejectedVerifiedEvents": 0
+  }
+}

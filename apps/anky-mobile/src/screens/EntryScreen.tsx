@@ -40,13 +40,13 @@ import {
 import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
 import type { LoomSeal } from "../lib/solana/types";
 import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
-import { getSelectedLoom } from "../lib/solana/loomStorage";
+import { getSelectedLoomForWallet } from "../lib/solana/loomStorage";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
 import {
   getUtcDayFromUnixMs,
   isCurrentUtcDay,
-  sealAnky as sealAnkyOnchain,
 } from "../lib/solana/sealAnky";
+import { needsSolanaFunding, sealAnkyWithPayerPolicy } from "../lib/solana/sponsoredSeal";
 import {
   getRiteDurationMs,
   getThreadModeForRawAnky,
@@ -57,6 +57,7 @@ import type { AnkyThread } from "../lib/thread/types";
 import { ankyColors, fontSize, spacing } from "../theme/tokens";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Entry">;
+const FULL_REFLECTION_AVAILABLE = false;
 
 type EntryState = {
   hash: string;
@@ -148,6 +149,11 @@ export function EntryScreen({ navigation, route }: Props) {
       return;
     }
 
+    if (mode === "full" && !FULL_REFLECTION_AVAILABLE) {
+      setStatusMessage("full reflection is coming soon.");
+      return;
+    }
+
     const cost = mode === "full" ? CREDIT_COSTS.full_anky : REFLECTION_COST_CREDITS;
 
     const balance = hasConfiguredBackend() ? creditBalance : null;
@@ -209,21 +215,19 @@ export function EntryScreen({ navigation, route }: Props) {
         throw new Error("Only an Anky from the current UTC day can be sealed.");
       }
 
-      const loom = await getSelectedLoom();
+      const wallet = await walletState.getWallet();
+      const loom = await getSelectedLoomForWallet(wallet.publicKey);
 
       if (loom == null) {
-        throw new Error("loom is optional, but one is needed to seal a hash.");
-      }
-
-      const wallet = await walletState.getWallet();
-
-      if (loom.owner != null && loom.owner !== wallet.publicKey) {
-        throw new Error("The selected loom belongs to a different wallet.");
+        throw new Error("this wallet does not have a loom yet.");
       }
 
       const config = await loadMobileSolanaConfig();
       const connection = new Connection(config.rpcUrl, "confirmed");
-      const seal = await sealAnkyOnchain({
+      const api = getAnkyApiClient();
+      const seal = await sealAnkyWithPayerPolicy({
+        api,
+        canonical: true,
         connection,
         coreCollection: loom.collection,
         loomAsset: loom.asset,
@@ -236,7 +240,6 @@ export function EntryScreen({ navigation, route }: Props) {
 
       await writeSealSidecar(seal);
 
-      const api = getAnkyApiClient();
       if (api != null) {
         try {
           await api.recordMobileSeal({
@@ -258,7 +261,7 @@ export function EntryScreen({ navigation, route }: Props) {
     } catch (error) {
       console.error(error);
       const nextMessage =
-        error instanceof Error ? error.message : "Seal failed. Your .anky is still local.";
+        formatSealError(error);
       setSealError(nextMessage);
       setStatusMessage("");
       setActionState("error");
@@ -332,7 +335,7 @@ export function EntryScreen({ navigation, route }: Props) {
       <AnkySessionSurface
         canContinue={canTalkToAnky}
         canCopy={entry.text.length > 0}
-        canFullReflect={canReflect}
+        canFullReflect={canReflect && FULL_REFLECTION_AVAILABLE}
         canSimpleReflect={canReflect}
         dateLabel={dateParts.date}
         durationLabel={durationLabel}
@@ -371,8 +374,10 @@ function toLoomSeal(seal: {
   created_at: string;
   loom_asset: string;
   network: LoomSeal["network"];
+  payer?: string;
   session_hash: string;
   signature: string;
+  sponsored?: boolean;
   utc_day?: number;
   writer: string;
 }): LoomSeal {
@@ -380,11 +385,21 @@ function toLoomSeal(seal: {
     createdAt: seal.created_at,
     loomId: seal.loom_asset,
     network: seal.network,
+    payer: seal.payer,
     sessionHash: seal.session_hash,
+    sponsored: seal.sponsored,
     txSignature: seal.signature,
     utcDay: seal.utc_day,
     writer: seal.writer,
   };
+}
+
+function formatSealError(error: unknown): string {
+  if (needsSolanaFunding(error)) {
+    return "this wallet needs SOL for gas and seal sponsorship is not available right now.";
+  }
+
+  return error instanceof Error ? error.message : "Seal failed. Your .anky is still local.";
 }
 
 function formatEntryDateParts(raw: string): { date: string; time: string } {

@@ -98,6 +98,26 @@ export async function getSelectedLoom(): Promise<SelectedLoom | null> {
   }
 }
 
+export async function getSelectedLoomForWallet(wallet?: string | null): Promise<SelectedLoom | null> {
+  const selected = await getSelectedLoom();
+
+  if (selected == null) {
+    return null;
+  }
+
+  if (wallet == null || wallet.length === 0) {
+    await clearSelectedLoom();
+    return null;
+  }
+
+  if (selected.owner !== wallet) {
+    await clearSelectedLoom();
+    return null;
+  }
+
+  return selected;
+}
+
 export async function saveSelectedLoom(loom: SelectedLoom): Promise<void> {
   assertPublicKey(loom.asset, "loom asset");
   assertPublicKey(loom.collection, "collection");

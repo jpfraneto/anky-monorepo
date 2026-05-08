@@ -78,7 +78,7 @@ ANKY_REVENUECAT_SECRET_KEY
 | SP1 proof generation | PASS | SP1 source and wrapper exist; prior closure records local proof pass. | Fresh proof rerun from current worktree before launch. |
 | VerifiedSeal | NEEDS HUMAN | Program supports `record_verified_anky`; current badge is verifier-authority-attested. | Fresh devnet HashSeal -> SP1 verify -> VerifiedSeal -> index evidence. |
 | Backend proof worker | FAIL | Backend proof requests explicitly return disabled on `mainnet-beta`. | Decide mainnet proof posture: operator CLI only, or enable hardened backend worker after legal/security review. |
-| Migrations | NEEDS HUMAN | Migrations 019-024 exist and store public metadata only. | Apply and verify on target database. |
+| Migrations | NEEDS HUMAN | Migrations 019-025 exist and store public metadata only, including sponsorship ledger migration 025. | Apply and verify on target database. |
 | Helius webhook | NEEDS HUMAN | Manifest tooling and receiver exist; no live webhook confirmed. | Human creates/validates enhanced mainnet webhook with secret auth. |
 | Indexer backfill | NEEDS HUMAN | Indexer requests finalized commitment and has tests/runbooks. | Credentialed finalized mainnet backfill with audited output. |
 | Score snapshot | NEEDS HUMAN | Score V1 and allocation math exist. No mainnet snapshot/token supply/custody. | Finalized snapshot, audit, token supply, custody, dispute policy. |
@@ -88,7 +88,9 @@ ANKY_REVENUECAT_SECRET_KEY
 
 ## Commands Run
 
-Only safe local/read-only or no-secret inspection commands were run. No mainnet mutation, signing, deployment, keypair read, `.env` read, Helius webhook creation, or App Store submission was performed.
+For this mainnet-readiness gate pass, only safe local/read-only or no-secret inspection commands were run. No mainnet mutation, signing, deployment, keypair read, `.env` read, Helius webhook creation, or App Store submission was performed.
+
+Later sponsored-transaction work accidentally deployed to devnet through the old `solana/anky-seal-program` `npm test` script. That incident is documented in `docs/anky-system/ANKY_SPONSORED_TRANSACTIONS_STATUS.md` and `docs/anky-system/ANKY_SPONSORED_TRANSACTIONS_AUDIT.md`; it is not launch evidence and it does not change this document's mainnet status.
 
 ```bash
 git rev-parse --show-toplevel
@@ -135,11 +137,11 @@ These commands require human-owned signers, external environments, mainnet value
 | Fix and rerun local readiness | `cd /home/kithkui/anky/solana/anky-seal-program && npm run sojourn9:readiness` | No signer. | JSON with `localReady: true`, `launchReady: false` until human gates are filled. | Stop if any local check is `missing`, `unmatched`, `failed`, or `forbidden_match`. |
 | Rerun readiness test | `cd /home/kithkui/anky && node --test solana/scripts/sojourn9/launchReadinessGate.test.mjs` | No signer. | 4 passing tests. | Stop if first test still fails on `localReady`. |
 | Devnet public config check | `cd /home/kithkui/anky/solana/anky-seal-program && npm run check-config -- --cluster devnet --program-id 4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX --core-collection F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u --loom-asset <owned_devnet_core_loom_asset> --loom-owner <writer_wallet>` | Public devnet Loom and owner. No signer. | JSON with every check true and `ok: true`. | Stop if collection/account ownership/layout/owner mismatches. |
-| Devnet real Core seal integration | `cd /home/kithkui/anky/solana/anky-seal-program && ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=<provider_wallet_keypair_path> ANKY_CORE_INTEGRATION_LOOM_ASSET=<owned_devnet_core_loom_asset> ANKY_CORE_INTEGRATION_COLLECTION=F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u npm test -- --skip-local-validator --skip-deploy` | Writer/provider keypair that owns the Loom; devnet SOL. | One current-day `seal_anky` succeeds and `LoomState` updates. | Stop if test skips, asks for mainnet, prints key material, or owner/collection fails. |
+| Devnet real Core seal integration | `cd /home/kithkui/anky/solana/anky-seal-program && ANCHOR_PROVIDER_URL=https://api.devnet.solana.com ANCHOR_WALLET=<provider_wallet_keypair_path> ANKY_CORE_INTEGRATION_LOOM_ASSET=<owned_devnet_core_loom_asset> ANKY_CORE_INTEGRATION_COLLECTION=F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u ANKY_ALLOW_LIVE_ANCHOR_TEST=true npm run test:anchor:live -- --skip-local-validator --skip-deploy` | Writer/provider keypair that owns the Loom; devnet SOL; explicit live-test approval. | One current-day `seal_anky` succeeds and `LoomState` updates. | Stop if test skips, asks for mainnet, prints key material, deploys unexpectedly, or owner/collection fails. |
 | Devnet proof handoff | `cd /home/kithkui/anky && node solana/scripts/sojourn9/prepareCurrentDayProof.mjs --writer <writer_wallet> --loom-asset <owned_devnet_core_loom_asset>` | Public writer and Loom; SP1/protoc installed. | Handoff manifest outside repo, SP1 proof verified locally, public receipt metadata only. | Stop if witness would be written inside repo or proof verification fails. |
 | Devnet seal send | `cd /home/kithkui/anky/solana/anky-seal-program && ANKY_SEALER_KEYPAIR_PATH=<writer_keypair_path> npm run seal -- --loom-asset <owned_devnet_core_loom_asset> --session-hash <sha256_hex> --utc-day <current_utc_day> --cluster devnet --check-chain --send` | Writer keypair that owns Loom; devnet SOL. | Landed `seal_anky` signature and matching HashSeal. | Stop if UTC day is stale, Loom owner mismatches, or command attempts mainnet. |
 | Devnet VerifiedSeal send | `cd /home/kithkui/anky/solana/anky-seal-program && npm run record-verified -- --receipt <public_receipt_json> --writer <writer_wallet> --cluster devnet --check-chain --sp1-proof-verified --send --keypair <verifier_authority_keypair_path>` | Verifier authority keypair; devnet SOL; locally verified SP1 proof. | Landed `record_verified_anky` signature and matching VerifiedSeal. | Stop if `--sp1-proof-verified` is not justified by local proof verification or verifier custody is unclear. |
-| Backend migrations | `DATABASE_URL=<target_database_url> sqlx migrate run` | Target DB URL held by operator. | Migrations 019-024 applied in order. | Stop if target is wrong, migration history diverges, or DB contains plaintext proof job fields. |
+| Backend migrations | `DATABASE_URL=<target_database_url> sqlx migrate run` | Target DB URL held by operator. | Migrations 019-025 applied in order. | Stop if target is wrong, migration history diverges, or DB contains plaintext proof/sponsorship fields. |
 | Backend proof worker env | `ANKY_MOBILE_PROVER_ENABLED=true ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF=true ANKY_PROVER_VERIFIER_KEYPAIR_PATH=<verifier_keypair_path> ANKY_PROVER_WORK_DIR=<outside_repo_work_dir> ANKY_PROVER_PROTOC=<protoc_path> cargo test` | Backend env, verifier keypair path, outside-repo workdir. | Tests pass and workdir/witness cleanup policy is confirmed. | Stop if workdir is inside repo or mainnet proof endpoint is being enabled without explicit strategy. |
 | Helius webhook manifest | `cd /home/kithkui/anky/solana/anky-seal-program && npm run sojourn9:webhook-manifest -- --cluster mainnet-beta --program-id <mainnet_program_id> --webhook-url https://<backend-domain>/api/helius/anky-seal --out /tmp/anky-helius-webhook-mainnet.json` | Public mainnet program ID and backend domain. | Dry-run JSON only; no Helius call. | Stop if URL is not HTTPS, has credentials/query strings, or account address is not only the seal program. |
 | Create Helius webhook | `curl -X POST "https://api-mainnet.helius-rpc.com/v0/webhooks?api-key=$HELIUS_API_KEY" -H "Content-Type: application/json" --data @/tmp/anky-helius-webhook-mainnet.json` | `HELIUS_API_KEY`, indexer write secret configured outside Codex. | Helius returns webhook ID/type/account addresses. | Stop if API key would be printed, receiver fails 200, or webhook monitors wrong accounts. |
@@ -177,7 +179,7 @@ Recommended iOS posture before App Store submission:
 
 1. Devnet rerun: fix the current `sojourn9:readiness` local failure, rerun readiness tests, rerun devnet Core check, seal, SP1 prove/verify, VerifiedSeal, backend record, Helius backfill, score snapshot, and mobile proof-state display.
 2. Mainnet deploy/config: only after devnet E2E is green, create/verify mainnet Core collection, deploy/verify seal program, publish verifier authority custody policy, and run mainnet read-only config checks.
-3. Backend migration/config: apply migrations 019-024 to target DB, configure private RPC, prover workdir outside repo, verifier custody, webhook/indexer secrets, and `ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF=true`.
+3. Backend migration/config: apply migrations 019-025 to target DB, configure private RPC, prover workdir outside repo, verifier custody, webhook/indexer secrets, sponsorship policy, and `ANKY_REQUIRE_VERIFIED_SEAL_CHAIN_PROOF=true`.
 4. Helius config: generate manifest, human creates enhanced mainnet webhook, verify receiver 200s, dedupe by signature, and run finalized backfill.
 5. Mobile env switch: set production EAS to `mainnet-beta` and `program`, replace collection/program/verifier/RPC with final values, keep private RPC/API keys out of public env.
 6. Production build: run mobile typecheck/tests, build EAS production, verify RevenueCat products in sandbox.
@@ -221,5 +223,34 @@ Post-fix command results:
 What did not change:
 
 - Mainnet readiness is still false.
-- No deployment, signing, keypair read, secret read, mainnet transaction, paid Helius mutation, or App Store action was performed.
+- In the local readiness fix pass, no deployment, signing, keypair read, secret read, mainnet transaction, paid Helius mutation, or App Store action was performed.
+- Later sponsored-transaction work accidentally deployed to devnet through the old `npm test` script. Do not treat that deployment as launch evidence.
 - Fresh devnet `HashSeal -> SP1 verify -> VerifiedSeal -> index`, verifier custody, target backend migration, Helius production indexing, real Core Loom integration, and final mainnet values remain manual gates.
+
+## Sponsored-Payer Devnet Validation Update
+
+Updated: 2026-05-08
+
+Controlled devnet validation for the sponsored-payer `seal_anky` account model has been run after explicit human approval.
+
+Evidence:
+
+- Validation doc: `docs/anky-system/ANKY_SPONSORED_TRANSACTIONS_DEVNET_VALIDATION.md`
+- Evidence bundle: `runbooks/devnet-20581-sponsored-payer-validation-evidence.json`
+- Index snapshot: `runbooks/devnet-20581-sponsored-payer-score-snapshot.json`
+
+Result:
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Devnet deploy after payer split | PASS | Program `4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX`, signature `2UEhpCCu2tGAxzY2c2gZEXkDShsVPkwTAujLSrSPpWaeygeacjLCPjDVdFWVXVUenfbZq7Rt8DSHQejM1BZfBFWA` |
+| Writer-pays seal | PASS | Writer/payer `6yS2xjgYeBn6HSeMm5zwyYCWQhwFGfw6Sf9fvb8f1NX`, signature `5XTh9SmXvkNcFD1ZXyDsLf6aFjqL9hCubWRKp3kBw2osyijg9U718ezutsCbY9EGdbbLw8L1kH4H1FXjXkEukRNE` |
+| Sponsor-pays seal | PASS | Writer `HK52v7KLU7TxPM3RnTYHjEmeg5kgERk1bpzHUmmuBkmR`, payer `FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP`, signature `4jPvBKCt81SgQxA2vPBkgeVPCU4xsAkg1RN17W1WaHrYzgnDCDjWWC1aokai875hcCBqdqZVEWPNaCAzUUtRtSJJ` |
+| Sponsor cannot seal alone | PASS | Strict serialization failed with missing writer signature; bypass-preflight raw signature remained not found |
+| Wrong Loom owner fails | PASS | Helper rejected `Core Loom asset owner does not match writer` |
+| Indexer after payer split | PASS | Known-signature finalized indexer parsed both new seal signatures and produced two score rows |
+| Readiness state | PASS | `localReady: true`, `launchReady: false` |
+
+The previous UTC day 20580 evidence is stale for the sponsored-payer account model and has been marked as such in its summary and JSON artifact.
+
+Mainnet remains blocked. This validation did not rerun SP1 -> VerifiedSeal, did not apply target backend migrations, did not validate live mobile, did not create a Helius webhook, and did not touch mainnet.

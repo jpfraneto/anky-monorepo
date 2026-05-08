@@ -23,8 +23,10 @@ export type SealAnkyResult = {
   blockTime?: number;
   loomId: string;
   network?: "devnet" | "mainnet-beta";
+  payer?: string;
   sessionHash: string;
   slot?: number;
+  sponsored?: boolean;
   txSignature: string;
   utcDay?: number;
   writer: string;

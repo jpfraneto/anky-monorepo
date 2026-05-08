@@ -137,6 +137,17 @@ export function SojournMap({
               />
             ))}
           </ScrollView>
+
+          {selectedDay != null && selectedDay.day !== currentDay ? (
+            <Pressable
+              accessibilityLabel="return to today"
+              accessibilityRole="button"
+              onPress={travelToToday}
+              style={({ pressed }) => [styles.mapTodayButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.mapTodayButtonText}>today</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {selectedDay == null ? null : (
@@ -145,7 +156,6 @@ export function SojournMap({
             currentDay={currentDay}
             day={selectedDay}
             onPressAnky={onPressAnky}
-            onTravelToToday={travelToToday}
           />
         )}
       </View>
@@ -262,18 +272,17 @@ function SelectedDayPanel({
   currentDay,
   day,
   onPressAnky,
-  onTravelToToday,
 }: {
   bottomInset: number;
   currentDay: number;
   day: SojournMapDay;
   onPressAnky?: (anky: SojournMapAnky) => void;
-  onTravelToToday: () => void;
 }) {
   const completeAnkys = day.ankys.filter((anky) => anky.kind === "anky");
-  const fragments = day.ankys.filter((anky) => anky.kind === "fragment");
+  const fragments = day.ankys
+    .filter((anky) => anky.kind === "fragment")
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   const hasWriting = completeAnkys.length > 0 || fragments.length > 0;
-  const isPastDay = day.day < currentDay;
 
   return (
     <View style={[styles.panel, { paddingBottom: sojournMapTokens.spacing.lg + bottomInset }]}>
@@ -320,18 +329,6 @@ function SelectedDayPanel({
         </ScrollView>
       )}
 
-      {isPastDay ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onTravelToToday}
-          style={({ pressed }) => [styles.todayTravelButton, pressed && styles.pressed]}
-        >
-          <View style={styles.todayTravelLine} />
-          <Text style={styles.todayTravelText}>return to today</Text>
-          <View style={styles.todayTravelDiamond} />
-          <View style={styles.todayTravelLine} />
-        </Pressable>
-      ) : null}
     </View>
   );
 }

@@ -27,6 +27,8 @@ import {
   MobileSpendCreditsRequest,
   MobileSpendCreditsResponse,
   PrivyAuthRequest,
+  PrepareMobileSealRequest,
+  PrepareMobileSealResponse,
   RecordMobileLoomMintRequest,
   RecordMobileLoomMintResponse,
   RecordMobileSealRequest,
@@ -295,6 +297,15 @@ export class AnkyApiClient {
 
   recordMobileSeal(request: RecordMobileSealRequest): Promise<RecordMobileSealResponse> {
     return this.request<RecordMobileSealResponse>("/api/mobile/seals/record", {
+      body: JSON.stringify(request),
+      method: "POST",
+    });
+  }
+
+  prepareMobileSeal(
+    request: PrepareMobileSealRequest,
+  ): Promise<PrepareMobileSealResponse> {
+    return this.request<PrepareMobileSealResponse>("/api/mobile/seals/prepare", {
       body: JSON.stringify(request),
       method: "POST",
     });

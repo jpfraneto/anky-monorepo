@@ -182,15 +182,16 @@ pub mod anky_seal_program {
 #[derive(Accounts)]
 #[instruction(session_hash: [u8; 32], utc_day: i64)]
 pub struct SealAnky<'info> {
-    #[account(mut)]
     pub writer: Signer<'info>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
     /// CHECK: Verified in verify_core_loom by owner, Core Asset deserialization, asset owner, and collection.
     pub loom_asset: UncheckedAccount<'info>,
     /// CHECK: Verified in verify_core_loom by owner, Core Collection deserialization, and official key.
     pub loom_collection: UncheckedAccount<'info>,
     #[account(
         init_if_needed,
-        payer = writer,
+        payer = payer,
         space = 8 + LoomState::INIT_SPACE,
         seeds = [LOOM_STATE_SEED, loom_asset.key().as_ref()],
         bump,
@@ -198,7 +199,7 @@ pub struct SealAnky<'info> {
     pub loom_state: Account<'info, LoomState>,
     #[account(
         init_if_needed,
-        payer = writer,
+        payer = payer,
         space = 8 + DailySeal::INIT_SPACE,
         seeds = [DAILY_SEAL_SEED, writer.key().as_ref(), &utc_day.to_le_bytes()],
         bump,
@@ -206,7 +207,7 @@ pub struct SealAnky<'info> {
     pub daily_seal: Account<'info, DailySeal>,
     #[account(
         init_if_needed,
-        payer = writer,
+        payer = payer,
         space = 8 + HashSeal::INIT_SPACE,
         seeds = [HASH_SEAL_SEED, writer.key().as_ref(), session_hash.as_ref()],
         bump,
@@ -461,8 +462,8 @@ mod tests {
         let data = [
             1, 123, 50, 61, 79, 177, 164, 97, 159, 25, 89, 170, 143, 236, 239, 55, 15, 204, 37,
             239, 73, 200, 78, 167, 56, 150, 238, 47, 16, 252, 244, 58, 93, 2, 210, 47, 111, 71,
-            123, 77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43, 57, 1,
-            123, 3, 29, 86, 67, 192, 150, 220, 78, 108,
+            123, 77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43, 57, 1, 123,
+            3, 29, 86, 67, 192, 150, 220, 78, 108,
         ];
 
         let parsed = parse_core_asset_base(&data).expect("parse devnet asset");
@@ -479,10 +480,10 @@ mod tests {
         // Public devnet account 6oEyFPQPksvKyCtdjsSEzL6JMxAPPwBPkMBBAMvUnNLJ,
         // minted during the live SP1 -> VerifiedSeal E2E smoke on 2026-05-06.
         let data = [
-            1, 73, 176, 201, 24, 88, 198, 118, 14, 10, 64, 251, 176, 103, 244, 250, 176, 119,
-            61, 16, 50, 69, 247, 111, 156, 36, 125, 79, 110, 24, 61, 213, 19, 2, 210, 47, 111,
-            71, 123, 77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43,
-            57, 1, 123, 3, 29, 86, 67, 192, 150, 220, 78, 108,
+            1, 73, 176, 201, 24, 88, 198, 118, 14, 10, 64, 251, 176, 103, 244, 250, 176, 119, 61,
+            16, 50, 69, 247, 111, 156, 36, 125, 79, 110, 24, 61, 213, 19, 2, 210, 47, 111, 71, 123,
+            77, 182, 47, 104, 103, 239, 77, 168, 120, 137, 221, 152, 212, 148, 43, 57, 1, 123, 3,
+            29, 86, 67, 192, 150, 220, 78, 108,
         ];
 
         let parsed = parse_core_asset_base(&data).expect("parse live devnet asset");
@@ -544,13 +545,13 @@ mod tests {
         // Public devnet account F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u.
         // This locks the collection parser to observed Metaplex Core CollectionV1 bytes.
         let data = [
-            5, 218, 17, 98, 174, 13, 198, 23, 222, 176, 140, 170, 43, 220, 153, 231, 177, 91,
-            125, 197, 231, 2, 160, 199, 57, 222, 88, 253, 84, 153, 197, 119, 96, 20, 0, 0, 0,
-            65, 110, 107, 121, 32, 83, 111, 106, 111, 117, 114, 110, 32, 57, 32, 76, 111, 111,
-            109, 115, 53, 0, 0, 0, 104, 116, 116, 112, 115, 58, 47, 47, 97, 110, 107, 121, 46,
-            97, 112, 112, 47, 100, 101, 118, 110, 101, 116, 47, 109, 101, 116, 97, 100, 97,
-            116, 97, 47, 115, 111, 106, 111, 117, 114, 110, 45, 57, 45, 108, 111, 111, 109,
-            115, 46, 106, 115, 111, 110, 1, 0, 0, 0, 1, 0, 0, 0,
+            5, 218, 17, 98, 174, 13, 198, 23, 222, 176, 140, 170, 43, 220, 153, 231, 177, 91, 125,
+            197, 231, 2, 160, 199, 57, 222, 88, 253, 84, 153, 197, 119, 96, 20, 0, 0, 0, 65, 110,
+            107, 121, 32, 83, 111, 106, 111, 117, 114, 110, 32, 57, 32, 76, 111, 111, 109, 115, 53,
+            0, 0, 0, 104, 116, 116, 112, 115, 58, 47, 47, 97, 110, 107, 121, 46, 97, 112, 112, 47,
+            100, 101, 118, 110, 101, 116, 47, 109, 101, 116, 97, 100, 97, 116, 97, 47, 115, 111,
+            106, 111, 117, 114, 110, 45, 57, 45, 108, 111, 111, 109, 115, 46, 106, 115, 111, 110,
+            1, 0, 0, 0, 1, 0, 0, 0,
         ];
 
         assert!(parse_core_collection_base(&data).is_ok());

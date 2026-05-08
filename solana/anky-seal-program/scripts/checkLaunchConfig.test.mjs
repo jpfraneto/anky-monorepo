@@ -1,18 +1,29 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import * as anchor from "@coral-xyz/anchor";
 
-const SCRIPT_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "checkLaunchConfig.mjs");
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPT_PATH = path.join(SCRIPT_DIR, "checkLaunchConfig.mjs");
+const PACKAGE_PATH = path.join(SCRIPT_DIR, "..", "package.json");
 const PROGRAM_ID = "4GjZaHbyyeVEjeYjm2q7vVdnNhMPnNMx8oeRwEBZDsMX";
 const CORE_PROGRAM_ID = "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d";
 const CORE_COLLECTION = "F9UZwmeRTBwfVVJnbXYXUjxuQGYMYDEG28eXJgyF9V5u";
 const LOOM_ASSET = "4ENNjitn7223tyNAyzdhZ4QWo4iQD5j5DiM3fDz2wLS9";
 const LOOM_OWNER = "9HuaaPXSfYvf2qK9r7jwtVmsJU97KX3f827sgpxgiiEp";
 const PROOF_VERIFIER = "FgFFj9ZCeEG7dYKaWqtTm3q6apjqBxvDq5QVjkajpCGP";
+
+test("default npm test script does not run live Anchor deployment", () => {
+  const packageJson = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+
+  assert.equal(packageJson.scripts.test.includes("anchor test"), false);
+  assert.match(packageJson.scripts["test:anchor:live"], /ANKY_ALLOW_LIVE_ANCHOR_TEST/);
+  assert.match(packageJson.scripts["test:anchor:live"], /anchor test/);
+});
 
 test("passes when configured public devnet accounts match launch expectations", async () => {
   const server = rpcServer(({ params }) => accountFor(params[0]));

@@ -49,10 +49,11 @@ import { hasConfiguredBackend } from "../lib/auth/backendSession";
 import { useAnkyPrivyWallet } from "../lib/privy/useAnkyPrivyWallet";
 import { getCurrentSojournDay, getNextSessionKindForToday } from "../lib/sojourn";
 import type { AnkySessionSummary } from "../lib/sojourn";
-import { getSelectedLoom, type SelectedLoom } from "../lib/solana/loomStorage";
+import { getSelectedLoomForWallet, type SelectedLoom } from "../lib/solana/loomStorage";
 import { hydrateMobileSealReceiptsForHashes } from "../lib/solana/mobileSealReceipts";
 import { loadMobileSolanaConfig } from "../lib/solana/mobileSolanaConfig";
-import { getUtcDayFromUnixMs, isCurrentUtcDay, sealAnky } from "../lib/solana/sealAnky";
+import { getUtcDayFromUnixMs, isCurrentUtcDay } from "../lib/solana/sealAnky";
+import { needsSolanaFunding, sealAnkyWithPayerPolicy } from "../lib/solana/sponsoredSeal";
 import { getLoomSealProofState, type LoomSeal } from "../lib/solana/types";
 import { sendThreadMessage } from "../lib/thread/threadClient";
 import {
@@ -113,6 +114,7 @@ const INK = "#080713";
 const SERIF = Platform.select({ android: "serif", default: "Georgia", ios: "Georgia" });
 const SPANISH_LOCALE = "es-CL";
 const VERIFIED_POINTS_LABEL = "sealed +1 · verified +2 · 3 pts";
+const FULL_REFLECTION_AVAILABLE = false;
 
 export function RevealScreen({ navigation, route }: Props) {
   const { user } = usePrivy();
@@ -120,6 +122,7 @@ export function RevealScreen({ navigation, route }: Props) {
   const wallet = useAnkyPrivyWallet();
   const autoIndexedHashRef = useRef<string | null>(null);
   const proofPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reflectionAnchorYRef = useRef(0);
   const revealScrollRef = useRef<ScrollView>(null);
   const [actionState, setActionState] = useState<ActionState>("saving");
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
@@ -271,7 +274,7 @@ export function RevealScreen({ navigation, route }: Props) {
           routeFileName == null ? readPendingReveal() : readAnkyFile(routeFileName),
           getReflectionCreditBalance(),
           listAnkySessionSummaries(),
-          getSelectedLoom(),
+          getSelectedLoomForWallet(wallet.publicKey),
           loadMobileSolanaConfig(),
         ]);
 
@@ -372,7 +375,7 @@ export function RevealScreen({ navigation, route }: Props) {
     return () => {
       mounted = false;
     };
-  }, [isEntryRoute, route.params?.fileName]);
+  }, [isEntryRoute, route.params?.fileName, wallet.publicKey]);
 
   async function ensureSavedFile(): Promise<SavedAnkyFile> {
     if (raw == null) {
@@ -447,7 +450,10 @@ export function RevealScreen({ navigation, route }: Props) {
       const config = await loadMobileSolanaConfig();
       const signingWallet = await wallet.getWallet();
       const connection = new Connection(config.rpcUrl, "confirmed");
-      const receipt = await sealAnky({
+      const api = getAnkyApiClient();
+      const receipt = await sealAnkyWithPayerPolicy({
+        api,
+        canonical: summaryKind === "daily_seal",
         connection,
         coreCollection: selectedLoom.collection,
         loomAsset: selectedLoom.asset,
@@ -459,8 +465,6 @@ export function RevealScreen({ navigation, route }: Props) {
       });
 
       await writeSealSidecar(receipt);
-
-      const api = getAnkyApiClient();
 
       if (api != null) {
         try {
@@ -500,7 +504,7 @@ export function RevealScreen({ navigation, route }: Props) {
     } catch (sealError) {
       console.error(sealError);
       setSealError(
-        sealError instanceof Error ? sealError.message : "seal failed. your writing is unchanged.",
+        formatSealError(sealError),
       );
       setMessage("");
       setActionState("error");
@@ -839,6 +843,11 @@ export function RevealScreen({ navigation, route }: Props) {
       return;
     }
 
+    if (kind === "full" && !FULL_REFLECTION_AVAILABLE) {
+      setMessage("full reflection is coming soon.");
+      return;
+    }
+
     if (!isLoggedIn) {
       openLoginForReflection();
       return;
@@ -890,7 +899,6 @@ export function RevealScreen({ navigation, route }: Props) {
     setMessages([]);
     setPendingRetry(null);
     setReflectionKind(kind);
-    scrollRevealToEnd();
 
     try {
       const saved = await ensureSavedFile();
@@ -920,6 +928,7 @@ export function RevealScreen({ navigation, route }: Props) {
       setMessage("");
       setScreenMode("review");
       setActionState("idle");
+      scrollRevealToReflection();
     } catch (reflectionError) {
       console.error(reflectionError);
       setError(
@@ -930,7 +939,6 @@ export function RevealScreen({ navigation, route }: Props) {
       setActionState("error");
     } finally {
       setIsLoading(false);
-      scrollRevealToEnd();
     }
   }
 
@@ -1056,6 +1064,15 @@ export function RevealScreen({ navigation, route }: Props) {
     }, 80);
   }
 
+  function scrollRevealToReflection() {
+    setTimeout(() => {
+      revealScrollRef.current?.scrollTo({
+        animated: true,
+        y: Math.max(0, reflectionAnchorYRef.current - spacing.lg),
+      });
+    }, 120);
+  }
+
   if (raw == null) {
     return (
       <ScreenBackground variant="plain">
@@ -1131,8 +1148,18 @@ export function RevealScreen({ navigation, route }: Props) {
               />
             )}
 
+            {screenMode === "review" && isLoading && actionState === "reflecting" ? (
+              <ReflectionLoadingState />
+            ) : null}
+
             {screenMode === "review" && reflection != null && reflection.trim().length > 0 ? (
-              <SavedReflectionPanel imageUri={imageUri} reflection={reflection} />
+              <View
+                onLayout={(event) => {
+                  reflectionAnchorYRef.current = event.nativeEvent.layout.y;
+                }}
+              >
+                <SavedReflectionPanel imageUri={imageUri} reflection={reflection} />
+              </View>
             ) : null}
 
             {screenMode === "review" && message.length > 0 ? (
@@ -1221,6 +1248,15 @@ function PrivacyDivider() {
   );
 }
 
+function ReflectionLoadingState() {
+  return (
+    <View style={styles.reflectionLoadingCard}>
+      <GoldenThreadSpinner />
+      <Text style={styles.reflectionLoadingText}>anky is reading</Text>
+    </View>
+  );
+}
+
 function SavedReflectionPanel({
   imageUri,
   reflection,
@@ -1295,9 +1331,14 @@ function ReviewActions({
   const notEnoughForQuick = isLoggedIn && creditBalance != null && creditBalance < quickCost;
   const notEnoughForFull = isLoggedIn && creditBalance != null && creditBalance < fullCost;
   const quickBadge = isFullAnky && isLoggedIn ? formatCreditBadge(quickCost) : undefined;
-  const fullBadge = isFullAnky && isLoggedIn ? formatCreditBadge(fullCost) : undefined;
+  const fullBadge = FULL_REFLECTION_AVAILABLE
+    ? isFullAnky && isLoggedIn
+      ? formatCreditBadge(fullCost)
+      : undefined
+    : "coming soon";
   const quickDisabled = !canRequestReflection || (isLoggedIn && notEnoughForQuick);
-  const fullDisabled = !canRequestReflection || (isLoggedIn && notEnoughForFull);
+  const fullDisabled =
+    !FULL_REFLECTION_AVAILABLE || !canRequestReflection || (isLoggedIn && notEnoughForFull);
   const statusLine = !isFullAnky
     ? "write 8 minutes to ask anky for reflection"
     : !isLoggedIn
@@ -1310,7 +1351,7 @@ function ReviewActions({
     shouldShowReflectionActions &&
     isLoggedIn &&
     creditBalance != null &&
-    (notEnoughForQuick || notEnoughForFull);
+    (notEnoughForQuick || (FULL_REFLECTION_AVAILABLE && notEnoughForFull));
 
   return (
     <View style={styles.reviewActions}>
@@ -1354,6 +1395,7 @@ function ReviewActions({
           <RevealActionButton
             badge={fullBadge}
             disabled={fullDisabled}
+            helper={FULL_REFLECTION_AVAILABLE ? undefined : "the deeper pipeline is coming soon"}
             icon="◎"
             label="full anky reflection"
             onPress={onFullReflection}
@@ -1995,6 +2037,14 @@ function shortenTx(signature?: string | null): string {
   }
 
   return `${signature.slice(0, 8)}...${signature.slice(-8)}`;
+}
+
+function formatSealError(error: unknown): string {
+  if (needsSolanaFunding(error)) {
+    return "this wallet needs SOL for gas and seal sponsorship is not available right now.";
+  }
+
+  return error instanceof Error ? error.message : "seal failed. your writing is unchanged.";
 }
 
 function getOrbTxUrl(
@@ -2650,6 +2700,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 2,
     paddingHorizontal: spacing.sm,
+  },
+  reflectionLoadingCard: {
+    alignItems: "center",
+    borderColor: "rgba(232, 200, 121, 0.18)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    marginTop: spacing.md,
+    minHeight: 54,
+  },
+  reflectionLoadingText: {
+    color: GOLD_SOFT,
+    fontSize: fontSize.sm,
+    textTransform: "lowercase",
   },
   reflectionStatus: {
     color: GOLD_SOFT,

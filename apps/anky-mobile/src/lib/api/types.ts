@@ -470,6 +470,27 @@ export type RecordMobileSealResponse = {
   seal: LoomSeal;
 };
 
+export type PrepareMobileSealRequest = {
+  canonical?: boolean;
+  coreCollection: string;
+  loomAsset: string;
+  sessionHash: string;
+  utcDay: number;
+  wallet: string;
+};
+
+export type PrepareMobileSealResponse = {
+  blockhash: string;
+  estimatedLamports: number;
+  idempotencyKey: string;
+  lastValidBlockHeight: number;
+  message?: string;
+  payer: string;
+  sponsor: boolean;
+  sponsorPayer?: string;
+  transactionBase64?: string;
+};
+
 export type ThreadApiMessage = {
   role: ThreadRole;
   content: string;
