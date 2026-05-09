@@ -330,7 +330,7 @@ pub async fn write_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     jar: CookieJar,
-    Query(_query): Query<WriteQuery>,
+    Query(query): Query<WriteQuery>,
 ) -> Result<(CookieJar, Html<String>), AppError> {
     // If training, redirect to sleeping page
     {
@@ -344,6 +344,58 @@ pub async fn write_page(
     }
 
     let jar = crate::routes::auth::ensure_visitor_cookie(jar);
+
+    let prompt_id = query
+        .p
+        .as_deref()
+        .or(query.prompt.as_deref())
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+
+    if let Some(prompt_id) = prompt_id {
+        let (prompt, creator_username) = {
+            let db = crate::db::conn(&state.db)?;
+            let prompt = crate::db::queries::get_prompt_by_id(&db, prompt_id)?
+                .ok_or_else(|| AppError::NotFound("prompt not found".into()))?;
+            let creator_username =
+                crate::db::queries::get_display_username(&db, &prompt.creator_user_id)?;
+            (prompt, creator_username)
+        };
+
+        let image_url = prompt
+            .image_path
+            .as_ref()
+            .map(|p| format!("https://anky.app/data/images/{}", p))
+            .unwrap_or_else(|| "https://anky.app/static/images/anky/anky-circle.webp".into());
+        let bg_image_url = prompt
+            .image_path
+            .as_ref()
+            .map(|p| {
+                let clean = p.replace(".png", "_clean.png");
+                let clean_path = std::path::Path::new("data/images").join(&clean);
+                if clean_path.exists() {
+                    format!("https://anky.app/data/images/{}", clean)
+                } else {
+                    format!("https://anky.app/data/images/{}", p)
+                }
+            })
+            .unwrap_or_else(|| "https://anky.app/static/images/anky/anky-circle.webp".into());
+
+        let mut ctx = tera::Context::new();
+        crate::i18n::inject_into_context(&state.i18n, &mut ctx, &headers, &jar, None);
+        ctx.insert("id", &prompt.id);
+        ctx.insert("prompt_text", &prompt.prompt_text);
+        ctx.insert("image_url", &image_url);
+        ctx.insert("bg_image_url", &bg_image_url);
+        ctx.insert("status", &prompt.status);
+        ctx.insert("creator_username", &creator_username);
+        ctx.insert("user_font_family", &"monospace");
+        ctx.insert("user_font_size", &18);
+        ctx.insert("user_theme", &"dark");
+        ctx.insert("user_idle_timeout", &8);
+        let html = state.tera.render("prompt.html", &ctx)?;
+        return Ok((jar, Html(html)));
+    }
 
     let user = crate::routes::auth::get_auth_user(&state, &jar).await;
     let username = user.as_ref().and_then(|u| u.username.clone());
