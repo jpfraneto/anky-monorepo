@@ -22,6 +22,7 @@ use solana_sdk::{
     transaction::Transaction as SolanaTransaction,
 };
 use sqlx::Row;
+use std::fmt::Display;
 use std::path::{Path as FsPath, PathBuf};
 use std::str::FromStr;
 use tokio::process::Command;
@@ -831,17 +832,9 @@ pub async fn create_mobile_reflection(
     .await?;
 
     let job_id = uuid::Uuid::new_v4().to_string();
-    let request_json = json!({
-        "sessionHash": session_hash,
-        "processingType": processing_type.as_str(),
-        "ankyByteLength": anky_byte_length,
-        "entryCount": 1,
-        "plaintextReceivedByBackend": true
-    });
-    let result_json = json!({
-        "processingType": processing_type.as_str(),
-        "artifacts": artifacts.clone()
-    });
+    let request_json =
+        mobile_reflection_request_metadata(&session_hash, processing_type, anky_byte_length)?;
+    let result_json = mobile_reflection_result_metadata(processing_type, &artifacts)?;
 
     let row = sqlx::query(
         "INSERT INTO mobile_reflection_jobs
@@ -6433,7 +6426,7 @@ fn decode_hash_bytes(value: &str) -> Result<[u8; 32], AppError> {
 }
 
 fn validate_public_webhook_payload(value: &Value) -> Result<(), AppError> {
-    if let Some(field) = find_private_webhook_field(value) {
+    if let Some(field) = find_private_anky_field(value) {
         return Err(AppError::BadRequest(format!(
             "Helius webhook payload must not contain private .anky field `{field}`"
         )));
@@ -6447,15 +6440,50 @@ fn validate_public_webhook_payload(value: &Value) -> Result<(), AppError> {
     Ok(())
 }
 
-fn find_private_webhook_field(value: &Value) -> Option<String> {
+fn ensure_no_private_anky_persistence_payload(
+    value: &Value,
+    context: &str,
+) -> Result<(), AppError> {
+    if let Some(field) = find_private_anky_field(value) {
+        return Err(AppError::Internal(format!(
+            "{context} must not persist private .anky field `{field}`"
+        )));
+    }
+    if contains_anky_plaintext_value(value) {
+        return Err(AppError::Internal(format!(
+            "{context} must not persist .anky plaintext values"
+        )));
+    }
+
+    Ok(())
+}
+
+fn redact_private_anky_error_for_log(error: &impl Display) -> String {
+    let message = error.to_string();
+    let normalized = message.to_ascii_lowercase().replace(['_', '-'], "");
+    if message.contains("\n8000")
+        || message.contains("\\n8000")
+        || normalized.contains("rawanky")
+        || normalized.contains("ankyplaintext")
+        || normalized.contains("writingplaintext")
+        || normalized.contains("privateinput")
+        || normalized.contains("privatewitness")
+    {
+        "<redacted private input error>".to_string()
+    } else {
+        message
+    }
+}
+
+fn find_private_anky_field(value: &Value) -> Option<String> {
     match value {
-        Value::Array(items) => items.iter().find_map(find_private_webhook_field),
+        Value::Array(items) => items.iter().find_map(find_private_anky_field),
         Value::Object(object) => {
             for (key, child) in object {
-                if private_webhook_key_name(key) {
+                if private_anky_key_name(key) {
                     return Some(key.clone());
                 }
-                if let Some(field) = find_private_webhook_field(child) {
+                if let Some(field) = find_private_anky_field(child) {
                     return Some(field);
                 }
             }
@@ -6529,7 +6557,7 @@ fn capture_line_has_valid_time_and_character(line: &str, delta_line: bool) -> bo
     time_ok && (character == " " || is_accepted_anky_character(character))
 }
 
-fn private_webhook_key_name(key: &str) -> bool {
+fn private_anky_key_name(key: &str) -> bool {
     let normalized = key.trim().to_ascii_lowercase().replace(['_', '-'], "");
     matches!(
         normalized.as_str(),
@@ -6901,10 +6929,11 @@ async fn build_mobile_reflection_artifacts(
         )
         .await
         .map_err(|error| {
+            let redacted_error = redact_private_anky_error_for_log(&error);
             tracing::warn!(
                 session_hash = %session_hash,
                 processing_type = processing_type.as_str(),
-                error = %error,
+                error = %redacted_error,
                 "mobile reflection provider unavailable"
             );
             AppError::Unavailable("reflection provider unavailable".into())
@@ -6944,6 +6973,54 @@ async fn build_mobile_reflection_artifacts(
     }
 
     Ok(artifacts)
+}
+
+fn mobile_reflection_request_metadata(
+    session_hash: &str,
+    processing_type: ProcessingType,
+    anky_byte_length: usize,
+) -> Result<Value, AppError> {
+    let payload = json!({
+        "sessionHash": session_hash,
+        "processingType": processing_type.as_str(),
+        "ankyByteLength": anky_byte_length,
+        "entryCount": 1,
+        "rawInputStored": false,
+        "writingTextStored": false,
+        "artifactBodiesStored": false
+    });
+    ensure_no_private_anky_persistence_payload(&payload, "mobile reflection request metadata")?;
+
+    Ok(payload)
+}
+
+fn mobile_reflection_result_metadata(
+    processing_type: ProcessingType,
+    artifacts: &[Value],
+) -> Result<Value, AppError> {
+    let artifact_kinds = artifacts
+        .iter()
+        .filter_map(|artifact| artifact.get("kind").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    let reflection_artifact = artifacts
+        .iter()
+        .find(|artifact| artifact.get("kind").and_then(Value::as_str) == Some("reflection"));
+    let provider = reflection_artifact
+        .and_then(|artifact| artifact.get("provider"))
+        .and_then(Value::as_str);
+    let model = reflection_artifact
+        .and_then(|artifact| artifact.get("model"))
+        .and_then(Value::as_str);
+    let payload = json!({
+        "processingType": processing_type.as_str(),
+        "artifactKinds": artifact_kinds,
+        "artifactBodiesStored": false,
+        "reflectionProvider": provider,
+        "reflectionModel": model
+    });
+    ensure_no_private_anky_persistence_payload(&payload, "mobile reflection result metadata")?;
+
+    Ok(payload)
 }
 
 fn build_dev_artifacts(carpet: &AnkyCarpet, carpet_hash: &str) -> Result<Vec<Value>, AppError> {
@@ -8244,6 +8321,63 @@ mod tests {
         let error = validate_public_webhook_payload(&payload).unwrap_err();
         assert!(matches!(error, AppError::BadRequest(_)));
         assert!(error.to_string().contains("plaintext values"));
+    }
+
+    #[test]
+    fn mobile_reflection_persistence_metadata_excludes_artifact_bodies() {
+        let artifacts = vec![
+            json!({
+                "kind": "title",
+                "sessionHash": "a".repeat(64),
+                "title": "private generated title"
+            }),
+            json!({
+                "kind": "reflection",
+                "sessionHash": "a".repeat(64),
+                "markdown": "1710000000000 p\n0001 r\n8000",
+                "provider": "claude",
+                "model": "reflection-model"
+            }),
+        ];
+
+        let request =
+            mobile_reflection_request_metadata(&"a".repeat(64), ProcessingType::Reflection, 42)
+                .unwrap();
+        let result =
+            mobile_reflection_result_metadata(ProcessingType::Reflection, &artifacts).unwrap();
+        let stored =
+            serde_json::to_string(&json!({ "request": request, "result": result })).unwrap();
+
+        assert!(stored.contains("artifactBodiesStored"));
+        assert!(stored.contains("reflection-model"));
+        assert!(!stored.contains("private generated title"));
+        assert!(!stored.contains("markdown"));
+        assert!(!stored.contains("1710000000000 p"));
+        assert!(!stored.contains("\\n8000"));
+    }
+
+    #[test]
+    fn mobile_reflection_persistence_guard_rejects_private_input_fields() {
+        let payload = json!({
+            "sessionHash": "a".repeat(64),
+            "rawAnky": "1710000000000 a\n8000"
+        });
+
+        let error =
+            ensure_no_private_anky_persistence_payload(&payload, "mobile reflection test payload")
+                .unwrap_err();
+
+        assert!(matches!(error, AppError::Internal(_)));
+        assert!(error.to_string().contains("rawAnky"));
+        assert!(!error.to_string().contains("1710000000000"));
+    }
+
+    #[test]
+    fn private_anky_provider_errors_are_redacted_for_logs() {
+        let error = anyhow::anyhow!("provider echoed rawAnky=1710000000000 a\\n8000");
+        let redacted = redact_private_anky_error_for_log(&error);
+
+        assert_eq!(redacted, "<redacted private input error>");
     }
 
     #[test]
